@@ -6,7 +6,8 @@ import { ResourcePanel } from "./components/ResourcePanel";
 import { LogPanel } from "./components/LogPanel";
 
 export default function Board({ G, ctx, moves, playerID }: BoardProps<GameState>) {
-  const me = G.players[playerID ?? "0"];
+  const activePlayerId = ctx.currentPlayer ?? playerID ?? "0";
+  const me = G.players[activePlayerId];
   return <div className="layout">
     <h1>Digital Prototype</h1><h2>Current Player: {ctx.currentPlayer}</h2>
     <ResourcePanel resources={me.resources} />

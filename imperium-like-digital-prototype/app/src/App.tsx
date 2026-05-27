@@ -4,4 +4,6 @@ import Board from "./Board";
 
 const GameClient = Client({ game: PrototypeGame, board: Board, numPlayers: 2 });
 
-export default function App() { return <GameClient playerID="0" />; }
+export default function App() {
+  return <GameClient />;
+}

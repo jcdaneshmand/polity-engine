@@ -21,8 +21,10 @@ function runEffect(ctx: Ctx, effect: Effect): void {
     case "spend_resource": p.resources[effect.resource] = Math.max(0, p.resources[effect.resource] - effect.amount); ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `Spent ${effect.amount} ${effect.resource}.` }); break;
     case "discard_random": {
       for (let i = 0; i < effect.count; i++) {
-        const card = p.hand.shift();
-        if (card) { p.discard.push(card); ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `Discarded ${card}.` }); }
+        if (p.hand.length === 0) break;
+        const randomIndex = Math.floor(Math.random() * p.hand.length);
+        const [card] = p.hand.splice(randomIndex, 1);
+        if (card) { p.discard.push(card); ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `Discarded ${card} at random.` }); }
       }
       break;
     }

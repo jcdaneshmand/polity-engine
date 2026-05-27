@@ -1,0 +1,12 @@
+[
+  {"id":"test_action_archive_survey","displayName":"Archive Survey","type":"action","cost":2,"tags":["knowledge"],"effects":[{"trigger":"on_play","op":"draw","count":1}]},
+  {"id":"test_action_foundry_shift","displayName":"Foundry Shift","type":"action","cost":1,"tags":["materials"],"effects":[{"trigger":"on_play","op":"gain_resource","resource":"materials","amount":1}]},
+  {"id":"test_action_scholars_circle","displayName":"Scholar's Circle","type":"action","cost":2,"tags":["knowledge"],"effects":[{"trigger":"on_play","op":"gain_resource","resource":"knowledge","amount":1}]},
+  {"id":"test_action_risk_audit","displayName":"Risk Audit","type":"action","cost":1,"tags":["control"],"effects":[{"trigger":"on_play","op":"discard_random","count":1},{"trigger":"on_play","op":"draw","count":1}]},
+  {"id":"test_action_lineage_record","displayName":"Lineage Record","type":"action","cost":3,"tags":["legacy"],"effects":[{"trigger":"on_play","op":"move_self_to_history"}]},
+  {"id":"test_action_market_pull","displayName":"Market Pull","type":"action","cost":2,"tags":["market"],"effects":[{"trigger":"on_play","op":"acquire_card","count":1}]},
+  {"id":"test_action_civic_assembly","displayName":"Civic Assembly","type":"action","cost":2,"tags":["influence"],"effects":[{"trigger":"on_play","op":"gain_resource","resource":"influence","amount":1}]},
+  {"id":"test_action_quiet_reforms","displayName":"Quiet Reforms","type":"action","cost":2,"tags":["stability"],"effects":[{"trigger":"on_play","op":"conditional_resource_at_least","resource":"knowledge","atLeast":2,"then":[{"trigger":"on_play","op":"gain_resource","resource":"influence","amount":1}],"else":[{"trigger":"on_play","op":"gain_resource","resource":"materials","amount":1}]}]},
+  {"id":"test_action_emergency_tax","displayName":"Emergency Tax","type":"action","cost":1,"tags":["tension"],"effects":[{"trigger":"on_play","op":"gain_resource","resource":"materials","amount":2},{"trigger":"on_play","op":"gain_resource","resource":"unrest","amount":1}]},
+  {"id":"test_action_forum_debate","displayName":"Forum Debate","type":"action","cost":2,"tags":["choice"],"effects":[{"trigger":"on_play","op":"choose_one","choices":[[{"trigger":"on_play","op":"gain_resource","resource":"knowledge","amount":1}],[{"trigger":"on_play","op":"gain_resource","resource":"influence","amount":1}]]}]}
+]

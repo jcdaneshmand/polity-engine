@@ -1,0 +1,22 @@
+{
+  "name": "imperium-like-digital-prototype",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": ["app", "engine"],
+  "scripts": {
+    "dev": "npm run dev -w app",
+    "test": "npm run test -w engine",
+    "typecheck": "npm run typecheck -w engine && npm run typecheck -w app"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.5.0",
+    "typescript": "^5.8.3",
+    "vite": "^5.4.19",
+    "vitest": "^2.1.9"
+  },
+  "dependencies": {
+    "boardgame.io": "^0.50.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}

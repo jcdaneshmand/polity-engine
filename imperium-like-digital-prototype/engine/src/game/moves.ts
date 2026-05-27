@@ -13,7 +13,8 @@ export function playCard({ G, ctx }: MoveCtx, cardId: string): void {
   if (p.actionsRemaining < 1 || !p.hand.includes(cardId)) return;
 
   p.actionsRemaining -= 1;
-  p.hand = p.hand.filter((id) => id !== cardId);
+  const handIndex = p.hand.indexOf(cardId);
+  if (handIndex >= 0) p.hand.splice(handIndex, 1);
   p.playArea.push(cardId);
 
   runEffects(

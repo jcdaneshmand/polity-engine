@@ -5,8 +5,12 @@ import { drawCard, moveAllToDiscard } from "./zones";
 export function onTurnBegin(G: GameState, ctx: Ctx): void {
   const p = G.players[ctx.currentPlayer];
   p.actionsRemaining = 1;
+
   if (p.hand.length < 5) {
-    while (p.hand.length < 5) drawCard(p);
+    while (p.hand.length < 5) {
+      const drawn = drawCard(p);
+      if (!drawn) break;
+    }
   }
 }
 

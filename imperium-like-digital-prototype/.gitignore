@@ -3,3 +3,6 @@ dist
 .vite
 coverage
 *.log
+reference/
+*.pdf
+official-card-data/

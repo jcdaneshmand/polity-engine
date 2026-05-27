@@ -24,3 +24,5 @@ npm run typecheck
 1. Improve effect DSL and add player choices.
 2. Add legality checks/undo support.
 3. Add solo bot shell and save/load support.
+
+> This project is a private/prototype rules-engine experiment using original placeholder content. It does not include official card text, art, logos, scans, card databases, or branding from any published game. Official content should only be integrated with permission from the rights holders.

@@ -6,7 +6,7 @@ function evaluateCondition(G: GameState, playerId: string, condition?: EffectCon
   if (!condition || condition.op === "always") return true;
   const p = G.players[playerId];
   if (!p) return false;
-  if (condition.op === "state_is") return p.stateArea.includes(condition.state);
+  if (condition.op === "state_is") return p.stateArea[0] === condition.state;
   if (condition.op === "zone_empty") return getZoneCards(G, playerId, p, condition.zoneId).length === 0;
   if (condition.op === "zone_has_at_least") return getZoneCards(G, playerId, p, condition.zoneId).length >= condition.count;
   if (condition.op === "card_in_zone") return getZoneCards(G, playerId, p, condition.zoneId).includes(condition.cardId);

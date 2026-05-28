@@ -1,6 +1,6 @@
 import type { NormalizedCardRecord } from "../../../tools/card-import/cardCsvTypes";
 import type { CommonsReplacementPolicy, CommonsSetupOptions } from "./commonsTypes";
-import { satisfiesCommonsExpansionRules, satisfiesCommonsPlayerCount } from "./commonsSelection";
+import { satisfiesCommonsExpansionRules, satisfiesCommonsModeRules, satisfiesCommonsPlayerCount } from "./commonsSelection";
 
 export function hasNationConflict(card: NormalizedCardRecord, selectedNationIds: string[]): boolean {
   const conflicts = card.conflictsWithNationIds ?? [];
@@ -27,6 +27,7 @@ export function findEligibleReplacementCard(args: {
       removedCard.replacementGroupId && card.replacementGroupId === removedCard.replacementGroupId
     );
     if (!matchesRemovedCard && !matchesReplacementGroup) return false;
+    if (!satisfiesCommonsModeRules(card, options)) return false;
     if (!satisfiesCommonsExpansionRules(card, options)) return false;
     if (!satisfiesCommonsPlayerCount(card, options.effectiveCommonsPlayerCount)) return false;
     if (hasNationConflict(card, options.selectedNationIds)) return false;

@@ -17,7 +17,7 @@ function runEffect(ctx: Ctx, effect: Effect): void {
   switch (effect.op) {
     case "draw": {
       for (let i = 0; i < effect.count; i++) {
-        const card = drawCard(p);
+        const card = drawCard(p, ctx.randomNumber);
         ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: card ? `Drew ${card}` : "Draw failed (no deck/discard cards)." });
       }
       break;
@@ -43,8 +43,13 @@ function runEffect(ctx: Ctx, effect: Effect): void {
       break;
     }
     case "acquire_card": {
-      const cardId = ctx.G.market[0];
-      if (cardId) { ctx.G.market = ctx.G.market.slice(1); p.discard.push(cardId); ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `Acquired ${cardId} from market.` }); }
+      for (let i = 0; i < effect.count; i++) {
+        const cardId = ctx.G.market[0];
+        if (!cardId) break;
+        ctx.G.market = ctx.G.market.slice(1);
+        p.discard.push(cardId);
+        ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `Acquired ${cardId} from market.` });
+      }
       break;
     }
     case "conditional_resource_at_least": runEffects(ctx, p.resources[effect.resource] >= effect.atLeast ? effect.then : effect.else ?? []); break;

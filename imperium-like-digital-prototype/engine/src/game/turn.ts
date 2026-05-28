@@ -8,7 +8,8 @@ export function onTurnBegin(G: GameState, ctx: Ctx): void {
 
   if (p.hand.length < 5) {
     while (p.hand.length < 5) {
-      const drawn = drawCard(p);
+      const randomNumber = (ctx as unknown as { random?: { Number?: () => number } }).random?.Number;
+      const drawn = drawCard(p, randomNumber);
       if (!drawn) break;
     }
   }

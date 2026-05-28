@@ -128,12 +128,10 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
     if (options.mode === "solo") (ruleset.botOverrides ?? []).forEach((ov:any) => game.log.push({ round: game.round, playerId, message: `NationRulesetApplied(${ruleset.nationId}/bot/${ov.op})` }));
   });
   if (options.mode === "practice") (game as any).practiceClock = { turnsRemaining: 12, progressTokens: 0 };
-  const skipDefaultSoloBotSetup = Object.values(activeNationRulesets).some((ruleset: any) =>
-    (ruleset.botOverrides ?? []).some((ov: any) => ov.op === "skip_default_dynasty_setup")
-  );
-  if (options.mode === "solo" && !skipDefaultSoloBotSetup) {
+  if (options.mode === "solo") {
     const botStateTables = loadBotStateTables();
-    const bot = setupSoloBot({ botNation: Object.values(args.nationDb)[0] as any, cardDb: game.cardDb as any, botStateTables, options, shuffle: (x)=>[...x] });
+    const botRuleset = Object.values(activeNationRulesets)[0] as any;
+    const bot = setupSoloBot({ botNation: Object.values(args.nationDb)[0] as any, botRuleset, cardDb: game.cardDb as any, botStateTables, options, shuffle: (x)=>[...x] });
     (game as any).solo = { bot, botStateTables };
   }
   return game;

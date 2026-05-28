@@ -11,8 +11,9 @@ export function setupSoloBot(args: { botNation: NationDefinition; botRuleset?: N
   const difficulty = args.options.soloDifficulty ?? "chieftain";
   const config = SOLO_DIFFICULTY_CONFIG[difficulty];
   const all = Object.values(args.cardDb).map((c) => c.id);
-  const start = all.filter((id) => args.cardDb[id].startingLocation === "bot_deck" || args.cardDb[id].tags.includes("bot_starting"));
-  const dynasty = all.filter((id) => args.cardDb[id].tags.includes("bot_dynasty"));
+  const skipDefaultDynastySetup = (args.botRuleset?.botOverrides ?? []).some((ov) => ov.op === "skip_default_dynasty_setup");
+  const start = skipDefaultDynastySetup ? [] : all.filter((id) => args.cardDb[id].startingLocation === "bot_deck" || args.cardDb[id].tags.includes("bot_starting"));
+  const dynasty = skipDefaultDynastySetup ? [] : all.filter((id) => args.cardDb[id].tags.includes("bot_dynasty"));
   const deck = args.shuffle(start);
   const slots = initializeBotSlots(config.slotCount);
   for (const slot of Object.values(slots)) slot.cardId = deck.shift();

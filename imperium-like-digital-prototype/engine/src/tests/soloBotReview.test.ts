@@ -237,7 +237,7 @@ describe("solo bot setup from imported cards", () => {
     expect(G.solo?.bot.botHistory).toContain("bot_region");
   });
 
-  it("honors rulesets that skip default solo bot setup", () => {
+  it("preserves solo state while skipping default solo bot card setup", () => {
     const rulesetPath = path.join(os.tmpdir(), `polity-ruleset-${Date.now()}.json`);
     try {
       fs.writeFileSync(rulesetPath, JSON.stringify([{
@@ -272,7 +272,14 @@ describe("solo bot setup from imported cards", () => {
         privateRulesetPath: rulesetPath
       });
 
-      expect(G.solo).toBeUndefined();
+      const botCardIds = [
+        ...(G.solo?.bot.botDeck ?? []),
+        ...(G.solo?.bot.botDynastyDeck ?? []),
+        ...Object.values(G.solo?.bot.slots ?? {}).flatMap((slot) => slot.cardId ? [slot.cardId] : [])
+      ];
+
+      expect(G.solo).toBeDefined();
+      expect(botCardIds).not.toContain("bot_region");
       expect(G.log.some((entry) => entry.message === "NationRulesetApplied(test_nation_sun_coast/bot/skip_default_dynasty_setup)")).toBe(true);
     } finally {
       fs.rmSync(rulesetPath, { force: true });

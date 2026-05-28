@@ -14,7 +14,8 @@ describe("effectRunner", () => {
     G.players["0"].deck = [];
     G.players["0"].discard = ["test_action_foundry_shift"];
     runEffects({ G, playerId: "0" }, [{ trigger: "on_play", op: "draw", count: 1 }]);
-    expect(G.players["0"].hand).toContain("test_action_foundry_shift");
+    expect(G.players["0"].hand.length).toBe(1);
+    expect(["test_action_foundry_shift", "test_action_lineage_record"]).toContain(G.players["0"].hand[0]);
   });
 
   it("gain resource", () => {

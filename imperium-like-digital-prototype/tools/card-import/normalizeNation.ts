@@ -6,6 +6,7 @@ export function normalizeNation(r:PrivateNationCsvRow): NationDefinition { retur
   complexity:r.complexity.trim()===""?undefined:Number(r.complexity), powerCardIds:arr(r.power_card_ids||""), stateCardIds:arr(r.state_card_ids||""),
   startingDeckCardIds:arr(r.starting_deck_card_ids||""), nationDeckCardIds:arr(r.nation_deck_card_ids||""), accessionCardId:r.accession_card_id.trim()||undefined,
   developmentCardIds:arr(r.development_card_ids||""), setupRules:r.special_setup_json.trim()?JSON.parse(r.special_setup_json):[], passiveRules:r.passive_rules_json.trim()?JSON.parse(r.passive_rules_json):[],
-  actionTokensBase:Number(r.action_tokens_base), exhaustTokensBase:Number(r.exhaust_tokens_base), requiredExpansions:arr(r.required_expansions||""), notes:r.notes?.trim()||undefined,
+  actionTokensBase:Number(r.action_tokens_base), exhaustTokensBase:Number(r.exhaust_tokens_base), requiredExpansions:arr(r.required_expansions||""),
+  excludedExpansions:arr(r.excluded_expansions||"").length?arr(r.excluded_expansions||""):undefined, notes:r.notes?.trim()||undefined,
   implemented:bool(r.implemented), tested:bool(r.tested)
 }; }

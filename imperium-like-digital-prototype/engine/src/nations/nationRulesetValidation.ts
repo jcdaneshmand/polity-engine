@@ -72,7 +72,10 @@ function validateHookRules(nationId: string, hookRules: NationHookRule[]): Valid
   hookRules.forEach((hook, index) => {
     const base = `hookRules[${index}]`;
     if (!has(HOOK_TRIGGERS, hook.trigger)) issues.push({ nationId, field: `${base}.trigger`, reason: `invalid trigger '${String(hook.trigger)}'` });
-    if (!Array.isArray(hook.effects)) issues.push({ nationId, field: `${base}.effects`, reason: "effects must be an array" });
+    if (!Array.isArray(hook.effects)) {
+      issues.push({ nationId, field: `${base}.effects`, reason: "effects must be an array" });
+      return;
+    }
     if (hook.effects.some((effect) => typeof effect !== "object" || effect === null || Array.isArray(effect))) {
       issues.push({ nationId, field: `${base}.effects`, reason: "each effect payload entry must be an object" });
     }
@@ -149,7 +152,7 @@ export function validateNationRuleset(ruleset: NationRuleset): ValidationIssue[]
   }));
   issues.push(...validateHookRules(nationId, ruleset.hookRules));
 
-  ruleset.setupOverrides.forEach((override, i) => {
+  if (Array.isArray(ruleset.setupOverrides)) ruleset.setupOverrides.forEach((override, i) => {
     if (override.op === "set_initial_resources" && override.resources) {
       Object.keys(override.resources).forEach((resource) => {
         if (!has(RESOURCE_NAMES, resource)) issues.push({ nationId, field: `setupOverrides[${i}].resources.${resource}`, reason: `invalid resource '${resource}'` });

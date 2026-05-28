@@ -2,9 +2,10 @@
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { readFileSync, realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-const engineDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const engineDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const workspaceRoot = path.resolve(engineDir, '..');
 const workspaceNodeModules = path.join(workspaceRoot, 'node_modules');
 const requireFromEngine = createRequire(path.join(engineDir, 'package.json'));

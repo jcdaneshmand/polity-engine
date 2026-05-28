@@ -23,6 +23,8 @@ npm test
 npm run typecheck
 ```
 
+If `npm test` reports that `vitest` is missing, run `npm install` from `/workspace/polity-engine/imperium-like-digital-prototype` (the workspace root), not `/workspace/polity-engine`.
+
 ## Architecture overview
 - `app/`: Vite + React + TypeScript UI using `boardgame.io/react` client.
 - `engine/`: Reusable game model, move logic, turn loop, and effect runner.

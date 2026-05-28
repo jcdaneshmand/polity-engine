@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GameOptions } from "../options/gameOptions";
+import { runBotCleanup } from "../solo/botCleanup";
 import { createInitialGameStateFromPipeline } from "../setup/setupPipeline";
 import { resolveBotCard } from "../solo/botStateTableResolver";
 
@@ -90,5 +91,58 @@ describe("solo bot setup from imported cards", () => {
 
     expect(result.resolvedRowId).toBe("region");
     expect(G.solo?.bot.botHistory).toContain("bot_region");
+  });
+
+  it("applies non-destination bot table effects before moving the revealed card", () => {
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+
+    const result = resolveBotCard({
+      G,
+      bot: G.solo!.bot,
+      revealedCardId: "bot_region",
+      source: "slot",
+      table: {
+        id: "test_table",
+        botNationId: "test_nation_sun_coast",
+        displayName: "Test Table",
+        side: "S",
+        rows: [
+          { id: "gain_goods", priority: 1, trigger: { kind: "suit", suit: "region" }, effects: [{ op: "bot_gain_resource", resource: "goods", count: 1 }], implemented: true, tested: true }
+        ]
+      }
+    });
+
+    expect(result.resolvedRowId).toBe("gain_goods");
+    expect(G.solo?.bot.resources.goods).toBe(1);
+    expect(G.solo?.bot.botDiscard).toContain("bot_region");
+  });
+
+  it("recycles bot discards when cleanup refills empty slots from an exhausted deck", () => {
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    bot.botDeck = [];
+    bot.botDiscard = ["bot_region"];
+    bot.slots[1].cardId = undefined;
+
+    runBotCleanup(bot);
+
+    expect(bot.slots[1].cardId).toBe("bot_region");
+    expect(bot.botDiscard).toEqual([]);
   });
 });

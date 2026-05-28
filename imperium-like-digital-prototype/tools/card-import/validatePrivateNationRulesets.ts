@@ -17,5 +17,7 @@ export function validatePrivateNationRulesetsRows(rows: PrivateNationRulesetCsvR
 if (require.main === module) {
   const input = process.argv[2] || "private-card-data/nation-ruleset-template.csv";
   const rows = parseCsvFile(input) as PrivateNationRulesetCsvRow[];
-  console.log(JSON.stringify(validatePrivateNationRulesetsRows(rows), null, 2));
+  const report = validatePrivateNationRulesetsRows(rows);
+  console.log(JSON.stringify(report, null, 2));
+  if (report.counts.fatal > 0) process.exitCode = 1;
 }

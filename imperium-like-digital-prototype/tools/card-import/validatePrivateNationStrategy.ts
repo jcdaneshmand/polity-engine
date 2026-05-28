@@ -12,3 +12,12 @@ export function validatePrivateNationStrategyRows(rows: PrivateNationStrategyCsv
   });
   return { errors, counts:{ rows:rows.length, fatal:errors.filter(e=>e.level==='fatal').length, warnings:errors.filter(e=>e.level==='warning').length } };
 }
+
+
+if (require.main === module) {
+  const input = process.argv[2] || "private-card-data/nation-strategy-template.csv";
+  const rows = parseCsvFile(input) as PrivateNationStrategyCsvRow[];
+  const report = validatePrivateNationStrategyRows(rows);
+  console.log(JSON.stringify(report, null, 2));
+  if (report.counts.fatal > 0) process.exitCode = 1;
+}

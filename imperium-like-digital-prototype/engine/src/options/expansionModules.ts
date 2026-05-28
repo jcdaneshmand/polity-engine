@@ -6,7 +6,7 @@ export const tradeRoutesModule: RulesModule = {
   modifyPlayerSetup: ({ options, players }) => {
     if (!options.enabledExpansions.includes("trade_routes")) return;
     Object.values(players).forEach((p) => {
-      p.powerArea.push("placeholder_merchants_module_card");
+      p.powerArea.push("test_action_civic_assembly");
       p.exhaustTokensBase += 1;
       p.exhaustTokensAvailable += 1;
       p.resources.goods = p.resources.goods ?? 0;

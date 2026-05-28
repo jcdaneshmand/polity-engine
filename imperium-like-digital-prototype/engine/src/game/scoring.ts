@@ -58,14 +58,7 @@ export function applyScoringLifecycleOnce(G: GameState, playerId: string): void 
     logOverride(G, playerId, ruleset.nationId, "scoring", ov.op);
     if (ov.op === "custom_scoring_effect") runEffects({ G, playerId, enabledExpansions: G.options?.enabledExpansions }, ov.effect as any);
   }
-  for (const ov of ruleset.collapseOverrides ?? []) {
-    if (ov.op === "auto_win_if_zone_empty") {
-      applyAutoWinCollapseOverride(G, playerId, ruleset, ov.zoneId);
-      continue;
-    }
-    logOverride(G, playerId, ruleset.nationId, "collapse", ov.op);
-    if (ov.op === "custom_collapse_resolution") runEffects({ G, playerId, enabledExpansions: G.options?.enabledExpansions }, ov.effect as any);
-  }
+  applyCollapseWinChecks(G, playerId);
   runNationHooks({ G, playerId, trigger: "after_scoring" });
 }
 

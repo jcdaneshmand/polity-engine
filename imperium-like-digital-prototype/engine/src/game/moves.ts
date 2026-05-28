@@ -34,6 +34,26 @@ export function acquireCard({ G, ctx }: MoveCtx, cardId: string): void {
   G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: `Acquired ${cardId}.` });
 }
 
+export function refillMarketFromSharedDiscard(G: GameState, randomNumber?: () => number): void {
+  if (G.market.length > 0 || G.sharedDiscard.length === 0) return;
+
+  const ordered = [...G.sharedDiscard];
+  const shuffled: string[] = [];
+  while (ordered.length > 0) {
+    const roll = randomNumber ? randomNumber() : 0;
+    const safeRoll = Number.isFinite(roll) && roll >= 0 && roll < 1 ? roll : 0;
+    const index = Math.floor(safeRoll * ordered.length);
+    shuffled.push(ordered.splice(index, 1)[0]);
+  }
+
+  const drawn = shuffled.shift();
+  G.sharedDiscard = shuffled;
+  if (drawn) {
+    G.market.push(drawn);
+    G.log.push({ round: G.round, playerId: "system", message: `Market refilled with ${drawn}.` });
+  }
+}
+
 export function endTurnMove({ events }: MoveCtx): void {
   events?.endTurn?.();
 }

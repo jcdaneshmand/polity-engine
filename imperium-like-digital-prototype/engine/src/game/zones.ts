@@ -1,9 +1,16 @@
 import type { PlayerState } from "./state";
 
+function getRoll(randomNumber?: () => number): number {
+  if (!randomNumber) return 0;
+  const roll = randomNumber();
+  if (!Number.isFinite(roll) || roll < 0 || roll >= 1) return 0;
+  return roll;
+}
+
 function shuffleWithRandom<T>(items: T[], randomNumber?: () => number): T[] {
   const out = [...items];
   for (let i = out.length - 1; i > 0; i--) {
-    const roll = randomNumber ? randomNumber() : Math.random();
+    const roll = getRoll(randomNumber);
     const j = Math.floor(roll * (i + 1));
     [out[i], out[j]] = [out[j], out[i]];
   }

@@ -22,6 +22,7 @@ export function findEligibleReplacementCard(args: {
   const selectedIds = new Set(selectedCards.map((card) => card.id));
   const candidates = allCards.filter((card) => {
     if (selectedIds.has(card.id) || card.id === removedCard.id) return false;
+    if (card.ownership !== "replacement" && card.commonsGroup !== "replacement") return false;
     const matchesRemovedCard = card.replacementForCardId === removedCard.id;
     const matchesReplacementGroup = Boolean(
       removedCard.replacementGroupId && card.replacementGroupId === removedCard.replacementGroupId

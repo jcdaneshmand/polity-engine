@@ -53,6 +53,7 @@ describe("commons setup", () => {
     });
     expect(G.setupReport?.commonsSetup?.selectedCommonsCards).toEqual(["two_plus"]);
     expect(G.setupReport?.commonsSetup?.removedForPlayerCount).toEqual(["three_plus"]);
+    expect(G.cardDb.two_plus).toBeDefined();
   });
 
   it("practice mode uses effective count 2", () => {
@@ -64,5 +65,6 @@ describe("commons setup", () => {
     });
     expect(G.setupReport?.commonsSetup?.selectedCommonsCards).toEqual(["two_plus"]);
     expect(G.setupReport?.commonsSetup?.removedForPlayerCount).toEqual(["three_plus"]);
+    expect(G.cardDb.two_plus).toBeDefined();
   });
 });

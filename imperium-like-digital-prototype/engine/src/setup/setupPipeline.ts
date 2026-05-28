@@ -134,6 +134,7 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
       effectiveCommonsPlayerCount: effectiveCommonsPlayerCount as 2 | 3 | 4,
       enabledExpansions: options.enabledExpansions,
       enabledVariants: options.enabledVariants,
+      mode: options.mode,
       selectedNationIds,
       replacementPolicy: options.replacementPolicy ?? "use_replacements"
     },

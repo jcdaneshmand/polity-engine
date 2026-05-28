@@ -48,12 +48,17 @@ describe("commons setup", () => {
     const G = createInitialGameStateFromPipeline({
       options: { playerCount: 1, mode: "solo", enabledExpansions: [], enabledVariants: [], soloDifficulty: "chieftain", commonsSetId: "classics", replacementPolicy: "none" },
       playerNationIds: { "0": "test_nation_alpha" },
-      cardDb: cardDb([card({ id: "two_plus", playerCountRequirement: "2+" }), card({ id: "three_plus", playerCountRequirement: "3+" })]),
+      cardDb: cardDb([
+        card({ id: "two_plus", playerCountRequirement: "2+" }),
+        card({ id: "three_plus", playerCountRequirement: "3+" }),
+        card({ id: "multiplayer_only", playerCountRequirement: "2+", allowedModes: ["multiplayer"] })
+      ]),
       nationDb
     });
     expect(G.setupReport?.commonsSetup?.selectedCommonsCards).toEqual(["two_plus"]);
     expect(G.setupReport?.commonsSetup?.removedForPlayerCount).toEqual(["three_plus"]);
     expect(G.cardDb.two_plus).toBeDefined();
+    expect(G.cardDb.multiplayer_only).toBeUndefined();
   });
 
   it("practice mode uses effective count 2", () => {

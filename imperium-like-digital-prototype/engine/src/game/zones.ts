@@ -48,10 +48,13 @@ export function drawCardWithReshuffleLifecycle(G: GameState, playerId: string, r
   (G as any)._reshuffleInProgressByPlayer ??= {};
   if (shouldReshuffle && !(G as any)._reshuffleInProgressByPlayer[playerId]) {
     (G as any)._reshuffleInProgressByPlayer[playerId] = true;
-    runNationHooks({ G, playerId, trigger: "before_reshuffle", randomNumber });
-    maybeReshuffleDeck(G, playerId, randomNumber);
-    runNationHooks({ G, playerId, trigger: "after_reshuffle", randomNumber });
-    (G as any)._reshuffleInProgressByPlayer[playerId] = false;
+    try {
+      runNationHooks({ G, playerId, trigger: "before_reshuffle", randomNumber });
+      maybeReshuffleDeck(G, playerId, randomNumber);
+      runNationHooks({ G, playerId, trigger: "after_reshuffle", randomNumber });
+    } finally {
+      (G as any)._reshuffleInProgressByPlayer[playerId] = false;
+    }
   }
   return drawCard(p, randomNumber, !shouldReshuffle);
 }

@@ -138,6 +138,7 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   setupReport.delayedAggressiveCount = Math.max(setupReport.delayedAggressiveCount, commonsSetup.delayedCards.length);
   setupReport.usedQuickSetup = options.enabledVariants.includes("quick_setup");
   game.cardDb = buildGameCardDb(mergeCardsById(filteredCards, args.cardDb, commonsSetup.selectedCommonsCards));
+  game.marketSlots = commonsSetup.initialMarket;
   game.market = commonsSetup.initialMarket.map((slot) => slot.cardId).filter(Boolean) as string[];
   modules.forEach((m)=>m.modifyMarketSetup?.(ctx as any));
   const fame = commonsSetup.fameDeck.length ? commonsSetup.fameDeck : setupFameDeck(options.enabledExpansions.includes("trade_routes"));

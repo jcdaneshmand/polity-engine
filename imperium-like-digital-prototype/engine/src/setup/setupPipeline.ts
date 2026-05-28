@@ -13,6 +13,7 @@ import { loadNationRulesets } from "../nations/nationRulesetLoader";
 import { loadNationStrategyProfiles } from "../nations/nationStrategyLoader";
 import { getNationRuleset, validateNationRulesetCompatibility } from "../nations/nationRulesetRegistry";
 import { applySetupOverrides } from "../nations/nationSetupOverrides";
+import { runEffects } from "../cards/effectRunner";
 import type { NationRulesetApplicationReport } from "../nations/nationRulesetTypes";
 
 export function createInitialGameStateFromPipeline(args: { options: GameOptions; playerNationIds?: Record<string,string>; cardDb: Record<string, NormalizedCardRecord>; nationDb: Record<string, NationDefinition>; randomSeed?: string; usePrivateRules?: boolean; privateRulesetPath?: string; privateStrategyPath?: string; }): GameState {
@@ -73,7 +74,12 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   Object.entries(activeNationRulesets).forEach(([playerId, ruleset]) => {
     (ruleset.zoneOverrides ?? []).forEach((ov:any) => game.log.push({ round: game.round, playerId, message: `NationRulesetApplied(${ruleset.nationId}/zone/${ov.op})` }));
     (ruleset.stateOverrides ?? []).forEach((ov:any) => game.log.push({ round: game.round, playerId, message: `NationRulesetApplied(${ruleset.nationId}/state/${ov.op})` }));
-    if (options.enabledVariants.includes("short_game")) (ruleset.shortGameOverrides ?? []).forEach((ov:any) => game.log.push({ round: game.round, playerId, message: `NationRulesetApplied(${ruleset.nationId}/short_game/${ov.op})` }));
+    if (options.enabledVariants.includes("short_game")) {
+      (ruleset.shortGameOverrides ?? []).forEach((ov:any) => {
+        if (ov.op === "custom_short_game_setup") runEffects({ G: game, playerId, enabledExpansions: game.options?.enabledExpansions }, ov.effect as any);
+        game.log.push({ round: game.round, playerId, message: `NationRulesetApplied(${ruleset.nationId}/short_game/${ov.op})` });
+      });
+    }
     if (options.mode === "solo") (ruleset.botOverrides ?? []).forEach((ov:any) => game.log.push({ round: game.round, playerId, message: `NationRulesetApplied(${ruleset.nationId}/bot/${ov.op})` }));
   });
   if (options.mode === "practice") (game as any).practiceClock = { turnsRemaining: 12, progressTokens: 0 };

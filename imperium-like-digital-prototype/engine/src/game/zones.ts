@@ -16,8 +16,8 @@ function shuffleWithRandom<T>(items: T[], randomNumber?: () => number): T[] {
   return out;
 }
 
-export function drawCard(player: PlayerState, randomNumber?: () => number): string | null {
-  if (player.deck.length === 0 && player.discard.length > 0) {
+export function drawCard(player: PlayerState, randomNumber?: () => number, allowAutoReshuffle = true): string | null {
+  if (allowAutoReshuffle && player.deck.length === 0 && player.discard.length > 0) {
     player.deck = shuffleWithRandom(player.discard, randomNumber);
     player.discard = [];
   }
@@ -27,9 +27,9 @@ export function drawCard(player: PlayerState, randomNumber?: () => number): stri
   return cardId;
 }
 
-export function maybeReshuffleDeck(G: GameState, playerId: string, randomNumber?: () => number): void {
+export function maybeReshuffleDeck(G: GameState, playerId: string, randomNumber?: () => number): boolean {
   const p = G.players[playerId];
-  if (p.deck.length > 0 || p.discard.length === 0) return;
+  if (p.deck.length > 0 || p.discard.length === 0) return false;
   const ruleset = G.activeNationRulesets?.[playerId];
   const skipDefault = !!ruleset?.reshuffleOverrides.some((ov) => ov.op === "skip_default_nation_card_addition");
   if (!skipDefault) {
@@ -40,6 +40,7 @@ export function maybeReshuffleDeck(G: GameState, playerId: string, randomNumber?
     logOverride(G, playerId, ruleset.nationId, "reshuffle", ov.op);
     if (ov.op === "custom_reshuffle_effect") runEffects({ G, playerId, enabledExpansions: G.options?.enabledExpansions }, ov.effect as any);
   }
+  return true;
 }
 
 export function moveAllToDiscard(player: PlayerState): void {

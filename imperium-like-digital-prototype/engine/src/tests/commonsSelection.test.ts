@@ -20,6 +20,14 @@ describe("commons selection", () => {
     expect(result.selectedCards.map((c) => c.id)).toEqual(["legends_a"]);
   });
 
+  it("excludes replacement-group cards from normal Commons selection", () => {
+    const result = selectCommonsCards([
+      card({ id: "base_a", commonsGroup: "base" }),
+      card({ id: "replacement_group_a", commonsGroup: "replacement", replacementGroupId: "group_a" })
+    ], options());
+    expect(result.selectedCards.map((c) => c.id)).toEqual(["base_a"]);
+  });
+
   it("excludes 3+ and 4+ cards at effective count 2", () => {
     const result = selectCommonsCards([
       card({ id: "two_plus", playerCountRequirement: "2+" }),

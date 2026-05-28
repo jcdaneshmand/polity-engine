@@ -6,6 +6,15 @@ A private, original-content prototype for a digital asymmetric civilization/deck
 ## Legal/content boundary
 This project intentionally avoids copyrighted or trademarked content from published games. It uses only original placeholder data and neutral mechanics abstractions. See `docs/legal-boundary.md`.
 
+## Canonical command root
+Run all project npm commands from:
+
+```bash
+/workspace/polity-engine/imperium-like-digital-prototype
+```
+
+Using `/workspace/polity-engine` as the command root can cause workspace path ambiguity.
+
 ## Setup
 ```bash
 npm install
@@ -13,6 +22,8 @@ npm run dev
 npm test
 npm run typecheck
 ```
+
+If `npm test` reports that `vitest` is missing, run `npm install` from `/workspace/polity-engine/imperium-like-digital-prototype` (the workspace root), not `/workspace/polity-engine`.
 
 ## Architecture overview
 - `app/`: Vite + React + TypeScript UI using `boardgame.io/react` client.

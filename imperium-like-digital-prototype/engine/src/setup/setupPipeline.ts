@@ -8,7 +8,8 @@ import { setupFameDeck } from "./fameSetup";
 import { setupPlayerFromNation } from "../nations/setupPlayerFromNation";
 import type { NormalizedCardRecord } from "../../../tools/card-import/cardCsvTypes";
 import type { NationDefinition } from "../nations/nationSchema";
-import { createBotState } from "../solo/botState";
+import { setupSoloBot } from "../solo/botSetup";
+import { loadBotStateTables } from "../solo/botStateTableLoader";
 import { loadNationRulesets } from "../nations/nationRulesetLoader";
 import { loadNationStrategyProfiles } from "../nations/nationStrategyLoader";
 import { getNationRuleset, validateNationRulesetCompatibility } from "../nations/nationRulesetRegistry";
@@ -107,12 +108,9 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   });
   if (options.mode === "practice") (game as any).practiceClock = { turnsRemaining: 12, progressTokens: 0 };
   if (options.mode === "solo") {
-    const difficulty = options.soloDifficulty ?? "chieftain";
-    const skipDefaultDynasty = Object.values(activeNationRulesets).some((ruleset: any) => (ruleset.botOverrides ?? []).some((ov: any) => ov.op === "skip_default_dynasty_setup"));
-    const bot = skipDefaultDynasty
-      ? { botId: "bot_0", botDeck: [], botDiscard: [], botStateCards: [], difficulty, resources: { goods: 0 }, log: [] }
-      : createBotState(difficulty);
-    (game as any).solo = { bot, difficulty };
+    const botStateTables = loadBotStateTables();
+    const bot = setupSoloBot({ botNation: Object.values(args.nationDb)[0] as any, cardDb: game.cardDb as any, botStateTables, options, shuffle: (x)=>[...x] });
+    (game as any).solo = { bot, botStateTables };
   }
   return game;
 }

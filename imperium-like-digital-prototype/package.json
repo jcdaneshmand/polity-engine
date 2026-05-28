@@ -21,7 +21,13 @@
     "strategy:validate": "tsx tools/card-import/validatePrivateNationStrategy.ts",
     "strategy:import": "tsx tools/card-import/importPrivateNationStrategy.ts",
     "rulesets:report": "node -e \"console.log(require('./generated-private/nation-ruleset-import-report.json'))\"",
-    "strategy:report": "node -e \"console.log(require('./generated-private/nation-strategy-import-report.json'))\""
+    "strategy:report": "node -e \"console.log(require('./generated-private/nation-strategy-import-report.json'))\"",
+    "bot-tables:validate": "tsx tools/card-import/validatePrivateBotStateTables.ts",
+    "bot-tables:import": "tsx tools/card-import/importPrivateBotStateTables.ts",
+    "bot-tables:report": "node -e \"console.log(require('./generated-private/bot-state-table-import-report.json'))\"",
+    "bot-trade:validate": "tsx tools/card-import/validatePrivateBotTradeRoutesTables.ts",
+    "bot-trade:import": "tsx tools/card-import/importPrivateBotTradeRoutesTables.ts",
+    "bot-trade:report": "node -e \"console.log(require('./generated-private/bot-trade-routes-table-import-report.json'))\""
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.5.0",

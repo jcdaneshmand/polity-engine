@@ -37,3 +37,13 @@ generated-private/nation-rulesets.normalized.json
 generated-private/nation-ruleset-import-report.json
 generated-private/nation-strategy.normalized.json
 generated-private/nation-strategy-import-report.json
+private-card-data/*bot*.csv
+private-card-data/*bot*.tsv
+private-card-data/*bot*.xlsx
+private-card-data/*bot*.json
+!private-card-data/bot-state-table-template.csv
+!private-card-data/bot-trade-routes-table-template.csv
+generated-private/bot-state-tables.normalized.json
+generated-private/bot-state-table-import-report.json
+generated-private/bot-trade-routes-tables.normalized.json
+generated-private/bot-trade-routes-table-import-report.json

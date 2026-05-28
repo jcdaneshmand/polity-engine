@@ -1,0 +1,3 @@
+table_id,row_type,merchant_state,priority,trade_route_card_id,public_placeholder_name,private_name,commerce_effects_json,profit_effects_json,end_of_turn_effects_json,implemented,tested,notes
+placeholder_trade,route,,,fake_route_1,Fake Route 1,,"[{""op"":""bot_trade""}]","[{""op"":""bot_resolve_profits_where_able""}]",,true,false,placeholder only
+placeholder_trade,end_of_turn,merchants,1,,, ,,,"[{""op"":""log"",""message"":""placeholder eot""}]",true,false,placeholder only

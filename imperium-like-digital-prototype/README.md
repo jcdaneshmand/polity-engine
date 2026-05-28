@@ -136,3 +136,6 @@ Keyboard controls:
 - R: revolt placeholder
 
 All visuals and styling are placeholder/original only.
+
+## Solo Bot
+Rules-driven solo bot uses bot state tables and does not use NationStrategyProfile for decision logic.

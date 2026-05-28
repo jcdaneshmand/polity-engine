@@ -86,4 +86,22 @@ describe("commons setup", () => {
     expect(G.market).toEqual(["market_a"]);
     expect(G.marketSlots?.[0]).toMatchObject({ cardId: "market_a", attachedUnrestCardIds: ["unrest_a"] });
   });
+
+  it("removes rejected Commons cards from the runtime card database", () => {
+    const G = createInitialGameStateFromPipeline({
+      options: { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: [], commonsSetId: "classics", replacementPolicy: "none" },
+      playerNationIds: { "0": "test_nation_alpha", "1": "test_nation_alpha" },
+      cardDb: cardDb([
+        card({ id: "selected_commons" }),
+        card({ id: "conflicting_commons", conflictsWithNationIds: ["test_nation_alpha"] }),
+        card({ id: "other_set_commons", commonsSetId: "legends" }),
+        card({ id: "nation_card", ownership: "nation" })
+      ]),
+      nationDb
+    });
+    expect(G.cardDb.selected_commons).toBeDefined();
+    expect(G.cardDb.nation_card).toBeDefined();
+    expect(G.cardDb.conflicting_commons).toBeUndefined();
+    expect(G.cardDb.other_set_commons).toBeUndefined();
+  });
 });

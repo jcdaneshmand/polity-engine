@@ -150,7 +150,7 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   modules.forEach((m)=>m.modifyPlayerSetup?.(ctx as any));
   game.log.push({round:1,playerId:"setup",message:`Setup report delayed=${setupReport.delayedAggressiveCount}`},{round:1,playerId:"setup",message:`Fame cards: ${fame.length}`});
   commonsSetup.setupWarnings.forEach((message) => game.log.push({ round: 1, playerId: "setup", message }));
-  game.log.push({ round: 1, playerId: "setup", message: `MarketInitialized(slots=${commonsSetup.initialMarket.length})` });
+  game.log.push({ round: 1, playerId: "setup", message: `MarketInitialized(slots=${game.market.length})` });
   Object.entries(activeNationRulesets).forEach(([playerId, ruleset]) => {
     (ruleset.zoneOverrides ?? []).forEach((ov:any) => game.log.push({ round: game.round, playerId, message: `NationRulesetApplied(${ruleset.nationId}/zone/${ov.op})` }));
     (ruleset.stateOverrides ?? []).forEach((ov:any) => game.log.push({ round: game.round, playerId, message: `NationRulesetApplied(${ruleset.nationId}/state/${ov.op})` }));

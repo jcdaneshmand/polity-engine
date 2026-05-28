@@ -169,4 +169,32 @@ describe("solo bot setup from imported cards", () => {
     expect(G.log.filter((entry) => entry.message === "buffered bot event")).toHaveLength(1);
     expect(bot.botLog).toEqual([]);
   });
+
+  it("limits resolved slot cards to the configured bot effects per turn", () => {
+    const botCards = Object.fromEntries(
+      Array.from({ length: 5 }, (_, index) => {
+        const id = `bot_region_${index + 1}`;
+        return [id, card({ id, displayName: `Bot Region ${index + 1}`, suit: "region", cardType: "attack", startingLocation: "bot_deck" })];
+      })
+    );
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: { starter: card({}), ...botCards } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    G.solo!.botStateTables[G.solo!.bot.botStateTableId] = {
+      id: "test_table",
+      botNationId: "test_nation_sun_coast",
+      displayName: "Test Table",
+      side: "S",
+      rows: [
+        { id: "all_history", priority: 1, trigger: { kind: "other" }, effects: [{ op: "bot_put_revealed_card_into_history" }], implemented: true, tested: true }
+      ]
+    };
+
+    runBotTurn({ G, rollDie: () => 6 });
+
+    expect(G.solo?.bot.botHistory).toHaveLength(3);
+  });
 });

@@ -10,7 +10,8 @@ export function runBotTurn(args: { G: GameState; rollDie?: () => number }): Game
   const roll = args.rollDie ? args.rollDie() : Math.floor(Math.random() * 6) + 1;
   rollAndBlockSlot(bot, roll);
   const table = G.solo.botStateTables[bot.botStateTableId];
-  for (const slot of getResolvableBotSlots(bot)) {
+  const effectLimit = bot.difficultyConfig.botEffectsPerTurn ?? Number.POSITIVE_INFINITY;
+  for (const slot of getResolvableBotSlots(bot).slice(0, effectLimit)) {
     const cardId = revealSlotCard(bot, slot.slotNumber);
     if (!cardId || !table) continue;
     resolveBotCard({ G, bot, revealedCardId: cardId, source: "slot", table });

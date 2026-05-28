@@ -43,6 +43,7 @@ export function selectCommonsCards(cards: NormalizedCardRecord[], options: Commo
 
   for (const card of cards) {
     if (card.ownership !== "commons") continue;
+    if (card.commonsGroup === "replacement") continue;
     if (card.commonsSetId !== options.commonsSetId) continue;
     if (!satisfiesCommonsModeRules(card, options)) {
       removedForVariant.push(card.id);

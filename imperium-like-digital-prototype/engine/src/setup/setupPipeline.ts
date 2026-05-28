@@ -86,13 +86,14 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   const ctx = { options, players, cards: filteredCards, setupReport };
   modules.forEach((m)=>m.modifyDeckConstruction?.(ctx as any));
   game.cardDb = Object.fromEntries(filteredCards.map((c)=>[c.id,{id:c.id,displayName:c.displayName,type:"action",cost:c.cost.materials + c.cost.population + c.cost.progress + c.cost.goods,tags:c.tags,effects:c.effects as any}])) as any;
-  const market = setupMarket(filteredCards, options.enabledVariants.includes("quick_setup"));
-  game.market = market;
+  const marketSetup = setupMarket(filteredCards, options.enabledVariants.includes("quick_setup"));
+  game.market = marketSetup.market;
   modules.forEach((m)=>m.modifyMarketSetup?.(ctx as any));
   const fame = setupFameDeck(options.enabledExpansions.includes("trade_routes"));
   modules.forEach((m)=>m.modifyFameSetup?.(ctx as any));
   modules.forEach((m)=>m.modifyPlayerSetup?.(ctx as any));
   game.log.push({round:1,playerId:"setup",message:`Setup report delayed=${setupReport.delayedAggressiveCount}`},{round:1,playerId:"setup",message:`Fame cards: ${fame.length}`});
+  marketSetup.notes.forEach((message) => game.log.push({ round: 1, playerId: "setup", message }));
   Object.entries(activeNationRulesets).forEach(([playerId, ruleset]) => {
     (ruleset.zoneOverrides ?? []).forEach((ov:any) => game.log.push({ round: game.round, playerId, message: `NationRulesetApplied(${ruleset.nationId}/zone/${ov.op})` }));
     (ruleset.stateOverrides ?? []).forEach((ov:any) => game.log.push({ round: game.round, playerId, message: `NationRulesetApplied(${ruleset.nationId}/state/${ov.op})` }));

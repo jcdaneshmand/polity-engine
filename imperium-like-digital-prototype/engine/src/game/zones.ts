@@ -10,7 +10,7 @@ function logOverride(G: GameState, playerId: string, nationId: string, category:
 function shuffleWithRandom<T>(items: T[], randomNumber?: () => number): T[] {
   const out = [...items];
   for (let i = out.length - 1; i > 0; i--) {
-    const roll = randomNumber ? randomNumber() : Math.random();
+    const roll = randomNumber ? randomNumber() : 0;
     const j = Math.floor(roll * (i + 1));
     [out[i], out[j]] = [out[j], out[i]];
   }
@@ -48,6 +48,7 @@ export function maybeReshuffleDeck(G: GameState, playerId: string, randomNumber?
   }
 
   p.deck = shuffleWithRandom(p.discard, randomNumber);
+  G.log.push({ round: G.round, playerId, message: `ReshuffleResolved(deck=${p.deck.length}, deterministic=${randomNumber ? "injected_rng" : "fallback_zero"})` });
   p.discard = [];
   const shuffled = true;
   for (const ov of ruleset?.reshuffleOverrides ?? []) {

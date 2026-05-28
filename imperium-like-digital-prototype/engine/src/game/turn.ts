@@ -38,6 +38,7 @@ export function onTurnBegin(G: GameState, ctx: Ctx, randomNumber?: () => number)
 }
 
 export function onTurnEnd(G: GameState, ctx: Ctx, randomNumber?: () => number): void {
+  G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: "TurnPhase(cleanup): start" });
   const p = G.players[ctx.currentPlayer];
   const ruleset = G.activeNationRulesets?.[ctx.currentPlayer];
   for (const ov of ruleset?.cleanupOverrides ?? []) {
@@ -45,11 +46,13 @@ export function onTurnEnd(G: GameState, ctx: Ctx, randomNumber?: () => number): 
     if (ov.op === "custom_cleanup_effect") runEffects({ G, playerId: ctx.currentPlayer, enabledExpansions: G.options?.enabledExpansions, randomNumber }, ov.effect as any);
   }
   moveAllToDiscard(p);
+  G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: "TurnPhase(cleanup): cards_moved_to_discard" });
   if (G.options?.mode === "solo") {
     for (const ov of ruleset?.botOverrides ?? []) {
       if (ov.op === "bot_custom_cleanup") runEffects({ G, playerId: ctx.currentPlayer, enabledExpansions: G.options?.enabledExpansions, randomNumber }, ov.effect as any);
     }
   }
+  G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: "TurnPhase(reshuffle_as_needed): next_draw_handles_reshuffle_lifecycle" });
   runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "before_solstice", randomNumber });
   const preventEmpireFlip = (ruleset?.stateOverrides ?? []).some((ov) => ov.op === "never_flip_to_empire");
   for (const ov of ruleset?.solsticeOverrides ?? []) {
@@ -59,5 +62,6 @@ export function onTurnEnd(G: GameState, ctx: Ctx, randomNumber?: () => number): 
   }
   runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "after_solstice", randomNumber });
   applyCollapseWinChecksForAllPlayers(G, randomNumber);
+  G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: "TurnPhase(turn_handoff): end_turn_complete" });
   G.round += 1;
 }

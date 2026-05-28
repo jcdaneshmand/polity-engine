@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GameOptions } from "../options/gameOptions";
 import { runBotCleanup } from "../solo/botCleanup";
+import { loadBotStateTables } from "../solo/botStateTableLoader";
 import { runBotTurn } from "../solo/botTurn";
 import { createInitialGameStateFromPipeline } from "../setup/setupPipeline";
 import { resolveBotCard } from "../solo/botStateTableResolver";
@@ -196,5 +197,14 @@ describe("solo bot setup from imported cards", () => {
     runBotTurn({ G, rollDie: () => 6 });
 
     expect(G.solo?.bot.botHistory).toHaveLength(3);
+  });
+
+  it("loads fresh bot state table objects for each game setup", () => {
+    const first = loadBotStateTables();
+    first.placeholder_S.rows[0].id = "mutated";
+
+    const second = loadBotStateTables();
+
+    expect(second.placeholder_S.rows[0].id).toBe("row_unrest");
   });
 });

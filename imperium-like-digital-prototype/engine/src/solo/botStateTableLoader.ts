@@ -13,4 +13,6 @@ const placeholder: Record<string, BotStateTable> = {
   }
 };
 
-export function loadBotStateTables(): Record<string, BotStateTable> { return placeholder; }
+export function loadBotStateTables(): Record<string, BotStateTable> {
+  return JSON.parse(JSON.stringify(placeholder)) as Record<string, BotStateTable>;
+}

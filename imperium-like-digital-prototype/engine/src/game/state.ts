@@ -1,4 +1,5 @@
 import type { GameOptions } from "../options/gameOptions";
+import type { CommonsSetupResult } from "../setup/commonsTypes";
 import type { SoloState } from "../solo/botTypes";
 import type { NationRuleset, NationRulesetApplicationReport, SideAreaState, ZoneState } from "../nations/nationRulesetTypes";
 import type { NationStrategyProfile } from "../nations/nationStrategyTypes";
@@ -37,6 +38,6 @@ export interface GameState {
   options?: GameOptions;
   practiceClock?: { turnsRemaining: number; progressTokens: number };
   solo?: SoloState;
-  setupReport?: { delayedAggressiveCount: number; usedQuickSetup: boolean; shortGameExiled: number; shortGameNationAdvanced: number };
+  setupReport?: { delayedAggressiveCount: number; usedQuickSetup: boolean; shortGameExiled: number; shortGameNationAdvanced: number; commonsSetup?: CommonsSetupResult };
   gameover?: { winner: string; reason: string };
 }

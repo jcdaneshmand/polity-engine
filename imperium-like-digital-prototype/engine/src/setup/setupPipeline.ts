@@ -3,7 +3,7 @@ import type { GameOptions } from "../options/gameOptions";
 import { validateGameOptions } from "../options/optionValidation";
 import { getEnabledRulesModules } from "../options/rulesModuleRegistry";
 import { filterCardsByOptions } from "./deckConstruction";
-import { setupMarket } from "./marketSetup";
+import { buildCommonsSetup } from "./commonsSetup";
 import { setupFameDeck } from "./fameSetup";
 import { setupPlayerFromNation } from "../nations/setupPlayerFromNation";
 import type { NormalizedCardRecord } from "../../../tools/card-import/cardCsvTypes";
@@ -55,7 +55,7 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   const activeNationRulesets: Record<string, any> = {};
   const activeNationStrategyProfiles: Record<string, any> = {};
   const rulesetReports: NationRulesetApplicationReport[] = [];
-  const setupReport = { delayedAggressiveCount:0, usedQuickSetup:false, shortGameExiled:0, shortGameNationAdvanced:0 };
+  const setupReport: NonNullable<GameState["setupReport"]> = { delayedAggressiveCount:0, usedQuickSetup:false, shortGameExiled:0, shortGameNationAdvanced:0 };
   const players: GameState["players"] = {};
   const game: GameState = {
     players,
@@ -108,14 +108,33 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   const ctx = { options, players, cards: filteredCards, setupReport };
   modules.forEach((m)=>m.modifyDeckConstruction?.(ctx as any));
   game.cardDb = buildGameCardDb(filteredCards);
-  const marketSetup = setupMarket(filteredCards, options.enabledVariants.includes("quick_setup"));
-  game.market = marketSetup.market;
+  const selectedNationIds = Object.values(selected);
+  const effectiveCommonsPlayerCount = options.mode === "solo" || options.mode === "practice" ? 2 : options.playerCount;
+  const commonsSetup = buildCommonsSetup({
+    cardDb: args.cardDb,
+    nationDb: args.nationDb,
+    options: {
+      commonsSetId: options.commonsSetId ?? "classics",
+      playerCount: options.playerCount,
+      effectiveCommonsPlayerCount: effectiveCommonsPlayerCount as 2 | 3 | 4,
+      enabledExpansions: options.enabledExpansions,
+      enabledVariants: options.enabledVariants,
+      selectedNationIds,
+      replacementPolicy: options.replacementPolicy ?? "use_replacements"
+    },
+    rng: { shuffle: (items) => [...items] }
+  });
+  setupReport.commonsSetup = commonsSetup;
+  setupReport.delayedAggressiveCount = Math.max(setupReport.delayedAggressiveCount, commonsSetup.delayedCards.length);
+  setupReport.usedQuickSetup = options.enabledVariants.includes("quick_setup");
+  game.market = commonsSetup.initialMarket.map((slot) => slot.cardId).filter(Boolean) as string[];
   modules.forEach((m)=>m.modifyMarketSetup?.(ctx as any));
-  const fame = setupFameDeck(options.enabledExpansions.includes("trade_routes"));
+  const fame = commonsSetup.fameDeck.length ? commonsSetup.fameDeck : setupFameDeck(options.enabledExpansions.includes("trade_routes"));
   modules.forEach((m)=>m.modifyFameSetup?.(ctx as any));
   modules.forEach((m)=>m.modifyPlayerSetup?.(ctx as any));
   game.log.push({round:1,playerId:"setup",message:`Setup report delayed=${setupReport.delayedAggressiveCount}`},{round:1,playerId:"setup",message:`Fame cards: ${fame.length}`});
-  marketSetup.notes.forEach((message) => game.log.push({ round: 1, playerId: "setup", message }));
+  commonsSetup.setupWarnings.forEach((message) => game.log.push({ round: 1, playerId: "setup", message }));
+  game.log.push({ round: 1, playerId: "setup", message: `MarketInitialized(slots=${commonsSetup.initialMarket.length})` });
   Object.entries(activeNationRulesets).forEach(([playerId, ruleset]) => {
     (ruleset.zoneOverrides ?? []).forEach((ov:any) => game.log.push({ round: game.round, playerId, message: `NationRulesetApplied(${ruleset.nationId}/zone/${ov.op})` }));
     (ruleset.stateOverrides ?? []).forEach((ov:any) => game.log.push({ round: game.round, playerId, message: `NationRulesetApplied(${ruleset.nationId}/state/${ov.op})` }));

@@ -105,4 +105,24 @@ describe("commons setup", () => {
     expect(G.cardDb.conflicting_commons).toBeUndefined();
     expect(G.cardDb.other_set_commons).toBeUndefined();
   });
+
+  it("preserves selected nation cards when using a different Commons set", () => {
+    const G = createInitialGameStateFromPipeline({
+      options: { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: [], commonsSetId: "legends", replacementPolicy: "none" },
+      playerNationIds: { "0": "test_nation_alpha", "1": "test_nation_alpha" },
+      cardDb: cardDb([
+        card({ id: "legacy_starting_card", commonsSetId: "classics" }),
+        card({ id: "legends_commons", commonsSetId: "legends" })
+      ]),
+      nationDb: {
+        test_nation_alpha: {
+          ...nationDb.test_nation_alpha,
+          startingDeckCardIds: ["legacy_starting_card"]
+        }
+      }
+    });
+    expect(G.players["0"].deck).toContain("legacy_starting_card");
+    expect(G.cardDb.legacy_starting_card).toBeDefined();
+    expect(G.cardDb.legends_commons).toBeDefined();
+  });
 });

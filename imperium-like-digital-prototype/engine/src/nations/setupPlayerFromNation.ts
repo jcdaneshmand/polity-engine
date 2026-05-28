@@ -20,10 +20,30 @@ export function setupPlayerFromNation(args: { nation: NationDefinition; cardDb: 
 
 function applySetupRule(player: PlayerState, rule: SetupRule): void {
   if (rule.op === "gain_resource") player.resources[mapRes(rule.resource)] += rule.count;
-  if (rule.op === "create_side_area") player.sideAreas ??= {}, player.sideAreas[rule.areaId] = [];
+  if (rule.op === "create_side_area") {
+    player.sideAreas ??= {};
+    player.sideAreas[rule.areaId] = [];
+  }
   if (rule.op === "place_card_in_area") {
-    if (rule.area === "hand") player.hand.push(rule.cardId);
-    if (rule.area === "discard") player.discard.push(rule.cardId);
+    switch (rule.area) {
+      case "hand": player.hand.push(rule.cardId); break;
+      case "discard": player.discard.push(rule.cardId); break;
+      case "draw_deck": player.deck.push(rule.cardId); break;
+      case "play_area": player.playArea.push(rule.cardId); break;
+      case "history": player.history.push(rule.cardId); break;
+      case "development_area": player.developmentArea.push(rule.cardId); break;
+      case "nation_deck": player.nationDeck.push(rule.cardId); break;
+      case "power_area": player.powerArea.push(rule.cardId); break;
+      case "state_area": player.stateArea.push(rule.cardId); break;
+      case "accession": player.accessionCardId = rule.cardId; break;
+      case "side_area":
+        player.sideAreas ??= {};
+        if (!player.sideAreas.default) player.sideAreas.default = [];
+        player.sideAreas.default.push(rule.cardId);
+        break;
+      default:
+        throw new Error(`Unsupported place_card_in_area target: ${String(rule.area)}`);
+    }
   }
 }
 

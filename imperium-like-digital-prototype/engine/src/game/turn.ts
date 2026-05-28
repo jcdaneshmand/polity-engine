@@ -2,7 +2,7 @@ import type { Ctx } from "boardgame.io";
 import type { GameState } from "./state";
 import { drawCard, moveAllToDiscard } from "./zones";
 
-export function onTurnBegin(G: GameState, ctx: Ctx): void {
+export function onTurnBegin(G: GameState, ctx: Ctx, randomNumber?: () => number): void {
   const p = G.players[ctx.currentPlayer];
   p.actionsRemaining = p.actionTokensBase;
   p.actionTokensAvailable = p.actionTokensBase;
@@ -10,7 +10,6 @@ export function onTurnBegin(G: GameState, ctx: Ctx): void {
 
   if (p.hand.length < 5) {
     while (p.hand.length < 5) {
-      const randomNumber = (ctx as unknown as { random?: { Number?: () => number } }).random?.Number;
       const drawn = drawCard(p, randomNumber);
       if (!drawn) break;
     }

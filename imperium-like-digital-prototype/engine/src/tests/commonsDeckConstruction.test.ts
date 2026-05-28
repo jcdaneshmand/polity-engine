@@ -36,6 +36,26 @@ describe("commons deck construction", () => {
     expect(result.mainDeck).toEqual(["quick_5"]);
   });
 
+  it("does not treat non-market starting locations as market eligible by default", () => {
+    const result = buildCommonsDecks({
+      cards: [
+        card({ id: "boxed_card", startingLocation: "box" }),
+        card({ id: "draw_deck_card", startingLocation: "draw_deck" }),
+        card({ id: "market_card", startingLocation: "market" }),
+        card({ id: "explicit_market_card", startingLocation: "box", marketEligible: true })
+      ],
+      options: options({ enabledVariants: ["quick_setup"] })
+    });
+    const visibleOrDeckCards = [
+      ...result.initialMarket.map((slot) => slot.cardId).filter(Boolean),
+      ...result.mainDeck
+    ];
+    expect(visibleOrDeckCards).toContain("market_card");
+    expect(visibleOrDeckCards).toContain("explicit_market_card");
+    expect(visibleOrDeckCards).not.toContain("boxed_card");
+    expect(visibleOrDeckCards).not.toContain("draw_deck_card");
+  });
+
   it("default setup uses suit-separated path", () => {
     const result = buildCommonsDecks({ cards: [card({ id: "region_a", setupBannerSuit: "region" }), card({ id: "civilized_a", setupBannerSuit: "civilized" })], options: options() });
     expect(result.constructionPath).toBe("suit_separated");

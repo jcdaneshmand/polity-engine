@@ -1,6 +1,6 @@
 import type { Ctx } from "boardgame.io";
 import type { GameState } from "./state";
-import { drawCard, maybeReshuffleDeck, moveAllToDiscard } from "./zones";
+import { drawCardWithReshuffleLifecycle, moveAllToDiscard } from "./zones";
 import { runEffects } from "../cards/effectRunner";
 import { runNationHooks } from "../nations/nationRulesetHooks";
 
@@ -22,13 +22,7 @@ export function onTurnBegin(G: GameState, ctx: Ctx, randomNumber?: () => number)
 
   if (p.hand.length < 5) {
     while (p.hand.length < 5) {
-      const shouldReshuffle = p.deck.length === 0 && p.discard.length > 0;
-      if (shouldReshuffle) {
-        runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "before_reshuffle", randomNumber });
-        maybeReshuffleDeck(G, ctx.currentPlayer, randomNumber);
-        runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "after_reshuffle", randomNumber });
-      }
-      const drawn = drawCard(p, randomNumber, !shouldReshuffle);
+      const drawn = drawCardWithReshuffleLifecycle(G, ctx.currentPlayer, randomNumber);
       if (!drawn) break;
     }
   }

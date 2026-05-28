@@ -69,4 +69,14 @@ describe("commons selection", () => {
     expect(result.selectedCards.map((c) => c.id)).toEqual(["friendly_a"]);
     expect(result.removedForExpansion).toEqual(["alternate_a"]);
   });
+
+  it("excludes cards disallowed by the current mode", () => {
+    const result = selectCommonsCards([
+      card({ id: "solo_ok" }),
+      card({ id: "multiplayer_only", allowedModes: ["multiplayer"] }),
+      card({ id: "solo_disallowed", disallowedModes: ["solo"] })
+    ], options({ mode: "solo" }));
+    expect(result.selectedCards.map((c) => c.id)).toEqual(["solo_ok"]);
+    expect(result.removedForVariant).toEqual(["multiplayer_only", "solo_disallowed"]);
+  });
 });

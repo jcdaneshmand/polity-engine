@@ -1,6 +1,6 @@
 export type CardType = "action" | "unit" | "technology" | "legacy";
 export type ZoneName = "deck" | "hand" | "discard" | "playArea" | "history" | "exile";
-export type ResourceName = "materials" | "knowledge" | "influence" | "unrest";
+export type ResourceName = "materials" | "knowledge" | "influence" | "unrest" | "goods";
 
 export type Effect =
   | { trigger: "on_play"; op: "draw"; count: number }

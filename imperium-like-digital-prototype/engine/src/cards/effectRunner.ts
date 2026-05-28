@@ -22,8 +22,8 @@ function runEffect(ctx: Ctx, effect: Effect): void {
       }
       break;
     }
-    case "gain_resource": p.resources[effect.resource] += effect.amount; ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `Gained ${effect.amount} ${effect.resource}.` }); break;
-    case "spend_resource": p.resources[effect.resource] = Math.max(0, p.resources[effect.resource] - effect.amount); ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `Spent ${effect.amount} ${effect.resource}.` }); break;
+    case "gain_resource": p.resources[effect.resource] = (p.resources[effect.resource] ?? 0) + effect.amount; ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `Gained ${effect.amount} ${effect.resource}.` }); break;
+    case "spend_resource": p.resources[effect.resource] = Math.max(0, (p.resources[effect.resource] ?? 0) - effect.amount); ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `Spent ${effect.amount} ${effect.resource}.` }); break;
     case "discard_random": {
       for (let i = 0; i < effect.count; i++) {
         if (p.hand.length === 0) break;

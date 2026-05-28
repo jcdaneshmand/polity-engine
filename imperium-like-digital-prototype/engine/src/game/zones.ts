@@ -53,7 +53,7 @@ export function maybeReshuffleDeck(G: GameState, playerId: string, randomNumber?
   for (const ov of ruleset?.reshuffleOverrides ?? []) {
     if (ov.op === "skip_default_nation_card_addition") continue;
     logOverride(G, playerId, ruleset.nationId, "reshuffle", ov.op);
-    if (ov.op === "custom_reshuffle_effect") runEffects({ G, playerId, enabledExpansions: G.options?.enabledExpansions }, ov.effect as any);
+    if (ov.op === "custom_reshuffle_effect") runEffects({ G, playerId, enabledExpansions: G.options?.enabledExpansions, randomNumber }, ov.effect as any);
   }
   return { attempted: true, shuffled };
 }

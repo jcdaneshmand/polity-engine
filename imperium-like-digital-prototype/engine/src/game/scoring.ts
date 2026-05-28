@@ -27,16 +27,19 @@ function applyAutoWinCollapseOverride(G: GameState, playerId: string, ruleset: N
 export function applyCollapseWinChecks(G: GameState, playerId: string, randomNumber?: () => number): void {
   const ruleset = G.activeNationRulesets?.[playerId];
   if (!ruleset || G.gameover) return;
-  const key = `${playerId}:${ruleset.nationId}:collapse_lifecycle:${G.round}`;
-  (G as any)._appliedCollapseLifecycleKeys ??= {};
-  if ((G as any)._appliedCollapseLifecycleKeys[key]) return;
-  (G as any)._appliedCollapseLifecycleKeys[key] = true;
 
-  for (const ov of ruleset.collapseOverrides ?? []) {
+  for (const [index, ov] of (ruleset.collapseOverrides ?? []).entries()) {
     if (ov.op === "auto_win_if_zone_empty") {
       applyAutoWinCollapseOverride(G, playerId, ruleset, ov.zoneId);
+      if (G.gameover) return;
       continue;
     }
+
+    const key = `${playerId}:${ruleset.nationId}:collapse_lifecycle:${G.round}:${index}`;
+    (G as any)._appliedCollapseLifecycleKeys ??= {};
+    if ((G as any)._appliedCollapseLifecycleKeys[key]) continue;
+    (G as any)._appliedCollapseLifecycleKeys[key] = true;
+
     logOverride(G, playerId, ruleset.nationId, "collapse", ov.op);
     if (ov.op === "custom_collapse_resolution") runEffects({ G, playerId, enabledExpansions: G.options?.enabledExpansions, randomNumber }, ov.effect as any);
   }

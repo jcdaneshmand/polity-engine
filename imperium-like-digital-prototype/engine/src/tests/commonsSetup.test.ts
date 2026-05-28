@@ -72,4 +72,18 @@ describe("commons setup", () => {
     expect(G.setupReport?.commonsSetup?.removedForPlayerCount).toEqual(["three_plus"]);
     expect(G.cardDb.two_plus).toBeDefined();
   });
+
+  it("stores initial market slot metadata on game state", () => {
+    const G = createInitialGameStateFromPipeline({
+      options: { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: [], commonsSetId: "classics", replacementPolicy: "none" },
+      playerNationIds: { "0": "test_nation_alpha", "1": "test_nation_alpha" },
+      cardDb: cardDb([
+        card({ id: "market_a" }),
+        card({ id: "unrest_a", cardType: "unrest", suit: "unrest", unrestPileEligible: true })
+      ]),
+      nationDb
+    });
+    expect(G.market).toEqual(["market_a"]);
+    expect(G.marketSlots?.[0]).toMatchObject({ cardId: "market_a", attachedUnrestCardIds: ["unrest_a"] });
+  });
 });

@@ -6,6 +6,17 @@ function logOverride(G: GameState, playerId: string, nationId: string, category:
   G.log.push({ round: G.round, playerId, message: `NationRulesetApplied(${nationId}/${category}/${op})` });
 }
 
+function getZoneCards(G: GameState, playerId: string, zoneId: string): string[] {
+  const p = G.players[playerId];
+  if (!p) return [];
+  const direct = (p as any)[zoneId];
+  if (Array.isArray(direct)) return direct;
+  if (p.sideAreas?.[zoneId]) return p.sideAreas[zoneId];
+  if (G.specialZones?.[playerId]?.[zoneId]?.cardIds) return G.specialZones[playerId][zoneId].cardIds;
+  if (G.globalSpecialZones?.[zoneId]?.cardIds) return G.globalSpecialZones[zoneId].cardIds;
+  return [];
+}
+
 export function applyScoringLifecycleOnce(G: GameState, playerId: string): void {
   const ruleset = G.activeNationRulesets?.[playerId];
   if (!ruleset) return;
@@ -21,6 +32,10 @@ export function applyScoringLifecycleOnce(G: GameState, playerId: string): void 
   }
   for (const ov of ruleset.collapseOverrides ?? []) {
     logOverride(G, playerId, ruleset.nationId, "collapse", ov.op);
+    if (ov.op === "auto_win_if_zone_empty" && getZoneCards(G, playerId, ov.zoneId).length === 0 && !G.gameover) {
+      G.gameover = { winner: playerId, reason: `auto_win_if_zone_empty:${ov.zoneId}` };
+      G.log.push({ round: G.round, playerId, message: `CollapseAutoWin(${ruleset.nationId}/${ov.zoneId})` });
+    }
     if (ov.op === "custom_collapse_resolution") runEffects({ G, playerId, enabledExpansions: G.options?.enabledExpansions }, ov.effect as any);
   }
   runNationHooks({ G, playerId, trigger: "after_scoring" });

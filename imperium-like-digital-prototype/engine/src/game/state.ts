@@ -16,7 +16,9 @@ export interface Card { id: string; displayName: string; type: CardType; cost: n
 export interface GameLogEntry { round: number; playerId: string; message: string; }
 export interface PlayerState {
   deck: string[]; hand: string[]; discard: string[]; playArea: string[]; history: string[]; exile: string[];
+  powerArea: string[]; stateArea: string[]; developmentArea: string[]; nationDeck: string[]; accessionCardId?: string; sideAreas?: Record<string, string[]>;
   resources: Record<ResourceName, number>; actionsRemaining: number;
+  actionTokensBase: number; exhaustTokensBase: number; actionTokensAvailable: number; exhaustTokensAvailable: number;
 }
 export interface GameState {
   players: Record<string, PlayerState>; cardDb: Record<string, Card>; market: string[]; sharedDiscard: string[]; log: GameLogEntry[]; round: number;

@@ -31,3 +31,21 @@ npm run typecheck
 - Keep implementation data-driven and legal-boundary compliant at all times.
 
 > This project is a private/prototype rules-engine experiment using original placeholder content. It does not include official card text, art, logos, scans, card databases, or branding from any published game. Official content should only be integrated with permission from the rights holders.
+
+
+## Private card data workflow
+- Validate cards:
+  - `npm run cards:validate -- --input private-card-data/imperium_cards_private.csv`
+- Import cards:
+  - `npm run cards:import -- --input private-card-data/imperium_cards_private.csv --output generated-private/cards.normalized.json --report generated-private/card-import-report.json`
+- Validate nations:
+  - `npm run nations:validate -- --cards generated-private/cards.normalized.json --input private-card-data/imperium_nations_private.csv`
+- Import nations:
+  - `npm run nations:import -- --cards generated-private/cards.normalized.json --input private-card-data/imperium_nations_private.csv --output generated-private/nations.normalized.json --report generated-private/nation-import-report.json`
+- Import all:
+  - `npm run private:import-all`
+
+Architecture note:
+- Cards are behavior units.
+- Nations are starting-state and rule-modifier bundles.
+- Asymmetry should be data-driven via `NationDefinition` + typed hooks, not hard-coded nation-specific branches.

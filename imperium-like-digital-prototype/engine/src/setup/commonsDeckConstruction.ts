@@ -97,9 +97,9 @@ export function buildCommonsDecks(input: CommonsDeckConstructionInput): CommonsD
   let initialMarket: MarketSlot[];
 
   if (quickSetup) {
-    const combinedMarketDeck = shuffleWithRng(activeCards.filter((card) => isMainDeckEligible(card)).map((card) => card.id), input.rng);
-    initialMarket = createInitialMarket({ sourceDeck: combinedMarketDeck, unrestPile, cardById });
-    mainDeck = combinedMarketDeck;
+    const quickSetupDeck = shuffleWithRng(activeCards.filter((card) => isMainDeckEligible(card)).map((card) => card.id), input.rng);
+    initialMarket = createInitialMarket({ sourceDeck: quickSetupDeck, unrestPile, cardById });
+    mainDeck = quickSetupDeck;
   } else {
     const marketCards = activeCards.filter((card) => isMainDeckEligible(card));
     regionDeck = shuffleWithRng(marketCards.filter((card) => getSetupSuit(card) === "region").map((card) => card.id), input.rng);

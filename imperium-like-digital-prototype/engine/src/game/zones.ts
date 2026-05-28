@@ -32,10 +32,26 @@ export function maybeReshuffleDeck(G: GameState, playerId: string, randomNumber?
   const p = G.players[playerId];
   if (p.deck.length > 0 || p.discard.length === 0) return { attempted: false, shuffled: false };
   const ruleset = G.activeNationRulesets?.[playerId];
+  const skipDefaultNationCard = (ruleset?.reshuffleOverrides ?? []).some((ov) => ov.op === "skip_default_nation_card_addition");
+
+  if (ruleset) {
+    for (const ov of ruleset.reshuffleOverrides ?? []) {
+      if (ov.op === "skip_default_nation_card_addition") logOverride(G, playerId, ruleset.nationId, "reshuffle", ov.op);
+    }
+  }
+  if (!skipDefaultNationCard) {
+    const nationCardId = p.nationDeck.shift();
+    if (nationCardId) {
+      p.discard.push(nationCardId);
+      G.log.push({ round: G.round, playerId, message: `NationCardAddedOnReshuffle(${nationCardId})` });
+    }
+  }
+
   p.deck = shuffleWithRandom(p.discard, randomNumber);
   p.discard = [];
   const shuffled = true;
   for (const ov of ruleset?.reshuffleOverrides ?? []) {
+    if (ov.op === "skip_default_nation_card_addition") continue;
     logOverride(G, playerId, ruleset.nationId, "reshuffle", ov.op);
     if (ov.op === "custom_reshuffle_effect") runEffects({ G, playerId, enabledExpansions: G.options?.enabledExpansions }, ov.effect as any);
   }

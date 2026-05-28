@@ -15,6 +15,8 @@ export function normalizeCard(row: PrivateCardCsvRow): NormalizedCardRecord {
   const allowedModesFromCsv = tags(row.allowed_modes || "") as any[];
   const allowedModes = allowedModesFromCsv.length>0 ? allowedModesFromCsv : undefined;
   const disallowedModes = tags(row.disallowed_modes || "") as any[];
+  const ownership = (row.ownership?.trim() || "commons") as any;
+  const commonsSetId = row.commons_set_id?.trim() || (ownership === "commons" ? "classics" : undefined);
 
   return {
     id: row.card_id.trim(), displayName: row.public_placeholder_name.trim(), privateName: row.card_name_private.trim() || undefined,
@@ -24,7 +26,7 @@ export function normalizeCard(row: PrivateCardCsvRow): NormalizedCardRecord {
     isTradeRouteExpansion, rawEffectTextPrivate: row.raw_effect_text_private.trim()||undefined,
     effects: row.effect_ops_json.trim()?JSON.parse(row.effect_ops_json):[], tags: tags(row.tags||""), notes: row.notes?.trim()||undefined,
     implemented: bool(row.implemented), tested: bool(row.tested), requiredExpansions, excludedExpansions, allowedModes, disallowedModes,
-    ownership: (row.ownership?.trim() || "commons") as any, commonsSetId: (row.commons_set_id?.trim() || undefined) as any, setupBannerSuit: (row.setup_banner_suit?.trim() || undefined) as any, commonsGroup: (row.commons_group?.trim() || undefined) as any,
+    ownership, commonsSetId: commonsSetId as any, setupBannerSuit: (row.setup_banner_suit?.trim() || undefined) as any, commonsGroup: (row.commons_group?.trim() || undefined) as any,
     replacementForCardId: row.replacement_for_card_id?.trim() || undefined, replacementGroupId: row.replacement_group_id?.trim() || undefined, conflictsWithNationIds: tags(row.conflicts_with_nation_ids || ""),
     delayableInLoweredAggression: optBool(row.delayable_in_lowered_aggression), marketEligible: optBool(row.market_eligible), smallDeckEligible: optBool(row.small_deck_eligible), mainDeckEligible: optBool(row.main_deck_eligible), unrestPileEligible: optBool(row.unrest_pile_eligible), fameDeckEligible: optBool(row.fame_deck_eligible)
   };

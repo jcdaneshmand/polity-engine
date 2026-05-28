@@ -22,9 +22,11 @@ export function findEligibleReplacementCard(args: {
   const selectedIds = new Set(selectedCards.map((card) => card.id));
   const candidates = allCards.filter((card) => {
     if (selectedIds.has(card.id) || card.id === removedCard.id) return false;
-    if (card.ownership !== "replacement" && card.commonsGroup !== "replacement" && card.replacementForCardId !== removedCard.id && card.replacementGroupId !== removedCard.replacementGroupId) return false;
-    if (card.replacementForCardId && card.replacementForCardId !== removedCard.id) return false;
-    if (removedCard.replacementGroupId && card.replacementGroupId && card.replacementGroupId !== removedCard.replacementGroupId) return false;
+    const matchesRemovedCard = card.replacementForCardId === removedCard.id;
+    const matchesReplacementGroup = Boolean(
+      removedCard.replacementGroupId && card.replacementGroupId === removedCard.replacementGroupId
+    );
+    if (!matchesRemovedCard && !matchesReplacementGroup) return false;
     if (!satisfiesCommonsExpansionRules(card, options)) return false;
     if (!satisfiesCommonsPlayerCount(card, options.effectiveCommonsPlayerCount)) return false;
     if (hasNationConflict(card, options.selectedNationIds)) return false;

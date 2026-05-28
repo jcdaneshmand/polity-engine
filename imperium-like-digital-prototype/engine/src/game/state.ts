@@ -37,4 +37,5 @@ export interface GameState {
   practiceClock?: { turnsRemaining: number; progressTokens: number };
   solo?: { bot: BotState; difficulty: string };
   setupReport?: { delayedAggressiveCount: number; usedQuickSetup: boolean; shortGameExiled: number; shortGameNationAdvanced: number };
+  gameover?: { winner: string; reason: string };
 }

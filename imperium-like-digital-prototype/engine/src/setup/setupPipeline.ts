@@ -87,6 +87,9 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
     if (options.mode === "solo") (ruleset.botOverrides ?? []).forEach((ov:any) => game.log.push({ round: game.round, playerId, message: `NationRulesetApplied(${ruleset.nationId}/bot/${ov.op})` }));
   });
   if (options.mode === "practice") (game as any).practiceClock = { turnsRemaining: 12, progressTokens: 0 };
-  if (options.mode === "solo") (game as any).solo = { bot: createBotState(options.soloDifficulty ?? "chieftain"), difficulty: options.soloDifficulty ?? "chieftain" };
+  if (options.mode === "solo") {
+    const skipDefaultDynasty = Object.values(activeNationRulesets).some((ruleset: any) => (ruleset.botOverrides ?? []).some((ov: any) => ov.op === "skip_default_dynasty_setup"));
+    if (!skipDefaultDynasty) (game as any).solo = { bot: createBotState(options.soloDifficulty ?? "chieftain"), difficulty: options.soloDifficulty ?? "chieftain" };
+  }
   return game;
 }

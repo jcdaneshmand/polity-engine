@@ -43,6 +43,11 @@ export function onTurnEnd(G: GameState, ctx: Ctx): void {
     if (ov.op === "custom_cleanup_effect") runEffects({ G, playerId: ctx.currentPlayer, enabledExpansions: G.options?.enabledExpansions }, ov.effect as any);
   }
   moveAllToDiscard(p);
+  if (G.options?.mode === "solo") {
+    for (const ov of ruleset?.botOverrides ?? []) {
+      if (ov.op === "bot_custom_cleanup") runEffects({ G, playerId: ctx.currentPlayer, enabledExpansions: G.options?.enabledExpansions }, ov.effect as any);
+    }
+  }
   runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "before_solstice" });
   for (const ov of ruleset?.solsticeOverrides ?? []) {
     logOverride(G, ctx.currentPlayer, ruleset.nationId, "solstice", ov.op);

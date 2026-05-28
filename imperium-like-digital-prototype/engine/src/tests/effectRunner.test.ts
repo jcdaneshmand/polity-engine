@@ -23,4 +23,15 @@ describe("effectRunner", () => {
     runEffects({ G, playerId: "0" }, [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }]);
     expect(G.players["0"].resources.materials).toBe(1);
   });
+
+  it("acquire_card moves attached market unrest to discard", () => {
+    const G = createInitialState();
+    G.market = ["market_a"];
+    G.marketSlots = [{ index: 0, cardId: "market_a", attachedUnrestCardIds: ["unrest_a"], resourceMarkers: {} }];
+    G.players["0"].discard = [];
+    runEffects({ G, playerId: "0" }, [{ trigger: "on_play", op: "acquire_card", count: 1 }]);
+    expect(G.players["0"].discard).toEqual(["market_a", "unrest_a"]);
+    expect(G.market).toEqual([]);
+    expect(G.marketSlots).toEqual([]);
+  });
 });

@@ -39,6 +39,15 @@ function filteredCardEntries(cards: NormalizedCardRecord[]) {
   }] as const);
 }
 
+function mergeCardsById(baseCards: NormalizedCardRecord[], sourceCards: Record<string, NormalizedCardRecord>, cardIds: string[]) {
+  const byId = new Map(baseCards.map((card) => [card.id, card]));
+  for (const cardId of cardIds) {
+    const card = sourceCards[cardId];
+    if (card) byId.set(cardId, card);
+  }
+  return [...byId.values()];
+}
+
 export function createInitialGameStateFromPipeline(args: { options: GameOptions; playerNationIds?: Record<string,string>; cardDb: Record<string, NormalizedCardRecord>; nationDb: Record<string, NationDefinition>; randomSeed?: string; usePrivateRules?: boolean; privateRulesetPath?: string; privateStrategyPath?: string; }): GameState {
   const validation = validateGameOptions(args.options);
   const fatals = validation.issues.filter((i) => i.level === "fatal");
@@ -127,6 +136,7 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   setupReport.commonsSetup = commonsSetup;
   setupReport.delayedAggressiveCount = Math.max(setupReport.delayedAggressiveCount, commonsSetup.delayedCards.length);
   setupReport.usedQuickSetup = options.enabledVariants.includes("quick_setup");
+  game.cardDb = buildGameCardDb(mergeCardsById(filteredCards, args.cardDb, commonsSetup.selectedCommonsCards));
   game.market = commonsSetup.initialMarket.map((slot) => slot.cardId).filter(Boolean) as string[];
   modules.forEach((m)=>m.modifyMarketSetup?.(ctx as any));
   const fame = commonsSetup.fameDeck.length ? commonsSetup.fameDeck : setupFameDeck(options.enabledExpansions.includes("trade_routes"));

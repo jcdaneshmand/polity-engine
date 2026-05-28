@@ -52,6 +52,27 @@ function isRuntimeBaseCard(card: NormalizedCardRecord): boolean {
   return card.ownership !== "commons" && card.ownership !== "replacement";
 }
 
+function getPlayerReferencedCardIds(players: GameState["players"]): string[] {
+  const ids = new Set<string>();
+  for (const player of Object.values(players)) {
+    [
+      player.deck,
+      player.hand,
+      player.discard,
+      player.playArea,
+      player.history,
+      player.exile,
+      player.powerArea,
+      player.stateArea,
+      player.developmentArea,
+      player.nationDeck,
+      player.accessionCardId ? [player.accessionCardId] : [],
+      ...Object.values(player.sideAreas ?? {})
+    ].forEach((zone) => zone.forEach((cardId) => ids.add(cardId)));
+  }
+  return [...ids];
+}
+
 export function createInitialGameStateFromPipeline(args: { options: GameOptions; playerNationIds?: Record<string,string>; cardDb: Record<string, NormalizedCardRecord>; nationDb: Record<string, NationDefinition>; randomSeed?: string; usePrivateRules?: boolean; privateRulesetPath?: string; privateStrategyPath?: string; }): GameState {
   const validation = validateGameOptions(args.options);
   const fatals = validation.issues.filter((i) => i.level === "fatal");
@@ -141,7 +162,11 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   setupReport.commonsSetup = commonsSetup;
   setupReport.delayedAggressiveCount = Math.max(setupReport.delayedAggressiveCount, commonsSetup.delayedCards.length);
   setupReport.usedQuickSetup = options.enabledVariants.includes("quick_setup");
-  game.cardDb = buildGameCardDb(mergeCardsById(filteredCards.filter(isRuntimeBaseCard), args.cardDb, commonsSetup.selectedCommonsCards));
+  game.cardDb = buildGameCardDb(mergeCardsById(
+    filteredCards.filter(isRuntimeBaseCard),
+    args.cardDb,
+    [...commonsSetup.selectedCommonsCards, ...getPlayerReferencedCardIds(players)]
+  ));
   game.marketSlots = commonsSetup.initialMarket;
   game.market = commonsSetup.initialMarket.map((slot) => slot.cardId).filter(Boolean) as string[];
   modules.forEach((m)=>m.modifyMarketSetup?.(ctx as any));

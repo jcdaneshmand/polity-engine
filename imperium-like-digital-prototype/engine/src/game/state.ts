@@ -1,8 +1,11 @@
 import type { GameOptions } from "../options/gameOptions";
 import type { BotState } from "../solo/soloTypes";
+import type { NationRuleset, NationRulesetApplicationReport, SideAreaState, ZoneState } from "../nations/nationRulesetTypes";
+import type { NationStrategyProfile } from "../nations/nationStrategyTypes";
 export type CardType = "action" | "unit" | "technology" | "legacy";
 export type ZoneName = "deck" | "hand" | "discard" | "playArea" | "history" | "exile";
 export type ResourceName = "materials" | "knowledge" | "influence" | "unrest" | "goods";
+export type EffectOp = Record<string, unknown>;
 
 export type Effect =
   | { trigger: "on_play"; op: "draw"; count: number }
@@ -24,6 +27,12 @@ export interface PlayerState {
 }
 export interface GameState {
   players: Record<string, PlayerState>; cardDb: Record<string, Card>; market: string[]; sharedDiscard: string[]; log: GameLogEntry[]; round: number;
+  activeNationRulesets?: Record<string, NationRuleset>;
+  activeNationStrategyProfiles?: Record<string, NationStrategyProfile>;
+  sideAreas?: Record<string, Record<string, SideAreaState>>;
+  specialZones?: Record<string, Record<string, ZoneState>>;
+  globalSpecialZones?: Record<string, ZoneState>;
+  rulesetReports?: NationRulesetApplicationReport[];
   options?: GameOptions;
   practiceClock?: { turnsRemaining: number; progressTokens: number };
   solo?: { bot: BotState; difficulty: string };

@@ -1,0 +1,4 @@
+table_id,bot_nation_id,table_side,row_id,priority,trigger_kind,trigger_value,public_placeholder_label,private_trigger_label,private_effect_text,effects_json,implemented,tested,notes
+placeholder_table,placeholder_nation,S,fake_unrest,1,unrest,,Fake unrest trigger,,,"[{""op"":""bot_put_revealed_card_into_history""}]",true,false,placeholder only
+placeholder_table,placeholder_nation,S,fake_suit,2,suit,economic,Fake suit trigger,,,"[{""op"":""bot_gain_resource"",""resource"":""goods"",""count"":1}]",true,false,placeholder only
+placeholder_table,placeholder_nation,S,fake_other,99,other,,Fake fallback,,,"[{""op"":""bot_discard_revealed_card""}]",true,false,placeholder only

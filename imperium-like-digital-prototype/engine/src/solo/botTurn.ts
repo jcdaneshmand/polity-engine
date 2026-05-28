@@ -1,18 +1,23 @@
 import type { GameState } from "../game/state";
+import { runBotCleanup } from "./botCleanup";
+import { resolveBotCard } from "./botStateTableResolver";
+import { getResolvableBotSlots, revealSlotCard, rollAndBlockSlot } from "./botSlots";
 
-export function runBotTurn(G: GameState): void {
-  if (!G.solo) return;
+export function runBotTurn(args: { G: GameState; rollDie?: () => number }): GameState {
+  const { G } = args;
+  if (!G.solo) return G;
   const bot = G.solo.bot;
-  if (bot.botDeck.length === 0 && bot.botDiscard.length > 0) {
-    bot.botDeck = [...bot.botDiscard];
-    bot.botDiscard = [];
+  const roll = args.rollDie ? args.rollDie() : Math.floor(Math.random() * 6) + 1;
+  rollAndBlockSlot(bot, roll);
+  const effectLimit = bot.difficultyConfig.botEffectsPerTurn ?? Number.POSITIVE_INFINITY;
+  for (const slot of getResolvableBotSlots(bot).slice(0, effectLimit)) {
+    const cardId = revealSlotCard(bot, slot.slotNumber);
+    const table = G.solo.botStateTables[bot.botStateTableId];
+    if (!cardId || !table) continue;
+    resolveBotCard({ G, bot, revealedCardId: cardId, source: "slot", table });
+    slot.cardId = undefined;
   }
-  const card = bot.botDeck.shift();
-  if (card) {
-    bot.log.push({ round: G.round, playerId: bot.botId, message: `Bot resolved ${card}.` });
-    bot.botDiscard.push(card);
-    G.log.push({ round: G.round, playerId: bot.botId, message: `Bot turn resolved ${card}.` });
-  } else {
-    G.log.push({ round: G.round, playerId: bot.botId, message: "Bot had no card to resolve." });
-  }
+  runBotCleanup(bot);
+  G.log.push(...bot.botLog.splice(0));
+  return G;
 }

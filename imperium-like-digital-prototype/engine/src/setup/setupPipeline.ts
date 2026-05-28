@@ -8,7 +8,8 @@ import { setupFameDeck } from "./fameSetup";
 import { setupPlayerFromNation } from "../nations/setupPlayerFromNation";
 import type { NormalizedCardRecord } from "../../../tools/card-import/cardCsvTypes";
 import type { NationDefinition } from "../nations/nationSchema";
-import { createBotState } from "../solo/botState";
+import { setupSoloBot } from "../solo/botSetup";
+import { loadBotStateTables } from "../solo/botStateTableLoader";
 import { loadNationRulesets } from "../nations/nationRulesetLoader";
 import { loadNationStrategyProfiles } from "../nations/nationStrategyLoader";
 import { getNationRuleset, validateNationRulesetCompatibility } from "../nations/nationRulesetRegistry";
@@ -16,6 +17,27 @@ import { applySetupOverrides } from "../nations/nationSetupOverrides";
 import { runEffects } from "../cards/effectRunner";
 import { runNationHooks } from "../nations/nationRulesetHooks";
 import type { NationRulesetApplicationReport } from "../nations/nationRulesetTypes";
+
+function buildGameCardDb(cards: NormalizedCardRecord[]): GameState["cardDb"] {
+  return Object.fromEntries(filteredCardEntries(cards)) as GameState["cardDb"];
+}
+
+function filteredCardEntries(cards: NormalizedCardRecord[]) {
+  return cards.map((c) => [c.id, {
+    id: c.id,
+    displayName: c.displayName,
+    type: c.cardType as any,
+    cardType: c.cardType as any,
+    suit: c.suit as any,
+    cost: c.cost.materials + c.cost.population + c.cost.progress + c.cost.goods,
+    tags: c.tags,
+    effects: c.effects as any,
+    allowedModes: c.allowedModes,
+    disallowedModes: c.disallowedModes,
+    playerCountRequirement: c.playerCountRequirement,
+    startingLocation: c.startingLocation
+  }] as const);
+}
 
 export function createInitialGameStateFromPipeline(args: { options: GameOptions; playerNationIds?: Record<string,string>; cardDb: Record<string, NormalizedCardRecord>; nationDb: Record<string, NationDefinition>; randomSeed?: string; usePrivateRules?: boolean; privateRulesetPath?: string; privateStrategyPath?: string; }): GameState {
   const validation = validateGameOptions(args.options);
@@ -37,7 +59,7 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   const players: GameState["players"] = {};
   const game: GameState = {
     players,
-    cardDb: Object.fromEntries(filteredCards.map((c)=>[c.id,{id:c.id,displayName:c.displayName,type:"action",cost:c.cost.materials + c.cost.population + c.cost.progress + c.cost.goods,tags:c.tags,effects:c.effects as any}])),
+    cardDb: buildGameCardDb(filteredCards),
     market: [],
     sharedDiscard: [],
     log: [],
@@ -85,7 +107,7 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
 
   const ctx = { options, players, cards: filteredCards, setupReport };
   modules.forEach((m)=>m.modifyDeckConstruction?.(ctx as any));
-  game.cardDb = Object.fromEntries(filteredCards.map((c)=>[c.id,{id:c.id,displayName:c.displayName,type:"action",cost:c.cost.materials + c.cost.population + c.cost.progress + c.cost.goods,tags:c.tags,effects:c.effects as any}])) as any;
+  game.cardDb = buildGameCardDb(filteredCards);
   const marketSetup = setupMarket(filteredCards, options.enabledVariants.includes("quick_setup"));
   game.market = marketSetup.market;
   modules.forEach((m)=>m.modifyMarketSetup?.(ctx as any));
@@ -107,12 +129,10 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   });
   if (options.mode === "practice") (game as any).practiceClock = { turnsRemaining: 12, progressTokens: 0 };
   if (options.mode === "solo") {
-    const difficulty = options.soloDifficulty ?? "chieftain";
-    const skipDefaultDynasty = Object.values(activeNationRulesets).some((ruleset: any) => (ruleset.botOverrides ?? []).some((ov: any) => ov.op === "skip_default_dynasty_setup"));
-    const bot = skipDefaultDynasty
-      ? { botId: "bot_0", botDeck: [], botDiscard: [], botStateCards: [], difficulty, resources: { goods: 0 }, log: [] }
-      : createBotState(difficulty);
-    (game as any).solo = { bot, difficulty };
+    const botStateTables = loadBotStateTables();
+    const botRuleset = Object.values(activeNationRulesets)[0] as any;
+    const bot = setupSoloBot({ botNation: Object.values(args.nationDb)[0] as any, botRuleset, cardDb: game.cardDb as any, botStateTables, options, shuffle: (x)=>[...x] });
+    (game as any).solo = { bot, botStateTables };
   }
   return game;
 }

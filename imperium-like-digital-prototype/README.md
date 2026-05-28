@@ -25,4 +25,9 @@ npm run typecheck
 2. Add legality checks/undo support.
 3. Add solo bot shell and save/load support.
 
+## Rules-engine governance
+- Before merging engine/rules changes, review `docs/rules-engine-notes.md`.
+- Run through `docs/rules-engine-compliance-checklist.md` and summarize alignment in PR notes.
+- Keep implementation data-driven and legal-boundary compliant at all times.
+
 > This project is a private/prototype rules-engine experiment using original placeholder content. It does not include official card text, art, logos, scans, card databases, or branding from any published game. Official content should only be integrated with permission from the rights holders.

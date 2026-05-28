@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 
 const engineDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const workspaceRoot = path.resolve(engineDir, '..');
+const workspaceNodeModules = path.join(workspaceRoot, 'node_modules');
 const requireFromEngine = createRequire(path.join(engineDir, 'package.json'));
 
 function printInstallGuidance() {
@@ -16,7 +18,17 @@ function printInstallGuidance() {
 let vitestCli;
 try {
   const vitestPackageJsonPath = requireFromEngine.resolve('vitest/package.json');
-  const vitestPackageJson = JSON.parse(readFileSync(vitestPackageJsonPath, 'utf8'));
+  const resolvedPackagePath = realpathSync(vitestPackageJsonPath);
+  const resolvedNodeModules = realpathSync(workspaceNodeModules);
+  const normalizedRoot = resolvedNodeModules.endsWith(path.sep)
+    ? resolvedNodeModules
+    : `${resolvedNodeModules}${path.sep}`;
+
+  if (!resolvedPackagePath.startsWith(normalizedRoot)) {
+    throw new Error('`vitest` resolved outside workspace node_modules.');
+  }
+
+  const vitestPackageJson = JSON.parse(readFileSync(resolvedPackagePath, 'utf8'));
   const binEntry = typeof vitestPackageJson.bin === 'string'
     ? vitestPackageJson.bin
     : vitestPackageJson.bin?.vitest;
@@ -25,7 +37,7 @@ try {
     throw new Error('`vitest` package did not expose a CLI bin entry.');
   }
 
-  vitestCli = path.resolve(path.dirname(vitestPackageJsonPath), binEntry);
+  vitestCli = path.resolve(path.dirname(resolvedPackagePath), binEntry);
 } catch {
   printInstallGuidance();
   process.exit(1);

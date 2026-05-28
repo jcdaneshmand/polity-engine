@@ -18,6 +18,6 @@ export function loadCardDbWithOptionalPrivateData(opts?: { usePrivate?: boolean;
     return true;
   });
   const fromPrivate: Record<string, Card> = {};
-  filtered.forEach((r) => { fromPrivate[r.id] = { id: r.id, displayName: r.displayName, type: "action", cost: r.cost.materials + r.cost.population + r.cost.progress + r.cost.goods, tags: r.tags, effects: r.effects as any }; });
+  filtered.forEach((r) => { fromPrivate[r.id] = { id: r.id, displayName: r.displayName, type: "action", cost: r.cost.materials + r.cost.population + r.cost.progress + r.cost.goods, tags: r.tags, effects: r.effects as any, allowedModes: r.allowedModes, disallowedModes: r.disallowedModes, playerCountRequirement: r.playerCountRequirement, startingLocation: r.startingLocation }; });
   return fromPrivate;
 }

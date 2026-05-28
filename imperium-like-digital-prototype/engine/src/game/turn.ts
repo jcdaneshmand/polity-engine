@@ -38,12 +38,11 @@ export function onTurnBegin(G: GameState, ctx: Ctx, randomNumber?: () => number)
 export function onTurnEnd(G: GameState, ctx: Ctx): void {
   const p = G.players[ctx.currentPlayer];
   const ruleset = G.activeNationRulesets?.[ctx.currentPlayer];
-  const preventDiscard = !!ruleset?.cleanupOverrides.some((ov) => ov.op === "prevent_voluntary_discard");
   for (const ov of ruleset?.cleanupOverrides ?? []) {
     logOverride(G, ctx.currentPlayer, ruleset.nationId, "cleanup", ov.op);
     if (ov.op === "custom_cleanup_effect") runEffects({ G, playerId: ctx.currentPlayer, enabledExpansions: G.options?.enabledExpansions }, ov.effect as any);
   }
-  if (!preventDiscard) moveAllToDiscard(p);
+  moveAllToDiscard(p);
   runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "before_solstice" });
   for (const ov of ruleset?.solsticeOverrides ?? []) {
     logOverride(G, ctx.currentPlayer, ruleset.nationId, "solstice", ov.op);

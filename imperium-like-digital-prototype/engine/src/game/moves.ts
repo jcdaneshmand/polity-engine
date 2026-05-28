@@ -15,10 +15,10 @@ export function playCard({ G, ctx, random }: MoveCtx, cardId: string): void {
   if (p.actionsRemaining < 1 || !p.hand.includes(cardId)) return;
 
   p.actionsRemaining -= 1;
+  runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "before_play_card", payload: { cardId }, randomNumber: random?.Number });
   const handIndex = p.hand.indexOf(cardId);
   if (handIndex >= 0) p.hand.splice(handIndex, 1);
   p.playArea.push(cardId);
-  runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "before_play_card", payload: { cardId }, randomNumber: random?.Number });
 
   runEffects(
     { G, playerId: ctx.currentPlayer, selfCardId: cardId, randomNumber: random?.Number },

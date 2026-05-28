@@ -28,5 +28,11 @@ export function applyScoringLifecycleOnce(G: GameState, playerId: string): void 
 
 export function scorePlayer(G: GameState, playerId: string): number {
   const p = G.players[playerId];
-  return p.history.length + p.resources.influence - p.resources.unrest;
+  const disableHistory = G.activeNationRulesets?.[playerId]?.zoneOverrides?.find((ov: any) => ov.op === "disable_history");
+  const historyScore = disableHistory?.replacementBehavior === "alternate_zone"
+    ? (p.sideAreas?.alternate_history?.length ?? 0)
+    : disableHistory
+      ? 0
+      : p.history.length;
+  return historyScore + p.resources.influence - p.resources.unrest;
 }

@@ -8,3 +8,4 @@ const report = validatePrivateNationRulesetsRows(rows);
 fs.writeFileSync((args.report as string)||"generated-private/nation-ruleset-import-report.json", JSON.stringify(report,null,2));
 if (report.counts.fatal===0) fs.writeFileSync((args.output as string)||"generated-private/nation-rulesets.normalized.json", JSON.stringify(rows.map(normalizeNationRuleset),null,2));
 console.log(`rulesets rows=${report.counts.rows} fatal=${report.counts.fatal} warnings=${report.counts.warnings}`);
+if (report.counts.fatal>0) process.exitCode = 1;

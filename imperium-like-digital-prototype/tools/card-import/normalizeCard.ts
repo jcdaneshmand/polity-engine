@@ -11,7 +11,8 @@ export function normalizeCard(row: PrivateCardCsvRow): NormalizedCardRecord {
   const requiredExpansionsFromCsv = tags(row.required_expansions || "") as any[];
   const requiredExpansions = Array.from(new Set([...(requiredExpansionsFromCsv || []), ...(isTradeRouteExpansion ? ["trade_routes"] : [])]));
   const excludedExpansions = tags(row.excluded_expansions || "") as any[];
-  const allowedModes = tags(row.allowed_modes || "") as any[];
+  const allowedModesFromCsv = tags(row.allowed_modes || "") as any[];
+  const allowedModes = allowedModesFromCsv.length>0 ? allowedModesFromCsv : undefined;
   const disallowedModes = tags(row.disallowed_modes || "") as any[];
 
   return {

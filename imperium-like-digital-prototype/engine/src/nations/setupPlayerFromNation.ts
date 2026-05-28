@@ -24,6 +24,18 @@ function applySetupRule(player: PlayerState, rule: SetupRule): void {
     player.sideAreas ??= {};
     player.sideAreas[rule.areaId] = [];
   }
+
+  if (rule.op === "set_token_count") {
+    if (typeof rule.actionTokens === "number") {
+      player.actionTokensBase = rule.actionTokens;
+      player.actionTokensAvailable = rule.actionTokens;
+      player.actionsRemaining = rule.actionTokens;
+    }
+    if (typeof rule.exhaustTokens === "number") {
+      player.exhaustTokensBase = rule.exhaustTokens;
+      player.exhaustTokensAvailable = rule.exhaustTokens;
+    }
+  }
   if (rule.op === "place_card_in_area") {
     switch (rule.area) {
       case "hand": player.hand.push(rule.cardId); break;

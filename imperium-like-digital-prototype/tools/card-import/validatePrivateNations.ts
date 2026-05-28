@@ -15,12 +15,17 @@ export function validatePrivateNationsRows(rows: Record<string,string>[], knownC
     for(const f of ["complexity","action_tokens_base","exhaust_tokens_base"]) if(!isInt(r[f]||"")) errors.push({level:"fatal",row,field:f,message:"Must be non-negative integer or blank"});
     if(!bool(r.implemented||"")) errors.push({level:"fatal",row,field:"implemented",message:"Must be bool"});
     if(!bool(r.tested||"")) errors.push({level:"fatal",row,field:"tested",message:"Must be bool"});
-    for(const f of ["special_setup_json","passive_rules_json"]) if((r[f]||"").trim()){ try{const p=JSON.parse(r[f]); if(!Array.isArray(p)) errors.push({level:"fatal",row,field:f,message:"Must parse to array"});} catch{errors.push({level:"fatal",row,field:f,message:"Invalid JSON"});}}
+    let parsedSetup: any[] = [];
+    for(const f of ["special_setup_json","passive_rules_json"]) if((r[f]||"").trim()){ try{const p=JSON.parse(r[f]); if(!Array.isArray(p)) errors.push({level:"fatal",row,field:f,message:"Must parse to array"}); if (f === "special_setup_json" && Array.isArray(p)) parsedSetup = p;} catch{errors.push({level:"fatal",row,field:f,message:"Invalid JSON"});}}
     if((r.nation_name_private||"").trim() && (r.nation_name_private||"").trim()===(r.public_placeholder_name||"").trim()) errors.push({level:"warning",row,field:"public_placeholder_name",message:"Matches private name"});
     if((r.implemented||"").trim().toLowerCase()==="true" && (r.tested||"").trim().toLowerCase()==="false") errors.push({level:"warning",row,field:"tested",message:"implemented=true but tested=false"});
     if(arr(r.starting_deck_card_ids||"").length===0 && !(r.special_setup_json||"").trim()) errors.push({level:"warning",row,field:"starting_deck_card_ids",message:"No starting deck and no special setup"});
     if(arr(r.power_card_ids||"").length===0) errors.push({level:"warning",row,field:"power_card_ids",message:"No power cards"});
-    const refs=[...arr(r.power_card_ids||""),...arr(r.state_card_ids||""),...arr(r.starting_deck_card_ids||""),...arr(r.nation_deck_card_ids||""),...arr(r.development_card_ids||""),...(r.accession_card_id?.trim()?[r.accession_card_id.trim()]:[])];
+    const setupRefs = parsedSetup
+      .filter((op:any)=>op && op.op === "place_card_in_area" && typeof op.cardId === "string")
+      .map((op:any)=>op.cardId.trim())
+      .filter(Boolean);
+    const refs=[...arr(r.power_card_ids||""),...arr(r.state_card_ids||""),...arr(r.starting_deck_card_ids||""),...arr(r.nation_deck_card_ids||""),...arr(r.development_card_ids||""),...(r.accession_card_id?.trim()?[r.accession_card_id.trim()]:[]),...setupRefs];
     refs.forEach(cid=>{ if(!knownCardIds.has(cid)) errors.push({level:allowMissing?"warning":"fatal",row,field:"card_ref",message:`Missing card id: ${cid}`}); });
     if((r.implemented||"").trim().toLowerCase()==="true") implemented++; if((r.tested||"").trim().toLowerCase()==="true") tested++;
   });

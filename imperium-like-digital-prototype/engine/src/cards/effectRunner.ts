@@ -66,6 +66,11 @@ function runEffect(ctx: Ctx, effect: Effect): void {
       break;
     }
     case "conditional_resource_at_least": runEffects(ctx, p.resources[effect.resource] >= effect.atLeast ? effect.then : effect.else ?? []); break;
-    case "choose_one": throw new Error("choose_one not implemented");
+    case "choose_one": {
+      const firstChoice = effect.choices?.[0] ?? [];
+      ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `Resolved choose_one by selecting first option.` });
+      runEffects(ctx, firstChoice);
+      break;
+    }
   }
 }

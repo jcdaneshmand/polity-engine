@@ -13,4 +13,6 @@ describe("private card import", () => {
   it("identical names warning",()=>expect(validatePrivateCardsRows([{...base,public_placeholder_name:"Private A"}]).counts.warnings).toBeGreaterThan(0));
   it("normalization defaults cost",()=>expect(normalizeCard(base).cost.materials).toBe(0));
   it("tags parse",()=>expect(normalizeCard(base).tags).toEqual(["knowledge","region"]));
+  it("defaults imported Commons cards without commons_set_id to classics",()=>expect(normalizeCard(base).commonsSetId).toBe("classics"));
+  it("does not default non-Commons cards to a commons set",()=>expect(normalizeCard({...base,ownership:"nation"}).commonsSetId).toBeUndefined());
 });

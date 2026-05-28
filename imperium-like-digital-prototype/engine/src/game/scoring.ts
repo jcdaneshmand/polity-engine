@@ -9,7 +9,7 @@ function logOverride(G: GameState, playerId: string, nationId: string, category:
 export function applyScoringLifecycleOnce(G: GameState, playerId: string): void {
   const ruleset = G.activeNationRulesets?.[playerId];
   if (!ruleset) return;
-  const key = `${ruleset.nationId}:scoring_lifecycle:${G.round}`;
+  const key = `${playerId}:${ruleset.nationId}:scoring_lifecycle:${G.round}`;
   (G as any)._appliedScoringLifecycleKeys ??= {};
   if ((G as any)._appliedScoringLifecycleKeys[key]) return;
   (G as any)._appliedScoringLifecycleKeys[key] = true;

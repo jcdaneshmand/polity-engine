@@ -45,10 +45,13 @@ export function maybeReshuffleDeck(G: GameState, playerId: string, randomNumber?
 export function drawCardWithReshuffleLifecycle(G: GameState, playerId: string, randomNumber?: () => number): string | null {
   const p = G.players[playerId];
   const shouldReshuffle = p.deck.length === 0 && p.discard.length > 0;
-  if (shouldReshuffle) {
+  (G as any)._reshuffleInProgressByPlayer ??= {};
+  if (shouldReshuffle && !(G as any)._reshuffleInProgressByPlayer[playerId]) {
+    (G as any)._reshuffleInProgressByPlayer[playerId] = true;
     runNationHooks({ G, playerId, trigger: "before_reshuffle", randomNumber });
     maybeReshuffleDeck(G, playerId, randomNumber);
     runNationHooks({ G, playerId, trigger: "after_reshuffle", randomNumber });
+    (G as any)._reshuffleInProgressByPlayer[playerId] = false;
   }
   return drawCard(p, randomNumber, !shouldReshuffle);
 }

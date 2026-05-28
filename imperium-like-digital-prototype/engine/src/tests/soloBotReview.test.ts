@@ -323,4 +323,52 @@ describe("solo bot setup from imported cards", () => {
     expect(G.solo?.bot.botStateSide).toBe("F");
     expect(G.solo?.bot.botStateTableId).toBe("placeholder_F");
   });
+
+  it("uses the refreshed bot state table for later cards in the same turn", () => {
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        bot_flip: card({ id: "bot_flip", displayName: "Bot Flip", suit: "region", cardType: "attack", startingLocation: "bot_deck" }),
+        bot_front: card({ id: "bot_front", displayName: "Bot Front", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    G.solo!.botStateTables = {
+      placeholder_S: {
+        id: "placeholder",
+        botNationId: "test_nation_sun_coast",
+        displayName: "Test Table",
+        side: "S",
+        rows: [
+          { id: "flip", priority: 1, trigger: { kind: "card_id", cardId: "bot_flip" }, effects: [{ op: "bot_flip_state_table", nextSide: "F" }], implemented: true, tested: true },
+          { id: "s_other", priority: 99, trigger: { kind: "other" }, effects: [{ op: "bot_discard_revealed_card" }], implemented: true, tested: true }
+        ]
+      },
+      placeholder_F: {
+        id: "placeholder",
+        botNationId: "test_nation_sun_coast",
+        displayName: "Test Table",
+        side: "F",
+        rows: [
+          { id: "front_history", priority: 1, trigger: { kind: "card_id", cardId: "bot_front" }, effects: [{ op: "bot_put_revealed_card_into_history" }], implemented: true, tested: true }
+        ]
+      }
+    };
+    bot.botStateTableId = "placeholder_S";
+    bot.botDeck = [];
+    bot.botDiscard = [];
+    Object.values(bot.slots).forEach((slot) => { slot.cardId = undefined; });
+    bot.slots[1].cardId = "bot_flip";
+    bot.slots[2].cardId = "bot_front";
+
+    runBotTurn({ G, rollDie: () => 6 });
+
+    expect(bot.botStateTableId).toBe("placeholder_F");
+    expect(bot.botHistory).toContain("bot_front");
+    expect(bot.botHistory).not.toContain("bot_flip");
+    expect(bot.botDiscard).not.toContain("bot_front");
+  });
 });

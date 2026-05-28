@@ -45,7 +45,7 @@ function runEffect(ctx: Ctx, effect: Effect): void {
     case "discard_random": {
       for (let i = 0; i < effect.count; i++) {
         if (p.hand.length === 0) break;
-        const roll = ctx.randomNumber ? ctx.randomNumber() : Math.random();
+        const roll = ctx.randomNumber ? ctx.randomNumber() : 0;
         const randomIndex = Math.floor(roll * p.hand.length);
         const [card] = p.hand.splice(randomIndex, 1);
         if (card) { p.discard.push(card); ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `Discarded ${card} at random.` }); }

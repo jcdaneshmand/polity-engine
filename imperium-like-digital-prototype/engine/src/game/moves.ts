@@ -10,10 +10,15 @@ interface MoveCtx {
   random?: { Number?: () => number };
 }
 
+function logTurnPhase(G: GameState, playerId: string, phase: string, message: string): void {
+  G.log.push({ round: G.round, playerId, message: `TurnPhase(${phase}): ${message}` });
+}
+
 export function playCard({ G, ctx, random }: MoveCtx, cardId: string): void {
   const p = G.players[ctx.currentPlayer];
   if (p.actionsRemaining < 1 || !p.hand.includes(cardId)) return;
 
+  logTurnPhase(G, ctx.currentPlayer, "action_execution", `playCard(${cardId})`);
   p.actionsRemaining -= 1;
   runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "before_play_card", payload: { cardId }, randomNumber: random?.Number });
   const handIndex = p.hand.indexOf(cardId);
@@ -35,12 +40,18 @@ export function acquireCard({ G, ctx, random }: MoveCtx, cardId: string): void {
   const p = G.players[ctx.currentPlayer];
   if (!G.market.includes(cardId)) return;
 
+  logTurnPhase(G, ctx.currentPlayer, "acquire_resolution", `acquireCard(${cardId})`);
   runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "before_acquire", payload: { cardId }, randomNumber: random?.Number });
   const idx = G.market.indexOf(cardId);
   if (idx < 0) return;
   G.market.splice(idx, 1);
   p.discard.push(cardId);
   G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: `Acquired ${cardId}.` });
+  if (G.market.length === 0) {
+    G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: "MarketExhausted(no_refill_pipeline_defined)." });
+  } else {
+    G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: `MarketRefillStatus(static_market_remaining=${G.market.length}).` });
+  }
   runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "after_acquire", payload: { cardId }, randomNumber: random?.Number });
 }
 

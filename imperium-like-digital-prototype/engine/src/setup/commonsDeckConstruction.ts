@@ -3,6 +3,7 @@ import type { CommonsDeckConstructionInput, CommonsDeckConstructionResult, Commo
 import { getSetupSuit } from "./commonsTypes";
 
 const MARKET_SIZE = 5;
+const SMALL_DECK_SUITS = ["region", "uncivilized", "civilized", "tributary"];
 
 function shuffleWithRng<T>(items: T[], rng?: CommonsRng): T[] {
   if (rng && typeof rng !== "function" && rng.shuffle) return rng.shuffle([...items]);
@@ -32,6 +33,10 @@ function isMarketEligible(card: NormalizedCardRecord): boolean {
 function isMainDeckEligible(card: NormalizedCardRecord): boolean {
   if (card.mainDeckEligible !== undefined) return card.mainDeckEligible;
   return isMarketEligible(card) && !isUnrest(card) && !isFame(card);
+}
+
+function isSmallDeckEligible(card: NormalizedCardRecord): boolean {
+  return card.smallDeckEligible !== false;
 }
 
 function shouldDelayForLoweredAggression(card: NormalizedCardRecord): boolean {
@@ -102,11 +107,12 @@ export function buildCommonsDecks(input: CommonsDeckConstructionInput): CommonsD
     mainDeck = quickSetupDeck;
   } else {
     const marketCards = activeCards.filter((card) => isMainDeckEligible(card));
-    regionDeck = shuffleWithRng(marketCards.filter((card) => getSetupSuit(card) === "region").map((card) => card.id), input.rng);
-    uncivilizedDeck = shuffleWithRng(marketCards.filter((card) => getSetupSuit(card) === "uncivilized").map((card) => card.id), input.rng);
-    civilizedDeck = shuffleWithRng(marketCards.filter((card) => getSetupSuit(card) === "civilized").map((card) => card.id), input.rng);
-    tributaryDeck = shuffleWithRng(marketCards.filter((card) => getSetupSuit(card) === "tributary").map((card) => card.id), input.rng);
-    mainDeck = shuffleWithRng(marketCards.filter((card) => !["region", "uncivilized", "civilized", "tributary"].includes(getSetupSuit(card))).map((card) => card.id), input.rng);
+    const smallDeckCards = marketCards.filter((card) => isSmallDeckEligible(card) && SMALL_DECK_SUITS.includes(getSetupSuit(card)));
+    regionDeck = shuffleWithRng(smallDeckCards.filter((card) => getSetupSuit(card) === "region").map((card) => card.id), input.rng);
+    uncivilizedDeck = shuffleWithRng(smallDeckCards.filter((card) => getSetupSuit(card) === "uncivilized").map((card) => card.id), input.rng);
+    civilizedDeck = shuffleWithRng(smallDeckCards.filter((card) => getSetupSuit(card) === "civilized").map((card) => card.id), input.rng);
+    tributaryDeck = shuffleWithRng(smallDeckCards.filter((card) => getSetupSuit(card) === "tributary").map((card) => card.id), input.rng);
+    mainDeck = shuffleWithRng(marketCards.filter((card) => !isSmallDeckEligible(card) || !SMALL_DECK_SUITS.includes(getSetupSuit(card))).map((card) => card.id), input.rng);
 
     const initialMarketSource = [...regionDeck, ...uncivilizedDeck, ...civilizedDeck, ...tributaryDeck, ...mainDeck];
     initialMarket = createInitialMarket({ sourceDeck: initialMarketSource, unrestPile, cardById });

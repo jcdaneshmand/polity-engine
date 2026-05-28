@@ -51,9 +51,10 @@ export function onTurnEnd(G: GameState, ctx: Ctx, randomNumber?: () => number): 
     }
   }
   runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "before_solstice", randomNumber });
+  const preventEmpireFlip = (ruleset?.stateOverrides ?? []).some((ov) => ov.op === "never_flip_to_empire");
   for (const ov of ruleset?.solsticeOverrides ?? []) {
     logOverride(G, ctx.currentPlayer, ruleset.nationId, "solstice", ov.op);
-    if (ov.op === "flip_state") p.stateArea.reverse();
+    if (ov.op === "flip_state" && !preventEmpireFlip) p.stateArea.reverse();
     if (ov.op === "custom_solstice_effect") runEffects({ G, playerId: ctx.currentPlayer, enabledExpansions: G.options?.enabledExpansions, randomNumber }, ov.effect as any);
   }
   runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "after_solstice", randomNumber });

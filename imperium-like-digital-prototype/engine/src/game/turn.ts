@@ -37,26 +37,26 @@ export function onTurnBegin(G: GameState, ctx: Ctx, randomNumber?: () => number)
   applyCollapseWinChecksForAllPlayers(G);
 }
 
-export function onTurnEnd(G: GameState, ctx: Ctx): void {
+export function onTurnEnd(G: GameState, ctx: Ctx, randomNumber?: () => number): void {
   const p = G.players[ctx.currentPlayer];
   const ruleset = G.activeNationRulesets?.[ctx.currentPlayer];
   for (const ov of ruleset?.cleanupOverrides ?? []) {
     logOverride(G, ctx.currentPlayer, ruleset.nationId, "cleanup", ov.op);
-    if (ov.op === "custom_cleanup_effect") runEffects({ G, playerId: ctx.currentPlayer, enabledExpansions: G.options?.enabledExpansions }, ov.effect as any);
+    if (ov.op === "custom_cleanup_effect") runEffects({ G, playerId: ctx.currentPlayer, enabledExpansions: G.options?.enabledExpansions, randomNumber }, ov.effect as any);
   }
   moveAllToDiscard(p);
   if (G.options?.mode === "solo") {
     for (const ov of ruleset?.botOverrides ?? []) {
-      if (ov.op === "bot_custom_cleanup") runEffects({ G, playerId: ctx.currentPlayer, enabledExpansions: G.options?.enabledExpansions }, ov.effect as any);
+      if (ov.op === "bot_custom_cleanup") runEffects({ G, playerId: ctx.currentPlayer, enabledExpansions: G.options?.enabledExpansions, randomNumber }, ov.effect as any);
     }
   }
-  runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "before_solstice" });
+  runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "before_solstice", randomNumber });
   for (const ov of ruleset?.solsticeOverrides ?? []) {
     logOverride(G, ctx.currentPlayer, ruleset.nationId, "solstice", ov.op);
     if (ov.op === "flip_state") p.stateArea.reverse();
-    if (ov.op === "custom_solstice_effect") runEffects({ G, playerId: ctx.currentPlayer, enabledExpansions: G.options?.enabledExpansions }, ov.effect as any);
+    if (ov.op === "custom_solstice_effect") runEffects({ G, playerId: ctx.currentPlayer, enabledExpansions: G.options?.enabledExpansions, randomNumber }, ov.effect as any);
   }
-  runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "after_solstice" });
+  runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "after_solstice", randomNumber });
   applyCollapseWinChecksForAllPlayers(G);
   G.round += 1;
 }

@@ -1,11 +1,19 @@
 import type { Ctx } from "boardgame.io";
 import type { GameState } from "./state";
+import { applyCollapseWinChecks } from "./scoring";
 import { drawCardWithReshuffleLifecycle, moveAllToDiscard } from "./zones";
 import { runEffects } from "../cards/effectRunner";
 import { runNationHooks } from "../nations/nationRulesetHooks";
 
 function logOverride(G: GameState, playerId: string, nationId: string, category: string, op: string): void {
   G.log.push({ round: G.round, playerId, message: `NationRulesetApplied(${nationId}/${category}/${op})` });
+}
+
+function applyCollapseWinChecksForAllPlayers(G: GameState): void {
+  for (const playerId of Object.keys(G.players)) {
+    applyCollapseWinChecks(G, playerId);
+    if (G.gameover) return;
+  }
 }
 
 export function onTurnBegin(G: GameState, ctx: Ctx, randomNumber?: () => number): void {
@@ -26,6 +34,7 @@ export function onTurnBegin(G: GameState, ctx: Ctx, randomNumber?: () => number)
       if (!drawn) break;
     }
   }
+  applyCollapseWinChecksForAllPlayers(G);
 }
 
 export function onTurnEnd(G: GameState, ctx: Ctx): void {
@@ -48,5 +57,6 @@ export function onTurnEnd(G: GameState, ctx: Ctx): void {
     if (ov.op === "custom_solstice_effect") runEffects({ G, playerId: ctx.currentPlayer, enabledExpansions: G.options?.enabledExpansions }, ov.effect as any);
   }
   runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "after_solstice" });
+  applyCollapseWinChecksForAllPlayers(G);
   G.round += 1;
 }

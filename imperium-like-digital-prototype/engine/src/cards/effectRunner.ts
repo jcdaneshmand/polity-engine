@@ -1,4 +1,5 @@
 import type { Effect, GameState } from "../game/state";
+import { acquireMarketCardToDiscard } from "../game/marketAcquisition";
 import { drawCardWithReshuffleLifecycle } from "../game/zones";
 
 interface Ctx {
@@ -78,8 +79,7 @@ function runEffect(ctx: Ctx, effect: Effect): void {
       for (let i = 0; i < effect.count; i++) {
         const cardId = ctx.G.market[0];
         if (!cardId) break;
-        ctx.G.market = ctx.G.market.slice(1);
-        p.discard.push(cardId);
+        if (!acquireMarketCardToDiscard(ctx.G, ctx.playerId, cardId)) break;
         ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `Acquired ${cardId} from market.` });
       }
       break;

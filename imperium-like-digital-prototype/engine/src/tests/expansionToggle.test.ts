@@ -36,19 +36,19 @@ describe("trade_routes expansion toggle", () => {
   });
 
   it("trade_routes on includes setup modifications", () => {
-    const G = createInitialGameState({ enabledExpansions: ["trade_routes"], cardDb: fakeCardDb as any });
-    expect(G.players["0"].powerArea).toContain("test_merchants_card");
+    const G = createInitialGameState({ options: { playerCount: 2, mode: "multiplayer", enabledExpansions: ["trade_routes"], enabledVariants: [] } });
+    expect(G.players["0"].powerArea).toContain("test_action_civic_assembly");
     expect(G.players["0"].exhaustTokensBase).toBeGreaterThan(1);
   });
 
   it("player tokens differ when trade_routes enabled", () => {
-    const off = createInitialGameState({ enabledExpansions: [], cardDb: fakeCardDb as any });
-    const on = createInitialGameState({ enabledExpansions: ["trade_routes"], cardDb: fakeCardDb as any });
+    const off = createInitialGameState({ options: { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: [] } });
+    const on = createInitialGameState({ options: { playerCount: 2, mode: "multiplayer", enabledExpansions: ["trade_routes"], enabledVariants: [] } });
     expect(on.players["0"].exhaustTokensBase).toBe(off.players["0"].exhaustTokensBase + 1);
   });
 
   it("trade effect option ignored when trade_routes disabled", () => {
-    const G = createInitialGameState({ enabledExpansions: [], cardDb: fakeCardDb as any });
+    const G = createInitialGameState({ options: { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: [] } });
     runEffects({ G, playerId: "0", enabledExpansions: [] }, [{ trigger: "on_play", op: "trade" } as any]);
     expect(G.log.at(-1)?.message).toContain("Ignored trade");
   });

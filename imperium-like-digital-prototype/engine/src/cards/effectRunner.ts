@@ -1,5 +1,5 @@
 import type { Effect, GameState } from "../game/state";
-import { drawCard } from "../game/zones";
+import { drawCardWithReshuffleLifecycle } from "../game/zones";
 
 interface Ctx {
   G: GameState;
@@ -35,7 +35,7 @@ function runEffect(ctx: Ctx, effect: Effect): void {
   switch (effect.op) {
     case "draw": {
       for (let i = 0; i < effect.count; i++) {
-        const card = drawCard(p, ctx.randomNumber);
+        const card = drawCardWithReshuffleLifecycle(ctx.G, ctx.playerId, ctx.randomNumber);
         ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: card ? `Drew ${card}` : "Draw failed (no deck/discard cards)." });
       }
       break;

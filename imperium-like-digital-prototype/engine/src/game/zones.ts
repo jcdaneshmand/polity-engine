@@ -27,21 +27,36 @@ export function drawCard(player: PlayerState, randomNumber?: () => number, allow
   return cardId;
 }
 
-export function maybeReshuffleDeck(G: GameState, playerId: string, randomNumber?: () => number): boolean {
+export function maybeReshuffleDeck(G: GameState, playerId: string, randomNumber?: () => number): { attempted: boolean; shuffled: boolean } {
   const p = G.players[playerId];
-  if (p.deck.length > 0 || p.discard.length === 0) return false;
+  if (p.deck.length > 0 || p.discard.length === 0) return { attempted: false, shuffled: false };
   const ruleset = G.activeNationRulesets?.[playerId];
   const skipDefault = !!ruleset?.reshuffleOverrides.some((ov) => ov.op === "skip_default_nation_card_addition");
+  let shuffled = false;
   if (!skipDefault) {
     p.deck = shuffleWithRandom(p.discard, randomNumber);
     p.discard = [];
+    shuffled = true;
   }
   for (const ov of ruleset?.reshuffleOverrides ?? []) {
     logOverride(G, playerId, ruleset.nationId, "reshuffle", ov.op);
     if (ov.op === "custom_reshuffle_effect") runEffects({ G, playerId, enabledExpansions: G.options?.enabledExpansions }, ov.effect as any);
   }
-  return true;
+  return { attempted: true, shuffled };
 }
+
+export function drawCardWithReshuffleLifecycle(G: GameState, playerId: string, randomNumber?: () => number): string | null {
+  const p = G.players[playerId];
+  const shouldReshuffle = p.deck.length === 0 && p.discard.length > 0;
+  if (shouldReshuffle) {
+    const { runNationHooks } = require("../nations/nationRulesetHooks");
+    runNationHooks({ G, playerId, trigger: "before_reshuffle" });
+    maybeReshuffleDeck(G, playerId, randomNumber);
+    runNationHooks({ G, playerId, trigger: "after_reshuffle" });
+  }
+  return drawCard(p, randomNumber, !shouldReshuffle);
+}
+
 
 export function moveAllToDiscard(player: PlayerState): void {
   player.discard.push(...player.hand, ...player.playArea);

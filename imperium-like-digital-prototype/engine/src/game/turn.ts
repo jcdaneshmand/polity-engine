@@ -24,13 +24,12 @@ export function onTurnBegin(G: GameState, ctx: Ctx, randomNumber?: () => number)
   if (p.hand.length < 5) {
     while (p.hand.length < 5) {
       const shouldReshuffle = p.deck.length === 0 && p.discard.length > 0;
-      let reshuffled = false;
       if (shouldReshuffle) {
         runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "before_reshuffle" });
-        reshuffled = maybeReshuffleDeck(G, ctx.currentPlayer, randomNumber);
+        maybeReshuffleDeck(G, ctx.currentPlayer, randomNumber);
         runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "after_reshuffle" });
       }
-      const drawn = drawCard(p, randomNumber, !shouldReshuffle || reshuffled);
+      const drawn = drawCard(p, randomNumber, !shouldReshuffle);
       if (!drawn) break;
     }
   }

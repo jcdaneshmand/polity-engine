@@ -37,7 +37,7 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   const fame = setupFameDeck(options.enabledExpansions.includes("trade_routes"));
   modules.forEach((m)=>m.modifyFameSetup?.(ctx as any));
   modules.forEach((m)=>m.modifyPlayerSetup?.(ctx as any));
-  const game: GameState = { players, cardDb: Object.fromEntries(filteredCards.map((c)=>[c.id,{id:c.id,displayName:c.displayName,type:"action",cost:0,tags:c.tags,effects:c.effects as any}])), market, sharedDiscard: [], log: [{round:1,playerId:"setup",message:`Setup report delayed=${setupReport.delayedAggressiveCount}`},{round:1,playerId:"setup",message:`Fame cards: ${fame.length}`}], round: 1, options, setupReport } as any;
+  const game: GameState = { players, cardDb: Object.fromEntries(filteredCards.map((c)=>[c.id,{id:c.id,displayName:c.displayName,type:"action",cost:c.cost.materials + c.cost.population + c.cost.progress + c.cost.goods,tags:c.tags,effects:c.effects as any}])), market, sharedDiscard: [], log: [{round:1,playerId:"setup",message:`Setup report delayed=${setupReport.delayedAggressiveCount}`},{round:1,playerId:"setup",message:`Fame cards: ${fame.length}`}], round: 1, options, setupReport } as any;
   if (options.mode === "practice") (game as any).practiceClock = { turnsRemaining: 12, progressTokens: 0 };
   if (options.mode === "solo") (game as any).solo = { bot: createBotState(options.soloDifficulty ?? "chieftain"), difficulty: options.soloDifficulty ?? "chieftain" };
   return game;

@@ -14,6 +14,11 @@ function isTradeExpansionDisabled(ctx: Ctx): boolean {
   return !(ctx.enabledExpansions ?? []).includes("trade_routes");
 }
 
+function removeOneCard(cards: string[], target: string): void {
+  const index = cards.indexOf(target);
+  if (index >= 0) cards.splice(index, 1);
+}
+
 export function runEffects(ctx: Ctx, effects: Effect[]): void {
   for (const effect of effects) runEffect(ctx, effect);
 }
@@ -49,8 +54,8 @@ function runEffect(ctx: Ctx, effect: Effect): void {
     }
     case "move_self_to_history": {
       if (!ctx.selfCardId) break;
-      p.playArea = p.playArea.filter((id) => id !== ctx.selfCardId);
-      p.discard = p.discard.filter((id) => id !== ctx.selfCardId);
+      removeOneCard(p.playArea, ctx.selfCardId);
+      removeOneCard(p.discard, ctx.selfCardId);
       p.history.push(ctx.selfCardId);
       ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `${ctx.selfCardId} moved to history.` });
       break;

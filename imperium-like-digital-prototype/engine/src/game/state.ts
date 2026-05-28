@@ -1,3 +1,5 @@
+import type { GameOptions } from "../options/gameOptions";
+import type { BotState } from "../solo/soloTypes";
 export type CardType = "action" | "unit" | "technology" | "legacy";
 export type ZoneName = "deck" | "hand" | "discard" | "playArea" | "history" | "exile";
 export type ResourceName = "materials" | "knowledge" | "influence" | "unrest" | "goods";
@@ -22,4 +24,8 @@ export interface PlayerState {
 }
 export interface GameState {
   players: Record<string, PlayerState>; cardDb: Record<string, Card>; market: string[]; sharedDiscard: string[]; log: GameLogEntry[]; round: number;
+  options?: GameOptions;
+  practiceClock?: { turnsRemaining: number; progressTokens: number };
+  solo?: { bot: BotState; difficulty: string };
+  setupReport?: { delayedAggressiveCount: number; usedQuickSetup: boolean; shortGameExiled: number; shortGameNationAdvanced: number };
 }

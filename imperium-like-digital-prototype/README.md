@@ -56,3 +56,48 @@ Architecture note:
 - Current module: `trade_routes`.
 - Cards/nations can declare `requiredExpansions` and `excludedExpansions` and are filtered accordingly.
 - Trade/Commerce/Profit options are marked unavailable (ignored with log entry) when `trade_routes` is disabled.
+
+
+## Default demo options
+```json
+{
+  "playerCount": 2,
+  "mode": "multiplayer",
+  "enabledExpansions": [],
+  "enabledVariants": []
+}
+```
+
+## Example GameOptions
+```json
+{
+  "playerCount": 2,
+  "mode": "multiplayer",
+  "enabledExpansions": ["trade_routes"],
+  "enabledVariants": ["lowered_aggression", "precious_cards"]
+}
+```
+
+```json
+{
+  "playerCount": 1,
+  "mode": "solo",
+  "enabledExpansions": [],
+  "enabledVariants": ["short_game"],
+  "soloDifficulty": "chieftain"
+}
+```
+
+```json
+{
+  "playerCount": 1,
+  "mode": "practice",
+  "enabledExpansions": [],
+  "enabledVariants": []
+}
+```
+
+How to enable Trade Routes in code:
+- pass `options.enabledExpansions: ["trade_routes"]` to setup data.
+
+Reminder: this repository contains placeholder data only.

@@ -28,6 +28,13 @@ export function isTradeRoutesMutuallyExclusiveAlternate(card: NormalizedCardReco
   return card.commonsGroup !== "trade_routes" && card.commonsGroup !== "trade_friendly" && (card.tags ?? []).includes("trade_routes_alternate");
 }
 
+export function satisfiesCommonsModeRules(card: NormalizedCardRecord, options: CommonsSetupOptions): boolean {
+  if (!options.mode) return true;
+  const allowedModes = card.allowedModes ?? ["multiplayer", "solo", "practice"];
+  const disallowedModes = card.disallowedModes ?? [];
+  return allowedModes.includes(options.mode) && !disallowedModes.includes(options.mode);
+}
+
 export function selectCommonsCards(cards: NormalizedCardRecord[], options: CommonsSetupOptions): CommonsSelectionReport {
   const selectedCards: NormalizedCardRecord[] = [];
   const removedForPlayerCount: string[] = [];
@@ -37,6 +44,10 @@ export function selectCommonsCards(cards: NormalizedCardRecord[], options: Commo
   for (const card of cards) {
     if (card.ownership !== "commons") continue;
     if (card.commonsSetId !== options.commonsSetId) continue;
+    if (!satisfiesCommonsModeRules(card, options)) {
+      removedForVariant.push(card.id);
+      continue;
+    }
     if (!satisfiesCommonsExpansionRules(card, options)) {
       removedForExpansion.push(card.id);
       continue;

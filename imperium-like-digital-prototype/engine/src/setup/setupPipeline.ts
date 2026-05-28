@@ -48,6 +48,10 @@ function mergeCardsById(baseCards: NormalizedCardRecord[], sourceCards: Record<s
   return [...byId.values()];
 }
 
+function cardRecordById(cards: NormalizedCardRecord[]): Record<string, NormalizedCardRecord> {
+  return Object.fromEntries(cards.map((card) => [card.id, card]));
+}
+
 export function createInitialGameStateFromPipeline(args: { options: GameOptions; playerNationIds?: Record<string,string>; cardDb: Record<string, NormalizedCardRecord>; nationDb: Record<string, NationDefinition>; randomSeed?: string; usePrivateRules?: boolean; privateRulesetPath?: string; privateStrategyPath?: string; }): GameState {
   const validation = validateGameOptions(args.options);
   const fatals = validation.issues.filter((i) => i.level === "fatal");
@@ -119,8 +123,10 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   game.cardDb = buildGameCardDb(filteredCards);
   const selectedNationIds = Object.values(selected);
   const effectiveCommonsPlayerCount = options.mode === "solo" || options.mode === "practice" ? 2 : options.playerCount;
+  const commonsCandidateCards = filterCardsByOptions(Object.values(args.cardDb), { ...options, playerCount: effectiveCommonsPlayerCount });
+  const commonsCandidateCardDb = cardRecordById(commonsCandidateCards);
   const commonsSetup = buildCommonsSetup({
-    cardDb: args.cardDb,
+    cardDb: commonsCandidateCardDb,
     nationDb: args.nationDb,
     options: {
       commonsSetId: options.commonsSetId ?? "classics",
@@ -136,7 +142,7 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   setupReport.commonsSetup = commonsSetup;
   setupReport.delayedAggressiveCount = Math.max(setupReport.delayedAggressiveCount, commonsSetup.delayedCards.length);
   setupReport.usedQuickSetup = options.enabledVariants.includes("quick_setup");
-  game.cardDb = buildGameCardDb(mergeCardsById(filteredCards, args.cardDb, commonsSetup.selectedCommonsCards));
+  game.cardDb = buildGameCardDb(mergeCardsById(filteredCards, commonsCandidateCardDb, commonsSetup.selectedCommonsCards));
   game.market = commonsSetup.initialMarket.map((slot) => slot.cardId).filter(Boolean) as string[];
   modules.forEach((m)=>m.modifyMarketSetup?.(ctx as any));
   const fame = commonsSetup.fameDeck.length ? commonsSetup.fameDeck : setupFameDeck(options.enabledExpansions.includes("trade_routes"));

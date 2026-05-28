@@ -18,6 +18,27 @@ import { runEffects } from "../cards/effectRunner";
 import { runNationHooks } from "../nations/nationRulesetHooks";
 import type { NationRulesetApplicationReport } from "../nations/nationRulesetTypes";
 
+function buildGameCardDb(cards: NormalizedCardRecord[]): GameState["cardDb"] {
+  return Object.fromEntries(filteredCardEntries(cards)) as GameState["cardDb"];
+}
+
+function filteredCardEntries(cards: NormalizedCardRecord[]) {
+  return cards.map((c) => [c.id, {
+    id: c.id,
+    displayName: c.displayName,
+    type: c.cardType as any,
+    cardType: c.cardType as any,
+    suit: c.suit as any,
+    cost: c.cost.materials + c.cost.population + c.cost.progress + c.cost.goods,
+    tags: c.tags,
+    effects: c.effects as any,
+    allowedModes: c.allowedModes,
+    disallowedModes: c.disallowedModes,
+    playerCountRequirement: c.playerCountRequirement,
+    startingLocation: c.startingLocation
+  }] as const);
+}
+
 export function createInitialGameStateFromPipeline(args: { options: GameOptions; playerNationIds?: Record<string,string>; cardDb: Record<string, NormalizedCardRecord>; nationDb: Record<string, NationDefinition>; randomSeed?: string; usePrivateRules?: boolean; privateRulesetPath?: string; privateStrategyPath?: string; }): GameState {
   const validation = validateGameOptions(args.options);
   const fatals = validation.issues.filter((i) => i.level === "fatal");
@@ -38,7 +59,7 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   const players: GameState["players"] = {};
   const game: GameState = {
     players,
-    cardDb: Object.fromEntries(filteredCards.map((c)=>[c.id,{id:c.id,displayName:c.displayName,type:"action",cost:c.cost.materials + c.cost.population + c.cost.progress + c.cost.goods,tags:c.tags,effects:c.effects as any}])),
+    cardDb: buildGameCardDb(filteredCards),
     market: [],
     sharedDiscard: [],
     log: [],
@@ -86,7 +107,7 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
 
   const ctx = { options, players, cards: filteredCards, setupReport };
   modules.forEach((m)=>m.modifyDeckConstruction?.(ctx as any));
-  game.cardDb = Object.fromEntries(filteredCards.map((c)=>[c.id,{id:c.id,displayName:c.displayName,type:"action",cost:c.cost.materials + c.cost.population + c.cost.progress + c.cost.goods,tags:c.tags,effects:c.effects as any}])) as any;
+  game.cardDb = buildGameCardDb(filteredCards);
   const marketSetup = setupMarket(filteredCards, options.enabledVariants.includes("quick_setup"));
   game.market = marketSetup.market;
   modules.forEach((m)=>m.modifyMarketSetup?.(ctx as any));

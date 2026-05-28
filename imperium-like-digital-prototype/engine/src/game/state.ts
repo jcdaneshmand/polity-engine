@@ -2,8 +2,8 @@ import type { GameOptions } from "../options/gameOptions";
 import type { SoloState } from "../solo/botTypes";
 import type { NationRuleset, NationRulesetApplicationReport, SideAreaState, ZoneState } from "../nations/nationRulesetTypes";
 import type { NationStrategyProfile } from "../nations/nationStrategyTypes";
-export type CardType = "action" | "unit" | "technology" | "legacy";
-export type Suit = "military" | "civic" | "economic" | "unrest" | "wild";
+export type CardType = "action" | "unit" | "technology" | "legacy" | "in_play" | "attack" | "power" | "state" | "development" | "accession" | "nation" | "region" | "unrest" | "fame" | "trade_route" | "bot_state" | "other";
+export type Suit = "military" | "civic" | "economic" | "unrest" | "wild" | "region" | "uncivilized" | "civilized" | "tributary" | "fame" | "power" | "trade_route" | "none" | "multi";
 export type ZoneName = "deck" | "hand" | "discard" | "playArea" | "history" | "exile";
 export type ResourceName = "materials" | "knowledge" | "influence" | "unrest" | "goods";
 export type EffectOp = Record<string, unknown>;
@@ -18,7 +18,7 @@ export type Effect =
   | { trigger: "on_play"; op: "conditional_resource_at_least"; resource: ResourceName; atLeast: number; then: Effect[]; else?: Effect[] }
   | { trigger: "on_play"; op: "choose_one"; choices: Effect[][] };
 
-export interface Card { id: string; displayName: string; type: CardType; suit?: Suit; vp?: number; cost: number; tags: string[]; effects: Effect[]; allowedModes?: ("multiplayer"|"solo"|"practice")[]; disallowedModes?: ("multiplayer"|"solo"|"practice")[]; playerCountRequirement?: string; startingLocation?: string; }
+export interface Card { id: string; displayName: string; type: CardType; cardType?: CardType; suit?: Suit; vp?: number; cost: number; tags: string[]; effects: Effect[]; allowedModes?: ("multiplayer"|"solo"|"practice")[]; disallowedModes?: ("multiplayer"|"solo"|"practice")[]; playerCountRequirement?: string; startingLocation?: string; }
 export interface GameLogEntry { round: number; playerId: string; message: string; }
 export interface PlayerState {
   deck: string[]; hand: string[]; discard: string[]; playArea: string[]; history: string[]; exile: string[];

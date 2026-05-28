@@ -17,7 +17,11 @@ export function playCard({ G, ctx, random }: MoveCtx, cardId: string): void {
   p.actionsRemaining -= 1;
   runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "before_play_card", payload: { cardId }, randomNumber: random?.Number });
   const handIndex = p.hand.indexOf(cardId);
-  if (handIndex >= 0) p.hand.splice(handIndex, 1);
+  if (handIndex < 0) {
+    p.actionsRemaining += 1;
+    return;
+  }
+  p.hand.splice(handIndex, 1);
   p.playArea.push(cardId);
 
   runEffects(
@@ -29,10 +33,11 @@ export function playCard({ G, ctx, random }: MoveCtx, cardId: string): void {
 
 export function acquireCard({ G, ctx, random }: MoveCtx, cardId: string): void {
   const p = G.players[ctx.currentPlayer];
-  const idx = G.market.indexOf(cardId);
-  if (idx < 0) return;
+  if (!G.market.includes(cardId)) return;
 
   runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "before_acquire", payload: { cardId }, randomNumber: random?.Number });
+  const idx = G.market.indexOf(cardId);
+  if (idx < 0) return;
   G.market.splice(idx, 1);
   p.discard.push(cardId);
   G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: `Acquired ${cardId}.` });

@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { onTurnEnd } from "../game/turn";
 import type { GameOptions } from "../options/gameOptions";
 import { runBotCleanup } from "../solo/botCleanup";
@@ -232,5 +235,47 @@ describe("solo bot setup from imported cards", () => {
     onTurnEnd(G, { currentPlayer: "0" } as any, () => 0.99);
 
     expect(G.solo?.bot.botHistory).toContain("bot_region");
+  });
+
+  it("honors rulesets that skip default solo bot setup", () => {
+    const rulesetPath = path.join(os.tmpdir(), `polity-ruleset-${Date.now()}.json`);
+    try {
+      fs.writeFileSync(rulesetPath, JSON.stringify([{
+        nationId: "test_nation_sun_coast",
+        displayName: "Sun Coast Ruleset",
+        rulesetTags: ["solo_bot_exception"],
+        requiredExpansions: [],
+        setupOverrides: [],
+        zoneOverrides: [],
+        stateOverrides: [],
+        reshuffleOverrides: [],
+        cleanupOverrides: [],
+        solsticeOverrides: [],
+        scoringOverrides: [],
+        collapseOverrides: [],
+        botOverrides: [{ op: "skip_default_dynasty_setup" }],
+        shortGameOverrides: [],
+        hookRules: [],
+        implemented: true,
+        tested: true
+      }]));
+
+      const G = createInitialGameStateFromPipeline({
+        options,
+        cardDb: {
+          starter: card({}),
+          bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
+        } as any,
+        nationDb: { test_nation_sun_coast: nation },
+        playerNationIds: { "0": "test_nation_sun_coast" },
+        usePrivateRules: true,
+        privateRulesetPath: rulesetPath
+      });
+
+      expect(G.solo).toBeUndefined();
+      expect(G.log.some((entry) => entry.message === "NationRulesetApplied(test_nation_sun_coast/bot/skip_default_dynasty_setup)")).toBe(true);
+    } finally {
+      fs.rmSync(rulesetPath, { force: true });
+    }
   });
 });

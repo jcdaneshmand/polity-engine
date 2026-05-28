@@ -64,6 +64,15 @@ function validateOverrides<T extends { op: string }>(nationId: string, field: st
   return issues;
 }
 
+
+function asArray<T>(nationId: string, issues: ValidationIssue[], field: string, value: unknown): T[] {
+  if (!Array.isArray(value)) {
+    issues.push({ nationId, field, reason: "must be an array" });
+    return [];
+  }
+  return value as T[];
+}
+
 function validateHookRules(nationId: string, hookRules: NationHookRule[]): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   if (!Array.isArray(hookRules)) {
@@ -87,25 +96,33 @@ export function validateNationRuleset(ruleset: NationRuleset): ValidationIssue[]
   const nationId = ruleset?.nationId || "<unknown-nation>";
   const issues: ValidationIssue[] = [];
 
-  ruleset.rulesetTags.forEach((tag, i) => {
+  const rulesetTags = asArray<NationRulesetTag>(nationId, issues, "rulesetTags", ruleset?.rulesetTags);
+  const requiredExpansions = asArray<ExpansionId>(nationId, issues, "requiredExpansions", ruleset?.requiredExpansions);
+  const allowedModes = asArray<GameMode>(nationId, issues, "allowedModes", ruleset?.allowedModes ?? []);
+  const disallowedModes = asArray<GameMode>(nationId, issues, "disallowedModes", ruleset?.disallowedModes ?? []);
+  const requiredVariants = asArray<VariantId>(nationId, issues, "requiredVariants", ruleset?.requiredVariants ?? []);
+  const excludedVariants = asArray<VariantId>(nationId, issues, "excludedVariants", ruleset?.excludedVariants ?? []);
+  const excludedExpansions = asArray<ExpansionId>(nationId, issues, "excludedExpansions", ruleset?.excludedExpansions ?? []);
+
+  rulesetTags.forEach((tag, i) => {
     if (!has(RULESET_TAGS, tag)) issues.push({ nationId, field: `rulesetTags[${i}]`, reason: `invalid tag '${String(tag)}'` });
   });
-  (ruleset.allowedModes ?? []).forEach((mode, i) => {
+  allowedModes.forEach((mode, i) => {
     if (!has(GAME_MODES, mode)) issues.push({ nationId, field: `allowedModes[${i}]`, reason: `invalid mode '${String(mode)}'` });
   });
-  (ruleset.disallowedModes ?? []).forEach((mode, i) => {
+  disallowedModes.forEach((mode, i) => {
     if (!has(GAME_MODES, mode)) issues.push({ nationId, field: `disallowedModes[${i}]`, reason: `invalid mode '${String(mode)}'` });
   });
-  (ruleset.requiredVariants ?? []).forEach((variant, i) => {
+  requiredVariants.forEach((variant, i) => {
     if (!has(VARIANTS, variant)) issues.push({ nationId, field: `requiredVariants[${i}]`, reason: `invalid variant '${String(variant)}'` });
   });
-  (ruleset.excludedVariants ?? []).forEach((variant, i) => {
+  excludedVariants.forEach((variant, i) => {
     if (!has(VARIANTS, variant)) issues.push({ nationId, field: `excludedVariants[${i}]`, reason: `invalid variant '${String(variant)}'` });
   });
-  (ruleset.requiredExpansions ?? []).forEach((expansion, i) => {
+  requiredExpansions.forEach((expansion, i) => {
     if (!has(EXPANSIONS, expansion)) issues.push({ nationId, field: `requiredExpansions[${i}]`, reason: `invalid expansion '${String(expansion)}'` });
   });
-  (ruleset.excludedExpansions ?? []).forEach((expansion, i) => {
+  excludedExpansions.forEach((expansion, i) => {
     if (!has(EXPANSIONS, expansion)) issues.push({ nationId, field: `excludedExpansions[${i}]`, reason: `invalid expansion '${String(expansion)}'` });
   });
 

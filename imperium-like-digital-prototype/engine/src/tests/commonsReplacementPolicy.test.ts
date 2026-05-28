@@ -32,4 +32,18 @@ describe("commons replacement policy", () => {
     const found = findEligibleReplacementCard({ removedCard: removed, allCards: [removed, replacement], selectedCards: [], options: options({ replacementPolicy: "use_replacements" }) });
     expect(found?.id).toBe("replacement_direct");
   });
+
+  it("does not substitute non-replacement cards even when replacement metadata matches", () => {
+    const removed = card({ id: "conflicting", replacementGroupId: "group_a" });
+    const nationCandidate = card({ id: "nation_candidate", ownership: "nation", replacementGroupId: "group_a" });
+    const commonsCandidate = card({ id: "commons_candidate", ownership: "commons", replacementForCardId: "conflicting" });
+    const replacement = card({ id: "replacement_a", ownership: "replacement", commonsGroup: "replacement", replacementGroupId: "group_a" });
+    const found = findEligibleReplacementCard({
+      removedCard: removed,
+      allCards: [removed, nationCandidate, commonsCandidate, replacement],
+      selectedCards: [],
+      options: options({ replacementPolicy: "use_replacements" })
+    });
+    expect(found?.id).toBe("replacement_a");
+  });
 });

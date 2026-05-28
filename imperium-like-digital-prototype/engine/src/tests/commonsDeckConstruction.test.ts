@@ -26,6 +26,16 @@ describe("commons deck construction", () => {
     expect(result.regionDeck).toEqual([]);
   });
 
+  it("quick_setup removes initial market cards from the remaining main deck", () => {
+    const result = buildCommonsDecks({
+      cards: Array.from({ length: 6 }, (_, i) => card({ id: `quick_${i}` })),
+      options: options({ enabledVariants: ["quick_setup"] })
+    });
+    const initialMarketCards = new Set(result.initialMarket.map((slot) => slot.cardId).filter(Boolean));
+    expect(initialMarketCards.size).toBe(5);
+    expect(result.mainDeck).toEqual(["quick_5"]);
+  });
+
   it("default setup uses suit-separated path", () => {
     const result = buildCommonsDecks({ cards: [card({ id: "region_a", setupBannerSuit: "region" }), card({ id: "civilized_a", setupBannerSuit: "civilized" })], options: options() });
     expect(result.constructionPath).toBe("suit_separated");

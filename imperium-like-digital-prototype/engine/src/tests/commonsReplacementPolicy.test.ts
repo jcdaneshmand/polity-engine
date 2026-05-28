@@ -18,4 +18,18 @@ describe("commons replacement policy", () => {
     const found = findEligibleReplacementCard({ removedCard: removed, allCards: [removed, tooManyPlayers, needsExpansion, eligible], selectedCards: [], options: options({ replacementPolicy: "use_replacements", effectiveCommonsPlayerCount: 2 }) });
     expect(found?.id).toBe("replacement_eligible");
   });
+
+  it("does not substitute unrelated cards when the removed card has no replacement link", () => {
+    const removed = card({ id: "conflicting" });
+    const unrelated = card({ id: "unrelated", ownership: "replacement", commonsGroup: "replacement" });
+    const found = findEligibleReplacementCard({ removedCard: removed, allCards: [removed, unrelated], selectedCards: [], options: options({ replacementPolicy: "use_replacements" }) });
+    expect(found).toBeUndefined();
+  });
+
+  it("can substitute a card linked directly to the removed card", () => {
+    const removed = card({ id: "conflicting" });
+    const replacement = card({ id: "replacement_direct", ownership: "replacement", commonsGroup: "replacement", replacementForCardId: "conflicting" });
+    const found = findEligibleReplacementCard({ removedCard: removed, allCards: [removed, replacement], selectedCards: [], options: options({ replacementPolicy: "use_replacements" }) });
+    expect(found?.id).toBe("replacement_direct");
+  });
 });

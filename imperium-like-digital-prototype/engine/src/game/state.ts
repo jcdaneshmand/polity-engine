@@ -1,5 +1,5 @@
 import type { GameOptions } from "../options/gameOptions";
-import type { CommonsSetupResult } from "../setup/commonsTypes";
+import type { CommonsSetupResult, MarketSlot } from "../setup/commonsTypes";
 import type { SoloState } from "../solo/botTypes";
 import type { NationRuleset, NationRulesetApplicationReport, SideAreaState, ZoneState } from "../nations/nationRulesetTypes";
 import type { NationStrategyProfile } from "../nations/nationStrategyTypes";
@@ -29,6 +29,7 @@ export interface PlayerState {
 }
 export interface GameState {
   players: Record<string, PlayerState>; cardDb: Record<string, Card>; market: string[]; sharedDiscard: string[]; log: GameLogEntry[]; round: number;
+  marketSlots?: MarketSlot[];
   activeNationRulesets?: Record<string, NationRuleset>;
   activeNationStrategyProfiles?: Record<string, NationStrategyProfile>;
   sideAreas?: Record<string, Record<string, SideAreaState>>;

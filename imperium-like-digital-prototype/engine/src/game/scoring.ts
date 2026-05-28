@@ -17,6 +17,21 @@ function getZoneCards(G: GameState, playerId: string, zoneId: string): string[] 
   return [];
 }
 
+function applyAutoWinCollapseOverride(G: GameState, playerId: string, ruleset: NonNullable<GameState["activeNationRulesets"]>[string], zoneId: string): void {
+  if (G.gameover || getZoneCards(G, playerId, zoneId).length > 0) return;
+  logOverride(G, playerId, ruleset.nationId, "collapse", "auto_win_if_zone_empty");
+  G.gameover = { winner: playerId, reason: `auto_win_if_zone_empty:${zoneId}` };
+  G.log.push({ round: G.round, playerId, message: `CollapseAutoWin(${ruleset.nationId}/${zoneId})` });
+}
+
+export function applyCollapseWinChecks(G: GameState, playerId: string): void {
+  const ruleset = G.activeNationRulesets?.[playerId];
+  if (!ruleset || G.gameover) return;
+  for (const ov of ruleset.collapseOverrides ?? []) {
+    if (ov.op === "auto_win_if_zone_empty") applyAutoWinCollapseOverride(G, playerId, ruleset, ov.zoneId);
+  }
+}
+
 export function applyScoringLifecycleOnce(G: GameState, playerId: string): void {
   const ruleset = G.activeNationRulesets?.[playerId];
   if (!ruleset) return;
@@ -31,11 +46,11 @@ export function applyScoringLifecycleOnce(G: GameState, playerId: string): void 
     if (ov.op === "custom_scoring_effect") runEffects({ G, playerId, enabledExpansions: G.options?.enabledExpansions }, ov.effect as any);
   }
   for (const ov of ruleset.collapseOverrides ?? []) {
-    logOverride(G, playerId, ruleset.nationId, "collapse", ov.op);
-    if (ov.op === "auto_win_if_zone_empty" && getZoneCards(G, playerId, ov.zoneId).length === 0 && !G.gameover) {
-      G.gameover = { winner: playerId, reason: `auto_win_if_zone_empty:${ov.zoneId}` };
-      G.log.push({ round: G.round, playerId, message: `CollapseAutoWin(${ruleset.nationId}/${ov.zoneId})` });
+    if (ov.op === "auto_win_if_zone_empty") {
+      applyAutoWinCollapseOverride(G, playerId, ruleset, ov.zoneId);
+      continue;
     }
+    logOverride(G, playerId, ruleset.nationId, "collapse", ov.op);
     if (ov.op === "custom_collapse_resolution") runEffects({ G, playerId, enabledExpansions: G.options?.enabledExpansions }, ov.effect as any);
   }
   runNationHooks({ G, playerId, trigger: "after_scoring" });

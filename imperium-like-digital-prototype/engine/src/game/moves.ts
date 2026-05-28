@@ -2,6 +2,7 @@ import type { Ctx } from "boardgame.io";
 import { runEffects } from "../cards/effectRunner";
 import type { GameState } from "./state";
 import { runNationHooks } from "../nations/nationRulesetHooks";
+import { acquireMarketCardToDiscard } from "./marketAcquisition";
 
 interface MoveCtx {
   G: GameState;
@@ -37,15 +38,11 @@ export function playCard({ G, ctx, random }: MoveCtx, cardId: string): void {
 }
 
 export function acquireCard({ G, ctx, random }: MoveCtx, cardId: string): void {
-  const p = G.players[ctx.currentPlayer];
   if (!G.market.includes(cardId)) return;
 
   logTurnPhase(G, ctx.currentPlayer, "acquire_resolution", `acquireCard(${cardId})`);
   runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "before_acquire", payload: { cardId }, randomNumber: random?.Number });
-  const idx = G.market.indexOf(cardId);
-  if (idx < 0) return;
-  G.market.splice(idx, 1);
-  p.discard.push(cardId);
+  if (!acquireMarketCardToDiscard(G, ctx.currentPlayer, cardId)) return;
   G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: `Acquired ${cardId}.` });
   if (G.market.length === 0) {
     G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: "MarketExhausted(no_refill_pipeline_defined)." });

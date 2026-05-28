@@ -80,6 +80,14 @@ function validateHookRules(nationId: string, hookRules: NationHookRule[]): Valid
   }
   hookRules.forEach((hook, index) => {
     const base = `hookRules[${index}]`;
+    if (typeof hook !== "object" || hook === null || Array.isArray(hook)) {
+      issues.push({ nationId, field: base, reason: "hook entry must be an object" });
+      return;
+    }
+    if (!hasFields(hook, ["trigger"])) {
+      issues.push({ nationId, field: `${base}.trigger`, reason: "missing trigger" });
+      return;
+    }
     if (!has(HOOK_TRIGGERS, hook.trigger)) issues.push({ nationId, field: `${base}.trigger`, reason: `invalid trigger '${String(hook.trigger)}'` });
     if (!Array.isArray(hook.effects)) {
       issues.push({ nationId, field: `${base}.effects`, reason: "effects must be an array" });

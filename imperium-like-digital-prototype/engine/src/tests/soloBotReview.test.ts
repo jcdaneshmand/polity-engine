@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GameOptions } from "../options/gameOptions";
 import { runBotCleanup } from "../solo/botCleanup";
+import { runBotTurn } from "../solo/botTurn";
 import { createInitialGameStateFromPipeline } from "../setup/setupPipeline";
 import { resolveBotCard } from "../solo/botStateTableResolver";
 
@@ -144,5 +145,28 @@ describe("solo bot setup from imported cards", () => {
 
     expect(bot.slots[1].cardId).toBe("bot_region");
     expect(bot.botDiscard).toEqual([]);
+  });
+
+  it("flushes bot turn log entries once", () => {
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    bot.botDeck = [];
+    bot.botDiscard = [];
+    Object.values(bot.slots).forEach((slot) => { slot.cardId = undefined; });
+    bot.botLog.push({ round: 1, playerId: bot.botId, message: "buffered bot event" });
+
+    runBotTurn({ G, rollDie: () => 6 });
+    runBotTurn({ G, rollDie: () => 6 });
+
+    expect(G.log.filter((entry) => entry.message === "buffered bot event")).toHaveLength(1);
+    expect(bot.botLog).toEqual([]);
   });
 });

@@ -17,6 +17,6 @@ export function runBotTurn(args: { G: GameState; rollDie?: () => number }): Game
     slot.cardId = undefined;
   }
   runBotCleanup(bot);
-  G.log.push(...bot.botLog);
+  G.log.push(...bot.botLog.splice(0));
   return G;
 }

@@ -26,7 +26,7 @@ function isFame(card: NormalizedCardRecord): boolean {
 
 function isMarketEligible(card: NormalizedCardRecord): boolean {
   if (card.marketEligible !== undefined) return card.marketEligible;
-  return card.startingLocation === "market" || card.startingLocation === "supply" || !isUnrest(card) && !isFame(card);
+  return card.startingLocation === "market" || card.startingLocation === "supply";
 }
 
 function isMainDeckEligible(card: NormalizedCardRecord): boolean {

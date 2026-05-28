@@ -6,9 +6,10 @@ interface MoveCtx {
   G: GameState;
   ctx: Ctx;
   events?: { endTurn?: () => void };
+  random?: { Number?: () => number };
 }
 
-export function playCard({ G, ctx }: MoveCtx, cardId: string): void {
+export function playCard({ G, ctx, random }: MoveCtx, cardId: string): void {
   const p = G.players[ctx.currentPlayer];
   if (p.actionsRemaining < 1 || !p.hand.includes(cardId)) return;
 
@@ -18,7 +19,7 @@ export function playCard({ G, ctx }: MoveCtx, cardId: string): void {
   p.playArea.push(cardId);
 
   runEffects(
-    { G, playerId: ctx.currentPlayer, selfCardId: cardId },
+    { G, playerId: ctx.currentPlayer, selfCardId: cardId, randomNumber: random?.Number },
     G.cardDb[cardId]?.effects ?? []
   );
 }

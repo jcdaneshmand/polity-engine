@@ -1,7 +1,12 @@
 import type { Effect, GameState } from "../game/state";
 import { drawCard } from "../game/zones";
 
-interface Ctx { G: GameState; playerId: string; selfCardId?: string; }
+interface Ctx {
+  G: GameState;
+  playerId: string;
+  selfCardId?: string;
+  randomNumber?: () => number;
+}
 
 export function runEffects(ctx: Ctx, effects: Effect[]): void {
   for (const effect of effects) runEffect(ctx, effect);
@@ -22,7 +27,8 @@ function runEffect(ctx: Ctx, effect: Effect): void {
     case "discard_random": {
       for (let i = 0; i < effect.count; i++) {
         if (p.hand.length === 0) break;
-        const randomIndex = Math.floor(Math.random() * p.hand.length);
+        const roll = ctx.randomNumber ? ctx.randomNumber() : Math.random();
+        const randomIndex = Math.floor(roll * p.hand.length);
         const [card] = p.hand.splice(randomIndex, 1);
         if (card) { p.discard.push(card); ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `Discarded ${card} at random.` }); }
       }

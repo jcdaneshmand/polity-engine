@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { onTurnEnd } from "../game/turn";
 import type { GameOptions } from "../options/gameOptions";
 import { runBotCleanup } from "../solo/botCleanup";
 import { loadBotStateTables } from "../solo/botStateTableLoader";
@@ -206,5 +207,30 @@ describe("solo bot setup from imported cards", () => {
     const second = loadBotStateTables();
 
     expect(second.placeholder_S.rows[0].id).toBe("row_unrest");
+  });
+
+  it("runs the bot turn from the solo turn end lifecycle", () => {
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    G.solo!.botStateTables[G.solo!.bot.botStateTableId] = {
+      id: "test_table",
+      botNationId: "test_nation_sun_coast",
+      displayName: "Test Table",
+      side: "S",
+      rows: [
+        { id: "all_history", priority: 1, trigger: { kind: "other" }, effects: [{ op: "bot_put_revealed_card_into_history" }], implemented: true, tested: true }
+      ]
+    };
+
+    onTurnEnd(G, { currentPlayer: "0" } as any, () => 0.99);
+
+    expect(G.solo?.bot.botHistory).toContain("bot_region");
   });
 });

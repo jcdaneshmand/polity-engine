@@ -4,6 +4,7 @@ import { applyCollapseWinChecks } from "./scoring";
 import { drawCardWithReshuffleLifecycle, moveAllToDiscard } from "./zones";
 import { runEffects } from "../cards/effectRunner";
 import { runNationHooks } from "../nations/nationRulesetHooks";
+import { runBotTurn } from "../solo/botTurn";
 
 function logOverride(G: GameState, playerId: string, nationId: string, category: string, op: string): void {
   G.log.push({ round: G.round, playerId, message: `NationRulesetApplied(${nationId}/${category}/${op})` });
@@ -51,6 +52,7 @@ export function onTurnEnd(G: GameState, ctx: Ctx, randomNumber?: () => number): 
     for (const ov of ruleset?.botOverrides ?? []) {
       if (ov.op === "bot_custom_cleanup") runEffects({ G, playerId: ctx.currentPlayer, enabledExpansions: G.options?.enabledExpansions, randomNumber }, ov.effect as any);
     }
+    runBotTurn({ G, rollDie: randomNumber ? () => Math.floor(randomNumber() * 6) + 1 : undefined });
   }
   G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: "TurnPhase(reshuffle_as_needed): next_draw_handles_reshuffle_lifecycle" });
   runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "before_solstice", randomNumber });

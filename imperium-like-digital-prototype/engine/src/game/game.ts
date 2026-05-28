@@ -9,6 +9,7 @@ export const PrototypeGame: Game<GameState> = {
   name: "prototype-game",
   setup: (_ctx, setupData?: { playerNationIds?: Record<string, string>; options?: GameOptions }) =>
     createInitialGameState({ playerNationIds: setupData?.playerNationIds, options: setupData?.options }),
+  endIf: ({ G }) => G.gameover,
   turn: { onBegin: ({ G, ctx, random }) => onTurnBegin(G, ctx, random?.Number), onEnd: ({ G, ctx }) => onTurnEnd(G, ctx) },
   moves: { playCard, acquireCard, endTurn: endTurnMove }
 };

@@ -15,7 +15,8 @@ export function validatePrivateNationStrategyRows(rows: PrivateNationStrategyCsv
 
 
 if (require.main === module) {
-  const input = process.argv[2] || "private-card-data/nation-strategy-template.csv";
+  const args = Object.fromEntries(process.argv.slice(2).reduce((acc,v,i,a)=>v.startsWith("--")?[...acc,[v.slice(2),a[i+1]]]:acc,[] as any));
+  const input = (args.input as string) || "private-card-data/nation-strategy-template.csv";
   const rows = parseCsvFile(input) as PrivateNationStrategyCsvRow[];
   const report = validatePrivateNationStrategyRows(rows);
   console.log(JSON.stringify(report, null, 2));

@@ -1,0 +1,21 @@
+.board-layout { display:grid; grid-template-columns: 1fr 360px; gap:12px; padding:12px; color:#f3ead8; background:linear-gradient(#2d2a28,#1f1d1b); min-height:100vh; }
+.left,.right { display:flex; flex-direction:column; gap:10px; }
+.shared-row,.market-row,.hand-row { display:grid; gap:8px; }
+.shared-row { grid-template-columns: repeat(8,minmax(100px,1fr)); }
+.market-row { grid-template-columns: repeat(5,minmax(120px,1fr)); }
+.hand-row { grid-template-columns: repeat(auto-fill,minmax(170px,1fr)); }
+.panel, .card-slot, .pile-tile, .card-tile { background:#3b342f; border:1px solid #6e5f50; border-radius:10px; }
+.pile-tile,.card-tile, .actions button { min-height:44px; cursor:pointer; color:#f3ead8; }
+.card-tile { padding:8px; text-align:left; }
+.card-tile.is-selected { outline:3px solid #e6b86a; }
+.card-tile .title { font-size:1rem; font-weight:700; }
+.card-tile .meta,.card-tile .summary { font-size:.85rem; opacity:.95; }
+.card-slot { padding:6px; }
+.slot-label { font-size:.8rem; color:#d9c7a7; }
+.panel { padding:10px; }
+.actions { display:flex; flex-direction:column; gap:6px; }
+.actions button[disabled] { opacity:.6; }
+.log-panel { max-height:220px; overflow:auto; }
+.badge { display:inline-flex; justify-content:space-between; gap:8px; padding:6px 8px; border:1px solid #7a6a57; border-radius:8px; margin:3px; }
+.player-area { display:flex; flex-direction:column; gap:8px; }
+@media (max-width: 1280px) { .board-layout { grid-template-columns: 1fr 320px; } }

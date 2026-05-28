@@ -101,3 +101,27 @@ How to enable Trade Routes in code:
 - pass `options.enabledExpansions: ["trade_routes"]` to setup data.
 
 Reminder: this repository contains placeholder data only.
+
+
+## Steam Deck-friendly UI
+Run:
+```bash
+npm install
+npm run dev
+```
+
+The board layout shows:
+- top shared deck/pile row
+- central 5-slot market
+- player status/zones/hand area
+- right-side card detail + action menu + log
+
+Keyboard controls:
+- Enter/A: select/confirm
+- Esc/B: back
+- Tab: cycle panel focus placeholder
+- E: end turn shortcut
+- I: innovate placeholder
+- R: revolt placeholder
+
+All visuals and styling are placeholder/original only.

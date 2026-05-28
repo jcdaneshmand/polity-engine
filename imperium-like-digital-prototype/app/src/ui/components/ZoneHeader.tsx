@@ -1,0 +1,1 @@
+export function ZoneHeader({ title, subtitle }: { title: string; subtitle?: string }) { return <div className="zone-header"><strong>{title}</strong>{subtitle ? <span>{subtitle}</span> : null}</div>; }

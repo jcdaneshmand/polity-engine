@@ -61,6 +61,18 @@ describe("commons deck construction", () => {
     expect(result.constructionPath).toBe("suit_separated");
   });
 
+  it("honors smallDeckEligible=false when splitting banner-suit cards", () => {
+    const result = buildCommonsDecks({
+      cards: [
+        ...Array.from({ length: 5 }, (_, i) => card({ id: `small_${i}`, setupBannerSuit: "region" })),
+        card({ id: "main_only_banner_card", setupBannerSuit: "region", smallDeckEligible: false })
+      ],
+      options: options()
+    });
+    expect(result.regionDeck).not.toContain("main_only_banner_card");
+    expect(result.mainDeck).toEqual(["main_only_banner_card"]);
+  });
+
   it("initial market has 5 slots", () => {
     const result = buildCommonsDecks({
       cards: Array.from({ length: 6 }, (_, i) => card({ id: `market_${i}`, setupBannerSuit: "region" })),

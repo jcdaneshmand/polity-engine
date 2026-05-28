@@ -14,6 +14,7 @@ import { loadNationStrategyProfiles } from "../nations/nationStrategyLoader";
 import { getNationRuleset, validateNationRulesetCompatibility } from "../nations/nationRulesetRegistry";
 import { applySetupOverrides } from "../nations/nationSetupOverrides";
 import { runEffects } from "../cards/effectRunner";
+import { runNationHooks } from "../nations/nationRulesetHooks";
 import type { NationRulesetApplicationReport } from "../nations/nationRulesetTypes";
 
 export function createInitialGameStateFromPipeline(args: { options: GameOptions; playerNationIds?: Record<string,string>; cardDb: Record<string, NormalizedCardRecord>; nationDb: Record<string, NationDefinition>; randomSeed?: string; usePrivateRules?: boolean; privateRulesetPath?: string; privateStrategyPath?: string; }): GameState {
@@ -42,6 +43,8 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
     const compat = validateNationRulesetCompatibility(nation, ruleset, options);
     if (compat.length) throw new Error(`Ruleset incompatibility for ${nid}: ${compat.join(", ")}`);
     const player = setupPlayerFromNation({ nation, cardDb: args.cardDb, playerId: pid, shuffle: (x)=>[...x], enabledExpansions: options.enabledExpansions });
+    const setupHookGame = { players: { [pid]: player }, options, activeNationRulesets: { [pid]: ruleset }, log: [], round: 1 } as any;
+    runNationHooks({ G: setupHookGame, playerId: pid, trigger: "before_setup_player" });
     applySetupOverrides(player, ruleset);
     for (const ov of ruleset.zoneOverrides) {
       if (ov.op === "create_zone") {
@@ -57,6 +60,7 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
         if (ov.op === "add_nation_cards_to_discard") player.discard.push(...player.nationDeck.splice(0, ov.count));
       }
     }
+    runNationHooks({ G: setupHookGame, playerId: pid, trigger: "after_setup_player" });
     activeNationRulesets[pid] = ruleset;
     if (strategyDb[nid]) activeNationStrategyProfiles[pid] = strategyDb[nid];
     rulesetReports.push({ playerId: pid, nationId: nid, appliedTags: ruleset.rulesetTags, appliedOverrides: ruleset.setupOverrides.map((x:any)=>x.op), warnings: [] });

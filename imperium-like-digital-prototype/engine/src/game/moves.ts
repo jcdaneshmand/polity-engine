@@ -1,6 +1,7 @@
 import type { Ctx } from "boardgame.io";
 import { runEffects } from "../cards/effectRunner";
 import type { GameState } from "./state";
+import { runNationHooks } from "../nations/nationRulesetHooks";
 
 interface MoveCtx {
   G: GameState;
@@ -17,11 +18,13 @@ export function playCard({ G, ctx, random }: MoveCtx, cardId: string): void {
   const handIndex = p.hand.indexOf(cardId);
   if (handIndex >= 0) p.hand.splice(handIndex, 1);
   p.playArea.push(cardId);
+  runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "before_play_card", payload: { cardId } });
 
   runEffects(
     { G, playerId: ctx.currentPlayer, selfCardId: cardId, randomNumber: random?.Number },
     G.cardDb[cardId]?.effects ?? []
   );
+  runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "after_play_card", payload: { cardId } });
 }
 
 export function acquireCard({ G, ctx }: MoveCtx, cardId: string): void {
@@ -29,9 +32,11 @@ export function acquireCard({ G, ctx }: MoveCtx, cardId: string): void {
   const idx = G.market.indexOf(cardId);
   if (idx < 0) return;
 
+  runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "before_acquire", payload: { cardId } });
   G.market.splice(idx, 1);
   p.discard.push(cardId);
   G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: `Acquired ${cardId}.` });
+  runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "after_acquire", payload: { cardId } });
 }
 
 export function endTurnMove({ events }: MoveCtx): void {

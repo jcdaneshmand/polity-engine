@@ -42,6 +42,20 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
     if (compat.length) throw new Error(`Ruleset incompatibility for ${nid}: ${compat.join(", ")}`);
     const player = setupPlayerFromNation({ nation, cardDb: args.cardDb, playerId: pid, shuffle: (x)=>[...x], enabledExpansions: options.enabledExpansions });
     applySetupOverrides(player, ruleset);
+    for (const ov of ruleset.zoneOverrides) {
+      if (ov.op === "create_zone") {
+        player.sideAreas ??= {};
+        player.sideAreas[ov.zoneId] ??= [];
+      }
+    }
+    for (const ov of ruleset.stateOverrides) {
+      if (ov.op === "start_as_state" && !player.stateArea.includes(ov.state)) player.stateArea.unshift(ov.state);
+    }
+    if (options.enabledVariants.includes("short_game")) {
+      for (const ov of ruleset.shortGameOverrides) {
+        if (ov.op === "add_nation_cards_to_discard") player.discard.push(...player.nationDeck.splice(0, ov.count));
+      }
+    }
     activeNationRulesets[pid] = ruleset;
     if (strategyDb[nid]) activeNationStrategyProfiles[pid] = strategyDb[nid];
     rulesetReports.push({ playerId: pid, nationId: nid, appliedTags: ruleset.rulesetTags, appliedOverrides: ruleset.setupOverrides.map((x:any)=>x.op), warnings: [] });
@@ -56,6 +70,12 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   modules.forEach((m)=>m.modifyFameSetup?.(ctx as any));
   modules.forEach((m)=>m.modifyPlayerSetup?.(ctx as any));
   const game: GameState = { players, cardDb: Object.fromEntries(filteredCards.map((c)=>[c.id,{id:c.id,displayName:c.displayName,type:"action",cost:c.cost.materials + c.cost.population + c.cost.progress + c.cost.goods,tags:c.tags,effects:c.effects as any}])), market, sharedDiscard: [], log: [{round:1,playerId:"setup",message:`Setup report delayed=${setupReport.delayedAggressiveCount}`},{round:1,playerId:"setup",message:`Fame cards: ${fame.length}`}], round: 1, options, setupReport, activeNationRulesets, activeNationStrategyProfiles, rulesetReports } as any;
+  Object.entries(activeNationRulesets).forEach(([playerId, ruleset]) => {
+    (ruleset.zoneOverrides ?? []).forEach((ov:any) => game.log.push({ round: game.round, playerId, message: `NationRulesetApplied(${ruleset.nationId}/zone/${ov.op})` }));
+    (ruleset.stateOverrides ?? []).forEach((ov:any) => game.log.push({ round: game.round, playerId, message: `NationRulesetApplied(${ruleset.nationId}/state/${ov.op})` }));
+    if (options.enabledVariants.includes("short_game")) (ruleset.shortGameOverrides ?? []).forEach((ov:any) => game.log.push({ round: game.round, playerId, message: `NationRulesetApplied(${ruleset.nationId}/short_game/${ov.op})` }));
+    if (options.mode === "solo") (ruleset.botOverrides ?? []).forEach((ov:any) => game.log.push({ round: game.round, playerId, message: `NationRulesetApplied(${ruleset.nationId}/bot/${ov.op})` }));
+  });
   if (options.mode === "practice") (game as any).practiceClock = { turnsRemaining: 12, progressTokens: 0 };
   if (options.mode === "solo") (game as any).solo = { bot: createBotState(options.soloDifficulty ?? "chieftain"), difficulty: options.soloDifficulty ?? "chieftain" };
   return game;

@@ -1,5 +1,5 @@
 import type { Effect, GameState } from "../game/state";
-import { drawCard } from "../game/zones";
+import { drawCardWithReshuffleLifecycle } from "../game/zones";
 
 interface Ctx {
   G: GameState;
@@ -35,7 +35,7 @@ function runEffect(ctx: Ctx, effect: Effect): void {
   switch (effect.op) {
     case "draw": {
       for (let i = 0; i < effect.count; i++) {
-        const card = drawCard(p, ctx.randomNumber);
+        const card = drawCardWithReshuffleLifecycle(ctx.G, ctx.playerId, ctx.randomNumber);
         ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: card ? `Drew ${card}` : "Draw failed (no deck/discard cards)." });
       }
       break;
@@ -56,8 +56,22 @@ function runEffect(ctx: Ctx, effect: Effect): void {
       if (!ctx.selfCardId) break;
       removeOneCard(p.playArea, ctx.selfCardId);
       removeOneCard(p.discard, ctx.selfCardId);
-      p.history.push(ctx.selfCardId);
-      ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `${ctx.selfCardId} moved to history.` });
+      const disableHistory = ctx.G.activeNationRulesets?.[ctx.playerId]?.zoneOverrides?.find((ov: any) => ov.op === "disable_history");
+      if (disableHistory?.replacementBehavior === "discard") {
+        p.discard.push(ctx.selfCardId);
+        ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `${ctx.selfCardId} moved to discard (history disabled).` });
+      } else if (disableHistory?.replacementBehavior === "exile") {
+        p.exile.push(ctx.selfCardId);
+        ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `${ctx.selfCardId} moved to exile (history disabled).` });
+      } else if (disableHistory?.replacementBehavior === "alternate_zone") {
+        p.sideAreas ??= {};
+        p.sideAreas.alternate_history ??= [];
+        p.sideAreas.alternate_history.push(ctx.selfCardId);
+        ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `${ctx.selfCardId} moved to alternate_history (history disabled).` });
+      } else {
+        p.history.push(ctx.selfCardId);
+        ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `${ctx.selfCardId} moved to history.` });
+      }
       break;
     }
     case "acquire_card": {

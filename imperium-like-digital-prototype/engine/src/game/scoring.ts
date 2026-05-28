@@ -27,6 +27,8 @@ export function applyScoringLifecycleOnce(G: GameState, playerId: string): void 
 }
 
 export function scorePlayer(G: GameState, playerId: string): number {
+  applyScoringLifecycleOnce(G, playerId);
+
   const p = G.players[playerId];
   const ruleset = G.activeNationRulesets?.[playerId];
   const excludedZones = new Set((ruleset?.scoringOverrides ?? []).filter((ov: any) => ov.op === "exclude_zone_from_scoring").map((ov: any) => ov.zoneId));

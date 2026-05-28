@@ -6,6 +6,12 @@ interface Ctx {
   playerId: string;
   selfCardId?: string;
   randomNumber?: () => number;
+  enabledExpansions?: string[];
+}
+
+
+function isTradeExpansionDisabled(ctx: Ctx): boolean {
+  return !(ctx.enabledExpansions ?? []).includes("trade_routes");
 }
 
 export function runEffects(ctx: Ctx, effects: Effect[]): void {
@@ -14,6 +20,13 @@ export function runEffects(ctx: Ctx, effects: Effect[]): void {
 
 function runEffect(ctx: Ctx, effect: Effect): void {
   const p = ctx.G.players[ctx.playerId];
+
+  const maybeOp = (effect as unknown as { op?: string }).op ?? "";
+  if ((maybeOp === "trade" || maybeOp === "commerce" || maybeOp === "profit") && isTradeExpansionDisabled(ctx)) {
+    ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `Ignored ${maybeOp} because trade_routes is disabled.` });
+    return;
+  }
+
   switch (effect.op) {
     case "draw": {
       for (let i = 0; i < effect.count; i++) {

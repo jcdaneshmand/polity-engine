@@ -6,7 +6,8 @@ import { onTurnBegin, onTurnEnd } from "./turn";
 
 export const PrototypeGame: Game<GameState> = {
   name: "prototype-game",
-  setup: (_ctx, setupData?: { playerNationIds?: Record<string, string> }) => createInitialGameState({ playerNationIds: setupData?.playerNationIds }),
+  setup: (_ctx, setupData?: { playerNationIds?: Record<string, string>; enabledExpansions?: ("trade_routes")[] }) =>
+    createInitialGameState({ playerNationIds: setupData?.playerNationIds, enabledExpansions: setupData?.enabledExpansions ?? [] }),
   turn: { onBegin: ({ G, ctx }) => onTurnBegin(G, ctx), onEnd: ({ G, ctx }) => onTurnEnd(G, ctx) },
   moves: { playCard, acquireCard, endTurn: endTurnMove }
 };

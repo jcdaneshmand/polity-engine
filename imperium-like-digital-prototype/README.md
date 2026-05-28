@@ -49,3 +49,10 @@ Architecture note:
 - Cards are behavior units.
 - Nations are starting-state and rule-modifier bundles.
 - Asymmetry should be data-driven via `NationDefinition` + typed hooks, not hard-coded nation-specific branches.
+
+
+## Expansion toggles
+- Game setup accepts `enabledExpansions: ExpansionId[]`.
+- Current module: `trade_routes`.
+- Cards/nations can declare `requiredExpansions` and `excludedExpansions` and are filtered accordingly.
+- Trade/Commerce/Profit options are marked unavailable (ignored with log entry) when `trade_routes` is disabled.

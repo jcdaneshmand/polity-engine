@@ -1,0 +1,4 @@
+[
+  {"id":"test_civ_river_compact","displayName":"River Compact","startingDeck":["test_action_foundry_shift","test_action_archive_survey","test_action_foundry_shift","test_action_scholars_circle","test_action_risk_audit"]},
+  {"id":"test_civ_hill_concord","displayName":"Hill Concord","startingDeck":["test_action_foundry_shift","test_action_civic_assembly","test_action_archive_survey","test_action_scholars_circle","test_action_emergency_tax"]}
+]

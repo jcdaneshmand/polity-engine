@@ -1,0 +1,1 @@
+export function CardSlot({ slot, children, attached }: { slot: number; children?: React.ReactNode; attached?: string }) { return <div className="card-slot"><div className="slot-label">Slot {slot}</div>{children}<div className="attached">{attached ?? ""}</div></div>; }

@@ -1,0 +1,1 @@
+export function GameLogPanel({ entries }: { entries: any[] }) { return <div className="panel log-panel">{entries.length===0 ? <div>No log entries.</div> : entries.map((e,i)=><div key={i}>R{e.round} P{e.playerId}: {e.message}</div>)}</div>; }

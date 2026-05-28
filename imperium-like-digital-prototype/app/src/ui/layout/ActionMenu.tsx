@@ -1,0 +1,1 @@
+export function ActionMenu({ actions, onAction }: { actions: any[]; onAction: (a:any)=>void }) { return <div className="panel actions">{actions.map((a)=> <button key={a.label} disabled={!a.enabled} title={a.reason || ""} onClick={()=>onAction(a)}>{a.label}{a.enabled?"":" — "+(a.reason||"Unavailable")}</button>)}</div>; }

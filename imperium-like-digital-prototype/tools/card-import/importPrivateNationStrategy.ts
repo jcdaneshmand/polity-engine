@@ -1,0 +1,10 @@
+import fs from "node:fs";
+import { parseCsvFile } from "./csvParser";
+import { normalizeNationStrategy } from "./normalizeNationStrategy";
+import { validatePrivateNationStrategyRows } from "./validatePrivateNationStrategy";
+const args = Object.fromEntries(process.argv.slice(2).reduce((acc,v,i,a)=>v.startsWith('--')?[...acc,[v.slice(2),a[i+1]]]:acc,[] as any));
+const rows = parseCsvFile((args.input as string) || "private-card-data/nation-strategy-template.csv") as any[];
+const report = validatePrivateNationStrategyRows(rows);
+fs.writeFileSync((args.report as string)||"generated-private/nation-strategy-import-report.json", JSON.stringify(report,null,2));
+if (report.counts.fatal===0) fs.writeFileSync((args.output as string)||"generated-private/nation-strategy.normalized.json", JSON.stringify(rows.map(normalizeNationStrategy),null,2));
+console.log(`strategy rows=${report.counts.rows} fatal=${report.counts.fatal} warnings=${report.counts.warnings}`);

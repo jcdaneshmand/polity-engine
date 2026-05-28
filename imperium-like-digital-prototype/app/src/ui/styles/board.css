@@ -19,3 +19,10 @@
 .badge { display:inline-flex; justify-content:space-between; gap:8px; padding:6px 8px; border:1px solid #7a6a57; border-radius:8px; margin:3px; }
 .player-area { display:flex; flex-direction:column; gap:8px; }
 @media (max-width: 1280px) { .board-layout { grid-template-columns: 1fr 320px; } }
+
+
+.card-tile--portrait { min-height: 180px; aspect-ratio: 3 / 4; }
+.card-tile--landscape { min-height: 120px; aspect-ratio: 4 / 3; }
+.card-slot .card-tile--landscape { width: 100%; }
+.status-cards { display:grid; grid-template-columns: repeat(auto-fill,minmax(160px,1fr)); gap:6px; }
+.card-detail-panel { min-height: 220px; }

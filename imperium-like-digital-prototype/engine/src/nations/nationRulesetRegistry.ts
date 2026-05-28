@@ -9,6 +9,9 @@ export function validateNationRulesetCompatibility(nation: NationDefinition, rul
   if (ruleset.nationId !== nation.id) errs.push(`Ruleset ${ruleset.nationId} does not match nation ${nation.id}`);
   for (const ex of ruleset.requiredExpansions) if (!options.enabledExpansions.includes(ex)) errs.push(`Ruleset requires disabled expansion ${ex}`);
   for (const ex of ruleset.excludedExpansions ?? []) if (options.enabledExpansions.includes(ex)) errs.push(`Ruleset excluded by enabled expansion ${ex}`);
+  for (const v of ruleset.requiredVariants ?? []) if (!options.enabledVariants.includes(v)) errs.push(`Ruleset requires disabled variant ${v}`);
+  for (const v of ruleset.excludedVariants ?? []) if (options.enabledVariants.includes(v)) errs.push(`Ruleset excluded by enabled variant ${v}`);
+  if (options.enabledVariants.includes("short_game") && ruleset.shortGameOverrides.some((ov) => ov.op === "excluded_from_short_game")) errs.push("Ruleset excluded by enabled variant short_game");
   if (ruleset.disallowedModes?.includes(options.mode)) errs.push(`Ruleset disallows mode ${options.mode}`);
   return errs;
 }

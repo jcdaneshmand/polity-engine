@@ -25,9 +25,9 @@ export function onTurnBegin(G: GameState, ctx: Ctx, randomNumber?: () => number)
     while (p.hand.length < 5) {
       const shouldReshuffle = p.deck.length === 0 && p.discard.length > 0;
       if (shouldReshuffle) {
-        runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "before_reshuffle" });
+        runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "before_reshuffle", randomNumber });
         maybeReshuffleDeck(G, ctx.currentPlayer, randomNumber);
-        runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "after_reshuffle" });
+        runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "after_reshuffle", randomNumber });
       }
       const drawn = drawCard(p, randomNumber, !shouldReshuffle);
       if (!drawn) break;

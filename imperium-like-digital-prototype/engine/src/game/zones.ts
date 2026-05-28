@@ -1,6 +1,7 @@
 import type { PlayerState } from "./state";
 import type { GameState } from "./state";
 import { runEffects } from "../cards/effectRunner";
+import { runNationHooks } from "../nations/nationRulesetHooks";
 
 function logOverride(G: GameState, playerId: string, nationId: string, category: string, op: string): void {
   G.log.push({ round: G.round, playerId, message: `NationRulesetApplied(${nationId}/${category}/${op})` });
@@ -49,10 +50,9 @@ export function drawCardWithReshuffleLifecycle(G: GameState, playerId: string, r
   const p = G.players[playerId];
   const shouldReshuffle = p.deck.length === 0 && p.discard.length > 0;
   if (shouldReshuffle) {
-    const { runNationHooks } = require("../nations/nationRulesetHooks");
-    runNationHooks({ G, playerId, trigger: "before_reshuffle" });
+    runNationHooks({ G, playerId, trigger: "before_reshuffle", randomNumber });
     maybeReshuffleDeck(G, playerId, randomNumber);
-    runNationHooks({ G, playerId, trigger: "after_reshuffle" });
+    runNationHooks({ G, playerId, trigger: "after_reshuffle", randomNumber });
   }
   return drawCard(p, randomNumber, !shouldReshuffle);
 }

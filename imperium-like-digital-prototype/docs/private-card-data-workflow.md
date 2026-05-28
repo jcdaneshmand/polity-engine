@@ -33,6 +33,19 @@ Combined:
 - Use `public_placeholder_name` for screenshots/demos.
 - `generated-private/` and `reference/` are gitignored to avoid accidental leaks.
 
+## UI render safety for stream/public builds
+Safe-for-stream/public-build criteria:
+- `privateName` and `rawEffectTextPrivate` are rendered only through the shared guard in `app/src/ui/debug/privateCardDebug.ts`.
+- The guard is opt-in only: `VITE_SHOW_PRIVATE_CARD_DEBUG` must be exactly `"true"` for private fields to render.
+- Release/public builds must not set `VITE_SHOW_PRIVATE_CARD_DEBUG` (or set it to `"false"`).
+
+Pre-release verification checklist:
+1. Confirm `app/src/ui/debug/privateCardDebug.ts` still defines the canonical guard.
+2. Search UI render points for private fields and verify they use that guard:
+   - `rg "privateName|rawEffectTextPrivate" app/src/ui`
+3. Check environment and deployment configs to confirm `VITE_SHOW_PRIVATE_CARD_DEBUG` is not enabled for production/public targets.
+4. Perform a manual UI sanity pass in a non-debug build to verify private fields are not visible.
+
 ## Suggested incremental workflow
 1. Enter 10–15 simple cards.
 2. Implement `effect_ops_json` for those cards.

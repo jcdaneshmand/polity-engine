@@ -7,6 +7,16 @@ export type BotCardResolutionResult = { resolvedRowId?: string; cardDestination:
 
 const match = (row: BotStateTable["rows"][number], card: Card) => row.trigger.kind === "card_id" ? row.trigger.cardId === card.id : row.trigger.kind === "suit" ? row.trigger.suit === card.suit : row.trigger.kind === "card_type" ? row.trigger.cardType === card.type : row.trigger.kind === "tag" ? card.tags.includes(row.trigger.tag) : row.trigger.kind === "unrest" ? card.tags.includes("unrest") || card.suit === "unrest" : row.trigger.kind === "other";
 
+function findSideTableId(G: GameState, bot: BotState, nextSide: string): string | undefined {
+  const tables = G.solo?.botStateTables;
+  if (!tables) return undefined;
+  const currentTable = tables[bot.botStateTableId];
+  const tableBaseId = currentTable?.id ?? bot.botStateTableId.replace(/_[^_]+$/, "");
+  const expectedKey = `${tableBaseId}_${nextSide}`;
+  if (tables[expectedKey]) return expectedKey;
+  return Object.entries(tables).find(([, table]) => table.id === tableBaseId && table.side === nextSide)?.[0];
+}
+
 function applyBotEffect(G: GameState, bot: BotState, effect: BotEffectOp): string[] {
   switch (effect.op) {
     case "bot_gain_resource":
@@ -17,7 +27,14 @@ function applyBotEffect(G: GameState, bot: BotState, effect: BotEffectOp): strin
       return [];
     case "bot_flip_state_table":
       if (effect.nextTableId) bot.botStateTableId = effect.nextTableId;
-      if (effect.nextSide) bot.botStateSide = effect.nextSide;
+      if (effect.nextSide) {
+        if (!effect.nextTableId) {
+          const nextTableId = findSideTableId(G, bot, effect.nextSide);
+          if (!nextTableId) return [`missing bot state table for side: ${effect.nextSide}`];
+          bot.botStateTableId = nextTableId;
+        }
+        bot.botStateSide = effect.nextSide;
+      }
       return [];
     case "bot_flip_merchant_state":
       bot.merchantState = effect.nextState;

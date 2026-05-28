@@ -278,4 +278,42 @@ describe("solo bot setup from imported cards", () => {
       fs.rmSync(rulesetPath, { force: true });
     }
   });
+
+  it("switches bot state table keys when a row flips to the matching side", () => {
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    G.solo!.botStateTables = {
+      placeholder_S: {
+        id: "placeholder",
+        botNationId: "test_nation_sun_coast",
+        displayName: "Test Table",
+        side: "S",
+        rows: [
+          { id: "flip", priority: 1, trigger: { kind: "other" }, effects: [{ op: "bot_flip_state_table", nextSide: "F" }], implemented: true, tested: true }
+        ]
+      },
+      placeholder_F: {
+        id: "placeholder",
+        botNationId: "test_nation_sun_coast",
+        displayName: "Test Table",
+        side: "F",
+        rows: [
+          { id: "front", priority: 1, trigger: { kind: "other" }, effects: [{ op: "bot_put_revealed_card_into_history" }], implemented: true, tested: true }
+        ]
+      }
+    };
+    G.solo!.bot.botStateTableId = "placeholder_S";
+
+    resolveBotCard({ G, bot: G.solo!.bot, revealedCardId: "bot_region", source: "slot", table: G.solo!.botStateTables.placeholder_S });
+
+    expect(G.solo?.bot.botStateSide).toBe("F");
+    expect(G.solo?.bot.botStateTableId).toBe("placeholder_F");
+  });
 });

@@ -15,7 +15,7 @@ import { getNationRuleset, validateNationRulesetCompatibility } from "../nations
 import { applySetupOverrides } from "../nations/nationSetupOverrides";
 import type { NationRulesetApplicationReport } from "../nations/nationRulesetTypes";
 
-export function createInitialGameStateFromPipeline(args: { options: GameOptions; playerNationIds?: Record<string,string>; cardDb: Record<string, NormalizedCardRecord>; nationDb: Record<string, NationDefinition>; randomSeed?: string; }): GameState {
+export function createInitialGameStateFromPipeline(args: { options: GameOptions; playerNationIds?: Record<string,string>; cardDb: Record<string, NormalizedCardRecord>; nationDb: Record<string, NationDefinition>; randomSeed?: string; usePrivateRules?: boolean; privateRulesetPath?: string; privateStrategyPath?: string; }): GameState {
   const validation = validateGameOptions(args.options);
   const fatals = validation.issues.filter((i) => i.level === "fatal");
   if (fatals.length) throw new Error(fatals.map((f) => f.message).join("; "));
@@ -26,8 +26,8 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
     Array.from({ length: options.playerCount }, (_, i) => [String(i), "test_nation_sun_coast"])
   ) as Record<string, string>;
   const selected = { ...defaultSelected, ...(args.playerNationIds ?? {}) };
-  const rulesetDb = loadNationRulesets();
-  const strategyDb = loadNationStrategyProfiles();
+  const rulesetDb = loadNationRulesets({ usePrivate: args.usePrivateRules, privatePath: args.privateRulesetPath });
+  const strategyDb = loadNationStrategyProfiles({ usePrivate: args.usePrivateRules, privatePath: args.privateStrategyPath });
   const activeNationRulesets: Record<string, any> = {};
   const activeNationStrategyProfiles: Record<string, any> = {};
   const rulesetReports: NationRulesetApplicationReport[] = [];

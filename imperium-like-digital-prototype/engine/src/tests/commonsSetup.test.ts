@@ -85,6 +85,7 @@ describe("commons setup", () => {
     });
     expect(G.market).toEqual(["market_a"]);
     expect(G.marketSlots?.[0]).toMatchObject({ cardId: "market_a", attachedUnrestCardIds: ["unrest_a"] });
+    expect(G.log.some((entry) => entry.message === "MarketInitialized(slots=1)")).toBe(true);
   });
 
   it("removes rejected Commons cards from the runtime card database", () => {

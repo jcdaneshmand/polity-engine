@@ -17,7 +17,10 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   const options = validation.options;
   const modules = getEnabledRulesModules(options);
   const filteredCards = filterCardsByOptions(Object.values(args.cardDb), options);
-  const selected = args.playerNationIds ?? (options.playerCount === 1 ? {"0":"test_nation_sun_coast"} : {"0":"test_nation_sun_coast","1":"test_nation_sun_coast"});
+  const defaultSelected = Object.fromEntries(
+    Array.from({ length: options.playerCount }, (_, i) => [String(i), "test_nation_sun_coast"])
+  ) as Record<string, string>;
+  const selected = { ...defaultSelected, ...(args.playerNationIds ?? {}) };
   const players = Object.fromEntries(Object.entries(selected).map(([pid,nid])=>{
     const nation = args.nationDb[nid];
     if (!nation) throw new Error(`Nation not found: ${nid}`);

@@ -9,7 +9,7 @@ export type ResourceCost = { materials:number; population:number; progress:numbe
 export interface PrivateCardCsvRow { [k:string]: string; }
 export interface NormalizedCardRecord {
   id:string; displayName:string; privateName?:string; sourceBox?:string; setOrNation?:string; suit:Suit; cardType:CardType; stateRequirement?:string;
-  cost:ResourceCost; developmentCost:ResourceCost; vp:{mode:VpMode; value:number|null}; startingLocation:StartingLocation; playerCountRequirement?:string;
+  cost:ResourceCost; developmentCost:ResourceCost; vp:{mode:VpMode; value:number|null}; startingLocation:StartingLocation; playerCountRequirement?:"1+"|"2+"|"3+"|"4+"; ownership?: "commons" | "nation" | "bot" | "replacement"; commonsSetId?: "classics" | "legends" | "horizons" | "custom"; setupBannerSuit?: Suit; commonsGroup?: "base" | "trade_friendly" | "trade_routes" | "replacement"; replacementForCardId?: string; replacementGroupId?: string; conflictsWithNationIds?: string[]; delayableInLoweredAggression?: boolean; marketEligible?: boolean; smallDeckEligible?: boolean; mainDeckEligible?: boolean; unrestPileEligible?: boolean; fameDeckEligible?: boolean;
   isTradeRouteExpansion:boolean; rawEffectTextPrivate?:string; effects:EffectOp[]; tags:string[]; notes?:string; implemented:boolean; tested:boolean; requiredExpansions?: ExpansionId[]; excludedExpansions?: ExpansionId[]; allowedModes?: ("multiplayer"|"solo"|"practice")[]; disallowedModes?: ("multiplayer"|"solo"|"practice")[];
 }
 export interface CardImportError { level:"fatal"|"warning"; row:number; field:string; message:string; }

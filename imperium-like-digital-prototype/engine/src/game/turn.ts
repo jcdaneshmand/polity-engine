@@ -9,9 +9,9 @@ function logOverride(G: GameState, playerId: string, nationId: string, category:
   G.log.push({ round: G.round, playerId, message: `NationRulesetApplied(${nationId}/${category}/${op})` });
 }
 
-function applyCollapseWinChecksForAllPlayers(G: GameState): void {
+function applyCollapseWinChecksForAllPlayers(G: GameState, randomNumber?: () => number): void {
   for (const playerId of Object.keys(G.players)) {
-    applyCollapseWinChecks(G, playerId);
+    applyCollapseWinChecks(G, playerId, randomNumber);
     if (G.gameover) return;
   }
 }
@@ -34,7 +34,7 @@ export function onTurnBegin(G: GameState, ctx: Ctx, randomNumber?: () => number)
       if (!drawn) break;
     }
   }
-  applyCollapseWinChecksForAllPlayers(G);
+  applyCollapseWinChecksForAllPlayers(G, randomNumber);
 }
 
 export function onTurnEnd(G: GameState, ctx: Ctx, randomNumber?: () => number): void {
@@ -57,6 +57,6 @@ export function onTurnEnd(G: GameState, ctx: Ctx, randomNumber?: () => number): 
     if (ov.op === "custom_solstice_effect") runEffects({ G, playerId: ctx.currentPlayer, enabledExpansions: G.options?.enabledExpansions, randomNumber }, ov.effect as any);
   }
   runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "after_solstice", randomNumber });
-  applyCollapseWinChecksForAllPlayers(G);
+  applyCollapseWinChecksForAllPlayers(G, randomNumber);
   G.round += 1;
 }

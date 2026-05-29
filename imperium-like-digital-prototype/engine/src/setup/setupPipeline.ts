@@ -73,6 +73,19 @@ function getPlayerReferencedCardIds(players: GameState["players"]): string[] {
   return [...ids];
 }
 
+function buildRuntimeCardDb(args: {
+  filteredCards: NormalizedCardRecord[];
+  sourceCards: Record<string, NormalizedCardRecord>;
+  selectedCommonsCardIds: string[];
+  players: GameState["players"];
+}): GameState["cardDb"] {
+  return buildGameCardDb(mergeCardsById(
+    args.filteredCards.filter(isRuntimeBaseCard),
+    args.sourceCards,
+    [...args.selectedCommonsCardIds, ...getPlayerReferencedCardIds(args.players)]
+  ));
+}
+
 function cloneMarketSlots(slots: NonNullable<GameState["marketSlots"]>): NonNullable<GameState["marketSlots"]> {
   return slots.map((slot) => ({
     ...slot,
@@ -170,17 +183,24 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   setupReport.commonsSetup = commonsSetup;
   setupReport.delayedAggressiveCount = Math.max(setupReport.delayedAggressiveCount, commonsSetup.delayedCards.length);
   setupReport.usedQuickSetup = options.enabledVariants.includes("quick_setup");
-  game.cardDb = buildGameCardDb(mergeCardsById(
-    filteredCards.filter(isRuntimeBaseCard),
-    args.cardDb,
-    [...commonsSetup.selectedCommonsCards, ...getPlayerReferencedCardIds(players)]
-  ));
+  game.cardDb = buildRuntimeCardDb({
+    filteredCards,
+    sourceCards: args.cardDb,
+    selectedCommonsCardIds: commonsSetup.selectedCommonsCards,
+    players
+  });
   game.marketSlots = cloneMarketSlots(commonsSetup.initialMarket.filter((slot) => slot.cardId));
   game.market = commonsSetup.initialMarket.map((slot) => slot.cardId).filter(Boolean) as string[];
   modules.forEach((m)=>m.modifyMarketSetup?.(ctx as any));
   const fame = commonsSetup.fameDeck.length ? commonsSetup.fameDeck : setupFameDeck(options.enabledExpansions.includes("trade_routes"));
   modules.forEach((m)=>m.modifyFameSetup?.(ctx as any));
   modules.forEach((m)=>m.modifyPlayerSetup?.(ctx as any));
+  game.cardDb = buildRuntimeCardDb({
+    filteredCards,
+    sourceCards: args.cardDb,
+    selectedCommonsCardIds: commonsSetup.selectedCommonsCards,
+    players
+  });
   game.log.push({round:1,playerId:"setup",message:`Setup report delayed=${setupReport.delayedAggressiveCount}`},{round:1,playerId:"setup",message:`Fame cards: ${fame.length}`});
   commonsSetup.setupWarnings.forEach((message) => game.log.push({ round: 1, playerId: "setup", message }));
   game.log.push({ round: 1, playerId: "setup", message: `MarketInitialized(slots=${game.market.length})` });

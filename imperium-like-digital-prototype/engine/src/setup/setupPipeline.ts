@@ -175,7 +175,7 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
     args.cardDb,
     [...commonsSetup.selectedCommonsCards, ...getPlayerReferencedCardIds(players)]
   ));
-  game.marketSlots = cloneMarketSlots(commonsSetup.initialMarket);
+  game.marketSlots = cloneMarketSlots(commonsSetup.initialMarket.filter((slot) => slot.cardId));
   game.market = commonsSetup.initialMarket.map((slot) => slot.cardId).filter(Boolean) as string[];
   modules.forEach((m)=>m.modifyMarketSetup?.(ctx as any));
   const fame = commonsSetup.fameDeck.length ? commonsSetup.fameDeck : setupFameDeck(options.enabledExpansions.includes("trade_routes"));

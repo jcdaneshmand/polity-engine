@@ -84,6 +84,7 @@ describe("commons setup", () => {
       nationDb
     });
     expect(G.market).toEqual(["market_a"]);
+    expect(G.marketSlots).toHaveLength(1);
     expect(G.marketSlots?.[0]).toMatchObject({ cardId: "market_a", attachedUnrestCardIds: ["unrest_a"] });
     expect(G.log.some((entry) => entry.message === "MarketInitialized(slots=1)")).toBe(true);
   });

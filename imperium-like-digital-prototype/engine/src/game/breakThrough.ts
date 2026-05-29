@@ -1,6 +1,7 @@
 import type { GameState, Suit } from "./state";
 import { collectMarketResources, returnMarketUnrest } from "./marketResources";
 import { deckForSuit, refillMarketSlot } from "./marketRefill";
+import { triggerScoringIfMainDeckEmpty } from "./scoringTriggers";
 
 function cardMatchesSuit(G: GameState, cardId: string, suit: Suit): boolean {
   return G.cardDb[cardId]?.suit === suit;
@@ -39,6 +40,7 @@ function breakThroughFromDeck(G: GameState, playerId: string, suit: Suit): boole
       G.players[playerId].hand.push(cardId);
       mainDeck.push(...revealed);
       G.log.push({ round: G.round, playerId, message: `BreakThroughMainDeck(${cardId}/${suit}/revealed=${revealed.length})` });
+      triggerScoringIfMainDeckEmpty(G, playerId);
       return true;
     }
     revealed.push(cardId);

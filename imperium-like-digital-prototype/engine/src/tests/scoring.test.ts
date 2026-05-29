@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createInitialState } from "../game/initialState";
-import { scorePlayer, triggerScoring } from "../game/scoring";
+import { scorePlayer, triggerCollapse, triggerScoring } from "../game/scoring";
 import { onTurnEnd } from "../game/turn";
 
 function vpCard(id: string, vp: number): any {
@@ -102,6 +102,44 @@ describe("scoring", () => {
       winner: "1",
       reason: "normal_scoring:test_trigger",
       scores: { "0": 3, "1": 5 }
+    });
+  });
+
+  it("collapse scoring ends immediately and uses lowest Unrest instead of VP", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      p0_vp: vpCard("p0_vp", 1),
+      p1_vp: vpCard("p1_vp", 99),
+      unrest_card: { ...vpCard("unrest_card", 0), type: "unrest", cardType: "unrest", suit: "unrest", tags: ["unrest"] }
+    };
+    G.players["0"].discard = ["p0_vp"];
+    G.players["1"].discard = ["p1_vp", "unrest_card"];
+    G.players["0"].resources.unrest = 1;
+    G.players["1"].resources.unrest = 2;
+
+    triggerCollapse(G, "unrest_pile_empty", "1");
+
+    expect(G.gameover).toEqual({
+      winner: "0",
+      reason: "collapse:unrest_pile_empty",
+      scores: { "0": 1, "1": 3 }
+    });
+    expect(G.scoring).toBeUndefined();
+    expect(G.log.at(-1)?.message).toBe("CollapseFinalized(winner=0)");
+  });
+
+  it("collapse scoring shares victory when players tie for lowest Unrest", () => {
+    const G = createInitialState();
+    G.players["0"].resources.unrest = 1;
+    G.players["1"].resources.unrest = 1;
+
+    triggerCollapse(G, "test_collapse");
+
+    expect(G.gameover).toEqual({
+      winner: "0,1",
+      reason: "collapse:test_collapse",
+      scores: { "0": 1, "1": 1 }
     });
   });
 });

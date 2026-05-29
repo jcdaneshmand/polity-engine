@@ -10,6 +10,17 @@ describe("selection model", () => {
   it("actions include play for hand",()=> expect(getAvailableActionsForSelection({kind:"hand_card",id:"c1"},G,ctx).some(a=>a.label==="Play Card")).toBe(true));
   it("actions include acquire for market",()=> expect(getAvailableActionsForSelection({kind:"market_slot",id:"m1"},G,ctx).some(a=>a.label==="Acquire Card")).toBe(true));
   it("disabled action includes reason",()=> { const acts=getAvailableActionsForSelection({kind:"hand_card",id:"not"},G,ctx); const play=acts.find(a=>a.label==="Play Card"); expect(play?.enabled).toBe(false); expect(play?.reason).toBeTruthy(); });
+  it("disables normal play and acquire actions outside Activate turns",()=> {
+    const innovate = {...G,currentTurnType:"innovate"};
+    const play=getAvailableActionsForSelection({kind:"hand_card",id:"c1"},innovate,ctx).find(a=>a.action==="play");
+    expect(play?.enabled).toBe(false);
+    expect(play?.reason).toBe("Normal actions require an Activate turn");
+
+    const revolt = {...G,currentTurnType:"revolt"};
+    const acquire=getAvailableActionsForSelection({kind:"market_slot",id:"m1"},revolt,ctx).find(a=>a.action==="acquire");
+    expect(acquire?.enabled).toBe(false);
+    expect(acquire?.reason).toBe("Normal acquisition requires an Activate turn");
+  });
   it("pending choice actions take priority",()=> {
     const acts=getAvailableActionsForSelection(null,{...G,pendingChoice:{playerId:"0",sourceCardId:"c1",choices:[[{op:"gain_resource",resource:"knowledge",amount:1}],[{op:"draw",count:2}]]}},ctx);
     expect(acts.map((a)=>a.action)).toEqual(["resolveChoice","resolveChoice","endTurn"]);
@@ -17,6 +28,15 @@ describe("selection model", () => {
     expect(acts[1].label).toBe("Choose 2: Draw 2 cards");
     expect(acts[0].choiceIndex).toBe(0);
     expect(acts[1].choiceIndex).toBe(1);
+  });
+  it("labels empty pending-choice options as Skip",()=> {
+    const acts=getAvailableActionsForSelection(null,{...G,pendingChoice:{playerId:"0",sourceCardId:"c1",choices:[[{op:"gain_resource",resource:"knowledge",amount:1}],[]]}},ctx);
+    expect(acts[0].label).toBe("Choose 1: Gain 1 knowledge");
+    expect(acts[1].label).toBe("Choose 2: Skip");
+  });
+  it("labels resource-removal effects distinctly from costs",()=> {
+    const acts=getAvailableActionsForSelection(null,{...G,pendingChoice:{playerId:"0",sourceCardId:"c1",choices:[[{op:"remove_resource",resource:"materials",amount:2}]]}},ctx);
+    expect(acts[0].label).toBe("Choose 1: Remove 2 materials");
   });
   it("pending cleanup discard exposes discard and keep-hand actions",()=> {
     const acts=getAvailableActionsForSelection({kind:"hand_card",id:"c1"}, {...G,pendingCleanupDiscardChoice:{playerId:"0",cardIds:["c1"]}}, ctx);
@@ -46,6 +66,25 @@ describe("selection model", () => {
     const acts=getAvailableActionsForSelection({kind:"play_area_card",id:"r1"},withRegion,ctx);
     expect(acts.some((a)=>a.action==="recallRegion" && a.enabled)).toBe(true);
     expect(acts.some((a)=>a.action==="abandonRegion" && a.enabled)).toBe(true);
+  });
+  it("offers exhaust for an exhaust ability in play when an Exhaust token is available",()=> {
+    const withExhaust = {
+      ...G,
+      cardDb: {...G.cardDb, e1:{id:"e1",displayName:"Engine",type:"in_play",cardType:"in_play",effects:[{trigger:"on_exhaust",op:"gain_resource",resource:"knowledge",amount:1}]}},
+      players:{"0":{...G.players["0"],playArea:["e1"],exhaustTokensAvailable:1}}
+    };
+    const exhaust=getAvailableActionsForSelection({kind:"play_area_card",id:"e1"},withExhaust,ctx).find(a=>a.action==="exhaust");
+    expect(exhaust).toMatchObject({ label:"Exhaust Ability", enabled:true, cardId:"e1" });
+  });
+  it("disables exhaust abilities without an Exhaust token",()=> {
+    const withoutToken = {
+      ...G,
+      cardDb: {...G.cardDb, e1:{id:"e1",displayName:"Engine",type:"in_play",cardType:"in_play",effects:[{trigger:"on_exhaust",op:"gain_resource",resource:"knowledge",amount:1}]}},
+      players:{"0":{...G.players["0"],playArea:["e1"],exhaustTokensAvailable:0}}
+    };
+    const exhaust=getAvailableActionsForSelection({kind:"play_area_card",id:"e1"},withoutToken,ctx).find(a=>a.action==="exhaust");
+    expect(exhaust?.enabled).toBe(false);
+    expect(exhaust?.reason).toBe("No Exhaust tokens available");
   });
   it("offers garrison for a hand card when a region is in play",()=> {
     const withRegion = {

@@ -36,6 +36,7 @@ export default function BoardLayout({ G, ctx, moves }: any) {
     if (a.action === "acquire" && a.cardId) moves.acquireCard?.(a.cardId);
     if (a.action === "resolveChoice" && typeof a.choiceIndex === "number") moves.resolveChoice?.(a.choiceIndex);
     if (a.action === "resolveCleanupDiscard") moves.resolveCleanupDiscard?.(a.cardId ? [a.cardId] : []);
+    if (a.action === "exhaust" && a.cardId) moves.exhaustCard?.(a.cardId);
     if (a.action === "garrison" && a.hostCardId && a.cardId) moves.garrisonCard?.(a.hostCardId, a.cardId);
     if (a.action === "recallRegion" && a.cardId) moves.recallRegion?.(a.cardId);
     if (a.action === "abandonRegion" && a.cardId) moves.abandonRegion?.(a.cardId);

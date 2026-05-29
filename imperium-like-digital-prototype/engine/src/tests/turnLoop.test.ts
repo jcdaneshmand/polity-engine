@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createInitialState } from "../game/initialState";
-import { acquireCard, endTurnMove, playCard, resolveChoice, resolveCleanupDiscard, resolveCleanupMarketResource } from "../game/moves";
+import { acquireCard, endTurnMove, exhaustCard, playCard, resolveChoice, resolveCleanupDiscard, resolveCleanupMarketResource } from "../game/moves";
 import { onTurnEnd } from "../game/turn";
 
 const ctx = { currentPlayer: "0" } as any;
@@ -23,6 +23,20 @@ describe("turn loop", () => {
     playCard({ G, ctx }, card);
     expect(G.players["0"].playArea).toContain(card);
     expect(G.players["0"].discard).not.toContain(card);
+  });
+
+  it("does not resolve Solstice-triggered effects when a card is played", () => {
+    const G = createInitialState();
+    const card = "test_action_archive_survey";
+    G.cardDb[card] = {
+      ...G.cardDb[card],
+      effects: [{ trigger: "on_solstice", op: "gain_resource", resource: "knowledge", amount: 1 } as any]
+    };
+    G.players["0"].hand = [card];
+
+    playCard({ G, ctx }, card);
+
+    expect(G.players["0"].resources.knowledge).toBe(0);
   });
 
   it("end turn triggers boardgame endTurn event", () => {
@@ -158,6 +172,142 @@ describe("turn loop", () => {
     expect(G.round).toBe(2);
   });
 
+  it("runs Solstice-triggered effects from play area, Power, and State cards", () => {
+    const G = createInitialState();
+    G.players["0"].playArea = ["solstice_play_card"];
+    G.players["0"].powerArea = ["solstice_power_card"];
+    G.players["0"].stateArea = ["solstice_state_card"];
+    G.players["0"].hand = [];
+    G.players["1"].hand = [];
+    G.cardDb.solstice_play_card = {
+      id: "solstice_play_card",
+      displayName: "Solstice Play",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_solstice", op: "gain_resource", resource: "materials", amount: 1 } as any]
+    };
+    G.cardDb.solstice_power_card = {
+      id: "solstice_power_card",
+      displayName: "Solstice Power",
+      type: "power",
+      cardType: "power",
+      suit: "power",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_solstice", op: "gain_resource", resource: "knowledge", amount: 1 } as any]
+    };
+    G.cardDb.solstice_state_card = {
+      id: "solstice_state_card",
+      displayName: "Solstice State",
+      type: "state",
+      cardType: "state",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_solstice", op: "gain_resource", resource: "goods", amount: 1 } as any]
+    };
+
+    onTurnEnd(G, { currentPlayer: "1" } as any);
+
+    expect(G.players["0"].resources.materials).toBe(1);
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["0"].resources.goods).toBe(1);
+  });
+
+  it("runs end-of-Solstice effects after ordinary Solstice effects", () => {
+    const G = createInitialState();
+    G.players["0"].playArea = ["solstice_timing_card"];
+    G.players["0"].hand = [];
+    G.players["1"].hand = [];
+    G.cardDb.solstice_timing_card = {
+      id: "solstice_timing_card",
+      displayName: "Solstice Timing",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [
+        { trigger: "on_solstice", op: "gain_resource", resource: "materials", amount: 1 } as any,
+        { trigger: "end_of_solstice", op: "spend_resource", resource: "materials", amount: 1 } as any,
+        { trigger: "end_of_solstice", op: "gain_resource", resource: "knowledge", amount: 1 } as any
+      ]
+    };
+
+    onTurnEnd(G, { currentPlayer: "1" } as any);
+
+    expect(G.players["0"].resources.materials).toBe(0);
+    expect(G.players["0"].resources.knowledge).toBe(1);
+  });
+
+  it("spends an Exhaust token to resolve an exhaust ability from a card in play", () => {
+    const G = createInitialState();
+    G.players["0"].playArea = ["exhaust_play_card"];
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.cardDb.exhaust_play_card = {
+      id: "exhaust_play_card",
+      displayName: "Exhaust Play",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_exhaust", op: "gain_resource", resource: "knowledge", amount: 1 } as any]
+    };
+
+    exhaustCard({ G, ctx }, "exhaust_play_card");
+
+    expect(G.players["0"].exhaustTokensAvailable).toBe(0);
+    expect(G.players["0"].resources.knowledge).toBe(1);
+  });
+
+  it("can resolve an exhaust ability from the Power card", () => {
+    const G = createInitialState();
+    G.players["0"].powerArea = ["exhaust_power_card"];
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.cardDb.exhaust_power_card = {
+      id: "exhaust_power_card",
+      displayName: "Exhaust Power",
+      type: "power",
+      cardType: "power",
+      suit: "power",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_exhaust", op: "gain_resource", resource: "materials", amount: 1 } as any]
+    };
+
+    exhaustCard({ G, ctx }, "exhaust_power_card");
+
+    expect(G.players["0"].exhaustTokensAvailable).toBe(0);
+    expect(G.players["0"].resources.materials).toBe(1);
+  });
+
+  it("blocks exhaust abilities outside Activate turns", () => {
+    const G = createInitialState();
+    G.currentTurnType = "revolt";
+    G.players["0"].playArea = ["exhaust_play_card"];
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.cardDb.exhaust_play_card = {
+      id: "exhaust_play_card",
+      displayName: "Exhaust Play",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_exhaust", op: "gain_resource", resource: "knowledge", amount: 1 } as any]
+    };
+
+    exhaustCard({ G, ctx }, "exhaust_play_card");
+
+    expect(G.players["0"].exhaustTokensAvailable).toBe(1);
+    expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(exhaustCard): turn_type_not_activate(revolt)");
+  });
+
   it("logs invalid play attempts without mutating actions", () => {
     const G = createInitialState();
     G.players["0"].hand = ["test_action_archive_survey"];
@@ -169,6 +319,48 @@ describe("turn loop", () => {
     expect(G.players["0"].playArea).toEqual([]);
     expect(G.players["0"].actionsRemaining).toBe(0);
     expect(G.log.at(-1)?.message).toBe("InvalidMove(playCard): no_actions_remaining");
+  });
+
+  it("blocks normal card play during an Innovate turn", () => {
+    const G = createInitialState();
+    G.currentTurnType = "innovate";
+    G.players["0"].hand = ["test_action_archive_survey"];
+    G.players["0"].actionsRemaining = 1;
+
+    playCard({ G, ctx }, "test_action_archive_survey");
+
+    expect(G.players["0"].hand).toEqual(["test_action_archive_survey"]);
+    expect(G.players["0"].playArea).toEqual([]);
+    expect(G.players["0"].actionsRemaining).toBe(1);
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(playCard): turn_type_not_activate(innovate)");
+  });
+
+  it("blocks normal market acquisition during a Revolt turn", () => {
+    const G = createInitialState();
+    G.currentTurnType = "revolt";
+    G.market = ["test_action_foundry_shift"];
+    G.players["0"].resources.materials = 1;
+
+    acquireCard({ G, ctx }, "test_action_foundry_shift");
+
+    expect(G.players["0"].hand).not.toContain("test_action_foundry_shift");
+    expect(G.market).toEqual(["test_action_foundry_shift"]);
+    expect(G.players["0"].resources.materials).toBe(1);
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(acquireCard): turn_type_not_activate(revolt)");
+  });
+
+  it("still resolves cleanup and resets to Activate after a specialized turn ends", () => {
+    const endTurn = vi.fn();
+    const G = createInitialState();
+    G.currentTurnType = "innovate";
+    G.market = [];
+    G.players["0"].hand = [];
+
+    endTurnMove({ G, ctx, events: { endTurn } });
+    onTurnEnd(G, ctx);
+
+    expect(endTurn).toHaveBeenCalledTimes(1);
+    expect(G.currentTurnType).toBe("activate");
   });
 
   it("requires enough materials to acquire and refills from the market pool", () => {
@@ -244,6 +436,26 @@ describe("turn loop", () => {
     expect(G.unrestPile).toEqual(["test_unrest_2"]);
   });
 
+  it("triggers collapse when a market refill needs Unrest and the Unrest pile is empty", () => {
+    const G = createInitialState();
+    G.market = ["test_action_foundry_shift"];
+    G.marketRefillPool = ["test_action_archive_survey"];
+    G.marketDecks = undefined;
+    G.unrestPile = [];
+    G.players["0"].resources.materials = 1;
+    G.players["0"].resources.unrest = 1;
+    G.players["1"].resources.unrest = 2;
+
+    acquireCard({ G, ctx }, "test_action_foundry_shift");
+
+    expect(G.market).toEqual(["test_action_archive_survey"]);
+    expect(G.gameover).toEqual({
+      winner: "0",
+      reason: "collapse:unrest_pile_empty",
+      scores: { "0": 1, "1": 2 }
+    });
+  });
+
   it("refills acquired cards in the first two market slots from the main deck", () => {
     const G = createInitialState();
     G.market = ["test_action_foundry_shift", "test_action_archive_survey", "test_action_scholars_circle"];
@@ -264,6 +476,30 @@ describe("turn loop", () => {
     expect(G.marketDecks.mainDeck).toEqual([]);
     expect(G.marketDecks.uncivilizedDeck).toEqual(["test_action_lineage_record"]);
     expect(G.marketUnrest?.test_action_risk_audit).toEqual(["test_unrest_1"]);
+  });
+
+  it("triggers normal scoring when market refill empties the main deck", () => {
+    const G = createInitialState();
+    G.market = ["test_action_foundry_shift", "test_action_archive_survey"];
+    G.marketDecks = {
+      mainDeck: ["test_action_risk_audit"],
+      regionDeck: [],
+      uncivilizedDeck: [],
+      civilizedDeck: [],
+      tributaryDeck: []
+    };
+    G.unrestPile = ["test_unrest_1"];
+    G.players["0"].resources.materials = 1;
+
+    acquireCard({ G, ctx }, "test_action_foundry_shift");
+
+    expect(G.marketDecks.mainDeck).toEqual([]);
+    expect(G.scoring).toEqual({
+      reason: "main_deck_empty",
+      triggeredBy: "0",
+      phase: "finish_current_round"
+    });
+    expect(G.gameover).toBeUndefined();
   });
 
   it("refills later market slots from the matching small deck before falling back to main", () => {

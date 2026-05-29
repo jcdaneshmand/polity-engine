@@ -1,4 +1,4 @@
-import type { Effect, GameState } from "../game/state";
+import type { Effect, EffectTrigger, GameState } from "../game/state";
 import { drawCard, drawCardWithReshuffleLifecycle } from "../game/zones";
 import { collectMarketResources, collectMarketUnrest } from "../game/marketResources";
 import { refillMarketSlot } from "../game/marketRefill";
@@ -33,6 +33,10 @@ export function runEffects(ctx: Ctx, effects: Effect[]): boolean {
     if (!runEffect(ctx, effect)) return false;
   }
   return true;
+}
+
+export function runTriggeredEffects(ctx: Ctx, effects: Effect[], trigger: EffectTrigger): boolean {
+  return runEffects(ctx, effects.filter((effect) => effect.trigger === trigger));
 }
 
 function runEffect(ctx: Ctx, effect: Effect): boolean {
@@ -115,6 +119,12 @@ function runEffect(ctx: Ctx, effect: Effect): boolean {
       break;
     }
     case "conditional_resource_at_least": runEffects(ctx, p.resources[effect.resource] >= effect.atLeast ? effect.then : effect.else ?? []); break;
+    case "conditional_state_is": runEffects(ctx, p.stateArea[0] === effect.state ? effect.then : effect.else ?? []); break;
+    case "optional": {
+      ctx.G.pendingChoice = { playerId: ctx.playerId, sourceCardId: ctx.selfCardId, choices: [effect.effects, []] };
+      ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `OptionalPending(${ctx.selfCardId ?? "unknown"})` });
+      break;
+    }
     case "choose_one": {
       ctx.G.pendingChoice = { playerId: ctx.playerId, sourceCardId: ctx.selfCardId, choices: effect.choices };
       ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `ChoicePending(${ctx.selfCardId ?? "unknown"}/options=${effect.choices.length})` });

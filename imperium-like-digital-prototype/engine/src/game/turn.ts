@@ -2,7 +2,7 @@ import type { Ctx } from "boardgame.io";
 import type { GameState } from "./state";
 import { advanceScoringAtRoundBoundary, applyCollapseWinChecks } from "./scoring";
 import { drawCardWithReshuffleLifecycle } from "./zones";
-import { runEffects } from "../cards/effectRunner";
+import { runEffects, runTriggeredEffects } from "../cards/effectRunner";
 import { runNationHooks } from "../nations/nationRulesetHooks";
 import { runBotTurn } from "../solo/botTurn";
 import { ensureCleanupMarketResourcePlaced } from "./marketResources";
@@ -70,14 +70,21 @@ export function resolveCleanupDiscardChoice(G: GameState, playerId: string, card
 function runSolsticeForPlayer(G: GameState, playerId: string, randomNumber?: () => number): void {
   const p = G.players[playerId];
   const ruleset = G.activeNationRulesets?.[playerId];
+  const solsticeCardIds = [...p.playArea, ...p.powerArea, ...p.stateArea];
   runNationHooks({ G, playerId, trigger: "before_solstice", randomNumber });
   const preventEmpireFlip = (ruleset?.stateOverrides ?? []).some((ov) => ov.op === "never_flip_to_empire");
+  for (const cardId of solsticeCardIds) {
+    runTriggeredEffects({ G, playerId, selfCardId: cardId, enabledExpansions: G.options?.enabledExpansions, randomNumber }, G.cardDb[cardId]?.effects ?? [], "on_solstice");
+  }
   if (ruleset) {
     for (const ov of ruleset.solsticeOverrides ?? []) {
       logOverride(G, playerId, ruleset.nationId, "solstice", ov.op);
       if (ov.op === "flip_state" && !preventEmpireFlip) p.stateArea.reverse();
       if (ov.op === "custom_solstice_effect") runEffects({ G, playerId, enabledExpansions: G.options?.enabledExpansions, randomNumber }, ov.effect as any);
     }
+  }
+  for (const cardId of solsticeCardIds) {
+    runTriggeredEffects({ G, playerId, selfCardId: cardId, enabledExpansions: G.options?.enabledExpansions, randomNumber }, G.cardDb[cardId]?.effects ?? [], "end_of_solstice");
   }
   runNationHooks({ G, playerId, trigger: "after_solstice", randomNumber });
 }
@@ -89,6 +96,7 @@ function runSolsticeForAllPlayers(G: GameState, ctx: Ctx, randomNumber?: () => n
 export function onTurnBegin(G: GameState, ctx: Ctx, randomNumber?: () => number): void {
   const p = G.players[ctx.currentPlayer];
   const ruleset = G.activeNationRulesets?.[ctx.currentPlayer];
+  G.currentTurnType ??= "activate";
 
   if (ruleset) {
     for (const ov of ruleset.stateOverrides ?? []) {
@@ -133,5 +141,6 @@ export function onTurnEnd(G: GameState, ctx: Ctx, randomNumber?: () => number): 
     advanceScoringAtRoundBoundary(G);
   }
   applyCollapseWinChecksForAllPlayers(G, randomNumber);
+  G.currentTurnType = "activate";
   G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: "TurnPhase(turn_handoff): end_turn_complete" });
 }

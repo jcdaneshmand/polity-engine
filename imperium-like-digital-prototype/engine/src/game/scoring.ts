@@ -33,6 +33,12 @@ function scoreCardIds(G: GameState, cardIds: string[]): number {
   return cardIds.reduce((sum, cardId) => sum + cardVp(G, cardId), 0);
 }
 
+function isUnrestCard(G: GameState, cardId: string): boolean {
+  const card = G.cardDb[cardId];
+  const type = card?.cardType ?? card?.type;
+  return type === "unrest" || card?.suit === "unrest" || card?.tags?.includes("unrest");
+}
+
 function scoreZone(G: GameState, playerId: string, zoneId: string, excludedZones: Set<string>): number {
   if (excludedZones.has(zoneId)) return 0;
   return scoreCardIds(G, getZoneCards(G, playerId, zoneId));
@@ -43,6 +49,16 @@ function garrisonedCardsInScoringZones(G: GameState, playerId: string, scoringZo
     .filter((zoneId) => !excludedZones.has(zoneId))
     .flatMap((zoneId) => getZoneCards(G, playerId, zoneId));
   return hostIds.flatMap((hostId) => G.cardStates?.[hostId]?.garrisonedCardIds ?? []);
+}
+
+function collapseUnrestCount(G: GameState, playerId: string): number {
+  const p = G.players[playerId];
+  const ownedZoneIds = ["hand", "playArea", "deck", "discard", "history", "powerArea"];
+  const ownedCards = ownedZoneIds.flatMap((zoneId) => getZoneCards(G, playerId, zoneId));
+  const garrisonedCards = ownedZoneIds
+    .flatMap((zoneId) => getZoneCards(G, playerId, zoneId))
+    .flatMap((hostId) => G.cardStates?.[hostId]?.garrisonedCardIds ?? []);
+  return (p.resources.unrest ?? 0) + [...ownedCards, ...garrisonedCards].filter((cardId) => isUnrestCard(G, cardId)).length;
 }
 
 function applyAutoWinCollapseOverride(G: GameState, playerId: string, ruleset: NonNullable<GameState["activeNationRulesets"]>[string], zoneId: string): void {
@@ -94,6 +110,22 @@ export function triggerScoring(G: GameState, reason: string, triggeredBy?: strin
   if (G.scoring || G.gameover) return;
   G.scoring = { reason, triggeredBy, phase: "finish_current_round" };
   G.log.push({ round: G.round, playerId: triggeredBy ?? "scoring", message: `ScoringTriggered(${reason})` });
+}
+
+export function triggerCollapse(G: GameState, reason: string, triggeredBy?: string): void {
+  if (G.gameover) return;
+  const scores = Object.fromEntries(Object.keys(G.players).map((playerId) => [playerId, collapseUnrestCount(G, playerId)]));
+  const sorted = Object.entries(scores).sort(([, a], [, b]) => a - b);
+  const lowScore = sorted[0]?.[1] ?? 0;
+  const winners = sorted.filter(([, score]) => score === lowScore).map(([playerId]) => playerId);
+  G.scoring = undefined;
+  G.gameover = {
+    winner: winners.length === 1 ? winners[0] : winners.join(","),
+    reason: `collapse:${reason}`,
+    scores
+  };
+  G.log.push({ round: G.round, playerId: triggeredBy ?? "collapse", message: `CollapseTriggered(${reason})` });
+  G.log.push({ round: G.round, playerId: "collapse", message: `CollapseFinalized(winner=${G.gameover.winner})` });
 }
 
 export function finalizeNormalScoring(G: GameState): void {

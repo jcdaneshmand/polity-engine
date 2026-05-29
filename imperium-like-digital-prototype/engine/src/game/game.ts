@@ -1,7 +1,7 @@
 import type { Game } from "boardgame.io";
 import { createInitialGameState } from "./initialState";
 import type { GameState } from "./state";
-import { acquireCard, endTurnMove, playCard, resolveChoice, resolveCleanupMarketResource, resolveDevelopmentChoice } from "./moves";
+import { acquireCard, endTurnMove, exhaustCard, playCard, resolveChoice, resolveCleanupMarketResource, resolveDevelopmentChoice } from "./moves";
 import { onTurnBegin, onTurnEnd } from "./turn";
 import type { GameOptions } from "../options/gameOptions";
 
@@ -19,5 +19,5 @@ export const PrototypeGame: Game<GameState> = {
     }),
   endIf: ({ G }) => G.gameover,
   turn: { onBegin: ({ G, ctx, random }) => onTurnBegin(G, ctx, random?.Number), onEnd: ({ G, ctx, random }) => onTurnEnd(G, ctx, random?.Number) },
-  moves: { playCard, acquireCard, resolveChoice, resolveDevelopmentChoice, resolveCleanupMarketResource, endTurn: endTurnMove }
+  moves: { playCard, acquireCard, exhaustCard, resolveChoice, resolveDevelopmentChoice, resolveCleanupMarketResource, endTurn: endTurnMove }
 };

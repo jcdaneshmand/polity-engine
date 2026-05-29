@@ -6,26 +6,35 @@ export type CardType = "action" | "unit" | "technology" | "legacy" | "in_play" |
 export type Suit = "military" | "civic" | "economic" | "unrest" | "wild" | "region" | "uncivilized" | "civilized" | "tributary" | "fame" | "power" | "trade_route" | "none" | "multi";
 export type ZoneName = "deck" | "hand" | "discard" | "playArea" | "history" | "exile";
 export type ResourceName = "materials" | "knowledge" | "influence" | "unrest" | "goods";
+export type TurnType = "activate" | "innovate" | "revolt";
 export type EffectOp = Record<string, unknown>;
 export type MarketDeckName = "mainDeck" | "regionDeck" | "uncivilizedDeck" | "civilizedDeck" | "tributaryDeck";
+export type EffectTrigger = "on_play" | "on_exhaust" | "on_solstice" | "end_of_solstice";
 
 export type Effect =
-  | { trigger: "on_play"; op: "draw"; count: number }
-  | { trigger: "on_play"; op: "draw_if_able"; count: number }
-  | { trigger: "on_play"; op: "gain_resource"; resource: ResourceName; amount: number }
-  | { trigger: "on_play"; op: "spend_resource"; resource: ResourceName; amount: number }
-  | { trigger: "on_play"; op: "discard_random"; count: number }
-  | { trigger: "on_play"; op: "move_self_to_history" }
-  | { trigger: "on_play"; op: "acquire_card"; count: number }
-  | { trigger: "on_play"; op: "break_through"; suit: Suit; source: "market" | "deck"; count: number }
-  | { trigger: "on_play"; op: "conditional_resource_at_least"; resource: ResourceName; atLeast: number; then: Effect[]; else?: Effect[] }
-  | { trigger: "on_play"; op: "choose_one"; choices: Effect[][] };
+  | { trigger: EffectTrigger; op: "draw"; count: number }
+  | { trigger: EffectTrigger; op: "draw_if_able"; count: number }
+  | { trigger: EffectTrigger; op: "gain_resource"; resource: ResourceName; amount: number }
+  | { trigger: EffectTrigger; op: "spend_resource"; resource: ResourceName; amount: number }
+  | { trigger: EffectTrigger; op: "discard_random"; count: number }
+  | { trigger: EffectTrigger; op: "move_self_to_history" }
+  | { trigger: EffectTrigger; op: "acquire_card"; count: number }
+  | { trigger: EffectTrigger; op: "break_through"; suit: Suit; source: "market" | "deck"; count: number }
+  | { trigger: EffectTrigger; op: "conditional_resource_at_least"; resource: ResourceName; atLeast: number; then: Effect[]; else?: Effect[] }
+  | { trigger: EffectTrigger; op: "conditional_state_is"; state: string; then: Effect[]; else?: Effect[] }
+  | { trigger: EffectTrigger; op: "optional"; effects: Effect[] }
+  | { trigger: EffectTrigger; op: "choose_one"; choices: Effect[][] };
 
 export interface Card { id: string; displayName: string; type: CardType; cardType?: CardType; suit?: Suit; vp?: number; cost: number; developmentCost?: Partial<Record<ResourceName, number>>; tags: string[]; effects: Effect[]; allowedModes?: ("multiplayer"|"solo"|"practice")[]; disallowedModes?: ("multiplayer"|"solo"|"practice")[]; playerCountRequirement?: string; startingLocation?: string; }
 export interface GameLogEntry { round: number; playerId: string; message: string; }
 export interface CardRuntimeState {
   resources?: Partial<Record<ResourceName, number>>;
   garrisonedCardIds?: string[];
+}
+export interface FameDeckState {
+  available: string[];
+  specialBottomCardId?: string;
+  resolvedSpecialByPlayer: Record<string, boolean>;
 }
 export interface PlayerState {
   deck: string[]; hand: string[]; discard: string[]; playArea: string[]; history: string[]; exile: string[];
@@ -39,7 +48,9 @@ export interface GameState {
   marketResources?: Record<string, Partial<Record<ResourceName, number>>>;
   marketUnrest?: Record<string, string[]>;
   marketDecks?: Record<MarketDeckName, string[]>;
+  fameDeck?: FameDeckState;
   unrestPile?: string[];
+  currentTurnType?: TurnType;
   cardStates?: Record<string, CardRuntimeState>;
   pendingChoice?: { playerId: string; sourceCardId?: string; choices: Effect[][] };
   pendingDevelopmentChoice?: { playerId: string; cardIds: string[]; resumeDrawCount: number };

@@ -1,5 +1,5 @@
 import type { Ctx } from "boardgame.io";
-import { runEffects } from "../cards/effectRunner";
+import { runEffects, runTriggeredEffects } from "../cards/effectRunner";
 import type { GameState } from "./state";
 import { runNationHooks } from "../nations/nationRulesetHooks";
 import { resolvePendingDevelopmentChoice } from "./zones";
@@ -24,10 +24,19 @@ function logInvalidMove(G: GameState, playerId: string, move: string, reason: st
   G.log.push({ round: G.round, playerId, message: `InvalidMove(${move}): ${reason}` });
 }
 
+function isActivateTurn(G: GameState): boolean {
+  return (G.currentTurnType ?? "activate") === "activate";
+}
+
 function cardRemainsInPlay(G: GameState, cardId: string): boolean {
   const card = G.cardDb[cardId];
   const type = card?.cardType ?? card?.type;
   return type === "in_play" || type === "region" || type === "power" || type === "state";
+}
+
+function canExhaustCard(G: GameState, playerId: string, cardId: string): boolean {
+  const p = G.players[playerId];
+  return p.playArea.includes(cardId) || p.powerArea.includes(cardId) || p.stateArea.includes(cardId);
 }
 
 function moveResolvedCardFromPlayToDiscard(G: GameState, playerId: string, cardId: string): void {
@@ -41,6 +50,10 @@ function moveResolvedCardFromPlayToDiscard(G: GameState, playerId: string, cardI
 
 export function playCard({ G, ctx, random }: MoveCtx, cardId: string): void {
   const p = G.players[ctx.currentPlayer];
+  if (!isActivateTurn(G)) {
+    logInvalidMove(G, ctx.currentPlayer, "playCard", `turn_type_not_activate(${G.currentTurnType})`);
+    return;
+  }
   if (p.actionsRemaining < 1) {
     logInvalidMove(G, ctx.currentPlayer, "playCard", "no_actions_remaining");
     return;
@@ -61,9 +74,10 @@ export function playCard({ G, ctx, random }: MoveCtx, cardId: string): void {
   p.hand.splice(handIndex, 1);
   p.playArea.push(cardId);
 
-  runEffects(
+  runTriggeredEffects(
     { G, playerId: ctx.currentPlayer, selfCardId: cardId, randomNumber: random?.Number },
-    G.cardDb[cardId]?.effects ?? []
+    G.cardDb[cardId]?.effects ?? [],
+    "on_play"
   );
   moveResolvedCardFromPlayToDiscard(G, ctx.currentPlayer, cardId);
   runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "after_play_card", payload: { cardId }, randomNumber: random?.Number });
@@ -71,6 +85,10 @@ export function playCard({ G, ctx, random }: MoveCtx, cardId: string): void {
 
 export function acquireCard({ G, ctx, random }: MoveCtx, cardId: string): void {
   const p = G.players[ctx.currentPlayer];
+  if (!isActivateTurn(G)) {
+    logInvalidMove(G, ctx.currentPlayer, "acquireCard", `turn_type_not_activate(${G.currentTurnType})`);
+    return;
+  }
   if (!G.market.includes(cardId)) {
     logInvalidMove(G, ctx.currentPlayer, "acquireCard", `card_not_in_market(${cardId})`);
     return;
@@ -99,6 +117,40 @@ export function acquireCard({ G, ctx, random }: MoveCtx, cardId: string): void {
     G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: `MarketRefillStatus(market=${G.market.length}, pool=${G.marketRefillPool.length}).` });
   }
   runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "after_acquire", payload: { cardId }, randomNumber: random?.Number });
+}
+
+export function exhaustCard({ G, ctx, random }: MoveCtx, cardId: string): void {
+  const p = G.players[ctx.currentPlayer];
+  if (!isActivateTurn(G)) {
+    logInvalidMove(G, ctx.currentPlayer, "exhaustCard", `turn_type_not_activate(${G.currentTurnType})`);
+    return;
+  }
+  if (!canExhaustCard(G, ctx.currentPlayer, cardId)) {
+    logInvalidMove(G, ctx.currentPlayer, "exhaustCard", `card_not_exhaust_source(${cardId})`);
+    return;
+  }
+  if (p.exhaustTokensAvailable < 1) {
+    logInvalidMove(G, ctx.currentPlayer, "exhaustCard", "no_exhaust_tokens_available");
+    return;
+  }
+  const effects = G.cardDb[cardId]?.effects ?? [];
+  if (!effects.some((effect) => effect.trigger === "on_exhaust")) {
+    logInvalidMove(G, ctx.currentPlayer, "exhaustCard", `no_exhaust_ability(${cardId})`);
+    return;
+  }
+
+  p.exhaustTokensAvailable -= 1;
+  const resolved = runTriggeredEffects(
+    { G, playerId: ctx.currentPlayer, selfCardId: cardId, randomNumber: random?.Number, enabledExpansions: G.options?.enabledExpansions },
+    effects,
+    "on_exhaust"
+  );
+  if (!resolved) {
+    p.exhaustTokensAvailable += 1;
+    logInvalidMove(G, ctx.currentPlayer, "exhaustCard", `exhaust_effect_failed(${cardId})`);
+    return;
+  }
+  G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: `Exhausted ${cardId}.` });
 }
 
 export function resolveChoice({ G, ctx, random }: MoveCtx, choiceIndex: number): void {

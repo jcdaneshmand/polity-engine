@@ -23,9 +23,17 @@ function currentMaterialsAvailableForAcquire(G: any, ctx: any): number {
   return Number(resources.materials ?? 0) + Number(resources.goods ?? 0);
 }
 
+function isActivateTurn(G: any): boolean {
+  return (G.currentTurnType ?? "activate") === "activate";
+}
+
 function isRegionCard(G: any, cardId: string): boolean {
   const card = getCardById(G, cardId);
   return (card?.cardType ?? card?.type) === "region" || card?.suit === "region";
+}
+
+function hasExhaustAbility(G: any, cardId: string): boolean {
+  return (getCardById(G, cardId)?.effects ?? []).some((effect: any) => effect?.trigger === "on_exhaust");
 }
 
 function effectLabel(effect: any): string {
@@ -48,7 +56,7 @@ function effectLabel(effect: any): string {
 }
 
 function choiceLabel(choice: any[]): string {
-  return choice.map(effectLabel).join("; ") || "Option";
+  return choice.map(effectLabel).join("; ") || "Skip";
 }
 
 export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx: any) {
@@ -94,8 +102,15 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
   if (!s) return actions;
   if (s.kind === "hand_card") {
     const p = G.players?.[ctx.currentPlayer];
-    const ok = (p?.hand ?? []).includes(s.id) && (p?.actionsRemaining ?? 0) > 0;
-    actions.push({ label:"Play Card", action:"play", enabled: ok, reason: ok ? undefined : "Card is not in hand or no action tokens available", cardId: s.id });
+    const canUseNormalActions = isActivateTurn(G);
+    const ok = canUseNormalActions && (p?.hand ?? []).includes(s.id) && (p?.actionsRemaining ?? 0) > 0;
+    actions.push({
+      label:"Play Card",
+      action:"play",
+      enabled: ok,
+      reason: ok ? undefined : canUseNormalActions ? "Card is not in hand or no action tokens available" : "Normal actions require an Activate turn",
+      cardId: s.id
+    });
     const hostCardId = (p?.playArea ?? []).find((cardId: string) => isRegionCard(G, cardId));
     if (hostCardId) actions.push({ label:"Garrison", action:"garrison", enabled:true, cardId: s.id, hostCardId });
   }
@@ -103,12 +118,32 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
     actions.push({ label:"Recall Region", action:"recallRegion", enabled:true, cardId: s.id });
     actions.push({ label:"Abandon Region", action:"abandonRegion", enabled:true, cardId: s.id });
   }
+  if (s.kind === "play_area_card" && hasExhaustAbility(G, s.id)) {
+    const p = G.players?.[ctx.currentPlayer];
+    const canUseNormalActions = isActivateTurn(G);
+    const hasToken = (p?.exhaustTokensAvailable ?? 0) > 0;
+    const ok = canUseNormalActions && hasToken;
+    actions.push({
+      label:"Exhaust Ability",
+      action:"exhaust",
+      enabled: ok,
+      reason: ok ? undefined : canUseNormalActions ? "No Exhaust tokens available" : "Exhaust abilities require an Activate turn",
+      cardId: s.id
+    });
+  }
   if (s.kind === "market_slot") {
     const card = getCardById(G, s.id);
     const cost = cardCost(card);
     const available = currentMaterialsAvailableForAcquire(G, ctx);
-    const ok = available >= cost;
-    actions.push({ label:"Acquire Card", action:"acquire", enabled: ok, reason: ok ? undefined : `Need ${cost} materials; you can pay ${available}`, cardId: s.id });
+    const canUseNormalActions = isActivateTurn(G);
+    const ok = canUseNormalActions && available >= cost;
+    actions.push({
+      label:"Acquire Card",
+      action:"acquire",
+      enabled: ok,
+      reason: ok ? undefined : canUseNormalActions ? `Need ${cost} materials; you can pay ${available}` : "Normal acquisition requires an Activate turn",
+      cardId: s.id
+    });
   }
   actions.push({ label:"Innovate", action:"innovate", enabled:false, reason:"Not implemented yet" });
   actions.push({ label:"Revolt", action:"revolt", enabled:false, reason:"Not implemented yet" });

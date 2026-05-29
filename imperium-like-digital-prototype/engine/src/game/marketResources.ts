@@ -1,4 +1,5 @@
 import type { GameState, ResourceName } from "./state";
+import { triggerCollapse } from "./scoring";
 
 export const DEFAULT_CLEANUP_MARKET_RESOURCE: ResourceName = "knowledge";
 
@@ -81,7 +82,10 @@ export function tuckUnrestUnderMarketCard(G: GameState, playerId: string, cardId
   const type = card?.cardType ?? card?.type;
   if (type === "unrest" || card?.suit === "unrest" || card?.tags?.includes("unrest")) return;
   const unrestCardId = G.unrestPile?.shift();
-  if (!unrestCardId) return;
+  if (!unrestCardId) {
+    triggerCollapse(G, "unrest_pile_empty", playerId);
+    return;
+  }
   G.marketUnrest ??= {};
   G.marketUnrest[cardId] ??= [];
   G.marketUnrest[cardId].push(unrestCardId);

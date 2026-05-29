@@ -1,0 +1,72 @@
+import { describe, expect, it } from "vitest";
+import { createInitialState } from "../game/initialState";
+import { acquireFromExile } from "../game/exile";
+
+describe("Exile acquisition", () => {
+  it("adds an Unrest when a non-Unrest card is acquired from Exile", () => {
+    const G = createInitialState();
+    const player = G.players["0"];
+    player.exile = ["exiled_action"];
+    G.cardDb.exiled_action = {
+      id: "exiled_action",
+      displayName: "Exiled Action",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.unrestPile = ["unrest_from_supply"];
+
+    expect(acquireFromExile(G, { playerId: "0", cardId: "exiled_action" })).toBe(true);
+
+    expect(player.exile).toEqual([]);
+    expect(player.hand).toContain("exiled_action");
+    expect(player.discard).toContain("unrest_from_supply");
+    expect(G.unrestPile).toEqual([]);
+  });
+
+  it("does not add extra Unrest when the acquired Exile card is Unrest", () => {
+    const G = createInitialState();
+    const player = G.players["0"];
+    player.exile = ["exiled_unrest"];
+    G.cardDb.exiled_unrest = {
+      id: "exiled_unrest",
+      displayName: "Exiled Unrest",
+      type: "unrest",
+      cardType: "unrest",
+      suit: "unrest",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.unrestPile = ["unrest_from_supply"];
+
+    expect(acquireFromExile(G, { playerId: "0", cardId: "exiled_unrest" })).toBe(true);
+
+    expect(player.hand).toContain("exiled_unrest");
+    expect(player.discard).not.toContain("unrest_from_supply");
+    expect(G.unrestPile).toEqual(["unrest_from_supply"]);
+  });
+
+  it("collapses immediately when Exile acquisition needs Unrest and none is available", () => {
+    const G = createInitialState();
+    G.players["0"].exile = ["exiled_action"];
+    G.cardDb.exiled_action = {
+      id: "exiled_action",
+      displayName: "Exiled Action",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.unrestPile = [];
+
+    expect(acquireFromExile(G, { playerId: "0", cardId: "exiled_action" })).toBe(true);
+
+    expect(G.gameover?.reason).toBe("collapse:unrest_pile_empty");
+  });
+});

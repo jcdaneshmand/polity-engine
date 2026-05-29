@@ -79,6 +79,7 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
     sharedDiscard: [],
     log: [],
     round: 1,
+    currentTurnType: "activate",
     options,
     setupReport,
     activeNationRulesets,
@@ -129,9 +130,11 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   game.marketDecks = marketSetup.marketDecks;
   modules.forEach((m)=>m.modifyMarketSetup?.(ctx as any));
   const fame = setupFameDeck(options.enabledExpansions.includes("trade_routes"));
+  game.fameDeck = fame;
   modules.forEach((m)=>m.modifyFameSetup?.(ctx as any));
   modules.forEach((m)=>m.modifyPlayerSetup?.(ctx as any));
-  game.log.push({round:1,playerId:"setup",message:`Setup report delayed=${setupReport.delayedAggressiveCount}`},{round:1,playerId:"setup",message:`Fame cards: ${fame.length}`});
+  const fameCount = fame.available.length + (fame.specialBottomCardId ? 1 : 0);
+  game.log.push({round:1,playerId:"setup",message:`Setup report delayed=${setupReport.delayedAggressiveCount}`},{round:1,playerId:"setup",message:`Fame cards: ${fameCount}`});
   marketSetup.notes.forEach((message) => game.log.push({ round: 1, playerId: "setup", message }));
   Object.entries(activeNationRulesets).forEach(([playerId, ruleset]) => {
     (ruleset.zoneOverrides ?? []).forEach((ov:any) => game.log.push({ round: game.round, playerId, message: `NationRulesetApplied(${ruleset.nationId}/zone/${ov.op})` }));

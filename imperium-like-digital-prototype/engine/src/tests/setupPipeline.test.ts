@@ -17,6 +17,14 @@ describe("setup pipeline",()=>{
     });
     expect(G.marketRefillPool).toEqual([]);
   });
+  it("sets up the Fame deck with its special bottom card unavailable",()=>{
+    const G=createInitialGameState();
+    expect(G.fameDeck).toEqual({
+      available: ["placeholder_fame_1"],
+      specialBottomCardId: "placeholder_fame_bottom",
+      resolvedSpecialByPlayer: {}
+    });
+  });
   it("creates default players for 3p multiplayer",()=>{ const G=createInitialGameState({ options:{playerCount:3,mode:"multiplayer",enabledExpansions:[],enabledVariants:[]} }); expect(Object.keys(G.players).sort()).toEqual(["0","1","2"]); });
   it("invalid option-nation combo fails",()=>{ expect(()=>createInitialGameState({ options:{playerCount:1,mode:"solo",enabledExpansions:[],enabledVariants:[],soloDifficulty:"chieftain"}, playerNationIds:{"0":"test_nation_river_court"} })).toThrow(); });
   it("uses generated private replacements automatically when they exist",()=>{

@@ -63,6 +63,7 @@ export interface GameState {
   fameDeck?: FameDeckState;
   unrestPile?: string[];
   currentTurnType?: TurnType;
+  freePlayedThisTurn?: Record<string, string[]>;
   cardStates?: Record<string, CardRuntimeState>;
   pendingChoice?: { playerId: string; sourceCardId?: string; choices: Effect[][] };
   pendingFindChoice?: { playerId: string; sourceCardId?: string; cardIds: string[]; destination: ZoneName };

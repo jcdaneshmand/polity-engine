@@ -49,6 +49,15 @@ function cardMeetsStateRequirement(G: any, ctx: any, cardId: string): boolean {
   return stateTokens.includes(requirement);
 }
 
+function isFreePlayCard(G: any, cardId: string): boolean {
+  const card = getCardById(G, cardId);
+  return (card?.tags ?? []).some((tag: string) => tag.toLowerCase().replace(/[_\s-]+/g, "_") === "free_play");
+}
+
+function freePlayAlreadyUsed(G: any, ctx: any, cardId: string): boolean {
+  return (G.freePlayedThisTurn?.[ctx.currentPlayer] ?? []).includes(cardId);
+}
+
 function isRegionCard(G: any, cardId: string): boolean {
   const card = getCardById(G, cardId);
   return (card?.cardType ?? card?.type) === "region" || card?.suit === "region";
@@ -156,12 +165,15 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
     const p = G.players?.[ctx.currentPlayer];
     const canUseNormalActions = isActivateTurn(G);
     const meetsStateRequirement = cardMeetsStateRequirement(G, ctx, s.id);
-    const ok = canUseNormalActions && meetsStateRequirement && (p?.hand ?? []).includes(s.id) && (p?.actionsRemaining ?? 0) > 0;
+    const freePlay = isFreePlayCard(G, s.id);
+    const freePlayUsed = freePlayAlreadyUsed(G, ctx, s.id);
+    const hasAction = (p?.actionsRemaining ?? 0) > 0;
+    const ok = canUseNormalActions && meetsStateRequirement && !freePlayUsed && (p?.hand ?? []).includes(s.id) && (freePlay || hasAction);
     actions.push({
       label:"Play Card",
       action:"play",
       enabled: ok,
-      reason: ok ? undefined : !canUseNormalActions ? "Normal actions require an Activate turn" : !meetsStateRequirement ? `Requires ${getCardById(G, s.id)?.stateRequirement} State` : "Card is not in hand or no action tokens available",
+      reason: ok ? undefined : !canUseNormalActions ? "Normal actions require an Activate turn" : !meetsStateRequirement ? `Requires ${getCardById(G, s.id)?.stateRequirement} State` : freePlayUsed ? "Free play already used this turn" : "Card is not in hand or no action tokens available",
       cardId: s.id
     });
     if (isUnrestCard(getCardById(G, s.id))) actions.push({ label:"Revolt Return", action:"revolt", enabled:canUseNormalActions, reason:canUseNormalActions ? undefined : "Revolt requires starting from an Activate turn", cardId: s.id });

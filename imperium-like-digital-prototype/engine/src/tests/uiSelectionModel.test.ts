@@ -36,6 +36,17 @@ describe("selection model", () => {
     expect(acquire?.enabled).toBe(false);
     expect(acquire?.reason).toBe("Normal acquisition requires an Activate turn");
   });
+  it("enables Free play cards with no Action tokens and blocks repeat Free play this turn",()=> {
+    const freePlay={...G,cardDb:{...G.cardDb,c1:{...G.cardDb.c1,tags:["free_play"]}},players:{"0":{...G.players["0"],hand:["c1"],actionsRemaining:0}}};
+    const play=getAvailableActionsForSelection({kind:"hand_card",id:"c1"},freePlay,ctx).find(a=>a.action==="play");
+    expect(play?.enabled).toBe(true);
+    expect(play?.reason).toBeUndefined();
+
+    const repeated={...freePlay,freePlayedThisTurn:{"0":["c1"]}};
+    const repeatPlay=getAvailableActionsForSelection({kind:"hand_card",id:"c1"},repeated,ctx).find(a=>a.action==="play");
+    expect(repeatPlay?.enabled).toBe(false);
+    expect(repeatPlay?.reason).toBe("Free play already used this turn");
+  });
   it("disables play actions when the selected card does not meet its State requirement",()=> {
     const stateLocked={...G,cardDb:{...G.cardDb,c1:{...G.cardDb.c1,stateRequirement:"empire"},s1:{id:"s1",displayName:"Barbarian",suit:"uncivilized",tags:["barbarian"]}},players:{"0":{...G.players["0"],hand:["c1"],actionsRemaining:1,stateArea:["s1"]}}};
     const play=getAvailableActionsForSelection({kind:"hand_card",id:"c1"},stateLocked,ctx).find(a=>a.action==="play");

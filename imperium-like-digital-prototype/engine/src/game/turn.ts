@@ -107,6 +107,8 @@ export function onTurnBegin(G: GameState, ctx: Ctx, randomNumber?: () => number)
   p.actionsRemaining = p.actionTokensBase;
   p.actionTokensAvailable = p.actionTokensBase;
   p.exhaustTokensAvailable = p.exhaustTokensBase;
+  G.freePlayedThisTurn ??= {};
+  G.freePlayedThisTurn[ctx.currentPlayer] = [];
 
   applyCollapseWinChecksForAllPlayers(G, randomNumber);
 }

@@ -58,6 +58,21 @@ function cardMeetsStateRequirement(G: GameState, playerId: string, cardId: strin
   return stateTokens.includes(requirement);
 }
 
+function isFreePlayCard(G: GameState, cardId: string): boolean {
+  const card = G.cardDb[cardId];
+  return (card?.tags ?? []).some((tag) => tag.toLowerCase().replace(/[_\s-]+/g, "_") === "free_play");
+}
+
+function hasFreePlayedThisTurn(G: GameState, playerId: string, cardId: string): boolean {
+  return (G.freePlayedThisTurn?.[playerId] ?? []).includes(cardId);
+}
+
+function recordFreePlay(G: GameState, playerId: string, cardId: string): void {
+  G.freePlayedThisTurn ??= {};
+  G.freePlayedThisTurn[playerId] ??= [];
+  if (!G.freePlayedThisTurn[playerId].includes(cardId)) G.freePlayedThisTurn[playerId].push(cardId);
+}
+
 function canExhaustCard(G: GameState, playerId: string, cardId: string): boolean {
   const p = G.players[playerId];
   return p.playArea.includes(cardId) || p.powerArea.includes(cardId) || p.stateArea.includes(cardId);
@@ -106,11 +121,16 @@ function movePlayerCard(G: GameState, playerId: string, cardId: string, destinat
 
 export function playCard({ G, ctx, random }: MoveCtx, cardId: string): void {
   const p = G.players[ctx.currentPlayer];
+  const freePlay = isFreePlayCard(G, cardId);
   if (!isActivateTurn(G)) {
     logInvalidMove(G, ctx.currentPlayer, "playCard", `turn_type_not_activate(${G.currentTurnType})`);
     return;
   }
-  if (p.actionsRemaining < 1) {
+  if (freePlay && hasFreePlayedThisTurn(G, ctx.currentPlayer, cardId)) {
+    logInvalidMove(G, ctx.currentPlayer, "playCard", `free_play_already_used(${cardId})`);
+    return;
+  }
+  if (!freePlay && p.actionsRemaining < 1) {
     logInvalidMove(G, ctx.currentPlayer, "playCard", "no_actions_remaining");
     return;
   }
@@ -124,7 +144,8 @@ export function playCard({ G, ctx, random }: MoveCtx, cardId: string): void {
   }
 
   logTurnPhase(G, ctx.currentPlayer, "action_execution", `playCard(${cardId})`);
-  p.actionsRemaining -= 1;
+  if (freePlay) recordFreePlay(G, ctx.currentPlayer, cardId);
+  else p.actionsRemaining -= 1;
   runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "before_play_card", payload: { cardId }, randomNumber: random?.Number });
   const handIndex = p.hand.indexOf(cardId);
   if (handIndex < 0) {

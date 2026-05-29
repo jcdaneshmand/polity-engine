@@ -141,4 +141,19 @@ describe("commons setup", () => {
     expect(G.cardDb.legacy_starting_card).toBeDefined();
     expect(G.cardDb.legends_commons).toBeDefined();
   });
+
+  it("preserves cards added by player setup hooks after Commons pruning", () => {
+    const G = createInitialGameStateFromPipeline({
+      options: { playerCount: 2, mode: "multiplayer", enabledExpansions: ["trade_routes"], enabledVariants: [], commonsSetId: "legends", replacementPolicy: "none" },
+      playerNationIds: { "0": "test_nation_alpha", "1": "test_nation_alpha" },
+      cardDb: cardDb([
+        card({ id: "legends_commons", commonsSetId: "legends" }),
+        card({ id: "test_action_civic_assembly", commonsSetId: "classics" })
+      ]),
+      nationDb
+    });
+    expect(G.players["0"].powerArea).toContain("test_action_civic_assembly");
+    expect(G.cardDb.test_action_civic_assembly).toBeDefined();
+    expect(G.cardDb.legends_commons).toBeDefined();
+  });
 });

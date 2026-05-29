@@ -5,10 +5,46 @@ const suits = new Set(["region","uncivilized","civilized","tributary","fame","un
 const types = new Set(["action","in_play","attack","power","state","development","accession","nation","region","unrest","fame","trade_route","bot_state","other"]);
 const starts = new Set(["draw_deck","nation_deck","accession","development_area","in_play","supply","market","fame_deck","unrest_pile","bot_deck","box","other"]);
 const vpModes = new Set(["none","fixed","variable","negative","conditional"]);
+const expansions = new Set(["trade_routes"]);
+const modes = new Set(["multiplayer","solo","practice"]);
+const ownerships = new Set(["commons","nation","bot","replacement"]);
+const commonsSets = new Set(["classics","legends","horizons","custom"]);
+const commonsGroups = new Set(["base","trade_friendly","trade_routes","replacement"]);
+const playerCounts = new Set(["1+","2+","3+","4+"]);
 const req = ["card_id","public_placeholder_name","suit","card_type","starting_location","vp_mode","implemented","tested"];
 
 const isBool=(v:string)=>["true","false"].includes((v||"").trim().toLowerCase());
 const isNonNeg=(v:string)=>v.trim()==="" || (/^\d+$/.test(v.trim()));
+const pipeValues=(v:string)=>v.split("|").map((x)=>x.trim()).filter(Boolean);
+
+function validateOptionalEnum(args: { errors: CardImportError[]; row: number; field: string; value: string | undefined; allowed: Set<string>; message: string }) {
+  const value = (args.value || "").trim();
+  if (value && !args.allowed.has(value)) {
+    args.errors.push({ level: "fatal", row: args.row, field: args.field, message: args.message });
+    return true;
+  }
+  return false;
+}
+
+function validatePipeEnums(args: { errors: CardImportError[]; row: number; field: string; value: string | undefined; allowed: Set<string>; message: string }) {
+  let fatal = false;
+  for (const value of pipeValues(args.value || "")) {
+    if (!args.allowed.has(value)) {
+      args.errors.push({ level: "fatal", row: args.row, field: args.field, message: `${args.message}: ${value}` });
+      fatal = true;
+    }
+  }
+  return fatal;
+}
+
+function validateOptionalBool(errors: CardImportError[], row: number, field: string, value: string | undefined) {
+  const trimmed = (value || "").trim();
+  if (trimmed && !isBool(trimmed)) {
+    errors.push({ level: "fatal", row, field, message: `${field} must be true/false or blank` });
+    return true;
+  }
+  return false;
+}
 
 export function validatePrivateCardsRows(rows: PrivateCardCsvRow[]): CardImportReport {
   const errors: CardImportError[]=[]; const seen=new Set<string>(); let implemented=0,tested=0,validRows=0;
@@ -19,7 +55,17 @@ export function validatePrivateCardsRows(rows: PrivateCardCsvRow[]): CardImportR
     if(!types.has((r.card_type||"").trim())){errors.push({level:"fatal",row,field:"card_type",message:"Invalid card_type"}); fatal=true;}
     if(!starts.has((r.starting_location||"").trim())){errors.push({level:"fatal",row,field:"starting_location",message:"Invalid starting_location"}); fatal=true;}
     if(!vpModes.has((r.vp_mode||"").trim())){errors.push({level:"fatal",row,field:"vp_mode",message:"Invalid vp_mode"}); fatal=true;}
+    fatal = validateOptionalEnum({ errors, row, field: "ownership", value: r.ownership, allowed: ownerships, message: "Invalid ownership" }) || fatal;
+    fatal = validateOptionalEnum({ errors, row, field: "commons_set_id", value: r.commons_set_id, allowed: commonsSets, message: "Invalid commons_set_id" }) || fatal;
+    fatal = validateOptionalEnum({ errors, row, field: "setup_banner_suit", value: r.setup_banner_suit, allowed: suits, message: "Invalid setup_banner_suit" }) || fatal;
+    fatal = validateOptionalEnum({ errors, row, field: "commons_group", value: r.commons_group, allowed: commonsGroups, message: "Invalid commons_group" }) || fatal;
+    fatal = validateOptionalEnum({ errors, row, field: "player_count_requirement", value: r.player_count_requirement, allowed: playerCounts, message: "Invalid player_count_requirement" }) || fatal;
+    fatal = validatePipeEnums({ errors, row, field: "required_expansions", value: r.required_expansions, allowed: expansions, message: "Invalid required_expansions" }) || fatal;
+    fatal = validatePipeEnums({ errors, row, field: "excluded_expansions", value: r.excluded_expansions, allowed: expansions, message: "Invalid excluded_expansions" }) || fatal;
+    fatal = validatePipeEnums({ errors, row, field: "allowed_modes", value: r.allowed_modes, allowed: modes, message: "Invalid allowed_modes" }) || fatal;
+    fatal = validatePipeEnums({ errors, row, field: "disallowed_modes", value: r.disallowed_modes, allowed: modes, message: "Invalid disallowed_modes" }) || fatal;
     for(const f of ["cost_materials","cost_population","cost_progress","cost_goods","development_cost_materials","development_cost_population","development_cost_progress","development_cost_goods"]) if(!isNonNeg(r[f]||"")){errors.push({level:"fatal",row,field:f,message:"Must be non-negative integer or blank"}); fatal=true;}
+    for(const f of ["delayable_in_lowered_aggression","market_eligible","small_deck_eligible","main_deck_eligible","unrest_pile_eligible","fame_deck_eligible"]) fatal = validateOptionalBool(errors, row, f, r[f]) || fatal;
     if(["fixed","variable","negative"].includes((r.vp_mode||"").trim()) && !(r.vp_value||"").trim().match(/^-?\d+(\.\d+)?$/)){errors.push({level:"fatal",row,field:"vp_value",message:"vp_value required numeric for vp_mode"}); fatal=true;}
     if(!isBool(r.implemented||"")){errors.push({level:"fatal",row,field:"implemented",message:"implemented must be true/false"}); fatal=true;}
     if(!isBool(r.tested||"")){errors.push({level:"fatal",row,field:"tested",message:"tested must be true/false"}); fatal=true;}

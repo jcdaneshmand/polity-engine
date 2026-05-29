@@ -88,6 +88,21 @@ describe("commons setup", () => {
     expect(G.log.some((entry) => entry.message === "MarketInitialized(slots=1)")).toBe(true);
   });
 
+  it("keeps setup report market slots immutable from live market mutations", () => {
+    const G = createInitialGameStateFromPipeline({
+      options: { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: [], commonsSetId: "classics", replacementPolicy: "none" },
+      playerNationIds: { "0": "test_nation_alpha", "1": "test_nation_alpha" },
+      cardDb: cardDb([
+        card({ id: "market_a" }),
+        card({ id: "unrest_a", cardType: "unrest", suit: "unrest", unrestPileEligible: true })
+      ]),
+      nationDb
+    });
+    G.marketSlots?.splice(0, 1);
+    expect(G.marketSlots).toEqual([]);
+    expect(G.setupReport?.commonsSetup?.initialMarket[0]).toMatchObject({ cardId: "market_a", attachedUnrestCardIds: ["unrest_a"] });
+  });
+
   it("removes rejected Commons cards from the runtime card database", () => {
     const G = createInitialGameStateFromPipeline({
       options: { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: [], commonsSetId: "classics", replacementPolicy: "none" },

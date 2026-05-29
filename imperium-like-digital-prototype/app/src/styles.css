@@ -1,5 +1,6 @@
 @import "./ui/styles/board.css";
 @import "./ui/styles/steamDeck.css";
+@import "./ui/styles/setup.css";
 
 html, body, #root { margin: 0; height: 100%; }
 body { font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif; background:#1c1a18; }

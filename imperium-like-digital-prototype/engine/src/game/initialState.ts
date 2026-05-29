@@ -3,12 +3,22 @@ import { loadNationDb } from "../nations/nationLoader";
 import { createInitialGameStateFromPipeline } from "../setup/setupPipeline";
 import { defaultGameOptions, type GameOptions } from "../options/gameOptions";
 import type { GameState } from "./state";
+import { getNodeFs } from "../local/nodeBuiltins";
 
-export function createInitialGameState(args?: { options?: GameOptions; playerNationIds?: Record<string,string>; usePrivateData?: boolean; privateRulesetPath?: string; privateStrategyPath?: string }): GameState {
+function hasGeneratedPrivateCoreData(args?: { privateCardPath?: string; privateNationPath?: string }): boolean {
+  const fs = getNodeFs();
+  if (!fs) return false;
+  const cardPath = args?.privateCardPath ?? "generated-private/cards.normalized.json";
+  const nationPath = args?.privateNationPath ?? "generated-private/nations.normalized.json";
+  return fs.existsSync(cardPath) && fs.existsSync(nationPath);
+}
+
+export function createInitialGameState(args?: { options?: GameOptions; playerNationIds?: Record<string,string>; usePrivateData?: boolean; privateCardPath?: string; privateNationPath?: string; privateRulesetPath?: string; privateStrategyPath?: string }): GameState {
   const options = args?.options ?? defaultGameOptions;
-  const cards = loadCardDbWithOptionalPrivateData({ enabledExpansions: options.enabledExpansions, usePrivate: args?.usePrivateData ?? false });
-  const nationDb = loadNationDb({ enabledExpansions: options.enabledExpansions, usePrivate: args?.usePrivateData ?? false });
+  const usePrivateData = args?.usePrivateData ?? hasGeneratedPrivateCoreData(args);
+  const cards = loadCardDbWithOptionalPrivateData({ enabledExpansions: options.enabledExpansions, usePrivate: usePrivateData, privatePath: args?.privateCardPath });
+  const nationDb = loadNationDb({ enabledExpansions: options.enabledExpansions, usePrivate: usePrivateData, privatePath: args?.privateNationPath });
   const normCards = Object.fromEntries(Object.values(cards).map((c)=>[c.id,{id:c.id,displayName:c.displayName,suit:(c as any).suit ?? "none",cardType:(c as any).cardType ?? c.type ?? "action",cost:{materials:c.cost ?? 0,population:0,progress:0,goods:0},developmentCost:{materials:0,population:0,progress:0,goods:0},vp:{mode:"none",value:null},startingLocation:(c.startingLocation as any) ?? "market",isTradeRouteExpansion:false,effects:c.effects as any,tags:c.tags,implemented:false,tested:false,requiredExpansions:[],allowedModes:c.allowedModes ?? ["multiplayer","solo","practice"],disallowedModes:c.disallowedModes ?? [],playerCountRequirement:c.playerCountRequirement}]));
-  return createInitialGameStateFromPipeline({ options, playerNationIds: args?.playerNationIds, cardDb: normCards as any, nationDb, usePrivateRules: args?.usePrivateData ?? false, privateRulesetPath: args?.privateRulesetPath, privateStrategyPath: args?.privateStrategyPath });
+  return createInitialGameStateFromPipeline({ options, playerNationIds: args?.playerNationIds, cardDb: normCards as any, nationDb, usePrivateRules: usePrivateData, privateRulesetPath: args?.privateRulesetPath, privateStrategyPath: args?.privateStrategyPath });
 }
 export const createInitialState = createInitialGameState;

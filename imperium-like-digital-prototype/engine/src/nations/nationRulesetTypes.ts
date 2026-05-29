@@ -1,5 +1,5 @@
-import type { EffectOp, ExpansionId, ResourceName } from "../game/state";
-import type { GameMode, VariantId } from "../options/gameOptions";
+import type { EffectOp, ResourceName } from "../game/state";
+import type { ExpansionId, GameMode, VariantId } from "../options/gameOptions";
 
 export type NationRulesetTag =
   | "default_nation_deck" | "no_nation_deck" | "no_accession" | "no_development_area" | "development_area_available_from_start"
@@ -22,7 +22,10 @@ export type EffectCondition =
   | { op: "variant_enabled"; variant: VariantId }
   | { op: "mode_is"; mode: GameMode };
 
-export type SetupOverride = { op: "set_initial_resources"; resources: Partial<Record<ResourceName, number>> } | { op: "set_action_tokens_base"; count: number };
+export type SetupOverride =
+  | { op: "set_initial_resources"; resources: Partial<Record<ResourceName, number>> }
+  | { op: "gain_resource"; resource: ResourceName; count: number }
+  | { op: "set_action_tokens_base"; count: number };
 export type ZoneOverride = { op: "disable_history"; replacementBehavior: "discard" | "exile" | "alternate_zone" } | { op: "create_zone"; zoneId: string; displayName: string; visibility: "public" | "private" };
 export type StateOverride = { op: "start_as_state"; state: string } | { op: "never_flip_to_empire" };
 export type ReshuffleOverride = { op: "skip_default_nation_card_addition" } | { op: "custom_reshuffle_effect"; effect: EffectOp[] };

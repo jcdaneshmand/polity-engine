@@ -1,5 +1,10 @@
 import type { Effect, GameState } from "../game/state";
-import { drawCardWithReshuffleLifecycle } from "../game/zones";
+import { drawCard, drawCardWithReshuffleLifecycle } from "../game/zones";
+import { collectMarketResources, collectMarketUnrest } from "../game/marketResources";
+import { refillMarketSlot } from "../game/marketRefill";
+import { breakThrough } from "../game/breakThrough";
+import { payResourceCost } from "../game/payments";
+import type { ZoneOverride } from "../nations/nationRulesetTypes";
 
 interface Ctx {
   G: GameState;
@@ -19,17 +24,24 @@ function removeOneCard(cards: string[], target: string): void {
   if (index >= 0) cards.splice(index, 1);
 }
 
-export function runEffects(ctx: Ctx, effects: Effect[]): void {
-  for (const effect of effects) runEffect(ctx, effect);
+function isDisableHistoryOverride(override: ZoneOverride): override is Extract<ZoneOverride, { op: "disable_history" }> {
+  return override.op === "disable_history";
 }
 
-function runEffect(ctx: Ctx, effect: Effect): void {
+export function runEffects(ctx: Ctx, effects: Effect[]): boolean {
+  for (const effect of effects) {
+    if (!runEffect(ctx, effect)) return false;
+  }
+  return true;
+}
+
+function runEffect(ctx: Ctx, effect: Effect): boolean {
   const p = ctx.G.players[ctx.playerId];
 
   const maybeOp = (effect as unknown as { op?: string }).op ?? "";
   if ((maybeOp === "trade" || maybeOp === "commerce" || maybeOp === "profit") && isTradeExpansionDisabled(ctx)) {
     ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `Ignored ${maybeOp} because trade_routes is disabled.` });
-    return;
+    return true;
   }
 
   switch (effect.op) {
@@ -40,8 +52,19 @@ function runEffect(ctx: Ctx, effect: Effect): void {
       }
       break;
     }
+    case "draw_if_able": {
+      for (let i = 0; i < effect.count; i++) {
+        const card = drawCard(p, ctx.randomNumber, false);
+        if (!card) {
+          ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: "Draw-if-able stopped (deck empty)." });
+          break;
+        }
+        ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `Drew ${card} if able.` });
+      }
+      break;
+    }
     case "gain_resource": p.resources[effect.resource] = (p.resources[effect.resource] ?? 0) + effect.amount; ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `Gained ${effect.amount} ${effect.resource}.` }); break;
-    case "spend_resource": p.resources[effect.resource] = Math.max(0, (p.resources[effect.resource] ?? 0) - effect.amount); ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `Spent ${effect.amount} ${effect.resource}.` }); break;
+    case "spend_resource": return payResourceCost(ctx.G, ctx.playerId, effect.resource, effect.amount);
     case "discard_random": {
       for (let i = 0; i < effect.count; i++) {
         if (p.hand.length === 0) break;
@@ -56,7 +79,7 @@ function runEffect(ctx: Ctx, effect: Effect): void {
       if (!ctx.selfCardId) break;
       removeOneCard(p.playArea, ctx.selfCardId);
       removeOneCard(p.discard, ctx.selfCardId);
-      const disableHistory = ctx.G.activeNationRulesets?.[ctx.playerId]?.zoneOverrides?.find((ov: any) => ov.op === "disable_history");
+      const disableHistory = ctx.G.activeNationRulesets?.[ctx.playerId]?.zoneOverrides?.find(isDisableHistoryOverride);
       if (disableHistory?.replacementBehavior === "discard") {
         p.discard.push(ctx.selfCardId);
         ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `${ctx.selfCardId} moved to discard (history disabled).` });
@@ -79,17 +102,24 @@ function runEffect(ctx: Ctx, effect: Effect): void {
         const cardId = ctx.G.market[0];
         if (!cardId) break;
         ctx.G.market = ctx.G.market.slice(1);
-        p.discard.push(cardId);
+        collectMarketResources(ctx.G, ctx.playerId, cardId);
+        p.hand.push(cardId);
+        collectMarketUnrest(ctx.G, ctx.playerId, cardId);
         ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `Acquired ${cardId} from market.` });
+        refillMarketSlot(ctx.G, { playerId: ctx.playerId, slotIndex: 0, acquiredCardId: cardId });
       }
+      break;
+    }
+    case "break_through": {
+      breakThrough(ctx.G, { playerId: ctx.playerId, suit: effect.suit, source: effect.source, count: effect.count });
       break;
     }
     case "conditional_resource_at_least": runEffects(ctx, p.resources[effect.resource] >= effect.atLeast ? effect.then : effect.else ?? []); break;
     case "choose_one": {
-      const firstChoice = effect.choices?.[0] ?? [];
-      ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `Resolved choose_one by selecting first option.` });
-      runEffects(ctx, firstChoice);
+      ctx.G.pendingChoice = { playerId: ctx.playerId, sourceCardId: ctx.selfCardId, choices: effect.choices };
+      ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `ChoicePending(${ctx.selfCardId ?? "unknown"}/options=${effect.choices.length})` });
       break;
     }
   }
+  return true;
 }

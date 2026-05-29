@@ -1,5 +1,5 @@
 import type { ExpansionId, NormalizedCardRecord } from "../../../tools/card-import/cardCsvTypes";
-import type { NationDefinition, SetupRule } from "./nationSchema";
+import type { NationDefinition, SetupRule } from "./nationTypes";
 import type { PlayerState, ResourceName } from "../game/state";
 import { validateNationCardReferences } from "./nationValidation";
 
@@ -12,7 +12,8 @@ export function setupPlayerFromNation(args: { nation: NationDefinition; cardDb: 
     deck: args.shuffle([...args.nation.startingDeckCardIds]), hand: [], discard: [], playArea: [], history: [], exile: [],
     powerArea: [...args.nation.powerCardIds], stateArea: [...args.nation.stateCardIds], developmentArea: [...args.nation.developmentCardIds], nationDeck: [...args.nation.nationDeckCardIds], accessionCardId: args.nation.accessionCardId,
     sideAreas: {}, resources: { materials: 0, knowledge: 0, influence: 0, unrest: 0, goods: 0 }, actionsRemaining: args.nation.actionTokensBase,
-    actionTokensBase: args.nation.actionTokensBase, exhaustTokensBase: args.nation.exhaustTokensBase, actionTokensAvailable: args.nation.actionTokensBase, exhaustTokensAvailable: args.nation.exhaustTokensBase
+    actionTokensBase: args.nation.actionTokensBase, exhaustTokensBase: args.nation.exhaustTokensBase, actionTokensAvailable: args.nation.actionTokensBase, exhaustTokensAvailable: args.nation.exhaustTokensBase,
+    progressionTokens: { nationDeck: 0, developmentArea: 0 }
   };
   args.nation.setupRules.forEach((r) => applySetupRule(p, r));
   return p;

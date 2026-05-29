@@ -22,6 +22,15 @@ function buildGameCardDb(cards: NormalizedCardRecord[]): GameState["cardDb"] {
   return Object.fromEntries(filteredCardEntries(cards)) as GameState["cardDb"];
 }
 
+function mapResourceCost(cost: NormalizedCardRecord["developmentCost"]): GameState["cardDb"][string]["developmentCost"] {
+  return {
+    materials: cost.materials,
+    influence: cost.population,
+    knowledge: cost.progress,
+    goods: cost.goods
+  };
+}
+
 function filteredCardEntries(cards: NormalizedCardRecord[]) {
   return cards.map((c) => [c.id, {
     id: c.id,
@@ -30,6 +39,7 @@ function filteredCardEntries(cards: NormalizedCardRecord[]) {
     cardType: c.cardType as any,
     suit: c.suit as any,
     cost: c.cost.materials + c.cost.population + c.cost.progress + c.cost.goods,
+    developmentCost: mapResourceCost(c.developmentCost),
     tags: c.tags,
     effects: c.effects as any,
     allowedModes: c.allowedModes,
@@ -61,6 +71,11 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
     players,
     cardDb: buildGameCardDb(filteredCards),
     market: [],
+    marketRefillPool: [],
+    marketDecks: { mainDeck: [], regionDeck: [], uncivilizedDeck: [], civilizedDeck: [], tributaryDeck: [] },
+    marketResources: {},
+    marketUnrest: {},
+    unrestPile: Array.from({ length: 12 }, (_, index) => `placeholder_unrest_${index + 1}`),
     sharedDiscard: [],
     log: [],
     round: 1,
@@ -110,6 +125,8 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   game.cardDb = buildGameCardDb(filteredCards);
   const marketSetup = setupMarket(filteredCards, options.enabledVariants.includes("quick_setup"));
   game.market = marketSetup.market;
+  game.marketRefillPool = marketSetup.refillPool;
+  game.marketDecks = marketSetup.marketDecks;
   modules.forEach((m)=>m.modifyMarketSetup?.(ctx as any));
   const fame = setupFameDeck(options.enabledExpansions.includes("trade_routes"));
   modules.forEach((m)=>m.modifyFameSetup?.(ctx as any));

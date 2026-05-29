@@ -25,6 +25,25 @@ npm run typecheck
 
 If `npm test` reports that `vitest` is missing, run `npm install` from `/workspace/polity-engine/imperium-like-digital-prototype` (the workspace root), not `/workspace/polity-engine`.
 
+## Quick health-check launcher
+From the repository root, run:
+
+```powershell
+.\scripts\dev-check.ps1
+```
+
+This prepends the repo-local `.codex-tools` directory to PATH when available, runs `npm test`, runs `npm run typecheck`, and starts the Vite dev server only after both checks pass. For a checks-only run, use:
+
+```powershell
+.\scripts\dev-check.ps1 -NoLaunch
+```
+
+If your PowerShell profile or execution policy interferes, run the same script through a clean PowerShell process:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev-check.ps1
+```
+
 ## Architecture overview
 - `app/`: Vite + React + TypeScript UI using `boardgame.io/react` client.
 - `engine/`: Reusable game model, move logic, turn loop, and effect runner.

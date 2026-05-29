@@ -1,5 +1,5 @@
-import type { GameMode, VariantId } from "../options/gameOptions";
-import type { ExpansionId, ResourceName } from "../game/state";
+import type { ExpansionId, GameMode, VariantId } from "../options/gameOptions";
+import type { ResourceName } from "../game/state";
 import type {
   BotOverride,
   CleanupOverride,
@@ -136,6 +136,7 @@ export function validateNationRuleset(ruleset: NationRuleset): ValidationIssue[]
 
   issues.push(...validateOverrides<SetupOverride>(nationId, "setupOverrides", ruleset.setupOverrides, {
     set_initial_resources: ["resources"],
+    gain_resource: ["resource", "count"],
     set_action_tokens_base: ["count"],
   }));
   issues.push(...validateOverrides<ZoneOverride>(nationId, "zoneOverrides", ruleset.zoneOverrides, {
@@ -182,6 +183,9 @@ export function validateNationRuleset(ruleset: NationRuleset): ValidationIssue[]
       Object.keys(override.resources).forEach((resource) => {
         if (!has(RESOURCE_NAMES, resource)) issues.push({ nationId, field: `setupOverrides[${i}].resources.${resource}`, reason: `invalid resource '${resource}'` });
       });
+    }
+    if (override.op === "gain_resource" && !has(RESOURCE_NAMES, override.resource)) {
+      issues.push({ nationId, field: `setupOverrides[${i}].resource`, reason: `invalid resource '${String(override.resource)}'` });
     }
   });
 

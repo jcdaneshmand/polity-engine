@@ -1,8 +1,9 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
-    "lib": ["ES2020"],
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["vitest/globals"]
   },
-  "include": ["src/**/*", "../data/**/*.json"]
+  "include": ["src/**/*", "../data/**/*.json", "../types/**/*.d.ts"]
 }

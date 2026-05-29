@@ -1,11 +1,13 @@
-import fs from "node:fs";
 import type { ExpansionId, NormalizedCardRecord } from "../../../tools/card-import/cardCsvTypes";
 import { loadCardDb } from "./cardLoader";
 import type { Card } from "../game/state";
+import { getNodeFs } from "../local/nodeBuiltins";
 
 /** Local-only private data loader. generated-private JSON is gitignored and must be explicitly requested. */
 export function loadCardDbWithOptionalPrivateData(opts?: { usePrivate?: boolean; privatePath?: string; enabledExpansions?: ExpansionId[] }): Record<string, Card> {
   if (!opts?.usePrivate) return loadCardDb();
+  const fs = getNodeFs();
+  if (!fs) return loadCardDb();
   const path = opts.privatePath ?? "generated-private/cards.normalized.json";
   if (!fs.existsSync(path)) return loadCardDb();
   const enabled = opts.enabledExpansions ?? [];

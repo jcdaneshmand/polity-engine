@@ -35,11 +35,14 @@ export default function BoardLayout({ G, ctx, moves }: any) {
     if (a.action === "play" && a.cardId) moves.playCard?.(a.cardId);
     if (a.action === "acquire" && a.cardId) moves.acquireCard?.(a.cardId);
     if (a.action === "resolveChoice" && typeof a.choiceIndex === "number") moves.resolveChoice?.(a.choiceIndex);
+    if (a.action === "resolveFindChoice" && a.cardId) moves.resolveFindChoice?.(a.cardId);
     if (a.action === "resolveCleanupDiscard") moves.resolveCleanupDiscard?.(a.cardId ? [a.cardId] : []);
     if (a.action === "exhaust" && a.cardId) moves.exhaustCard?.(a.cardId);
     if (a.action === "garrison" && a.hostCardId && a.cardId) moves.garrisonCard?.(a.hostCardId, a.cardId);
     if (a.action === "recallRegion" && a.cardId) moves.recallRegion?.(a.cardId);
     if (a.action === "abandonRegion" && a.cardId) moves.abandonRegion?.(a.cardId);
+    if (a.action === "innovate" && a.suit && a.source) moves.innovateTurn?.({ suit: a.suit, source: a.source, cardId: a.cardId });
+    if (a.action === "revolt" && a.cardId) moves.revoltTurn?.([a.cardId]);
     if (a.action === "endTurn") moves.endTurn?.();
     if (a.action === "cancel") setSelection(null);
   };

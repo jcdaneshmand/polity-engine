@@ -60,6 +60,18 @@ function payDevelopmentCost(G: GameState, playerId: string, cardId: string): boo
   return payResourceCosts(G, playerId, cost);
 }
 
+function runAfterReshuffleEffects(G: GameState, playerId: string, randomNumber?: () => number): void {
+  const ruleset = G.activeNationRulesets?.[playerId];
+  if (ruleset) {
+    for (const ov of ruleset.reshuffleOverrides ?? []) {
+      if (ov.op === "skip_default_nation_card_addition") continue;
+      logOverride(G, playerId, ruleset.nationId, "reshuffle", ov.op);
+      if (ov.op === "custom_reshuffle_effect") runEffects({ G, playerId, enabledExpansions: G.options?.enabledExpansions, randomNumber }, ov.effect as any);
+    }
+  }
+  runNationHooks({ G, playerId, trigger: "after_reshuffle", randomNumber });
+}
+
 export function drawCard(player: PlayerState, randomNumber?: () => number, allowAutoReshuffle = true): string | null {
   if (allowAutoReshuffle && player.deck.length === 0 && player.discard.length > 0) {
     player.deck = shuffleWithRandom(player.discard, randomNumber);
@@ -104,15 +116,7 @@ export function maybeReshuffleDeck(G: GameState, playerId: string, randomNumber?
   p.deck = shuffleWithRandom(p.discard, randomNumber);
   G.log.push({ round: G.round, playerId, message: `ReshuffleResolved(deck=${p.deck.length}, deterministic=${randomNumber ? "injected_rng" : "fallback_zero"})` });
   p.discard = [];
-  const shuffled = true;
-  if (ruleset) {
-    for (const ov of ruleset.reshuffleOverrides ?? []) {
-      if (ov.op === "skip_default_nation_card_addition") continue;
-      logOverride(G, playerId, ruleset.nationId, "reshuffle", ov.op);
-      if (ov.op === "custom_reshuffle_effect") runEffects({ G, playerId, enabledExpansions: G.options?.enabledExpansions, randomNumber }, ov.effect as any);
-    }
-  }
-  return { attempted: true, shuffled };
+  return { attempted: true, shuffled: true };
 }
 
 export function resolvePendingDevelopmentChoice(G: GameState, playerId: string, cardId: string, randomNumber?: () => number): boolean {
@@ -136,6 +140,7 @@ export function resolvePendingDevelopmentChoice(G: GameState, playerId: string, 
   p.deck = shuffleWithRandom(p.discard, randomNumber);
   p.discard = [];
   G.log.push({ round: G.round, playerId, message: `ReshuffleResolved(deck=${p.deck.length}, deterministic=${randomNumber ? "injected_rng" : "fallback_zero"})` });
+  runAfterReshuffleEffects(G, playerId, randomNumber);
 
   for (let i = 0; i < resumeDrawCount; i++) {
     const drawn = drawCard(p, randomNumber, false);
@@ -152,8 +157,8 @@ export function drawCardWithReshuffleLifecycle(G: GameState, playerId: string, r
     (G as any)._reshuffleInProgressByPlayer[playerId] = true;
     try {
       runNationHooks({ G, playerId, trigger: "before_reshuffle", randomNumber });
-      maybeReshuffleDeck(G, playerId, randomNumber, resumeDrawCount);
-      runNationHooks({ G, playerId, trigger: "after_reshuffle", randomNumber });
+      const result = maybeReshuffleDeck(G, playerId, randomNumber, resumeDrawCount);
+      if (result.shuffled) runAfterReshuffleEffects(G, playerId, randomNumber);
     } finally {
       (G as any)._reshuffleInProgressByPlayer[playerId] = false;
     }

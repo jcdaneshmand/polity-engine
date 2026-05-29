@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { ExpansionId, GameMode, GameOptions, SoloDifficulty, VariantId } from "../../../../engine/src/options/gameOptions";
+import type { CommonsSetId, ExpansionId, GameMode, GameOptions, SoloDifficulty, VariantId } from "../../../../engine/src/options/gameOptions";
 
 export type NewGameSessionConfig = {
   options: GameOptions;
@@ -19,6 +19,13 @@ const modes: Array<{ id: GameMode; label: string }> = [
 ];
 
 const expansions: Array<{ id: ExpansionId; label: string }> = [{ id: "trade_routes", label: "Trade Routes" }];
+
+const commonsSets: Array<{ id: CommonsSetId; label: string }> = [
+  { id: "classics", label: "Classics" },
+  { id: "legends", label: "Legends" },
+  { id: "horizons", label: "Horizons" },
+  { id: "custom", label: "Custom" }
+];
 
 const variants: Array<{ id: VariantId; label: string }> = [
   { id: "lowered_aggression", label: "Lowered Aggression" },
@@ -55,6 +62,7 @@ export default function NewGameSetup({ onStart }: NewGameSetupProps) {
   const [playerCount, setPlayerCount] = useState<1 | 2 | 3 | 4>(2);
   const [enabledExpansions, setEnabledExpansions] = useState<ExpansionId[]>([]);
   const [enabledVariants, setEnabledVariants] = useState<VariantId[]>([]);
+  const [commonsSetId, setCommonsSetId] = useState<CommonsSetId>("classics");
   const [soloDifficulty, setSoloDifficulty] = useState<SoloDifficulty>("chieftain");
   const [playerNationIds, setPlayerNationIds] = useState<Record<string, string>>({
     "0": DEFAULT_NATION_ID,
@@ -98,6 +106,7 @@ export default function NewGameSetup({ onStart }: NewGameSetupProps) {
       mode,
       enabledExpansions,
       enabledVariants,
+      commonsSetId,
       ...(mode === "solo" ? { soloDifficulty } : {})
     };
     const selectedNations = Object.fromEntries(activePlayerIds.map((playerId) => [playerId, playerNationIds[playerId] ?? DEFAULT_NATION_ID]));
@@ -159,6 +168,17 @@ export default function NewGameSetup({ onStart }: NewGameSetupProps) {
               </select>
             </label>
           ) : null}
+
+          <label className="setup-section setup-field">
+            <span>Commons set</span>
+            <select value={commonsSetId} onChange={(event: { target: HTMLSelectElement }) => setCommonsSetId(event.target.value as CommonsSetId)}>
+              {commonsSets.map((commonsSet) => (
+                <option key={commonsSet.id} value={commonsSet.id}>
+                  {commonsSet.label}
+                </option>
+              ))}
+            </select>
+          </label>
 
           <fieldset className="setup-section">
             <legend>Expansions</legend>

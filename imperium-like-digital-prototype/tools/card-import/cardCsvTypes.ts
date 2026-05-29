@@ -4,12 +4,17 @@ export type StartingLocation = "draw_deck"|"nation_deck"|"accession"|"developmen
 export type VpMode = "none"|"fixed"|"variable"|"negative"|"conditional";
 export type EffectOp = Record<string, unknown>;
 export type ExpansionId = "trade_routes";
+export type CommonsSetId = "classics"|"legends"|"horizons"|"custom";
+export type CommonsOwnership = "commons"|"nation"|"bot"|"replacement";
+export type CommonsGroup = "base"|"trade_friendly"|"trade_routes"|"replacement";
+export type CommonsPlayerCountRequirement = "1+"|"2+"|"3+"|"4+";
 export type ResourceCost = { materials:number; population:number; progress:number; goods:number };
 
 export interface PrivateCardCsvRow { [k:string]: string; }
 export interface NormalizedCardRecord {
   id:string; displayName:string; privateName?:string; sourceBox?:string; setOrNation?:string; suit:Suit; cardType:CardType; stateRequirement?:string;
-  cost:ResourceCost; developmentCost:ResourceCost; vp:{mode:VpMode; value:number|null}; startingLocation:StartingLocation; playerCountRequirement?:string;
+  cost:ResourceCost; developmentCost:ResourceCost; vp:{mode:VpMode; value:number|null}; startingLocation:StartingLocation; playerCountRequirement?:CommonsPlayerCountRequirement|string;
+  ownership:CommonsOwnership; commonsSetId?:CommonsSetId; setupBannerSuit?:Suit; commonsGroup?:CommonsGroup; replacementForCardId?:string; replacementGroupId?:string; conflictsWithNationIds?:string[]; delayableInLoweredAggression?:boolean; marketEligible?:boolean; smallDeckEligible?:boolean; mainDeckEligible?:boolean; unrestPileEligible?:boolean; fameDeckEligible?:boolean;
   isTradeRouteExpansion:boolean; rawEffectTextPrivate?:string; effects:EffectOp[]; tags:string[]; notes?:string; implemented:boolean; tested:boolean; requiredExpansions?: ExpansionId[]; excludedExpansions?: ExpansionId[]; allowedModes?: ("multiplayer"|"solo"|"practice")[]; disallowedModes?: ("multiplayer"|"solo"|"practice")[];
 }
 export interface CardImportError { level:"fatal"|"warning"; row:number; field:string; message:string; }

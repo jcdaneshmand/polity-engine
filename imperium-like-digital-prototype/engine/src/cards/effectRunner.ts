@@ -1,4 +1,4 @@
-import type { Effect, EffectTrigger, GameState } from "../game/state";
+import type { Effect, EffectTrigger, GameState, PlayerState, ZoneName } from "../game/state";
 import { drawCard, drawCardWithReshuffleLifecycle } from "../game/zones";
 import { collectMarketResources, collectMarketUnrest } from "../game/marketResources";
 import { refillMarketSlot } from "../game/marketRefill";
@@ -22,6 +22,101 @@ function isTradeExpansionDisabled(ctx: Ctx): boolean {
 function removeOneCard(cards: string[], target: string): void {
   const index = cards.indexOf(target);
   if (index >= 0) cards.splice(index, 1);
+}
+
+function shuffleWithRandom<T>(items: T[], randomNumber?: () => number): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const roll = randomNumber ? randomNumber() : 0;
+    const j = Math.floor(roll * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+type FindZone = "hand" | "discard" | "deck" | "nationDeck";
+
+function findZoneCards(player: PlayerState, zone: FindZone): string[] {
+  return player[zone];
+}
+
+function removeFromFindZone(player: PlayerState, zone: FindZone, cardId: string): boolean {
+  const cards = findZoneCards(player, zone);
+  const index = cards.indexOf(cardId);
+  if (index < 0) return false;
+  cards.splice(index, 1);
+  return true;
+}
+
+function destinationZone(player: PlayerState, destination: ZoneName): string[] {
+  return player[destination];
+}
+
+function moveFoundCard(player: PlayerState, fromZone: FindZone, destination: ZoneName, cardId: string): boolean {
+  if (fromZone === destination) return true;
+  if (!removeFromFindZone(player, fromZone, cardId)) return false;
+  destinationZone(player, destination).push(cardId);
+  return true;
+}
+
+function cardMatchesFindCriteria(G: GameState, cardId: string, effect: Extract<Effect, { op: "find_card" }>): boolean {
+  const card = G.cardDb[cardId];
+  if (!card) return false;
+  if (effect.cardId) return cardId === effect.cardId;
+  if (effect.suit && card.suit !== effect.suit) return false;
+  if (effect.cardType && (card.cardType ?? card.type) !== effect.cardType) return false;
+  return Boolean(effect.suit || effect.cardType);
+}
+
+function shuffleFindDeckIfNeeded(G: GameState, playerId: string, zone: "deck" | "nationDeck", randomNumber?: () => number): void {
+  const player = G.players[playerId];
+  if (zone === "deck") {
+    player.deck = shuffleWithRandom(player.deck, randomNumber);
+    G.log.push({ round: G.round, playerId, message: "FindShuffled(deck)" });
+    return;
+  }
+  const accessionCardId = player.accessionCardId;
+  const accessionCards = accessionCardId ? player.nationDeck.filter((cardId) => cardId === accessionCardId) : [];
+  const searchableCards = accessionCardId ? player.nationDeck.filter((cardId) => cardId !== accessionCardId) : [...player.nationDeck];
+  player.nationDeck = [...shuffleWithRandom(searchableCards, randomNumber), ...accessionCards];
+  G.log.push({ round: G.round, playerId, message: "FindShuffled(nationDeck)" });
+}
+
+function searchableFindCards(player: PlayerState, zone: FindZone): string[] {
+  if (zone !== "nationDeck" || !player.accessionCardId) return [...findZoneCards(player, zone)];
+  return player.nationDeck.filter((cardId) => cardId !== player.accessionCardId);
+}
+
+function runFindCard(ctx: Ctx, effect: Extract<Effect, { op: "find_card" }>): void {
+  const player = ctx.G.players[ctx.playerId];
+  const zones: FindZone[] = ["hand", "discard", "deck", "nationDeck"];
+
+  if (effect.cardId) {
+    for (const zone of zones) {
+      const found = searchableFindCards(player, zone).includes(effect.cardId);
+      if (zone === "deck" || zone === "nationDeck") shuffleFindDeckIfNeeded(ctx.G, ctx.playerId, zone, ctx.randomNumber);
+      if (!found) continue;
+      moveFoundCard(player, zone, effect.destination, effect.cardId);
+      ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `FindResolved(${effect.cardId}/${zone}->${effect.destination})` });
+      return;
+    }
+    ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `FindMissed(${effect.cardId})` });
+    return;
+  }
+
+  const cardIds: string[] = [];
+  for (const zone of zones) {
+    for (const cardId of searchableFindCards(player, zone)) {
+      if (cardMatchesFindCriteria(ctx.G, cardId, effect) && !cardIds.includes(cardId)) cardIds.push(cardId);
+    }
+    if (zone === "deck" || zone === "nationDeck") shuffleFindDeckIfNeeded(ctx.G, ctx.playerId, zone, ctx.randomNumber);
+  }
+  if (cardIds.length === 0) {
+    ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: "FindMissed(criteria)" });
+    return;
+  }
+  ctx.G.pendingFindChoice = { playerId: ctx.playerId, sourceCardId: ctx.selfCardId, cardIds, destination: effect.destination };
+  ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `FindChoicePending(${ctx.selfCardId ?? "unknown"}/options=${cardIds.length})` });
 }
 
 function isDisableHistoryOverride(override: ZoneOverride): override is Extract<ZoneOverride, { op: "disable_history" }> {
@@ -69,6 +164,33 @@ function runEffect(ctx: Ctx, effect: Effect): boolean {
     }
     case "gain_resource": p.resources[effect.resource] = (p.resources[effect.resource] ?? 0) + effect.amount; ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `Gained ${effect.amount} ${effect.resource}.` }); break;
     case "spend_resource": return payResourceCost(ctx.G, ctx.playerId, effect.resource, effect.amount);
+    case "remove_resource": {
+      const available = p.resources[effect.resource] ?? 0;
+      const removed = Math.min(available, effect.amount);
+      p.resources[effect.resource] = available - removed;
+      ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `Removed ${removed}/${effect.amount} ${effect.resource}.` });
+      break;
+    }
+    case "return_resource": {
+      const available = p.resources[effect.resource] ?? 0;
+      const returned = Math.min(available, effect.amount);
+      p.resources[effect.resource] = available - returned;
+      ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `Returned ${returned}/${effect.amount} ${effect.resource}.` });
+      break;
+    }
+    case "steal_resource": {
+      const target = ctx.G.players[effect.fromPlayerId];
+      if (!target) {
+        ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `StealSkipped(player_not_found/${effect.fromPlayerId}).` });
+        break;
+      }
+      const available = target.resources[effect.resource] ?? 0;
+      const stolen = Math.min(available, effect.amount);
+      target.resources[effect.resource] = available - stolen;
+      p.resources[effect.resource] = (p.resources[effect.resource] ?? 0) + stolen;
+      ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `Stole ${stolen}/${effect.amount} ${effect.resource} from player ${effect.fromPlayerId}.` });
+      break;
+    }
     case "discard_random": {
       for (let i = 0; i < effect.count; i++) {
         if (p.hand.length === 0) break;
@@ -115,7 +237,11 @@ function runEffect(ctx: Ctx, effect: Effect): boolean {
       break;
     }
     case "break_through": {
-      breakThrough(ctx.G, { playerId: ctx.playerId, suit: effect.suit, source: effect.source, count: effect.count });
+      breakThrough(ctx.G, { playerId: ctx.playerId, suit: effect.suit, source: effect.source, count: effect.count, cardId: effect.cardId, randomNumber: ctx.randomNumber });
+      break;
+    }
+    case "find_card": {
+      runFindCard(ctx, effect);
       break;
     }
     case "conditional_resource_at_least": runEffects(ctx, p.resources[effect.resource] >= effect.atLeast ? effect.then : effect.else ?? []); break;

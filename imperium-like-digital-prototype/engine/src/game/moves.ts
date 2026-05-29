@@ -8,6 +8,8 @@ import { refillMarketSlot } from "./marketRefill";
 import { availableForResourceCost, canPayResourceCost, payResourceCost } from "./payments";
 import { resolveCleanupDiscardChoice, startCleanupDiscardChoice } from "./turn";
 import { abandonRegionToDiscard, garrisonCardOnRegion, isRegionCard, recallRegionToHand } from "./regions";
+import { breakThrough } from "./breakThrough";
+import type { Suit, ZoneName } from "./state";
 
 interface MoveCtx {
   G: GameState;
@@ -34,9 +36,42 @@ function cardRemainsInPlay(G: GameState, cardId: string): boolean {
   return type === "in_play" || type === "region" || type === "power" || type === "state";
 }
 
+function normalizeStateToken(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const normalized = value.toLowerCase().replace(/[_\s-]+/g, "");
+  if (normalized === "empire") return "civilized";
+  if (normalized === "barbarian") return "uncivilized";
+  return normalized;
+}
+
+function cardMeetsStateRequirement(G: GameState, playerId: string, cardId: string): boolean {
+  const requirement = normalizeStateToken(G.cardDb[cardId]?.stateRequirement);
+  if (!requirement) return true;
+  const stateCardId = G.players[playerId]?.stateArea[0];
+  const stateCard = stateCardId ? G.cardDb[stateCardId] : undefined;
+  const stateTokens = [
+    stateCardId,
+    stateCard?.displayName,
+    stateCard?.suit,
+    ...(stateCard?.tags ?? [])
+  ].map(normalizeStateToken).filter(Boolean);
+  return stateTokens.includes(requirement);
+}
+
 function canExhaustCard(G: GameState, playerId: string, cardId: string): boolean {
   const p = G.players[playerId];
   return p.playArea.includes(cardId) || p.powerArea.includes(cardId) || p.stateArea.includes(cardId);
+}
+
+const INNOVATE_SUITS: Suit[] = ["region", "uncivilized", "civilized", "tributary"];
+
+function isInnovateSuit(suit: Suit): boolean {
+  return INNOVATE_SUITS.includes(suit);
+}
+
+function isUnrestCard(G: GameState, cardId: string): boolean {
+  const card = G.cardDb[cardId];
+  return card?.suit === "unrest" || card?.cardType === "unrest" || card?.type === "unrest" || card?.tags?.includes("unrest") || cardId.includes("unrest");
 }
 
 function moveResolvedCardFromPlayToDiscard(G: GameState, playerId: string, cardId: string): void {
@@ -46,6 +81,27 @@ function moveResolvedCardFromPlayToDiscard(G: GameState, playerId: string, cardI
   if (playIndex < 0) return;
   p.playArea.splice(playIndex, 1);
   p.discard.push(cardId);
+}
+
+type FindZone = "hand" | "discard" | "deck" | "nationDeck";
+
+function findCardZone(G: GameState, playerId: string, cardId: string): FindZone | undefined {
+  const p = G.players[playerId];
+  const zones: FindZone[] = ["hand", "discard", "deck", "nationDeck"];
+  return zones.find((zone) => p[zone].includes(cardId));
+}
+
+function movePlayerCard(G: GameState, playerId: string, cardId: string, destination: ZoneName): boolean {
+  const p = G.players[playerId];
+  const fromZone = findCardZone(G, playerId, cardId);
+  if (!fromZone) return false;
+  if (fromZone === destination) return true;
+  const sourceCards = p[fromZone];
+  const index = sourceCards.indexOf(cardId);
+  if (index < 0) return false;
+  sourceCards.splice(index, 1);
+  p[destination].push(cardId);
+  return true;
 }
 
 export function playCard({ G, ctx, random }: MoveCtx, cardId: string): void {
@@ -60,6 +116,10 @@ export function playCard({ G, ctx, random }: MoveCtx, cardId: string): void {
   }
   if (!p.hand.includes(cardId)) {
     logInvalidMove(G, ctx.currentPlayer, "playCard", `card_not_in_hand(${cardId})`);
+    return;
+  }
+  if (!cardMeetsStateRequirement(G, ctx.currentPlayer, cardId)) {
+    logInvalidMove(G, ctx.currentPlayer, "playCard", `state_requirement_not_met(${G.cardDb[cardId]?.stateRequirement})`);
     return;
   }
 
@@ -153,6 +213,53 @@ export function exhaustCard({ G, ctx, random }: MoveCtx, cardId: string): void {
   G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: `Exhausted ${cardId}.` });
 }
 
+export function innovateTurn({ G, ctx, events, random }: MoveCtx, args: { suit: Suit; source: "market" | "deck"; cardId?: string }): void {
+  const p = G.players[ctx.currentPlayer];
+  if (!isActivateTurn(G)) {
+    logInvalidMove(G, ctx.currentPlayer, "innovateTurn", `turn_type_not_activate(${G.currentTurnType})`);
+    return;
+  }
+  if (!isInnovateSuit(args.suit)) {
+    logInvalidMove(G, ctx.currentPlayer, "innovateTurn", `invalid_innovate_suit(${args.suit})`);
+    return;
+  }
+
+  G.currentTurnType = "innovate";
+  p.discard.push(...p.hand);
+  p.hand = [];
+  G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: `InnovateStarted(${args.suit}/${args.source})` });
+  breakThrough(G, { playerId: ctx.currentPlayer, suit: args.suit, source: args.source, count: 1, cardId: args.cardId, randomNumber: random?.Number });
+  continueEndTurnAfterCleanupChoices({ G, ctx, events, random });
+}
+
+export function revoltTurn({ G, ctx, events, random }: MoveCtx, cardIds: string[]): void {
+  const p = G.players[ctx.currentPlayer];
+  if (!isActivateTurn(G)) {
+    logInvalidMove(G, ctx.currentPlayer, "revoltTurn", `turn_type_not_activate(${G.currentTurnType})`);
+    return;
+  }
+  const uniqueCardIds = [...new Set(cardIds)];
+  if (uniqueCardIds.some((cardId) => !p.hand.includes(cardId))) {
+    logInvalidMove(G, ctx.currentPlayer, "revoltTurn", "card_not_in_hand");
+    return;
+  }
+  if (uniqueCardIds.some((cardId) => !isUnrestCard(G, cardId))) {
+    logInvalidMove(G, ctx.currentPlayer, "revoltTurn", "card_not_returnable");
+    return;
+  }
+
+  G.currentTurnType = "revolt";
+  G.unrestPile ??= [];
+  for (const cardId of uniqueCardIds) {
+    const index = p.hand.indexOf(cardId);
+    if (index < 0) continue;
+    p.hand.splice(index, 1);
+    G.unrestPile.push(cardId);
+  }
+  G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: `RevoltResolved(returned=${uniqueCardIds.length})` });
+  continueEndTurnAfterCleanupChoices({ G, ctx, events, random });
+}
+
 export function resolveChoice({ G, ctx, random }: MoveCtx, choiceIndex: number): void {
   const pending = G.pendingChoice;
   if (!pending) {
@@ -175,6 +282,28 @@ export function resolveChoice({ G, ctx, random }: MoveCtx, choiceIndex: number):
     choice
   );
   G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: `ChoiceResolved(${pending.sourceCardId ?? "unknown"}/index=${choiceIndex})` });
+}
+
+export function resolveFindChoice({ G, ctx }: MoveCtx, cardId: string): void {
+  const pending = G.pendingFindChoice;
+  if (!pending) {
+    logInvalidMove(G, ctx.currentPlayer, "resolveFindChoice", "no_pending_find_choice");
+    return;
+  }
+  if (pending.playerId !== ctx.currentPlayer) {
+    logInvalidMove(G, ctx.currentPlayer, "resolveFindChoice", `pending_find_for_player(${pending.playerId})`);
+    return;
+  }
+  if (!pending.cardIds.includes(cardId)) {
+    logInvalidMove(G, ctx.currentPlayer, "resolveFindChoice", `card_not_in_find_options(${cardId})`);
+    return;
+  }
+  if (!movePlayerCard(G, ctx.currentPlayer, cardId, pending.destination)) {
+    logInvalidMove(G, ctx.currentPlayer, "resolveFindChoice", `find_move_failed(${cardId})`);
+    return;
+  }
+  G.pendingFindChoice = undefined;
+  G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: `FindChoiceResolved(${pending.sourceCardId ?? "unknown"}/${cardId}->${pending.destination})` });
 }
 
 export function garrisonCard({ G, ctx }: MoveCtx, hostCardId: string, cardId: string): void {

@@ -7,21 +7,33 @@ function cardMatchesSuit(G: GameState, cardId: string, suit: Suit): boolean {
   return G.cardDb[cardId]?.suit === suit;
 }
 
-function breakThroughFromMarket(G: GameState, playerId: string, suit: Suit): boolean {
-  const slotIndex = G.market.findIndex((cardId) => cardMatchesSuit(G, cardId, suit));
+function shuffleWithRandom<T>(items: T[], randomNumber?: () => number): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const roll = randomNumber ? randomNumber() : 0;
+    const j = Math.floor(roll * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+function breakThroughFromMarket(G: GameState, playerId: string, suit: Suit, cardId?: string): boolean {
+  const slotIndex = cardId
+    ? G.market.findIndex((marketCardId) => marketCardId === cardId && cardMatchesSuit(G, marketCardId, suit))
+    : G.market.findIndex((marketCardId) => cardMatchesSuit(G, marketCardId, suit));
   if (slotIndex < 0) return false;
 
-  const [cardId] = G.market.splice(slotIndex, 1);
-  if (!cardId) return false;
-  collectMarketResources(G, playerId, cardId);
-  G.players[playerId].hand.push(cardId);
-  returnMarketUnrest(G, playerId, cardId);
-  G.log.push({ round: G.round, playerId, message: `BreakThroughMarket(${cardId}/${suit})` });
-  refillMarketSlot(G, { playerId, slotIndex, acquiredCardId: cardId });
+  const [acquiredCardId] = G.market.splice(slotIndex, 1);
+  if (!acquiredCardId) return false;
+  collectMarketResources(G, playerId, acquiredCardId);
+  G.players[playerId].hand.push(acquiredCardId);
+  returnMarketUnrest(G, playerId, acquiredCardId);
+  G.log.push({ round: G.round, playerId, message: `BreakThroughMarket(${acquiredCardId}/${suit})` });
+  refillMarketSlot(G, { playerId, slotIndex, acquiredCardId });
   return true;
 }
 
-function breakThroughFromDeck(G: GameState, playerId: string, suit: Suit): boolean {
+function breakThroughFromDeck(G: GameState, playerId: string, suit: Suit, randomNumber?: () => number): boolean {
   const sourceDeck = deckForSuit(suit);
   const smallDeckCard = sourceDeck ? G.marketDecks?.[sourceDeck].shift() : undefined;
   if (smallDeckCard) {
@@ -38,23 +50,24 @@ function breakThroughFromDeck(G: GameState, playerId: string, suit: Suit): boole
     if (!cardId) break;
     if (cardMatchesSuit(G, cardId, suit)) {
       G.players[playerId].hand.push(cardId);
-      mainDeck.push(...revealed);
+      mainDeck.splice(0, mainDeck.length, ...shuffleWithRandom([...mainDeck, ...revealed], randomNumber));
       G.log.push({ round: G.round, playerId, message: `BreakThroughMainDeck(${cardId}/${suit}/revealed=${revealed.length})` });
       triggerScoringIfMainDeckEmpty(G, playerId);
       return true;
     }
     revealed.push(cardId);
   }
-  mainDeck.push(...revealed);
-  G.log.push({ round: G.round, playerId, message: `BreakThroughFailed(${suit})` });
+  mainDeck.splice(0, mainDeck.length, ...shuffleWithRandom(revealed, randomNumber));
+  G.players[playerId].resources.materials = (G.players[playerId].resources.materials ?? 0) + 2;
+  G.log.push({ round: G.round, playerId, message: `BreakThroughFailed(${suit}/gained=2 materials)` });
   return false;
 }
 
-export function breakThrough(G: GameState, args: { playerId: string; suit: Suit; source: "market" | "deck"; count: number }): void {
+export function breakThrough(G: GameState, args: { playerId: string; suit: Suit; source: "market" | "deck"; count: number; cardId?: string; randomNumber?: () => number }): void {
   for (let i = 0; i < args.count; i++) {
     const resolved = args.source === "market"
-      ? breakThroughFromMarket(G, args.playerId, args.suit)
-      : breakThroughFromDeck(G, args.playerId, args.suit);
+      ? breakThroughFromMarket(G, args.playerId, args.suit, args.cardId)
+      : breakThroughFromDeck(G, args.playerId, args.suit, args.randomNumber);
     if (!resolved) break;
   }
 }

@@ -3,7 +3,7 @@ import type { GameOptions } from "../options/gameOptions";
 import { validateGameOptions } from "../options/optionValidation";
 import { getEnabledRulesModules } from "../options/rulesModuleRegistry";
 import { filterCardsByOptions } from "./deckConstruction";
-import { setupMarket } from "./marketSetup";
+import { buildCommonsSetup } from "./commonsSetup";
 import { setupFameDeck } from "./fameSetup";
 import { setupPlayerFromNation } from "../nations/setupPlayerFromNation";
 import type { NormalizedCardRecord } from "../../../tools/card-import/cardCsvTypes";
@@ -45,8 +45,102 @@ function filteredCardEntries(cards: NormalizedCardRecord[]) {
     allowedModes: c.allowedModes,
     disallowedModes: c.disallowedModes,
     playerCountRequirement: c.playerCountRequirement,
-    startingLocation: c.startingLocation
+    startingLocation: c.startingLocation,
+    ownership: c.ownership,
+    commonsSetId: c.commonsSetId,
+    setupBannerSuit: c.setupBannerSuit as any,
+    commonsGroup: c.commonsGroup,
+    replacementForCardId: c.replacementForCardId,
+    replacementGroupId: c.replacementGroupId,
+    conflictsWithNationIds: c.conflictsWithNationIds,
+    delayableInLoweredAggression: c.delayableInLoweredAggression,
+    marketEligible: c.marketEligible,
+    smallDeckEligible: c.smallDeckEligible,
+    mainDeckEligible: c.mainDeckEligible,
+    unrestPileEligible: c.unrestPileEligible,
+    fameDeckEligible: c.fameDeckEligible
   }] as const);
+}
+
+function mergeCardsById(baseCards: NormalizedCardRecord[], sourceCards: Record<string, NormalizedCardRecord>, cardIds: string[]) {
+  const byId = new Map(baseCards.map((card) => [card.id, card]));
+  for (const cardId of cardIds) {
+    const card = sourceCards[cardId];
+    if (card) byId.set(cardId, card);
+  }
+  return [...byId.values()];
+}
+
+function isRuntimeBaseCard(card: NormalizedCardRecord): boolean {
+  return card.ownership !== "commons" && card.ownership !== "replacement";
+}
+
+function getPlayerReferencedCardIds(players: GameState["players"]): string[] {
+  const ids = new Set<string>();
+  for (const player of Object.values(players)) {
+    [
+      player.deck,
+      player.hand,
+      player.discard,
+      player.playArea,
+      player.history,
+      player.exile,
+      player.powerArea,
+      player.stateArea,
+      player.developmentArea,
+      player.nationDeck,
+      player.accessionCardId ? [player.accessionCardId] : [],
+      ...Object.values(player.sideAreas ?? {})
+    ].forEach((zone) => zone.forEach((cardId) => ids.add(cardId)));
+  }
+  return [...ids];
+}
+
+function buildRuntimeCardDb(args: {
+  filteredCards: NormalizedCardRecord[];
+  sourceCards: Record<string, NormalizedCardRecord>;
+  selectedCommonsCardIds: string[];
+  players: GameState["players"];
+}): GameState["cardDb"] {
+  return buildGameCardDb(mergeCardsById(
+    args.filteredCards.filter(isRuntimeBaseCard),
+    args.sourceCards,
+    [...args.selectedCommonsCardIds, ...getPlayerReferencedCardIds(args.players)]
+  ));
+}
+
+function cloneMarketSlots(slots: NonNullable<GameState["marketSlots"]>): NonNullable<GameState["marketSlots"]> {
+  return slots.map((slot) => ({
+    ...slot,
+    attachedUnrestCardIds: [...slot.attachedUnrestCardIds],
+    resourceMarkers: { ...slot.resourceMarkers }
+  }));
+}
+
+function marketResourcesFromSlots(slots: NonNullable<GameState["marketSlots"]>): NonNullable<GameState["marketResources"]> {
+  return Object.fromEntries(
+    slots
+      .filter((slot) => slot.cardId && Object.keys(slot.resourceMarkers).length > 0)
+      .map((slot) => [slot.cardId, { ...slot.resourceMarkers }])
+  ) as NonNullable<GameState["marketResources"]>;
+}
+
+function marketUnrestFromSlots(slots: NonNullable<GameState["marketSlots"]>): NonNullable<GameState["marketUnrest"]> {
+  return Object.fromEntries(
+    slots
+      .filter((slot) => slot.cardId && slot.attachedUnrestCardIds.length > 0)
+      .map((slot) => [slot.cardId, [...slot.attachedUnrestCardIds]])
+  ) as NonNullable<GameState["marketUnrest"]>;
+}
+
+function buildFameDeckState(commonsSetup: NonNullable<GameState["setupReport"]>["commonsSetup"], enabledTradeRoutes: boolean): NonNullable<GameState["fameDeck"]> {
+  if (!commonsSetup?.fameDeck.length) return setupFameDeck(enabledTradeRoutes);
+  const specialBottomCardId = commonsSetup.kingOfKingsCardId;
+  return {
+    available: commonsSetup.fameDeck.filter((cardId) => cardId !== specialBottomCardId),
+    specialBottomCardId,
+    resolvedSpecialByPlayer: {}
+  };
 }
 
 export function createInitialGameStateFromPipeline(args: { options: GameOptions; playerNationIds?: Record<string,string>; cardDb: Record<string, NormalizedCardRecord>; nationDb: Record<string, NationDefinition>; randomSeed?: string; usePrivateRules?: boolean; privateRulesetPath?: string; privateStrategyPath?: string; }): GameState {
@@ -65,7 +159,7 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   const activeNationRulesets: Record<string, any> = {};
   const activeNationStrategyProfiles: Record<string, any> = {};
   const rulesetReports: NationRulesetApplicationReport[] = [];
-  const setupReport = { delayedAggressiveCount:0, usedQuickSetup:false, shortGameExiled:0, shortGameNationAdvanced:0 };
+  const setupReport: NonNullable<GameState["setupReport"]> = { delayedAggressiveCount:0, usedQuickSetup:false, shortGameExiled:0, shortGameNationAdvanced:0 };
   const players: GameState["players"] = {};
   const game: GameState = {
     players,
@@ -124,18 +218,61 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   const ctx = { options, players, cards: filteredCards, setupReport };
   modules.forEach((m)=>m.modifyDeckConstruction?.(ctx as any));
   game.cardDb = buildGameCardDb(filteredCards);
-  const marketSetup = setupMarket(filteredCards, options.enabledVariants.includes("quick_setup"));
-  game.market = marketSetup.market;
-  game.marketRefillPool = marketSetup.refillPool;
-  game.marketDecks = marketSetup.marketDecks;
+  const selectedNationIds = Object.values(selected);
+  const effectiveCommonsPlayerCount = options.mode === "solo" || options.mode === "practice" ? 2 : Math.max(2, options.playerCount);
+  const commonsSetup = buildCommonsSetup({
+    cardDb: args.cardDb,
+    nationDb: args.nationDb,
+    options: {
+      commonsSetId: options.commonsSetId ?? "classics",
+      playerCount: options.playerCount,
+      effectiveCommonsPlayerCount: effectiveCommonsPlayerCount as 2 | 3 | 4,
+      enabledExpansions: options.enabledExpansions,
+      enabledVariants: options.enabledVariants,
+      mode: options.mode,
+      selectedNationIds,
+      replacementPolicy: options.replacementPolicy ?? "use_replacements"
+    },
+    rng: { shuffle: (items) => [...items] }
+  });
+  setupReport.commonsSetup = commonsSetup;
+  setupReport.delayedAggressiveCount = Math.max(setupReport.delayedAggressiveCount, commonsSetup.delayedCards.length);
+  setupReport.usedQuickSetup = options.enabledVariants.includes("quick_setup");
+  game.cardDb = buildRuntimeCardDb({
+    filteredCards,
+    sourceCards: args.cardDb,
+    selectedCommonsCardIds: commonsSetup.selectedCommonsCards,
+    players
+  });
+  const filledMarketSlots = commonsSetup.initialMarket.filter((slot) => slot.cardId);
+  game.marketSlots = cloneMarketSlots(filledMarketSlots);
+  game.market = filledMarketSlots.map((slot) => slot.cardId).filter(Boolean) as string[];
+  game.marketResources = marketResourcesFromSlots(filledMarketSlots);
+  game.marketUnrest = marketUnrestFromSlots(filledMarketSlots);
+  game.unrestPile = commonsSetup.unrestPile;
+  game.marketRefillPool = [];
+  game.marketDecks = {
+    mainDeck: commonsSetup.mainDeck,
+    regionDeck: commonsSetup.regionDeck,
+    uncivilizedDeck: commonsSetup.uncivilizedDeck,
+    civilizedDeck: commonsSetup.civilizedDeck,
+    tributaryDeck: commonsSetup.tributaryDeck ?? []
+  };
   modules.forEach((m)=>m.modifyMarketSetup?.(ctx as any));
-  const fame = setupFameDeck(options.enabledExpansions.includes("trade_routes"));
-  game.fameDeck = fame;
+  game.fameDeck = buildFameDeckState(commonsSetup, options.enabledExpansions.includes("trade_routes"));
   modules.forEach((m)=>m.modifyFameSetup?.(ctx as any));
   modules.forEach((m)=>m.modifyPlayerSetup?.(ctx as any));
-  const fameCount = fame.available.length + (fame.specialBottomCardId ? 1 : 0);
+  game.cardDb = buildRuntimeCardDb({
+    filteredCards,
+    sourceCards: args.cardDb,
+    selectedCommonsCardIds: commonsSetup.selectedCommonsCards,
+    players
+  });
+  const fameCount = game.fameDeck.available.length + (game.fameDeck.specialBottomCardId ? 1 : 0);
   game.log.push({round:1,playerId:"setup",message:`Setup report delayed=${setupReport.delayedAggressiveCount}`},{round:1,playerId:"setup",message:`Fame cards: ${fameCount}`});
-  marketSetup.notes.forEach((message) => game.log.push({ round: 1, playerId: "setup", message }));
+  commonsSetup.setupWarnings.forEach((message) => game.log.push({ round: 1, playerId: "setup", message }));
+  game.log.push({ round: 1, playerId: "setup", message: `MarketInitialized(slots=${game.market.length})` });
+  game.log.push({ round: 1, playerId: "setup", message: `MarketDecks(main=${game.marketDecks.mainDeck.length},region=${game.marketDecks.regionDeck.length},uncivilized=${game.marketDecks.uncivilizedDeck.length},civilized=${game.marketDecks.civilizedDeck.length},tributary=${game.marketDecks.tributaryDeck.length})` });
   Object.entries(activeNationRulesets).forEach(([playerId, ruleset]) => {
     (ruleset.zoneOverrides ?? []).forEach((ov:any) => game.log.push({ round: game.round, playerId, message: `NationRulesetApplied(${ruleset.nationId}/zone/${ov.op})` }));
     (ruleset.stateOverrides ?? []).forEach((ov:any) => game.log.push({ round: game.round, playerId, message: `NationRulesetApplied(${ruleset.nationId}/state/${ov.op})` }));

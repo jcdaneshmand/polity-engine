@@ -145,6 +145,40 @@ describe("effectRunner", () => {
     expect(G.players["0"].resources.knowledge).toBe(1);
   });
 
+  it("steals resources from another player without using Goods substitution", () => {
+    const G = createInitialState();
+    G.players["0"].resources.materials = 0;
+    G.players["1"].resources.materials = 1;
+    G.players["1"].resources.goods = 2;
+
+    const result = runEffects({ G, playerId: "0" }, [
+      { trigger: "on_play", op: "steal_resource", fromPlayerId: "1", resource: "materials", amount: 3 } as any
+    ]);
+
+    expect(result).toBe(true);
+    expect(G.players["0"].resources.materials).toBe(1);
+    expect(G.players["1"].resources.materials).toBe(0);
+    expect(G.players["1"].resources.goods).toBe(2);
+    expect(G.log.at(-1)?.message).toBe("Stole 1/3 materials from player 1.");
+  });
+
+  it("returns resources to supply as much as possible without using Goods substitution", () => {
+    const G = createInitialState();
+    G.players["0"].resources.influence = 1;
+    G.players["0"].resources.goods = 2;
+
+    const result = runEffects({ G, playerId: "0" }, [
+      { trigger: "on_play", op: "return_resource", resource: "influence", amount: 3 } as any,
+      { trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }
+    ]);
+
+    expect(result).toBe(true);
+    expect(G.players["0"].resources.influence).toBe(0);
+    expect(G.players["0"].resources.goods).toBe(2);
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.log.at(-2)?.message).toBe("Returned 1/3 influence.");
+  });
+
   it("acquire_card effect takes market card and tucked unrest into hand", () => {
     const G = createInitialState();
     G.market = ["test_action_foundry_shift"];
@@ -201,22 +235,23 @@ describe("effectRunner", () => {
     expect(G.marketDecks.mainDeck).toEqual(["test_action_archive_survey"]);
   });
 
-  it("break_through deck falls back to revealing main deck until a matching card is found", () => {
+  it("break_through deck falls back to main deck and shuffles non-matching revealed cards back", () => {
     const G = createInitialState();
     G.cardDb.test_action_foundry_shift = { ...G.cardDb.test_action_foundry_shift, suit: "uncivilized" };
     G.cardDb.test_action_archive_survey = { ...G.cardDb.test_action_archive_survey, suit: "civilized" };
+    G.cardDb.test_action_scholars_circle = { ...G.cardDb.test_action_scholars_circle, suit: "civilized" };
     G.marketDecks = {
-      mainDeck: ["test_action_archive_survey", "test_action_foundry_shift", "test_action_risk_audit"],
+      mainDeck: ["test_action_archive_survey", "test_action_scholars_circle", "test_action_foundry_shift", "test_action_risk_audit"],
       regionDeck: [],
       uncivilizedDeck: [],
       civilizedDeck: [],
       tributaryDeck: []
     };
 
-    runEffects({ G, playerId: "0" }, [{ trigger: "on_play", op: "break_through", suit: "uncivilized", source: "deck", count: 1 } as any]);
+    runEffects({ G, playerId: "0", randomNumber: () => 0 }, [{ trigger: "on_play", op: "break_through", suit: "uncivilized", source: "deck", count: 1 } as any]);
 
     expect(G.players["0"].hand).toContain("test_action_foundry_shift");
-    expect(G.marketDecks.mainDeck).toEqual(["test_action_risk_audit", "test_action_archive_survey"]);
+    expect(G.marketDecks.mainDeck).toEqual(["test_action_archive_survey", "test_action_scholars_circle", "test_action_risk_audit"]);
   });
 
   it("break_through from deck triggers normal scoring when it empties the main deck", () => {
@@ -238,6 +273,121 @@ describe("effectRunner", () => {
       triggeredBy: "0",
       phase: "finish_current_round"
     });
+  });
+
+  it("break_through from main deck gains 2 materials if no matching suit is found", () => {
+    const G = createInitialState();
+    G.players["0"].resources.materials = 0;
+    G.cardDb.test_action_archive_survey = { ...G.cardDb.test_action_archive_survey, suit: "civilized" };
+    G.cardDb.test_action_risk_audit = { ...G.cardDb.test_action_risk_audit, suit: "civilized" };
+    G.marketDecks = {
+      mainDeck: ["test_action_archive_survey", "test_action_risk_audit"],
+      regionDeck: [],
+      uncivilizedDeck: [],
+      civilizedDeck: [],
+      tributaryDeck: []
+    };
+
+    runEffects({ G, playerId: "0", randomNumber: () => 0 }, [{ trigger: "on_play", op: "break_through", suit: "uncivilized", source: "deck", count: 1 } as any]);
+
+    expect(G.players["0"].hand).not.toContain("test_action_archive_survey");
+    expect(G.players["0"].hand).not.toContain("test_action_risk_audit");
+    expect(G.players["0"].resources.materials).toBe(2);
+    expect(G.marketDecks.mainDeck).toEqual(["test_action_risk_audit", "test_action_archive_survey"]);
+    expect(G.log.at(-1)?.message).toBe("BreakThroughFailed(uncivilized/gained=2 materials)");
+  });
+
+  it("find_card searches hand, discard, deck, then Nation deck and stops on the first exact match", () => {
+    const G = createInitialState();
+    G.players["0"].hand = [];
+    G.players["0"].discard = ["test_action_archive_survey"];
+    G.players["0"].deck = ["test_action_archive_survey"];
+    G.players["0"].nationDeck = ["test_action_archive_survey"];
+
+    runEffects({ G, playerId: "0", randomNumber: () => 0 }, [{
+      trigger: "on_play",
+      op: "find_card",
+      cardId: "test_action_archive_survey",
+      destination: "hand"
+    } as any]);
+
+    expect(G.players["0"].hand).toEqual(["test_action_archive_survey"]);
+    expect(G.players["0"].discard).toEqual([]);
+    expect(G.players["0"].deck).toEqual(["test_action_archive_survey"]);
+    expect(G.players["0"].nationDeck).toEqual(["test_action_archive_survey"]);
+    expect(G.log.at(-1)?.message).toBe("FindResolved(test_action_archive_survey/discard->hand)");
+  });
+
+  it("find_card shuffles searched Draw and Nation decks and does not Find the accession card", () => {
+    const G = createInitialState();
+    G.players["0"].hand = [];
+    G.players["0"].discard = [];
+    G.players["0"].deck = ["test_action_foundry_shift", "test_action_scholars_circle"];
+    G.players["0"].nationDeck = ["test_action_archive_survey", "accession_card"];
+    G.players["0"].accessionCardId = "accession_card";
+    G.cardDb.accession_card = {
+      id: "accession_card",
+      displayName: "Accession",
+      type: "accession",
+      cardType: "accession",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+
+    runEffects({ G, playerId: "0", randomNumber: () => 0 }, [{
+      trigger: "on_play",
+      op: "find_card",
+      cardId: "test_action_archive_survey",
+      destination: "hand"
+    } as any]);
+
+    expect(G.players["0"].hand).toEqual(["test_action_archive_survey"]);
+    expect(G.players["0"].deck).toEqual(["test_action_scholars_circle", "test_action_foundry_shift"]);
+    expect(G.players["0"].nationDeck).toEqual(["accession_card"]);
+    expect(G.log.map((entry) => entry.message)).toContain("FindShuffled(deck)");
+    expect(G.log.map((entry) => entry.message)).toContain("FindShuffled(nationDeck)");
+
+    runEffects({ G, playerId: "0", randomNumber: () => 0 }, [{
+      trigger: "on_play",
+      op: "find_card",
+      cardId: "accession_card",
+      destination: "hand"
+    } as any]);
+
+    expect(G.players["0"].hand).toEqual(["test_action_archive_survey"]);
+    expect(G.players["0"].nationDeck).toEqual(["accession_card"]);
+    expect(G.log.at(-1)?.message).toBe("FindMissed(accession_card)");
+  });
+
+  it("find_card by criteria records an explicit choice after searching all eligible areas", () => {
+    const G = createInitialState();
+    G.players["0"].hand = ["test_action_foundry_shift"];
+    G.players["0"].discard = ["test_action_archive_survey"];
+    G.players["0"].deck = ["test_action_scholars_circle"];
+    G.players["0"].nationDeck = ["test_action_lineage_record"];
+    G.cardDb.test_action_foundry_shift = { ...G.cardDb.test_action_foundry_shift, suit: "uncivilized" };
+    G.cardDb.test_action_archive_survey = { ...G.cardDb.test_action_archive_survey, suit: "uncivilized" };
+    G.cardDb.test_action_scholars_circle = { ...G.cardDb.test_action_scholars_circle, suit: "civilized" };
+    G.cardDb.test_action_lineage_record = { ...G.cardDb.test_action_lineage_record, suit: "uncivilized" };
+
+    runEffects({ G, playerId: "0", selfCardId: "finder", randomNumber: () => 0 }, [{
+      trigger: "on_play",
+      op: "find_card",
+      suit: "uncivilized",
+      destination: "discard"
+    } as any]);
+
+    expect(G.pendingFindChoice).toEqual({
+      playerId: "0",
+      sourceCardId: "finder",
+      cardIds: ["test_action_foundry_shift", "test_action_archive_survey", "test_action_lineage_record"],
+      destination: "discard"
+    });
+    expect(G.players["0"].deck).toEqual(["test_action_scholars_circle"]);
+    expect(G.players["0"].nationDeck).toEqual(["test_action_lineage_record"]);
+    expect(G.log.at(-1)?.message).toBe("FindChoicePending(finder/options=3)");
   });
 
   it("records choose_one as a pending player decision", () => {

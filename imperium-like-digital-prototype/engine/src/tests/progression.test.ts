@@ -84,6 +84,37 @@ describe("reshuffle progression", () => {
     expect(["test_action_archive_survey", "test_action_scholars_circle"]).toContain(p.hand[0]);
   });
 
+  it("delays after-reshuffle hooks until a pending development choice completes", () => {
+    const G = createInitialState();
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = ["test_action_archive_survey"];
+    p.nationDeck = [];
+    p.developmentArea = ["test_action_scholars_circle"];
+    p.resources.materials = 2;
+    G.cardDb.test_action_scholars_circle.developmentCost = { materials: 2 };
+    G.activeNationRulesets = {
+      "0": {
+        hookRules: [{
+          trigger: "after_reshuffle",
+          effects: [{ trigger: "on_play", op: "gain_resource", resource: "influence", amount: 1 }]
+        }]
+      }
+    } as any;
+
+    drawCardWithReshuffleLifecycle(G, "0", () => 0);
+
+    expect(G.pendingDevelopmentChoice).toBeDefined();
+    expect(p.resources.influence).toBe(0);
+    expect(G.log.some((entry) => entry.message === "Nation hook after_reshuffle #0 resolved.")).toBe(false);
+
+    resolveDevelopmentChoice({ G, ctx, random: { Number: () => 0 } }, "test_action_scholars_circle");
+
+    expect(G.pendingDevelopmentChoice).toBeUndefined();
+    expect(p.resources.influence).toBe(1);
+    expect(G.log.some((entry) => entry.message === "Nation hook after_reshuffle #0 resolved.")).toBe(true);
+  });
+
   it("triggers normal scoring when the last Development card is developed", () => {
     const G = createInitialState();
     const p = G.players["0"];

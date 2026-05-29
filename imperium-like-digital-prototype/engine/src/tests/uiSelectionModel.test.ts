@@ -9,6 +9,21 @@ describe("selection model", () => {
   it("empty selection returns undefined",()=> expect(getSelectedCard({kind:"market_slot",id:"none"},G)).toBeUndefined());
   it("actions include play for hand",()=> expect(getAvailableActionsForSelection({kind:"hand_card",id:"c1"},G,ctx).some(a=>a.label==="Play Card")).toBe(true));
   it("actions include acquire for market",()=> expect(getAvailableActionsForSelection({kind:"market_slot",id:"m1"},G,ctx).some(a=>a.label==="Acquire Card")).toBe(true));
+  it("offers Innovate break-through on eligible market suits and Revolt return on Unrest",()=> {
+    const withSpecials = {
+      ...G,
+      cardDb: {
+        ...G.cardDb,
+        m1: {...G.cardDb.m1,suit:"uncivilized"},
+        u1:{id:"u1",displayName:"Unrest",type:"unrest",cardType:"unrest",suit:"unrest"}
+      },
+      players:{"0":{...G.players["0"],hand:["u1"],actionsRemaining:1,resources:{materials:3}}}
+    };
+    const innovate=getAvailableActionsForSelection({kind:"market_slot",id:"m1"},withSpecials,ctx).find(a=>a.action==="innovate");
+    expect(innovate).toMatchObject({ label:"Innovate Break Through", enabled:true, cardId:"m1", suit:"uncivilized", source:"market" });
+    const revolt=getAvailableActionsForSelection({kind:"hand_card",id:"u1"},withSpecials,ctx).find(a=>a.action==="revolt");
+    expect(revolt).toMatchObject({ label:"Revolt Return", enabled:true, cardId:"u1" });
+  });
   it("disabled action includes reason",()=> { const acts=getAvailableActionsForSelection({kind:"hand_card",id:"not"},G,ctx); const play=acts.find(a=>a.label==="Play Card"); expect(play?.enabled).toBe(false); expect(play?.reason).toBeTruthy(); });
   it("disables normal play and acquire actions outside Activate turns",()=> {
     const innovate = {...G,currentTurnType:"innovate"};
@@ -21,6 +36,12 @@ describe("selection model", () => {
     expect(acquire?.enabled).toBe(false);
     expect(acquire?.reason).toBe("Normal acquisition requires an Activate turn");
   });
+  it("disables play actions when the selected card does not meet its State requirement",()=> {
+    const stateLocked={...G,cardDb:{...G.cardDb,c1:{...G.cardDb.c1,stateRequirement:"empire"},s1:{id:"s1",displayName:"Barbarian",suit:"uncivilized",tags:["barbarian"]}},players:{"0":{...G.players["0"],hand:["c1"],actionsRemaining:1,stateArea:["s1"]}}};
+    const play=getAvailableActionsForSelection({kind:"hand_card",id:"c1"},stateLocked,ctx).find(a=>a.action==="play");
+    expect(play?.enabled).toBe(false);
+    expect(play?.reason).toBe("Requires empire State");
+  });
   it("pending choice actions take priority",()=> {
     const acts=getAvailableActionsForSelection(null,{...G,pendingChoice:{playerId:"0",sourceCardId:"c1",choices:[[{op:"gain_resource",resource:"knowledge",amount:1}],[{op:"draw",count:2}]]}},ctx);
     expect(acts.map((a)=>a.action)).toEqual(["resolveChoice","resolveChoice","endTurn"]);
@@ -28,6 +49,13 @@ describe("selection model", () => {
     expect(acts[1].label).toBe("Choose 2: Draw 2 cards");
     expect(acts[0].choiceIndex).toBe(0);
     expect(acts[1].choiceIndex).toBe(1);
+  });
+  it("pending Find choice actions expose the eligible cards",()=> {
+    const acts=getAvailableActionsForSelection(null,{...G,pendingFindChoice:{playerId:"0",sourceCardId:"finder",cardIds:["c1","m1"],destination:"discard"}},ctx);
+    expect(acts.map((a)=>a.action)).toEqual(["resolveFindChoice","resolveFindChoice","endTurn"]);
+    expect(acts[0]).toMatchObject({ label:"Find Card1", enabled:true, cardId:"c1" });
+    expect(acts[1]).toMatchObject({ label:"Find Market1", enabled:true, cardId:"m1" });
+    expect(acts[2].enabled).toBe(false);
   });
   it("labels empty pending-choice options as Skip",()=> {
     const acts=getAvailableActionsForSelection(null,{...G,pendingChoice:{playerId:"0",sourceCardId:"c1",choices:[[{op:"gain_resource",resource:"knowledge",amount:1}],[]]}},ctx);
@@ -37,6 +65,13 @@ describe("selection model", () => {
   it("labels resource-removal effects distinctly from costs",()=> {
     const acts=getAvailableActionsForSelection(null,{...G,pendingChoice:{playerId:"0",sourceCardId:"c1",choices:[[{op:"remove_resource",resource:"materials",amount:2}]]}},ctx);
     expect(acts[0].label).toBe("Choose 1: Remove 2 materials");
+  });
+  it("labels steal and return resource effects distinctly from costs",()=> {
+    const acts=getAvailableActionsForSelection(null,{...G,pendingChoice:{playerId:"0",sourceCardId:"c1",choices:[[{
+      op:"steal_resource",fromPlayerId:"1",resource:"materials",amount:2
+    }],[{op:"return_resource",resource:"influence",amount:1}]]}},ctx);
+    expect(acts[0].label).toBe("Choose 1: Steal 2 materials");
+    expect(acts[1].label).toBe("Choose 2: Return 1 influence");
   });
   it("pending cleanup discard exposes discard and keep-hand actions",()=> {
     const acts=getAvailableActionsForSelection({kind:"hand_card",id:"c1"}, {...G,pendingCleanupDiscardChoice:{playerId:"0",cardIds:["c1"]}}, ctx);

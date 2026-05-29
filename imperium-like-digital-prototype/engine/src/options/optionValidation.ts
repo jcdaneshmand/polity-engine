@@ -6,7 +6,7 @@ export type OptionValidationReport = { options: GameOptions; issues: OptionValid
 const soloDifficulties = new Set<SoloDifficulty>(["chieftain", "warlord", "imperator", "sovereign", "overlord", "supreme_ruler"]);
 
 export function validateGameOptions(input: GameOptions): OptionValidationReport {
-  const options = { ...input, enabledExpansions: [...new Set(input.enabledExpansions)], enabledVariants: [...new Set(input.enabledVariants)] };
+  const options = { ...input, enabledExpansions: [...new Set(input.enabledExpansions)], enabledVariants: [...new Set(input.enabledVariants)], commonsSetId: input.commonsSetId ?? "classics", replacementPolicy: input.replacementPolicy ?? "use_replacements" };
   const issues: OptionValidationIssue[] = [];
   if (input.enabledExpansions.length !== options.enabledExpansions.length) issues.push({ level: "warning", message: "Duplicate expansions were normalized." });
   if (input.enabledVariants.length !== options.enabledVariants.length) issues.push({ level: "warning", message: "Duplicate variants were normalized." });
@@ -20,6 +20,8 @@ export function validateGameOptions(input: GameOptions): OptionValidationReport 
     options.soloDifficulty = "chieftain" as SoloDifficulty;
     issues.push({ level: "warning", message: "soloDifficulty omitted; defaulted to chieftain." });
   }
+  if (!["classics", "legends", "horizons", "custom"].includes(options.commonsSetId)) issues.push({ level: "fatal", message: `Unknown commonsSetId: ${String(options.commonsSetId)}.` });
+  if (!["none", "use_replacements", "prefer_latest"].includes(options.replacementPolicy)) issues.push({ level: "fatal", message: `Unknown replacementPolicy: ${String(options.replacementPolicy)}.` });
   if (options.mode === "practice" && options.enabledVariants.includes("short_game")) issues.push({ level: "warning", message: "short_game with practice is unusual." });
   return { options, issues };
 }

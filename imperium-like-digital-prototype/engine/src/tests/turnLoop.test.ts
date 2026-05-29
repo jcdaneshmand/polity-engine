@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createInitialState } from "../game/initialState";
-import { acquireCard, endTurnMove, exhaustCard, playCard, resolveChoice, resolveCleanupDiscard, resolveCleanupMarketResource } from "../game/moves";
-import { onTurnEnd } from "../game/turn";
+import { acquireCard, endTurnMove, exhaustCard, innovateTurn, playCard, resolveChoice, resolveCleanupDiscard, resolveCleanupMarketResource, resolveFindChoice, revoltTurn } from "../game/moves";
+import { onTurnBegin, onTurnEnd } from "../game/turn";
 
 const ctx = { currentPlayer: "0" } as any;
 
@@ -23,6 +23,72 @@ describe("turn loop", () => {
     playCard({ G, ctx }, card);
     expect(G.players["0"].playArea).toContain(card);
     expect(G.players["0"].discard).not.toContain(card);
+  });
+
+  it("Free play cards do not spend Actions and cannot be Free played twice in the same turn", () => {
+    const G = createInitialState();
+    const card = "test_action_archive_survey";
+    G.cardDb[card] = { ...G.cardDb[card], tags: ["free_play"] };
+    G.players["0"].hand = [card];
+    G.players["0"].actionsRemaining = 0;
+    G.players["0"].actionTokensAvailable = 0;
+
+    playCard({ G, ctx }, card);
+
+    expect(G.players["0"].discard).toContain(card);
+    expect(G.players["0"].actionsRemaining).toBe(0);
+    expect(G.freePlayedThisTurn?.["0"]).toEqual([card]);
+
+    G.players["0"].discard = [];
+    G.players["0"].hand = [card];
+    playCard({ G, ctx }, card);
+
+    expect(G.players["0"].hand).toEqual([card]);
+    expect(G.players["0"].discard).toEqual([]);
+    expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): free_play_already_used(${card})`);
+
+    onTurnBegin(G, ctx);
+    G.players["0"].actionsRemaining = 0;
+    playCard({ G, ctx }, card);
+
+    expect(G.players["0"].discard).toContain(card);
+    expect(G.freePlayedThisTurn?.["0"]).toEqual([card]);
+  });
+
+  it("blocks playing cards whose state requirement does not match the visible State card", () => {
+    const G = createInitialState();
+    G.players["0"].stateArea = ["barbarian_state"];
+    G.cardDb.barbarian_state = {
+      id: "barbarian_state",
+      displayName: "Barbarian",
+      type: "state",
+      cardType: "state",
+      suit: "uncivilized",
+      cost: 0,
+      tags: ["barbarian"],
+      effects: []
+    };
+    G.cardDb.empire_only_action = {
+      id: "empire_only_action",
+      displayName: "Empire Only",
+      type: "action",
+      cardType: "action",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 } as any],
+      stateRequirement: "empire"
+    } as any;
+    G.players["0"].hand = ["empire_only_action"];
+    G.players["0"].actionsRemaining = 1;
+
+    playCard({ G, ctx }, "empire_only_action");
+
+    expect(G.players["0"].hand).toEqual(["empire_only_action"]);
+    expect(G.players["0"].playArea).toEqual([]);
+    expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.players["0"].actionsRemaining).toBe(1);
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(playCard): state_requirement_not_met(empire)");
   });
 
   it("does not resolve Solstice-triggered effects when a card is played", () => {
@@ -363,6 +429,78 @@ describe("turn loop", () => {
     expect(G.currentTurnType).toBe("activate");
   });
 
+  it("Innovate discards hand, breaks through for an allowed suit, then enters cleanup", () => {
+    const endTurn = vi.fn();
+    const G = createInitialState();
+    G.market = ["test_action_foundry_shift"];
+    G.marketRefillPool = [];
+    G.marketDecks = undefined;
+    G.unrestPile = [];
+    G.marketUnrest = { test_action_foundry_shift: ["test_unrest_1"] };
+    G.players["0"].hand = ["test_action_archive_survey", "test_action_scholars_circle"];
+    G.cardDb.test_action_foundry_shift = { ...G.cardDb.test_action_foundry_shift, suit: "uncivilized" };
+
+    innovateTurn({ G, ctx, events: { endTurn } }, { suit: "uncivilized", source: "market" });
+
+    expect(G.currentTurnType).toBe("innovate");
+    expect(G.players["0"].discard).toEqual(["test_action_archive_survey", "test_action_scholars_circle"]);
+    expect(G.players["0"].hand).toContain("test_action_foundry_shift");
+    expect(G.players["0"].hand).not.toContain("test_unrest_1");
+    expect(G.unrestPile).toEqual(["test_unrest_1"]);
+    expect(endTurn).not.toHaveBeenCalled();
+    expect(G.pendingCleanupDiscardChoice?.cardIds).toEqual(["test_action_foundry_shift"]);
+  });
+
+  it("Innovate from market breaks through for the selected matching card", () => {
+    const endTurn = vi.fn();
+    const G = createInitialState();
+    G.market = ["test_action_foundry_shift", "test_action_archive_survey"];
+    G.marketRefillPool = [];
+    G.marketDecks = undefined;
+    G.players["0"].hand = [];
+    G.cardDb.test_action_foundry_shift = { ...G.cardDb.test_action_foundry_shift, suit: "uncivilized" };
+    G.cardDb.test_action_archive_survey = { ...G.cardDb.test_action_archive_survey, suit: "uncivilized" };
+
+    innovateTurn({ G, ctx, events: { endTurn } }, {
+      suit: "uncivilized",
+      source: "market",
+      cardId: "test_action_archive_survey"
+    } as any);
+
+    expect(G.players["0"].hand).toContain("test_action_archive_survey");
+    expect(G.players["0"].hand).not.toContain("test_action_foundry_shift");
+    expect(G.market).toEqual(["test_action_foundry_shift"]);
+  });
+
+  it("Innovate cannot break through for Fame", () => {
+    const endTurn = vi.fn();
+    const G = createInitialState();
+    G.market = [];
+    G.players["0"].hand = ["test_action_archive_survey"];
+
+    innovateTurn({ G, ctx, events: { endTurn } }, { suit: "fame", source: "deck" } as any);
+
+    expect(G.players["0"].hand).toEqual(["test_action_archive_survey"]);
+    expect(G.players["0"].discard).not.toContain("test_action_archive_survey");
+    expect(endTurn).not.toHaveBeenCalled();
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(innovateTurn): invalid_innovate_suit(fame)");
+  });
+
+  it("Revolt returns selected Unrest cards from hand to the Unrest pile and enters cleanup", () => {
+    const endTurn = vi.fn();
+    const G = createInitialState();
+    G.market = [];
+    G.players["0"].hand = ["test_unrest_1", "test_action_archive_survey"];
+
+    revoltTurn({ G, ctx, events: { endTurn } }, ["test_unrest_1"]);
+
+    expect(G.currentTurnType).toBe("revolt");
+    expect(G.players["0"].hand).toEqual(["test_action_archive_survey"]);
+    expect(G.unrestPile).toContain("test_unrest_1");
+    expect(endTurn).not.toHaveBeenCalled();
+    expect(G.pendingCleanupDiscardChoice?.cardIds).toEqual(["test_action_archive_survey"]);
+  });
+
   it("requires enough materials to acquire and refills from the market pool", () => {
     const G = createInitialState();
     G.market = ["test_action_foundry_shift"];
@@ -540,5 +678,24 @@ describe("turn loop", () => {
     expect(G.players["0"].resources.knowledge).toBe(0);
     expect(G.players["0"].resources.influence).toBe(1);
     expect(G.log.at(-1)?.message).toBe("ChoiceResolved(test_action_forum_debate/index=1)");
+  });
+
+  it("resolves the selected pending Find choice", () => {
+    const G = createInitialState();
+    G.players["0"].hand = ["test_action_foundry_shift"];
+    G.players["0"].discard = ["test_action_archive_survey"];
+    G.pendingFindChoice = {
+      playerId: "0",
+      sourceCardId: "finder",
+      cardIds: ["test_action_foundry_shift", "test_action_archive_survey"],
+      destination: "discard"
+    };
+
+    resolveFindChoice({ G, ctx }, "test_action_foundry_shift");
+
+    expect(G.pendingFindChoice).toBeUndefined();
+    expect(G.players["0"].hand).toEqual([]);
+    expect(G.players["0"].discard).toEqual(["test_action_archive_survey", "test_action_foundry_shift"]);
+    expect(G.log.at(-1)?.message).toBe("FindChoiceResolved(finder/test_action_foundry_shift->discard)");
   });
 });

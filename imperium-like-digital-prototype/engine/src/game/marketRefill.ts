@@ -24,13 +24,26 @@ function drawReplacementFromLegacyPool(G: GameState): string | undefined {
 }
 
 export function refillMarketSlot(G: GameState, args: { playerId: string; slotIndex: number; acquiredCardId: string }): void {
+  const liveSlotIndex = G.marketSlots?.findIndex((slot) => slot.cardId === args.acquiredCardId) ?? -1;
+  if (liveSlotIndex >= 0) G.marketSlots?.splice(liveSlotIndex, 1);
+
   const nextCardId = drawReplacementFromMarketDecks(G, args) ?? drawReplacementFromLegacyPool(G);
   if (!nextCardId) {
+    G.marketSlots?.forEach((slot, index) => { slot.index = index; });
     G.log.push({ round: G.round, playerId: args.playerId, message: "MarketRefillStatus(pool_empty)" });
     return;
   }
 
   G.market.splice(args.slotIndex, 0, nextCardId);
   tuckUnrestUnderMarketCard(G, args.playerId, nextCardId);
+  if (G.marketSlots) {
+    G.marketSlots.splice(args.slotIndex, 0, {
+      index: args.slotIndex,
+      cardId: nextCardId,
+      attachedUnrestCardIds: [...(G.marketUnrest?.[nextCardId] ?? [])],
+      resourceMarkers: {}
+    });
+    G.marketSlots.forEach((slot, index) => { slot.index = index; });
+  }
   G.log.push({ round: G.round, playerId: args.playerId, message: `MarketRefilled(${nextCardId})` });
 }

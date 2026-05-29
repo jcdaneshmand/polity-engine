@@ -73,6 +73,14 @@ function getPlayerReferencedCardIds(players: GameState["players"]): string[] {
   return [...ids];
 }
 
+function cloneMarketSlots(slots: NonNullable<GameState["marketSlots"]>): NonNullable<GameState["marketSlots"]> {
+  return slots.map((slot) => ({
+    ...slot,
+    attachedUnrestCardIds: [...slot.attachedUnrestCardIds],
+    resourceMarkers: { ...slot.resourceMarkers }
+  }));
+}
+
 export function createInitialGameStateFromPipeline(args: { options: GameOptions; playerNationIds?: Record<string,string>; cardDb: Record<string, NormalizedCardRecord>; nationDb: Record<string, NationDefinition>; randomSeed?: string; usePrivateRules?: boolean; privateRulesetPath?: string; privateStrategyPath?: string; }): GameState {
   const validation = validateGameOptions(args.options);
   const fatals = validation.issues.filter((i) => i.level === "fatal");
@@ -167,7 +175,7 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
     args.cardDb,
     [...commonsSetup.selectedCommonsCards, ...getPlayerReferencedCardIds(players)]
   ));
-  game.marketSlots = commonsSetup.initialMarket;
+  game.marketSlots = cloneMarketSlots(commonsSetup.initialMarket);
   game.market = commonsSetup.initialMarket.map((slot) => slot.cardId).filter(Boolean) as string[];
   modules.forEach((m)=>m.modifyMarketSetup?.(ctx as any));
   const fame = commonsSetup.fameDeck.length ? commonsSetup.fameDeck : setupFameDeck(options.enabledExpansions.includes("trade_routes"));

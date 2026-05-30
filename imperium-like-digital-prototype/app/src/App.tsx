@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Client } from "boardgame.io/react";
 import { PrototypeGame } from "../../engine/src/game/game";
+import AboutPage from "./AboutPage";
 import Board from "./Board";
 import PrivateCardEntry from "./ui/privateData/PrivateCardEntry";
 import NewGameSetup, { type NewGameSessionConfig } from "./ui/setup/NewGameSetup";
@@ -11,7 +12,7 @@ type GameSession = NewGameSessionConfig & {
 
 export default function App() {
   const [session, setSession] = useState<GameSession | null>(null);
-  const [homeView, setHomeView] = useState<"setup" | "private-data">("setup");
+  const [homeView, setHomeView] = useState<"setup" | "private-data" | "about">("setup");
 
   const GameClient = useMemo(() => {
     if (!session) return null;
@@ -40,10 +41,27 @@ export default function App() {
       return <PrivateCardEntry onBack={() => setHomeView("setup")} />;
     }
 
+    if (homeView === "about") {
+      return (
+        <div className="app-home">
+          <div className="app-home-bar">
+            <strong>Polity Engine</strong>
+            <button type="button" onClick={() => setHomeView("setup")}>
+              Setup
+            </button>
+          </div>
+          <AboutPage onBack={() => setHomeView("setup")} />
+        </div>
+      );
+    }
+
     return (
       <div className="app-home">
         <div className="app-home-bar">
           <strong>Polity Engine</strong>
+          <button type="button" onClick={() => setHomeView("about")}>
+            About
+          </button>
         </div>
         <NewGameSetup
           onStart={(config) => setSession({ ...config, id: Date.now() })}

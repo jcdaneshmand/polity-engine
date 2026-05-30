@@ -235,6 +235,47 @@
   color: #ffe0a3;
 }
 
+.about-screen {
+  min-height: calc(100vh - 49px);
+  box-sizing: border-box;
+  padding: 18px;
+  color: #f3ead8;
+  background: linear-gradient(#2d2a28, #1f1d1b);
+}
+
+.about-panel {
+  max-width: 720px;
+  margin: 0 auto;
+  border: 1px solid #6e5f50;
+  border-radius: 8px;
+  background: #312c28;
+  padding: 16px;
+}
+
+.about-panel h1 {
+  margin: 2px 0 12px;
+  font-size: 1.8rem;
+}
+
+.about-panel p {
+  color: #d9c7a7;
+  line-height: 1.45;
+}
+
+.about-panel a {
+  color: #ffe0a3;
+}
+
+.about-panel button {
+  min-height: 38px;
+  border: 1px solid #7a6a57;
+  border-radius: 6px;
+  background: #4a4038;
+  color: #f3ead8;
+  cursor: pointer;
+  padding: 0 12px;
+}
+
 .game-shell {
   min-height: 100vh;
   min-height: 100dvh;

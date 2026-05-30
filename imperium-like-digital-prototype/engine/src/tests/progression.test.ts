@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createInitialState as createInitialStateFromEngine } from "../game/initialState";
 import { createInitialGameStateFromPipeline } from "../setup/setupPipeline";
-import { resolveChoice, resolveDevelopmentChoice, resolveExileChoice, resolveLookOrderChoice, resolveShortGameDevelopmentExileChoice, resolveSwapChoice, skipDevelopmentChoice } from "../game/moves";
+import { resolveChoice, resolveDevelopmentChoice, resolveDrawChoice, resolveExileChoice, resolveLookOrderChoice, resolveShortGameDevelopmentExileChoice, resolveSwapChoice, skipDevelopmentChoice } from "../game/moves";
 import { currentStateMatches } from "../game/stateMatching";
 import { drawCardWithReshuffleLifecycle } from "../game/zones";
 import type { GameOptions } from "../options/gameOptions";
@@ -1146,6 +1146,56 @@ describe("reshuffle progression", () => {
     expect(G.pendingNationHookContinuation).toBeUndefined();
     expect(p.resources.knowledge).toBe(1);
     expect(p.hand).toEqual(["test_action_foundry_shift"]);
+  });
+
+  it("pauses later nation hooks when an earlier hook creates a pending Draw choice", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = ["test_action_archive_survey"];
+    p.exile = ["test_action_foundry_shift"];
+    p.nationDeck = [];
+    p.developmentArea = [];
+    p.resources.knowledge = 0;
+    G.activeNationRulesets = {
+      "0": {
+        hookRules: [
+          {
+            trigger: "after_reshuffle",
+            effects: [{ trigger: "on_play", op: "draw", source: "exile", count: 1 } as any]
+          },
+          {
+            trigger: "after_reshuffle",
+            effects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 } as any]
+          }
+        ]
+      }
+    } as any;
+
+    drawCardWithReshuffleLifecycle(G, "0", () => 0);
+
+    expect(G.pendingDrawChoice).toEqual({
+      playerId: "0",
+      sourceCardId: undefined,
+      source: "exile",
+      cardIds: ["test_action_foundry_shift"],
+      remainingCount: 1
+    });
+    expect(G.pendingNationHookContinuation).toEqual({
+      playerId: "0",
+      trigger: "after_reshuffle",
+      payload: undefined,
+      nextIndex: 1,
+      resolvedHookIndex: 0
+    });
+    expect(p.resources.knowledge).toBe(0);
+
+    resolveDrawChoice({ G, ctx, random: { Number: () => 0 } }, "test_action_foundry_shift");
+
+    expect(G.pendingDrawChoice).toBeUndefined();
+    expect(G.pendingNationHookContinuation).toBeUndefined();
+    expect(p.resources.knowledge).toBe(1);
+    expect(p.hand).toEqual(["test_action_foundry_shift", "test_action_archive_survey"]);
   });
 
   it("pauses the interrupted draw when after-reshuffle creates a pending Swap choice", () => {

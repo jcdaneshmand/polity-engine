@@ -46,6 +46,7 @@ function getZoneCards(G: GameState, playerId: string, p: GameState["players"][st
 function hasPendingInterruption(G: GameState): boolean {
   return Boolean(
     G.pendingChoice
+    ?? G.pendingDrawChoice
     ?? G.pendingFindChoice
     ?? G.pendingAcquireChoice
     ?? G.pendingMarketCardChoice

@@ -168,6 +168,31 @@
   overflow-wrap: anywhere;
 }
 
+.private-entry-vp-builder-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.private-entry-vp-builder-grid label {
+  display: grid;
+  gap: 4px;
+}
+
+.private-entry-builder-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.private-entry-builder-actions button {
+  border: 1px solid #4d5e62;
+  border-radius: 4px;
+  background: #fff;
+  color: #263238;
+  cursor: pointer;
+  padding: 8px 12px;
+}
+
 .private-entry-wide {
   grid-column: 1 / -1;
 }
@@ -210,7 +235,8 @@
   }
 
   .private-entry-grid,
-  .private-entry-nation-grid {
+  .private-entry-nation-grid,
+  .private-entry-vp-builder-grid {
     grid-template-columns: repeat(2, minmax(130px, 1fr));
   }
 

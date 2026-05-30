@@ -5,7 +5,16 @@ import type { PrivateNationCsvRow } from "../../../../tools/card-import/nationCs
 import type { NationRulesetTag } from "../../../../engine/src/nations/nationRulesetTypes";
 import type { PrivateNationRulesetCsvRow } from "../../../../tools/card-import/nationRulesetCsvTypes";
 import { commonsBatchProfiles, createNationBatchProfile } from "../../../../tools/card-entry/batchProfiles";
-import { createBlankCardDraft, csvRowToDraft, draftToCsvRow, duplicateCardDraft, toggleDraftSuitIcon } from "../../../../tools/card-entry/cardDraft";
+import {
+  applyVariableVpDraftDetails,
+  createBlankCardDraft,
+  csvRowToDraft,
+  draftToCsvRow,
+  duplicateCardDraft,
+  toggleDraftSuitIcon,
+  type VariableVpDraftDetails,
+  type VariableVpFormula
+} from "../../../../tools/card-entry/cardDraft";
 import type { CardEntryBatchProfile, CardEntryDraft } from "../../../../tools/card-entry/cardEntryTypes";
 import {
   appendOrReplaceNationRow,
@@ -102,6 +111,16 @@ const suitIconOptions = ["region", "uncivilized", "civilized", "tributary", "fam
 const cardTypeOptions = ["", "action", "in_play", "attack", "power", "state", "development", "accession", "nation", "region", "unrest", "fame", "trade_route", "bot_state", "other"];
 const startOptions = ["draw_deck", "nation_deck", "accession", "development_area", "in_play", "supply", "market", "fame_deck", "unrest_pile", "bot_deck", "box", "other"];
 const vpModeOptions = ["none", "fixed", "variable", "negative", "conditional"];
+const variableVpFormulaOptions: Array<{ value: VariableVpFormula; label: string }> = [
+  { value: "per_card", label: "Per card" },
+  { value: "per_resource", label: "Per resource" },
+  { value: "per_region", label: "Per region" },
+  { value: "per_development", label: "Per development" },
+  { value: "per_unrest_or_fame", label: "Per unrest/fame" },
+  { value: "set_collection", label: "Set collection" },
+  { value: "threshold", label: "Threshold" },
+  { value: "custom", label: "Custom" }
+];
 const nationCardRoleOptions: Array<{ id: NationCardRole; label: string; cardType?: CardEntryDraft["cardType"]; startingLocation?: CardEntryDraft["startingLocation"] }> = [
   { id: "power", label: "Power", cardType: "power" },
   { id: "state", label: "State", cardType: "state" },
@@ -283,6 +302,13 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
   const [fileName, setFileName] = useState("imperium_cards_private.csv");
   const [status, setStatus] = useState("No private CSV loaded. New saves stay in this browser until exported.");
   const [fileHandle, setFileHandle] = useState<FileSystemFileHandleLike | null>(null);
+  const [variableVpDetails, setVariableVpDetails] = useState<VariableVpDraftDetails>({
+    formula: "per_card",
+    amountEach: "1",
+    target: "",
+    cap: "",
+    note: ""
+  });
   const [nationRows, setNationRows] = useState<PrivateNationCsvRow[]>([]);
   const [nationDraft, setNationDraft] = useState<NationEntryDraft>(createBlankNationDraft());
   const [nationFileName, setNationFileName] = useState("imperium_nations_private.csv");
@@ -352,6 +378,14 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
 
   const toggleSuitIcon = (suitIcon: string) => {
     setDraft((current) => toggleDraftSuitIcon(current, suitIcon));
+  };
+
+  const updateVariableVpDetail = (field: keyof VariableVpDraftDetails, value: string) => {
+    setVariableVpDetails((current) => ({ ...current, [field]: value }));
+  };
+
+  const applyVariableVpDetails = () => {
+    setDraft((current) => applyVariableVpDraftDetails(current, variableVpDetails));
   };
 
   const resetDraftForProfile = (profile: CardEntryBatchProfile) => {
@@ -776,6 +810,26 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
           <label>Cost Goods <input value={draft.costGoods} onChange={draftChange("costGoods")} /></label>
           <label>VP Mode <select value={draft.vpMode} onChange={draftChange("vpMode")}>{vpModeOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
           <label>VP <input value={draft.vpValue} onChange={draftChange("vpValue")} /></label>
+          {draft.vpMode === "variable" ? (
+            <fieldset className="private-entry-choice-fieldset private-entry-wide">
+              <legend>Variable VP Builder</legend>
+              <div className="private-entry-vp-builder-grid">
+                <label>
+                  Formula
+                  <select value={variableVpDetails.formula} onChange={(event: { target: HTMLSelectElement }) => updateVariableVpDetail("formula", event.target.value as VariableVpFormula)}>
+                    {variableVpFormulaOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+                <label>Amount Each <input value={variableVpDetails.amountEach} onChange={(event: { target: HTMLInputElement }) => updateVariableVpDetail("amountEach", event.target.value)} /></label>
+                <label>Target <input value={variableVpDetails.target} onChange={(event: { target: HTMLInputElement }) => updateVariableVpDetail("target", event.target.value)} /></label>
+                <label>Cap <input value={variableVpDetails.cap} onChange={(event: { target: HTMLInputElement }) => updateVariableVpDetail("cap", event.target.value)} /></label>
+                <label className="private-entry-wide">Scoring Note <input value={variableVpDetails.note} onChange={(event: { target: HTMLInputElement }) => updateVariableVpDetail("note", event.target.value)} /></label>
+                <div className="private-entry-builder-actions private-entry-wide">
+                  <button type="button" onClick={applyVariableVpDetails}>Apply Variable VP</button>
+                </div>
+              </div>
+            </fieldset>
+          ) : null}
           <label>Tags <input value={draft.tags} onChange={draftChange("tags")} /></label>
           <label className="private-entry-wide">Raw Private Text <textarea rows={6} value={draft.rawEffectTextPrivate} onChange={draftChange("rawEffectTextPrivate")} /></label>
           {isNationBatch ? (

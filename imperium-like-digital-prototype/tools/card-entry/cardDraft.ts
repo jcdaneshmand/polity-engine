@@ -1,8 +1,39 @@
 import type { PrivateCardCsvRow } from "../card-import/cardCsvTypes";
 import type { CardEntryBatchProfile, CardEntryDraft, DuplicateCardDraftOptions } from "./cardEntryTypes";
 
+export type VariableVpFormula =
+  | "per_card"
+  | "per_resource"
+  | "per_region"
+  | "per_development"
+  | "per_unrest_or_fame"
+  | "set_collection"
+  | "threshold"
+  | "custom";
+
+export type VariableVpDraftDetails = {
+  formula: VariableVpFormula;
+  amountEach: string;
+  target: string;
+  cap: string;
+  note: string;
+};
+
 function pipeValues(value: string): string[] {
   return value.split("|").map((part) => part.trim()).filter(Boolean);
+}
+
+function appendUniquePipeValues(current: string, nextValues: string[]): string {
+  const values = pipeValues(current);
+  for (const nextValue of nextValues.map((value) => value.trim()).filter(Boolean)) {
+    if (!values.includes(nextValue)) values.push(nextValue);
+  }
+  return values.join("|");
+}
+
+function replaceVariableVpNote(current: string, nextLine: string): string {
+  const lines = current.split(/\r?\n/).filter((line) => !line.trim().startsWith("[Variable VP]"));
+  return [...lines, nextLine].map((line) => line.trim()).filter(Boolean).join("\n");
 }
 
 export function createBlankCardDraft(profile: CardEntryBatchProfile): CardEntryDraft {
@@ -85,6 +116,24 @@ export function toggleDraftSuitIcon(draft: CardEntryDraft, suitIcon: string): Ca
     ? values.filter((value) => value !== trimmed)
     : [...values, trimmed];
   return { ...draft, suitIcons: nextValues.join("|") };
+}
+
+export function applyVariableVpDraftDetails(draft: CardEntryDraft, details: VariableVpDraftDetails): CardEntryDraft {
+  const amountEach = details.amountEach.trim();
+  const target = details.target.trim();
+  const cap = details.cap.trim();
+  const note = details.note.trim();
+  const basis = [`${amountEach || "?"} VP`, details.formula, target].filter(Boolean).join(" ");
+  const summary = cap ? `${basis}; cap ${cap}` : basis;
+  const variableVpLine = `[Variable VP] ${summary}.${note ? ` ${note}` : ""}`;
+
+  return {
+    ...draft,
+    vpMode: "variable",
+    vpValue: amountEach,
+    tags: appendUniquePipeValues(draft.tags, ["vp_variable", `vp_${details.formula}`]),
+    notes: replaceVariableVpNote(draft.notes, variableVpLine)
+  };
 }
 
 export function draftToCsvRow(draft: CardEntryDraft): PrivateCardCsvRow {

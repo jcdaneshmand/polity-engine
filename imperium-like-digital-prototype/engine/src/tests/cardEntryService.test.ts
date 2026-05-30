@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { commonsBatchProfiles } from "../../../tools/card-entry/batchProfiles";
-import { createBlankCardDraft, toggleDraftSuitIcon } from "../../../tools/card-entry/cardDraft";
+import { applyVariableVpDraftDetails, createBlankCardDraft, toggleDraftSuitIcon } from "../../../tools/card-entry/cardDraft";
 import { createCardEntryService } from "../../../tools/card-entry/cardEntryService";
 
 const fixtureRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -69,5 +69,21 @@ describe("card entry service", () => {
 
     expect(withIcons.suitIcons).toBe("civilized|uncivilized");
     expect(withoutDuplicate.suitIcons).toBe("uncivilized");
+  });
+
+  it("applies variable VP builder details to compatible draft fields", () => {
+    const draft = createBlankCardDraft(commonsBatchProfiles[0]);
+    const updated = applyVariableVpDraftDetails(draft, {
+      formula: "per_resource",
+      amountEach: "1",
+      target: "goods",
+      cap: "5",
+      note: "Score goods in history."
+    });
+
+    expect(updated.vpMode).toBe("variable");
+    expect(updated.vpValue).toBe("1");
+    expect(updated.tags).toBe("vp_variable|vp_per_resource");
+    expect(updated.notes).toContain("[Variable VP] 1 VP per_resource goods; cap 5. Score goods in history.");
   });
 });

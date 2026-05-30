@@ -34,11 +34,11 @@ describe("card entry service", () => {
       cardId: "classics_a",
       privateName: "Private A",
       publicPlaceholderName: "Placeholder A",
-      suit: "region",
-      cardType: "action",
-      startingLocation: "market",
-      playerCountRequirement: "2+",
-      vpMode: "none",
+      suit: "region" as const,
+      cardType: "action" as const,
+      startingLocation: "market" as const,
+      playerCountRequirement: "2+" as const,
+      vpMode: "none" as const,
       rawEffectTextPrivate: "private text",
       effectOpsJson: ""
     };

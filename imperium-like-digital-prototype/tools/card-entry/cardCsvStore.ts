@@ -4,6 +4,10 @@ import Papa from "papaparse";
 import type { PrivateCardCsvRow } from "../card-import/cardCsvTypes";
 import { parseCsvFile } from "../card-import/csvParser";
 
+type PapaWithUnparse = typeof Papa & {
+  unparse: (rows: PrivateCardCsvRow[], config: { columns: string[]; newline: string }) => string;
+};
+
 export function readCardTemplateHeader(templatePath: string): string[] {
   const firstLine = fs.readFileSync(templatePath, "utf8").split(/\r?\n/)[0];
   return firstLine.split(",").map((field) => field.trim()).filter(Boolean);
@@ -30,5 +34,5 @@ export function writeCardCsvRows(args: { filePath: string; templatePath: string;
   });
 
   fs.mkdirSync(path.dirname(args.filePath), { recursive: true });
-  fs.writeFileSync(args.filePath, `${Papa.unparse(normalizedRows, { columns: fields, newline: "\n" })}\n`, "utf8");
+  fs.writeFileSync(args.filePath, `${(Papa as PapaWithUnparse).unparse(normalizedRows, { columns: fields, newline: "\n" })}\n`, "utf8");
 }

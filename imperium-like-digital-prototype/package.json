@@ -13,6 +13,7 @@
     "cards:validate": "tsx tools/card-import/validatePrivateCards.ts",
     "cards:import": "tsx tools/card-import/importPrivateCards.ts",
     "cards:report": "tsx tools/card-import/importPrivateCards.ts --print-report generated-private/card-import-report.json",
+    "cards:entry": "tsx tools/card-entry/cardEntryServer.ts",
     "nations:validate": "tsx tools/card-import/validatePrivateNations.ts",
     "nations:import": "tsx tools/card-import/importPrivateNations.ts",
     "private:preflight": "tsx tools/card-import/preflightPrivateImportAll.ts",

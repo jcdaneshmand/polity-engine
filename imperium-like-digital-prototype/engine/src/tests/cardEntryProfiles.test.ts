@@ -46,8 +46,8 @@ describe("card entry batch profiles", () => {
       privateName: "Private A",
       publicPlaceholderName: "Placeholder A",
       rawEffectTextPrivate: "private text",
-      implemented: "true",
-      tested: "true",
+      implemented: "true" as const,
+      tested: "true" as const,
       notes: "private note"
     };
 

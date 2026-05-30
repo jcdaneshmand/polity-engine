@@ -24,6 +24,8 @@ import {
   nationCsvColumns,
   nationDraftToCsvRow,
   nationRowToDraft,
+  summarizeNationDeckProgress,
+  summarizeNationRowsDeckProgress,
   sortNationRowsByName,
   type NationCardRole,
   type NationEntryDraft
@@ -346,6 +348,8 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
   const selectedProfile = useMemo(() => profileFromSelection(profileId, nationId), [profileId, nationId]);
   const isNationBatch = profileId === "nation-custom";
   const sortedNationRows = useMemo(() => sortNationRowsByName(nationRows), [nationRows]);
+  const currentNationDeckProgress = useMemo(() => summarizeNationDeckProgress(nationDraft), [nationDraft]);
+  const allNationDeckProgress = useMemo(() => summarizeNationRowsDeckProgress(nationRows), [nationRows]);
   const validation = useMemo(() => validateRows(rows), [rows]);
   const nationValidation = useMemo(() => validateNationRows(nationRows), [nationRows]);
   const rulesetValidation = useMemo(() => validateNationRulesetRows(rulesetRows), [rulesetRows]);
@@ -730,6 +734,46 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
               <div className={`private-entry-status ${nationFatalCount > 0 ? "is-error" : ""}`}>
                 <span>{nationStatus}</span>
                 <span>{nationRows.length} nations / {nationFatalCount} fatal / {nationWarningCount} warnings</span>
+              </div>
+
+              <div className="private-entry-progress-panel">
+                <div className="private-entry-progress-current">
+                  <div className="private-entry-progress-heading">
+                    <h3>{currentNationDeckProgress.label}</h3>
+                    <span>{currentNationDeckProgress.totalCards} cards assigned</span>
+                  </div>
+                  <div className="private-entry-progress-slots">
+                    {currentNationDeckProgress.slots.map((slot) => (
+                      <div key={slot.id} className="private-entry-progress-slot">
+                        <div>
+                          <strong>{slot.label}</strong>
+                          <span>{slot.count}</span>
+                        </div>
+                        <p>{slot.cardIds.length > 0 ? slot.cardIds.join(", ") : "No cards yet"}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="private-entry-progress-all">
+                  <h3>All Nations</h3>
+                  {allNationDeckProgress.length > 0 ? (
+                    <ul>
+                      {allNationDeckProgress.map((summary) => (
+                        <li key={summary.nationId || summary.label}>
+                          <strong>{summary.label}</strong>
+                          <span>
+                            start {summary.slots.find((slot) => slot.id === "starting")?.count ?? 0}
+                            {" / "}nation {summary.slots.find((slot) => slot.id === "nation")?.count ?? 0}
+                            {" / "}dev {summary.slots.find((slot) => slot.id === "development")?.count ?? 0}
+                            {" / "}total {summary.totalCards}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p>No saved nation rows yet.</p>
+                  )}
+                </div>
               </div>
 
               <div className="private-entry-nation-grid">

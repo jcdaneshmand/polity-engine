@@ -6,6 +6,8 @@ import {
   insertNationJsonTemplate,
   nationDraftToCsvRow,
   nationRowToDraft,
+  summarizeNationDeckProgress,
+  summarizeNationRowsDeckProgress,
   sortNationRowsByName
 } from "../../../tools/card-entry/nationDraft";
 
@@ -85,5 +87,36 @@ describe("nation entry drafts", () => {
     expect(JSON.parse(withPassive.passiveRulesJson)).toEqual([
       { trigger: "on_develop", effects: [{ op: "gain_resource", resource: "goods", amount: 1 }] }
     ]);
+  });
+
+  it("summarizes deck progress for the current nation draft", () => {
+    const summary = summarizeNationDeckProgress({
+      ...createBlankNationDraft("romans"),
+      powerCardIds: "power_a",
+      stateCardIds: "state_a|state_b",
+      startingDeckCardIds: "start_a|start_b",
+      nationDeckCardIds: "nation_a",
+      accessionCardId: "accession_a",
+      developmentCardIds: "dev_a|dev_b|dev_c"
+    });
+
+    expect(summary.slots.map((slot) => [slot.id, slot.count])).toEqual([
+      ["power", 1],
+      ["state", 2],
+      ["starting", 2],
+      ["nation", 1],
+      ["accession", 1],
+      ["development", 3]
+    ]);
+  });
+
+  it("summarizes loaded nation rows by deck counts", () => {
+    const rows = [
+      nationDraftToCsvRow({ ...createBlankNationDraft("romans"), publicPlaceholderName: "Romans", startingDeckCardIds: "a|b", nationDeckCardIds: "c" }),
+      nationDraftToCsvRow({ ...createBlankNationDraft("celts"), publicPlaceholderName: "Celts", developmentCardIds: "d|e" })
+    ];
+
+    expect(summarizeNationRowsDeckProgress(rows).map((summary) => summary.label)).toEqual(["Celts", "Romans"]);
+    expect(summarizeNationRowsDeckProgress(rows).find((summary) => summary.nationId === "romans")?.totalCards).toBe(3);
   });
 });

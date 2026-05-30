@@ -46,6 +46,21 @@ export type NationEntryDraft = {
 
 export type NationCardRole = "power" | "state" | "starting" | "nation" | "accession" | "development";
 export type NationJsonTemplateField = "specialSetupJson" | "passiveRulesJson";
+export type NationDeckProgressSlotId = NationCardRole;
+
+export type NationDeckProgressSlot = {
+  id: NationDeckProgressSlotId;
+  label: string;
+  cardIds: string[];
+  count: number;
+};
+
+export type NationDeckProgressSummary = {
+  nationId: string;
+  label: string;
+  slots: NationDeckProgressSlot[];
+  totalCards: number;
+};
 
 export function createBlankNationDraft(nationId = ""): NationEntryDraft {
   return {
@@ -138,6 +153,33 @@ function appendPipeValue(current: string, nextValue: string): string {
   const values = current.split("|").map((value) => value.trim()).filter(Boolean);
   if (!nextValue.trim() || values.includes(nextValue.trim())) return values.join("|");
   return [...values, nextValue.trim()].join("|");
+}
+
+function splitPipeValues(value: string): string[] {
+  return value.split("|").map((item) => item.trim()).filter(Boolean);
+}
+
+export function summarizeNationDeckProgress(draft: NationEntryDraft): NationDeckProgressSummary {
+  const slotInputs: Array<Omit<NationDeckProgressSlot, "count">> = [
+    { id: "power", label: "Power", cardIds: splitPipeValues(draft.powerCardIds) },
+    { id: "state", label: "State", cardIds: splitPipeValues(draft.stateCardIds) },
+    { id: "starting", label: "Starting Deck", cardIds: splitPipeValues(draft.startingDeckCardIds) },
+    { id: "nation", label: "Nation Deck", cardIds: splitPipeValues(draft.nationDeckCardIds) },
+    { id: "accession", label: "Accession", cardIds: splitPipeValues(draft.accessionCardId) },
+    { id: "development", label: "Development", cardIds: splitPipeValues(draft.developmentCardIds) }
+  ];
+  const slots = slotInputs.map((slot) => ({ ...slot, count: slot.cardIds.length }));
+
+  return {
+    nationId: draft.nationId,
+    label: draft.publicPlaceholderName || draft.privateName || draft.nationId || "New nation",
+    slots,
+    totalCards: slots.reduce((total, slot) => total + slot.count, 0)
+  };
+}
+
+export function summarizeNationRowsDeckProgress(rows: PrivateNationCsvRow[]): NationDeckProgressSummary[] {
+  return sortNationRowsByName(rows).map((row) => summarizeNationDeckProgress(nationRowToDraft(row)));
 }
 
 export function appendCardIdToNationDraftRoles(draft: NationEntryDraft, cardId: string, roles: NationCardRole[]): NationEntryDraft {

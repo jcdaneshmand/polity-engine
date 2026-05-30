@@ -230,7 +230,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
         <div className="private-entry-heading">
           <div>
             <p className="private-entry-kicker">Local private data</p>
-            <h1 id="private-entry-title">Card Transcription</h1>
+            <h1 id="private-entry-title">Card and Nation Transcription Tool</h1>
           </div>
           <div className="private-entry-actions">
             <button type="button" onClick={onBack}>Back</button>

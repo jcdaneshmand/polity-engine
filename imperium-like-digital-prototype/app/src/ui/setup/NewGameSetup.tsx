@@ -304,7 +304,7 @@ export default function NewGameSetup({ onStart, onOpenCardEntry }: NewGameSetupP
               <input type="file" multiple accept=".json,.csv,application/json,text/csv" onChange={importPrivateFiles} />
             </label>
             <button type="button" onClick={onOpenCardEntry}>
-              Card Entry Tool
+              Card and Nation Transcription Tool
             </button>
             {privateFileStatuses.length ? (
               <div className="private-file-list">

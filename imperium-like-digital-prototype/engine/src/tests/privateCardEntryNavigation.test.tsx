@@ -9,14 +9,14 @@ describe("private card entry navigation", () => {
     const html = renderToStaticMarkup(<NewGameSetup onStart={() => {}} />);
 
     expect(html).toContain("Upload JSON or CSV files");
-    expect(html).toContain("Card Entry Tool");
-    expect(html.indexOf("Card Entry Tool")).toBeGreaterThan(html.indexOf("Upload JSON or CSV files"));
+    expect(html).toContain("Card and Nation Transcription Tool");
+    expect(html.indexOf("Card and Nation Transcription Tool")).toBeGreaterThan(html.indexOf("Upload JSON or CSV files"));
   });
 
   it("does not expose card entry from the app shell or game screen", () => {
     const appSource = fs.readFileSync(path.resolve(import.meta.dirname, "../../../app/src/App.tsx"), "utf8");
 
     expect(appSource).not.toContain("Private Data");
-    expect(appSource).not.toContain("Card Entry Tool");
+    expect(appSource).not.toContain("Card and Nation Transcription Tool");
   });
 });

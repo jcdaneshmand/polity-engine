@@ -18,18 +18,32 @@ if (Test-Path $ToolsPath) {
   $env:Path = "$ToolsPath;$env:Path"
 }
 
+function Invoke-CheckedCommand {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Command,
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$Arguments
+  )
+
+  & $Command @Arguments
+  if ($LASTEXITCODE -ne 0) {
+    throw "Command failed with exit code ${LASTEXITCODE}: $Command $($Arguments -join ' ')"
+  }
+}
+
 Write-Host "Using npm:" -ForegroundColor Cyan
-npm --version
+Invoke-CheckedCommand npm --version
 
 Push-Location $ProjectRoot
 try {
   Write-Host ""
   Write-Host "Running engine tests..." -ForegroundColor Cyan
-  npm test
+  Invoke-CheckedCommand npm test
 
   Write-Host ""
   Write-Host "Running TypeScript checks..." -ForegroundColor Cyan
-  npm run typecheck
+  Invoke-CheckedCommand npm run typecheck
 
   if ($NoLaunch) {
     Write-Host ""
@@ -39,7 +53,7 @@ try {
 
   Write-Host ""
   Write-Host "Checks passed. Starting Vite at $DevUrl" -ForegroundColor Green
-  npm run dev
+  Invoke-CheckedCommand npm run dev
 }
 finally {
   Pop-Location

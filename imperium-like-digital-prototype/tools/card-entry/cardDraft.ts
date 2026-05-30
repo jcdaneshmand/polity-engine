@@ -19,6 +19,19 @@ export type VariableVpDraftDetails = {
   note: string;
 };
 
+export type CardEntryShortcutAction =
+  | "save_card"
+  | "focus_suit"
+  | "apply_variable_vp"
+  | { type: "toggle_nation_role"; index: number };
+
+export type CardEntryShortcutEvent = {
+  key: string;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+  altKey?: boolean;
+};
+
 function pipeValues(value: string): string[] {
   return value.split("|").map((part) => part.trim()).filter(Boolean);
 }
@@ -134,6 +147,16 @@ export function applyVariableVpDraftDetails(draft: CardEntryDraft, details: Vari
     tags: appendUniquePipeValues(draft.tags, ["vp_variable", `vp_${details.formula}`]),
     notes: replaceVariableVpNote(draft.notes, variableVpLine)
   };
+}
+
+export function getCardEntryShortcutAction(event: CardEntryShortcutEvent): CardEntryShortcutAction | null {
+  const key = event.key.toLowerCase();
+  if ((event.ctrlKey || event.metaKey) && key === "enter") return "save_card";
+  if (!event.altKey) return null;
+  if (key === "s") return "focus_suit";
+  if (key === "v") return "apply_variable_vp";
+  if (/^[1-6]$/.test(key)) return { type: "toggle_nation_role", index: Number(key) - 1 };
+  return null;
 }
 
 export function draftToCsvRow(draft: CardEntryDraft): PrivateCardCsvRow {

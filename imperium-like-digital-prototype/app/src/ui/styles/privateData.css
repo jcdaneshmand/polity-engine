@@ -63,9 +63,41 @@
   padding: 9px 10px;
 }
 
+.private-entry-status span:last-child {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+}
+
 .private-entry-status.is-error {
   border-color: #a94442;
   color: #8d2b29;
+}
+
+.private-entry-unsaved {
+  border: 1px solid #9b7f33;
+  border-radius: 999px;
+  background: #fff7d6;
+  color: #6b5416;
+  font-size: 11px;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+
+.private-entry-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -6px 0 14px;
+}
+
+.private-entry-shortcuts span {
+  border: 1px solid #c2c9c7;
+  background: #fff;
+  color: #637174;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 7px;
 }
 
 .private-entry-batch {

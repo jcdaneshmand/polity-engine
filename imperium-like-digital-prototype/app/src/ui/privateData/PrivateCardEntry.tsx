@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Papa from "papaparse";
 import type { PrivateCardCsvRow } from "../../../../tools/card-import/cardCsvTypes";
 import type { NationRuleHook, PrivateNationCsvRow, SetupRule } from "../../../../tools/card-import/nationCsvTypes";
@@ -11,6 +11,7 @@ import {
   csvRowToDraft,
   draftToCsvRow,
   duplicateCardDraft,
+  getCardEntryShortcutAction,
   toggleDraftSuitIcon,
   type VariableVpDraftDetails,
   type VariableVpFormula
@@ -326,6 +327,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
   const [fileName, setFileName] = useState("imperium_cards_private.csv");
   const [status, setStatus] = useState("No private CSV loaded. New saves stay in this browser until exported.");
   const [fileHandle, setFileHandle] = useState<FileSystemFileHandleLike | null>(null);
+  const [cardDirty, setCardDirty] = useState(false);
   const [variableVpDetails, setVariableVpDetails] = useState<VariableVpDraftDetails>({
     formula: "per_card",
     amountEach: "1",
@@ -338,18 +340,28 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
   const [nationFileName, setNationFileName] = useState("imperium_nations_private.csv");
   const [nationStatus, setNationStatus] = useState("No private nation CSV loaded. New nation rows stay in this browser until exported.");
   const [nationFileHandle, setNationFileHandle] = useState<FileSystemFileHandleLike | null>(null);
+  const [nationDirty, setNationDirty] = useState(false);
   const [selectedNationCardRoles, setSelectedNationCardRoles] = useState<NationCardRole[]>(["nation"]);
   const [rulesetRows, setRulesetRows] = useState<PrivateNationRulesetCsvRow[]>([]);
   const [rulesetDraft, setRulesetDraft] = useState<NationRulesetEntryDraft>(createBlankNationRulesetDraft());
   const [rulesetFileName, setRulesetFileName] = useState("imperium_nation_rulesets_private.csv");
   const [rulesetStatus, setRulesetStatus] = useState("No private ruleset CSV loaded. Builder traits stay in this browser until exported.");
   const [rulesetFileHandle, setRulesetFileHandle] = useState<FileSystemFileHandleLike | null>(null);
+  const [rulesetDirty, setRulesetDirty] = useState(false);
+  const [suitSelectElement, setSuitSelectElement] = useState<HTMLSelectElement | null>(null);
 
   const selectedProfile = useMemo(() => profileFromSelection(profileId, nationId), [profileId, nationId]);
   const isNationBatch = profileId === "nation-custom";
   const sortedNationRows = useMemo(() => sortNationRowsByName(nationRows), [nationRows]);
   const currentNationDeckProgress = useMemo(() => summarizeNationDeckProgress(nationDraft), [nationDraft]);
   const allNationDeckProgress = useMemo(() => summarizeNationRowsDeckProgress(nationRows), [nationRows]);
+  const cardIdOptions = useMemo(() => {
+    const ids = new Set<string>();
+    rows.forEach((row) => { if (row.card_id?.trim()) ids.add(row.card_id.trim()); });
+    currentNationDeckProgress.slots.forEach((slot) => slot.cardIds.forEach((cardId) => ids.add(cardId)));
+    allNationDeckProgress.forEach((summary) => summary.slots.forEach((slot) => slot.cardIds.forEach((cardId) => ids.add(cardId))));
+    return [...ids].sort();
+  }, [allNationDeckProgress, currentNationDeckProgress, rows]);
   const validation = useMemo(() => validateRows(rows), [rows]);
   const nationValidation = useMemo(() => validateNationRows(nationRows), [nationRows]);
   const rulesetValidation = useMemo(() => validateNationRulesetRows(rulesetRows), [rulesetRows]);
@@ -475,6 +487,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
       setFileHandle(handle);
       setFileName(file.name);
       setRows(parseCsv(await file.text()));
+      setCardDirty(false);
       setStatus(`Loaded ${file.name}.`);
       return;
     }
@@ -486,6 +499,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
     setFileHandle(null);
     setFileName(file.name);
     setRows(parseCsv(await file.text()));
+    setCardDirty(false);
     setStatus(`Loaded ${file.name}. Saving will download a replacement CSV.`);
   };
 
@@ -501,6 +515,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
       setNationFileHandle(handle);
       setNationFileName(file.name);
       setNationRows(nextRows);
+      setNationDirty(false);
       const firstNation = sortNationRowsByName(nextRows)[0];
       if (firstNation?.nation_id) selectNation(firstNation.nation_id, nextRows);
       setNationStatus(`Loaded ${file.name}.`);
@@ -515,6 +530,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
     setNationFileHandle(null);
     setNationFileName(file.name);
     setNationRows(nextRows);
+    setNationDirty(false);
     const firstNation = sortNationRowsByName(nextRows)[0];
     if (firstNation?.nation_id) selectNation(firstNation.nation_id, nextRows);
     setNationStatus(`Loaded ${file.name}. Saving will download a replacement CSV.`);
@@ -532,6 +548,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
       setRulesetFileHandle(handle);
       setRulesetFileName(file.name);
       setRulesetRows(nextRows);
+      setRulesetDirty(false);
       if (nationId) selectRulesetForNation(nationId, nextRows);
       setRulesetStatus(`Loaded ${file.name}.`);
       return;
@@ -545,6 +562,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
     setRulesetFileHandle(null);
     setRulesetFileName(file.name);
     setRulesetRows(nextRows);
+    setRulesetDirty(false);
     if (nationId) selectRulesetForNation(nationId, nextRows);
     setRulesetStatus(`Loaded ${file.name}. Saving will download a replacement CSV.`);
   };
@@ -561,6 +579,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
       return;
     }
     setRows(nextRows);
+    setCardDirty(true);
     setPreviousDraft(draft);
     setDraft(createBlankCardDraft(selectedProfile));
     if (isNationBatch && selectedNationCardRoles.length > 0 && row.card_id.trim()) {
@@ -571,6 +590,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
         const nextNationRows = appendOrReplaceNationRow(nationRows, nationDraftToCsvRow(nextNationDraft));
         setNationDraft(nextNationDraft);
         setNationRows(nextNationRows);
+        setNationDirty(true);
         setNationStatus(`Added ${row.card_id} to ${nextNationDraft.nationId || "new nation"} definition roles.`);
       }
     }
@@ -587,6 +607,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
       return;
     }
     setNationRows(nextRows);
+    setNationDirty(true);
     setNationId(row.nation_id.trim());
     resetDraftForProfile(createNationBatchProfile(row.nation_id.trim()));
     setRulesetDraft((current) => ({
@@ -609,6 +630,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
       return;
     }
     setRulesetRows(nextRows);
+    setRulesetDirty(true);
     setRulesetDraft((current) => ({ ...current, nationId: row.nation_id.trim() }));
     setRulesetStatus(`Saved ruleset ${row.nation_id}. Rows: ${nextRows.length}.`);
   };
@@ -619,10 +641,12 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
       const writable = await fileHandle.createWritable();
       await writable.write(content);
       await writable.close();
+      setCardDirty(false);
       setStatus(`Saved ${fileName}.`);
       return;
     }
     downloadCsv(fileName, content);
+    setCardDirty(false);
     setStatus(`Downloaded ${fileName}.`);
   };
 
@@ -632,10 +656,12 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
       const writable = await nationFileHandle.createWritable();
       await writable.write(content);
       await writable.close();
+      setNationDirty(false);
       setNationStatus(`Saved ${nationFileName}.`);
       return;
     }
     downloadCsv(nationFileName, content);
+    setNationDirty(false);
     setNationStatus(`Downloaded ${nationFileName}.`);
   };
 
@@ -645,10 +671,12 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
       const writable = await rulesetFileHandle.createWritable();
       await writable.write(content);
       await writable.close();
+      setRulesetDirty(false);
       setRulesetStatus(`Saved ${rulesetFileName}.`);
       return;
     }
     downloadCsv(rulesetFileName, content);
+    setRulesetDirty(false);
     setRulesetStatus(`Downloaded ${rulesetFileName}.`);
   };
 
@@ -663,6 +691,34 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
     }
     setDraft(duplicateCardDraft(previousDraft, { includePrivateText }));
   };
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const action = getCardEntryShortcutAction(event);
+      if (!action) return;
+      event.preventDefault();
+
+      if (action === "save_card") {
+        saveCurrentCard();
+        return;
+      }
+      if (action === "focus_suit") {
+        suitSelectElement?.focus();
+        return;
+      }
+      if (action === "apply_variable_vp") {
+        if (draft.vpMode === "variable") applyVariableVpDetails();
+        return;
+      }
+      if (isNationBatch) {
+        const role = nationCardRoleOptions[action.index]?.id;
+        if (role) toggleNationCardRole(role);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [applyVariableVpDetails, draft.vpMode, isNationBatch, saveCurrentCard, suitSelectElement, toggleNationCardRole]);
 
   return (
     <main className="private-entry-screen">
@@ -682,10 +738,20 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
         <input id="private-card-file" hidden type="file" accept=".csv,text/csv" onChange={(event: { target: HTMLInputElement }) => importCsvFile(event.target.files?.[0])} />
         <input id="private-nation-file" hidden type="file" accept=".csv,text/csv" onChange={(event: { target: HTMLInputElement }) => importNationCsvFile(event.target.files?.[0])} />
         <input id="private-ruleset-file" hidden type="file" accept=".csv,text/csv" onChange={(event: { target: HTMLInputElement }) => importRulesetCsvFile(event.target.files?.[0])} />
+        <datalist id="private-card-id-options">
+          {cardIdOptions.map((cardId) => <option key={cardId} value={cardId} />)}
+        </datalist>
 
         <div className={`private-entry-status ${fatalCount > 0 ? "is-error" : ""}`}>
           <span>{status}</span>
-          <span>{rows.length} rows / {fatalCount} fatal / {warningCount} warnings</span>
+          <span>{cardDirty ? <strong className="private-entry-unsaved">Card CSV changed</strong> : null}{rows.length} rows / {fatalCount} fatal / {warningCount} warnings</span>
+        </div>
+
+        <div className="private-entry-shortcuts">
+          <span>Ctrl+Enter save card</span>
+          <span>Alt+S suit</span>
+          <span>Alt+V apply VP</span>
+          <span>Alt+1-6 slots</span>
         </div>
 
         <div className="private-entry-batch">
@@ -733,7 +799,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
 
               <div className={`private-entry-status ${nationFatalCount > 0 ? "is-error" : ""}`}>
                 <span>{nationStatus}</span>
-                <span>{nationRows.length} nations / {nationFatalCount} fatal / {nationWarningCount} warnings</span>
+                <span>{nationDirty ? <strong className="private-entry-unsaved">Nation CSV changed</strong> : null}{nationRows.length} nations / {nationFatalCount} fatal / {nationWarningCount} warnings</span>
               </div>
 
               <div className="private-entry-progress-panel">
@@ -782,12 +848,12 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
                 <label>Placeholder Name <input value={nationDraft.publicPlaceholderName} onChange={nationDraftChange("publicPlaceholderName")} /></label>
                 <label>Source Box <input value={nationDraft.sourceBox} onChange={nationDraftChange("sourceBox")} /></label>
                 <label>Complexity <input value={nationDraft.complexity} onChange={nationDraftChange("complexity")} /></label>
-                <label>Power Card IDs <input value={nationDraft.powerCardIds} onChange={nationDraftChange("powerCardIds")} /></label>
-                <label>State Card IDs <input value={nationDraft.stateCardIds} onChange={nationDraftChange("stateCardIds")} /></label>
-                <label>Starting Deck IDs <input value={nationDraft.startingDeckCardIds} onChange={nationDraftChange("startingDeckCardIds")} /></label>
-                <label>Nation Deck IDs <input value={nationDraft.nationDeckCardIds} onChange={nationDraftChange("nationDeckCardIds")} /></label>
-                <label>Accession Card ID <input value={nationDraft.accessionCardId} onChange={nationDraftChange("accessionCardId")} /></label>
-                <label>Development IDs <input value={nationDraft.developmentCardIds} onChange={nationDraftChange("developmentCardIds")} /></label>
+                <label>Power Card IDs <input list="private-card-id-options" value={nationDraft.powerCardIds} onChange={nationDraftChange("powerCardIds")} /></label>
+                <label>State Card IDs <input list="private-card-id-options" value={nationDraft.stateCardIds} onChange={nationDraftChange("stateCardIds")} /></label>
+                <label>Starting Deck IDs <input list="private-card-id-options" value={nationDraft.startingDeckCardIds} onChange={nationDraftChange("startingDeckCardIds")} /></label>
+                <label>Nation Deck IDs <input list="private-card-id-options" value={nationDraft.nationDeckCardIds} onChange={nationDraftChange("nationDeckCardIds")} /></label>
+                <label>Accession Card ID <input list="private-card-id-options" value={nationDraft.accessionCardId} onChange={nationDraftChange("accessionCardId")} /></label>
+                <label>Development IDs <input list="private-card-id-options" value={nationDraft.developmentCardIds} onChange={nationDraftChange("developmentCardIds")} /></label>
                 <label>Action Tokens <input value={nationDraft.actionTokensBase} onChange={nationDraftChange("actionTokensBase")} /></label>
                 <label>Exhaust Tokens <input value={nationDraft.exhaustTokensBase} onChange={nationDraftChange("exhaustTokensBase")} /></label>
                 <label>Required Expansions <select value={nationDraft.requiredExpansions} onChange={nationDraftChange("requiredExpansions")}>{expansionRequirementOptions.map((option) => <option key={option.label} value={option.value}>{option.label}</option>)}</select></label>
@@ -833,7 +899,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
 
               <div className={`private-entry-status ${rulesetFatalCount > 0 ? "is-error" : ""}`}>
                 <span>{rulesetStatus}</span>
-                <span>{rulesetRows.length} rulesets / {rulesetFatalCount} fatal / {rulesetWarningCount} warnings</span>
+                <span>{rulesetDirty ? <strong className="private-entry-unsaved">Ruleset CSV changed</strong> : null}{rulesetRows.length} rulesets / {rulesetFatalCount} fatal / {rulesetWarningCount} warnings</span>
               </div>
 
               <div className="private-entry-nation-grid">
@@ -870,10 +936,10 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
         ) : null}
 
         <form className="private-entry-grid" onSubmit={(event: { preventDefault: () => void }) => { event.preventDefault(); saveCurrentCard(); }}>
-          <label>Card ID <input value={draft.cardId} onChange={draftChange("cardId")} autoFocus /></label>
+          <label>Card ID <input list="private-card-id-options" value={draft.cardId} onChange={draftChange("cardId")} autoFocus /></label>
           <label>Private Name <input value={draft.privateName} onChange={draftChange("privateName")} /></label>
           <label>Placeholder Name <input value={draft.publicPlaceholderName} onChange={draftChange("publicPlaceholderName")} /></label>
-          <label>Suit <select value={draft.suit} onChange={draftChange("suit")}>{suitOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
+          <label>Suit <select ref={setSuitSelectElement} value={draft.suit} onChange={draftChange("suit")}>{suitOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
           <label>Suit Icons <input value={draft.suitIcons} onChange={draftChange("suitIcons")} /></label>
           <fieldset className="private-entry-choice-fieldset private-entry-wide">
             <legend>Suit Icon Checkboxes</legend>
@@ -887,7 +953,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
             </div>
           </fieldset>
           <label>Type <select value={draft.cardType} onChange={draftChange("cardType")}>{cardTypeOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
-          <label>State <input value={draft.stateRequirement} onChange={draftChange("stateRequirement")} /></label>
+          <label>State <input list="private-card-id-options" value={draft.stateRequirement} onChange={draftChange("stateRequirement")} /></label>
           <label>Start <select value={draft.startingLocation} onChange={draftChange("startingLocation")}>{startOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
           <label>Players <select value={draft.playerCountRequirement} onChange={(event: { target: HTMLSelectElement }) => updateDraft("playerCountRequirement", event.target.value)}>{playerCountOptions.map((option) => <option key={option.label} value={option.value}>{option.label}</option>)}</select></label>
           <label>Required Expansion <select value={draft.requiredExpansions} onChange={draftChange("requiredExpansions")}>{expansionRequirementOptions.map((option) => <option key={option.label} value={option.value}>{option.label}</option>)}</select></label>

@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { commonsBatchProfiles } from "../../../tools/card-entry/batchProfiles";
-import { applyVariableVpDraftDetails, createBlankCardDraft, toggleDraftSuitIcon } from "../../../tools/card-entry/cardDraft";
+import { applyVariableVpDraftDetails, createBlankCardDraft, getCardEntryShortcutAction, toggleDraftSuitIcon } from "../../../tools/card-entry/cardDraft";
 import { createCardEntryService } from "../../../tools/card-entry/cardEntryService";
 
 const fixtureRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -85,5 +85,13 @@ describe("card entry service", () => {
     expect(updated.vpValue).toBe("1");
     expect(updated.tags).toBe("vp_variable|vp_per_resource");
     expect(updated.notes).toContain("[Variable VP] 1 VP per_resource goods; cap 5. Score goods in history.");
+  });
+
+  it("maps card entry keyboard shortcuts to actions", () => {
+    expect(getCardEntryShortcutAction({ key: "Enter", ctrlKey: true })).toBe("save_card");
+    expect(getCardEntryShortcutAction({ key: "s", altKey: true })).toBe("focus_suit");
+    expect(getCardEntryShortcutAction({ key: "v", altKey: true })).toBe("apply_variable_vp");
+    expect(getCardEntryShortcutAction({ key: "3", altKey: true })).toEqual({ type: "toggle_nation_role", index: 2 });
+    expect(getCardEntryShortcutAction({ key: "Enter" })).toBeNull();
   });
 });

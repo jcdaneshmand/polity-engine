@@ -8,15 +8,17 @@ export function getCurrentPlayer(G: GameState, ctx: any) {
   return G.players?.[id] ?? null;
 }
 export function getMarketCards(G: GameState): string[] { return Array.isArray(G.market) ? G.market : []; }
-export function getSharedPiles(_G: GameState) {
+export function getSharedPiles(G: GameState) {
+  const fameCount = (G.fameDeck?.available?.length ?? 0) + (G.fameDeck?.specialBottomCardId ? 1 : 0);
+  const exileCount = Object.values(G.players ?? {}).reduce((sum, player) => sum + (player.exile?.length ?? 0), 0);
   return [
-    { id: "region", label: "Region", count: 0 },
-    { id: "uncivilized", label: "Uncivilized", count: 0 },
-    { id: "civilized", label: "Civilized", count: 0 },
-    { id: "main", label: "Main", count: _G.marketRefillPool?.length ?? 0 },
-    { id: "fame", label: "Fame", count: 0 },
-    { id: "unrest", label: "Unrest", count: 0 },
-    { id: "exile", label: "Exile", count: 0 }
+    { id: "region", label: "Region", count: G.marketDecks?.regionDeck?.length ?? 0 },
+    { id: "uncivilized", label: "Uncivilized", count: G.marketDecks?.uncivilizedDeck?.length ?? 0 },
+    { id: "civilized", label: "Civilized", count: G.marketDecks?.civilizedDeck?.length ?? 0 },
+    { id: "main", label: "Main", count: G.marketDecks?.mainDeck?.length ?? G.marketRefillPool?.length ?? 0 },
+    { id: "fame", label: "Fame", count: fameCount },
+    { id: "unrest", label: "Unrest", count: G.unrestPile?.length ?? 0 },
+    { id: "exile", label: "Exile", count: exileCount }
   ];
 }
 export function getCardById(G: GameState, cardId?: string) { return cardId ? G.cardDb?.[cardId] : undefined; }
@@ -35,7 +37,11 @@ export function getZoneCards(player: any, zoneId: string): string[] {
   if (Array.isArray(sideArea)) return sideArea;
   return [];
 }
-export function getInspectableZone(owner: any, zoneId: string): { hidden: boolean; cardIds: string[]; count: number } {
+export function getInspectableZone(
+  owner: any,
+  zoneId: string,
+  viewer?: { ownerPlayerId?: string; viewerPlayerId?: string }
+): { hidden: boolean; cardIds: string[]; count: number } {
   if (zoneId === "botSlots") {
     const slots = Object.values(owner?.slots ?? {}) as any[];
     return {
@@ -48,7 +54,30 @@ export function getInspectableZone(owner: any, zoneId: string): { hidden: boolea
   const cardIds = getZoneCards(owner, zoneId);
   const hiddenZones = new Set(["deck", "nationDeck", "botDeck", "botDynastyDeck"]);
   if (hiddenZones.has(zoneId)) return { hidden: true, cardIds: [], count: cardIds.length };
+  const ownerVisibleZones = new Set(["hand", "history"]);
+  if (
+    ownerVisibleZones.has(zoneId) &&
+    viewer?.ownerPlayerId !== undefined &&
+    viewer?.viewerPlayerId !== undefined &&
+    viewer.ownerPlayerId !== viewer.viewerPlayerId
+  ) {
+    return { hidden: true, cardIds: [], count: cardIds.length };
+  }
   return { hidden: false, cardIds, count: cardIds.length };
+}
+export function getInspectableLookedCards(
+  G: GameState,
+  viewerPlayerId: string
+): { hidden: boolean; source: string; cardIds: string[]; count: number } | undefined {
+  const looked = G.lookedCards;
+  if (!looked) return undefined;
+  const cardIds = looked.playerId === viewerPlayerId ? looked.cardIds : [];
+  return {
+    hidden: looked.playerId !== viewerPlayerId,
+    source: looked.source,
+    cardIds,
+    count: looked.cardIds.length
+  };
 }
 export function getBotPiles(bot: any) {
   const slots = Object.values(bot?.slots ?? {}).filter((slot: any) => !!slot?.cardId).length;

@@ -5,6 +5,7 @@ export function setupFameDeck(enabledTradeRoutes: boolean): FameDeckState {
   return {
     available: cards.slice(0, -1),
     specialBottomCardId: cards.at(-1),
+    specialBottomSide: "A",
     resolvedSpecialByPlayer: {}
   };
 }

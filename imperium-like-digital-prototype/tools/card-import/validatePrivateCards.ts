@@ -12,6 +12,35 @@ const commonsSets = new Set(["classics","legends","horizons","custom"]);
 const commonsGroups = new Set(["base","trade_friendly","trade_routes","replacement"]);
 const playerCounts = new Set(["1+","2+","3+","4+"]);
 const req = ["card_id","public_placeholder_name","suit","card_type","starting_location","vp_mode","implemented","tested"];
+const effectOps = new Set([
+  "draw",
+  "draw_if_able",
+  "gain_resource",
+  "spend_resource",
+  "remove_resource",
+  "return_resource",
+  "steal_resource",
+  "discard_random",
+  "take_unrest",
+  "gain_fame",
+  "trigger_scoring",
+  "trade",
+  "commerce",
+  "profit",
+  "garrison_card",
+  "recall_region",
+  "abandon_region",
+  "develop",
+  "move_self_to_history",
+  "exile_card",
+  "acquire_card",
+  "break_through",
+  "find_card",
+  "conditional_resource_at_least",
+  "conditional_state_is",
+  "optional",
+  "choose_one"
+]);
 
 const isBool=(v:string)=>["true","false"].includes((v||"").trim().toLowerCase());
 const isNonNeg=(v:string)=>v.trim()==="" || (/^\d+$/.test(v.trim()));
@@ -46,12 +75,54 @@ function validateOptionalBool(errors: CardImportError[], row: number, field: str
   return false;
 }
 
+function validateEffectOps(errors: CardImportError[], row: number, effects: unknown, path = "effect_ops_json"): boolean {
+  if (!Array.isArray(effects)) {
+    errors.push({ level: "fatal", row, field: "effect_ops_json", message: `${path} must parse to array` });
+    return true;
+  }
+  let fatal = false;
+  effects.forEach((effect, index) => {
+    if (!effect || typeof effect !== "object" || Array.isArray(effect)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `${path}[${index}] must be an effect object` });
+      fatal = true;
+      return;
+    }
+    const op = (effect as { op?: unknown }).op;
+    if (typeof op !== "string" || !effectOps.has(op)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Unsupported effect op: ${String(op ?? "missing")}` });
+      fatal = true;
+      return;
+    }
+    if (op === "optional" || op === "commerce" || op === "profit") {
+      fatal = validateEffectOps(errors, row, (effect as { effects?: unknown }).effects, `${path}[${index}].effects`) || fatal;
+    }
+    if (op === "choose_one") {
+      const choices = (effect as { choices?: unknown }).choices;
+      if (!Array.isArray(choices)) {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `${path}[${index}].choices must parse to array` });
+        fatal = true;
+      } else {
+        choices.forEach((choice, choiceIndex) => {
+          fatal = validateEffectOps(errors, row, choice, `${path}[${index}].choices[${choiceIndex}]`) || fatal;
+        });
+      }
+    }
+    if (op === "conditional_resource_at_least" || op === "conditional_state_is") {
+      fatal = validateEffectOps(errors, row, (effect as { then?: unknown }).then, `${path}[${index}].then`) || fatal;
+      const elseEffects = (effect as { else?: unknown }).else;
+      if (elseEffects !== undefined) fatal = validateEffectOps(errors, row, elseEffects, `${path}[${index}].else`) || fatal;
+    }
+  });
+  return fatal;
+}
+
 export function validatePrivateCardsRows(rows: PrivateCardCsvRow[]): CardImportReport {
   const errors: CardImportError[]=[]; const seen=new Set<string>(); let implemented=0,tested=0,validRows=0;
   rows.forEach((r,i)=>{ const row=i+2; let fatal=false;
     for(const f of req){ if(!(r[f]??"").trim()){ errors.push({level:"fatal",row,field:f,message:"Required field missing"}); fatal=true; }}
     const id=(r.card_id||"").trim(); if(!id){fatal=true;} else if(seen.has(id)){errors.push({level:"fatal",row,field:"card_id",message:"Duplicate card_id"}); fatal=true;} else seen.add(id);
     if(!suits.has((r.suit||"").trim())){errors.push({level:"fatal",row,field:"suit",message:"Invalid suit"}); fatal=true;}
+    fatal = validatePipeEnums({ errors, row, field: "suit_icons", value: r.suit_icons, allowed: suits, message: "Invalid suit_icons" }) || fatal;
     if(!types.has((r.card_type||"").trim())){errors.push({level:"fatal",row,field:"card_type",message:"Invalid card_type"}); fatal=true;}
     if(!starts.has((r.starting_location||"").trim())){errors.push({level:"fatal",row,field:"starting_location",message:"Invalid starting_location"}); fatal=true;}
     if(!vpModes.has((r.vp_mode||"").trim())){errors.push({level:"fatal",row,field:"vp_mode",message:"Invalid vp_mode"}); fatal=true;}
@@ -69,7 +140,7 @@ export function validatePrivateCardsRows(rows: PrivateCardCsvRow[]): CardImportR
     if(["fixed","variable","negative"].includes((r.vp_mode||"").trim()) && !(r.vp_value||"").trim().match(/^-?\d+(\.\d+)?$/)){errors.push({level:"fatal",row,field:"vp_value",message:"vp_value required numeric for vp_mode"}); fatal=true;}
     if(!isBool(r.implemented||"")){errors.push({level:"fatal",row,field:"implemented",message:"implemented must be true/false"}); fatal=true;}
     if(!isBool(r.tested||"")){errors.push({level:"fatal",row,field:"tested",message:"tested must be true/false"}); fatal=true;}
-    if((r.effect_ops_json||"").trim()){ try { const p=JSON.parse(r.effect_ops_json); if(!Array.isArray(p)){errors.push({level:"fatal",row,field:"effect_ops_json",message:"effect_ops_json must parse to array"}); fatal=true;} } catch { errors.push({level:"fatal",row,field:"effect_ops_json",message:"Invalid JSON"}); fatal=true; } }
+    if((r.effect_ops_json||"").trim()){ try { const p=JSON.parse(r.effect_ops_json); fatal = validateEffectOps(errors, row, p) || fatal; } catch { errors.push({level:"fatal",row,field:"effect_ops_json",message:"Invalid JSON"}); fatal=true; } }
     if((r.raw_effect_text_private||"").trim() && !(r.effect_ops_json||"").trim()) errors.push({level:"warning",row,field:"effect_ops_json",message:"raw_effect_text_private present but effect_ops_json empty"});
     if((r.implemented||"").trim().toLowerCase()==="true" && (r.tested||"").trim().toLowerCase()==="false") errors.push({level:"warning",row,field:"tested",message:"implemented=true but tested=false"});
     if((r.card_name_private||"").trim() && (r.card_name_private||"").trim()===(r.public_placeholder_name||"").trim()) errors.push({level:"warning",row,field:"public_placeholder_name",message:"public_placeholder_name identical to card_name_private"});

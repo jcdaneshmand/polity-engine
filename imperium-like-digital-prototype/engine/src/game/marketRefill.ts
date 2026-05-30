@@ -10,11 +10,14 @@ export function deckForSuit(suit?: Suit): MarketDeckName | undefined {
   return undefined;
 }
 
-function drawReplacementFromMarketDecks(G: GameState, args: { playerId: string; slotIndex: number; acquiredCardId: string }): string | undefined {
+function drawReplacementFromMarketDecks(G: GameState, args: { playerId: string; slotIndex: number; acquiredCardId: string; preferSuitDeck?: boolean }): string | undefined {
   const decks = G.marketDecks;
   if (!decks) return undefined;
-  const sourceDeck = args.slotIndex < 2 ? "mainDeck" : deckForSuit(G.cardDb[args.acquiredCardId]?.suit);
-  const card = (sourceDeck ? decks[sourceDeck].shift() : undefined) ?? decks.mainDeck.shift();
+  const sourceDeck = args.preferSuitDeck ? deckForSuit(G.cardDb[args.acquiredCardId]?.suit) : args.slotIndex < 2 ? "mainDeck" : deckForSuit(G.cardDb[args.acquiredCardId]?.suit);
+  const suitedCard = sourceDeck && sourceDeck !== "mainDeck" ? decks[sourceDeck].shift() : undefined;
+  if (suitedCard) return suitedCard;
+
+  const card = decks.mainDeck.shift();
   if (card) triggerScoringIfMainDeckEmpty(G, args.playerId);
   return card;
 }
@@ -23,7 +26,7 @@ function drawReplacementFromLegacyPool(G: GameState): string | undefined {
   return G.marketRefillPool.shift();
 }
 
-export function refillMarketSlot(G: GameState, args: { playerId: string; slotIndex: number; acquiredCardId: string }): void {
+export function refillMarketSlot(G: GameState, args: { playerId: string; slotIndex: number; acquiredCardId: string; preferSuitDeck?: boolean }): void {
   const liveSlotIndex = G.marketSlots?.findIndex((slot) => slot.cardId === args.acquiredCardId) ?? -1;
   if (liveSlotIndex >= 0) G.marketSlots?.splice(liveSlotIndex, 1);
 
@@ -36,6 +39,10 @@ export function refillMarketSlot(G: GameState, args: { playerId: string; slotInd
 
   G.market.splice(args.slotIndex, 0, nextCardId);
   tuckUnrestUnderMarketCard(G, args.playerId, nextCardId);
+  if (G.gameover) {
+    G.marketSlots?.forEach((slot, index) => { slot.index = index; });
+    return;
+  }
   if (G.marketSlots) {
     G.marketSlots.splice(args.slotIndex, 0, {
       index: args.slotIndex,

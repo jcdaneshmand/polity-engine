@@ -1,4 +1,5 @@
 import type { BotStateTable } from "./botStateTableTypes";
+import { getNodeFs, resolveFromCwd } from "../local/nodeBuiltins";
 
 const placeholder: Record<string, BotStateTable> = {
   placeholder_S: {
@@ -13,6 +14,14 @@ const placeholder: Record<string, BotStateTable> = {
   }
 };
 
-export function loadBotStateTables(): Record<string, BotStateTable> {
+export function loadBotStateTables(opts: { usePrivate?: boolean; privatePath?: string } = {}): Record<string, BotStateTable> {
+  const privatePath = opts.privatePath ?? resolveFromCwd("generated-private/bot-state-tables.normalized.json");
+  const fs = getNodeFs();
+  if ((opts.usePrivate || opts.privatePath) && fs?.existsSync(privatePath)) {
+    return JSON.parse(fs.readFileSync(privatePath, "utf8")) as Record<string, BotStateTable>;
+  }
+  if (opts.usePrivate || opts.privatePath) {
+    throw new Error(`Private bot state tables requested but not found: ${privatePath}`);
+  }
   return JSON.parse(JSON.stringify(placeholder)) as Record<string, BotStateTable>;
 }

@@ -7,7 +7,7 @@ export type SetupContext = {
   options: GameOptions;
   players: Record<string, PlayerState>;
   cards: NormalizedCardRecord[];
-  setupReport: { delayedAggressiveCount: number; usedQuickSetup: boolean; shortGameExiled: number; shortGameNationAdvanced: number };
+  setupReport: { delayedAggressiveCount: number; usedQuickSetup: boolean; shortGameExiled: number; shortGameNationAdvanced: number; practiceModeExiled: number };
   gameState?: GameState;
 };
 

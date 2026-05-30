@@ -46,6 +46,7 @@ function shouldDelayForLoweredAggression(card: NormalizedCardRecord): boolean {
 function canAttachUnrest(card: NormalizedCardRecord | undefined): boolean {
   if (!card) return false;
   if (isUnrest(card)) return false;
+  if (card.cardType === "region" || getSetupSuit(card) === "region") return false;
   if ((card as any).attachUnrestOnSetup === false) return false;
   if ((card.tags ?? []).includes("no_unrest_under_market")) return false;
   return true;

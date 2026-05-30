@@ -26,29 +26,69 @@ export function garrisonCardOnRegion(G: GameState, playerId: string, hostCardId:
   return true;
 }
 
-export function recallRegionToHand(G: GameState, playerId: string, regionCardId: string): boolean {
-  const player = G.players[playerId];
-  if (!isRegionCard(G, regionCardId) || !removeOne(player.playArea, regionCardId)) return false;
+export function detachGarrisonedCards(G: GameState, hostCardId: string): string[] {
+  const garrisoned = G.cardStates?.[hostCardId]?.garrisonedCardIds ?? [];
+  delete G.cardStates?.[hostCardId];
+  return garrisoned;
+}
 
-  const state = G.cardStates?.[regionCardId];
-  const garrisoned = state?.garrisonedCardIds ?? [];
+export function garrisonedCardsInPlay(G: GameState, playerId: string): string[] {
+  const player = G.players[playerId];
+  return player.playArea.flatMap((hostCardId) => G.cardStates?.[hostCardId]?.garrisonedCardIds ?? []);
+}
+
+export function detachGarrisonedCard(G: GameState, playerId: string, cardId: string): string | undefined {
+  const player = G.players[playerId];
+  for (const hostCardId of player.playArea) {
+    const garrisoned = G.cardStates?.[hostCardId]?.garrisonedCardIds;
+    const index = garrisoned?.indexOf(cardId) ?? -1;
+    if (!garrisoned || index < 0) continue;
+    garrisoned.splice(index, 1);
+    return hostCardId;
+  }
+  return undefined;
+}
+
+export function collectCardResourcesToPlayer(G: GameState, playerId: string, cardId: string): void {
+  const player = G.players[playerId];
+  const state = G.cardStates?.[cardId];
   for (const [resource, amount] of Object.entries(state?.resources ?? {}) as [ResourceName, number | undefined][]) {
     player.resources[resource] = (player.resources[resource] ?? 0) + (amount ?? 0);
   }
+}
+
+export function collectAndClearCardStateToPlayer(G: GameState, playerId: string, cardId: string): void {
+  collectCardResourcesToPlayer(G, playerId, cardId);
+  delete G.cardStates?.[cardId];
+}
+
+export function recallRegionToHand(G: GameState, playerId: string, regionCardId: string): boolean {
+  const player = G.players[playerId];
+  if (!isRegionCard(G, regionCardId)) return false;
+  const wasInPlay = removeOne(player.playArea, regionCardId);
+  const garrisonHostCardId = wasInPlay ? undefined : detachGarrisonedCard(G, playerId, regionCardId);
+  if (!wasInPlay && !garrisonHostCardId) return false;
+
+  collectCardResourcesToPlayer(G, playerId, regionCardId);
+  const garrisoned = detachGarrisonedCards(G, regionCardId);
+  garrisoned.forEach((cardId) => collectAndClearCardStateToPlayer(G, playerId, cardId));
 
   player.hand.push(regionCardId, ...garrisoned);
-  delete G.cardStates?.[regionCardId];
   G.log.push({ round: G.round, playerId, message: `RegionRecalled(${regionCardId}/garrisoned=${garrisoned.length})` });
   return true;
 }
 
 export function abandonRegionToDiscard(G: GameState, playerId: string, regionCardId: string): boolean {
   const player = G.players[playerId];
-  if (!isRegionCard(G, regionCardId) || !removeOne(player.playArea, regionCardId)) return false;
+  if (!isRegionCard(G, regionCardId)) return false;
+  const wasInPlay = removeOne(player.playArea, regionCardId);
+  const garrisonHostCardId = wasInPlay ? undefined : detachGarrisonedCard(G, playerId, regionCardId);
+  if (!wasInPlay && !garrisonHostCardId) return false;
 
-  const garrisoned = G.cardStates?.[regionCardId]?.garrisonedCardIds ?? [];
+  collectCardResourcesToPlayer(G, playerId, regionCardId);
+  const garrisoned = detachGarrisonedCards(G, regionCardId);
+  garrisoned.forEach((cardId) => collectAndClearCardStateToPlayer(G, playerId, cardId));
   player.discard.push(regionCardId, ...garrisoned);
-  delete G.cardStates?.[regionCardId];
   G.log.push({ round: G.round, playerId, message: `RegionAbandoned(${regionCardId}/garrisoned=${garrisoned.length})` });
   return true;
 }

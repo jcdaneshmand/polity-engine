@@ -13,6 +13,7 @@ export type ResourceCost = { materials:number; population:number; progress:numbe
 export interface PrivateCardCsvRow { [k:string]: string; }
 export interface NormalizedCardRecord {
   id:string; displayName:string; privateName?:string; sourceBox?:string; setOrNation?:string; suit:Suit; cardType:CardType; stateRequirement?:string;
+  suitIcons?: Suit[];
   cost:ResourceCost; developmentCost:ResourceCost; vp:{mode:VpMode; value:number|null}; startingLocation:StartingLocation; playerCountRequirement?:CommonsPlayerCountRequirement|string;
   ownership:CommonsOwnership; commonsSetId?:CommonsSetId; setupBannerSuit?:Suit; commonsGroup?:CommonsGroup; replacementForCardId?:string; replacementGroupId?:string; conflictsWithNationIds?:string[]; delayableInLoweredAggression?:boolean; marketEligible?:boolean; smallDeckEligible?:boolean; mainDeckEligible?:boolean; unrestPileEligible?:boolean; fameDeckEligible?:boolean;
   isTradeRouteExpansion:boolean; rawEffectTextPrivate?:string; effects:EffectOp[]; tags:string[]; notes?:string; implemented:boolean; tested:boolean; requiredExpansions?: ExpansionId[]; excludedExpansions?: ExpansionId[]; allowedModes?: ("multiplayer"|"solo"|"practice")[]; disallowedModes?: ("multiplayer"|"solo"|"practice")[];

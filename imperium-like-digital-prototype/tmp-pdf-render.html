@@ -1,0 +1,12 @@
+﻿<!doctype html><html><body style="margin:0;background:#ddd"><canvas id="c"></canvas><script type="module">
+import * as pdfjsLib from './tmp-pdf.mjs';
+pdfjsLib.GlobalWorkerOptions.workerSrc = './tmp-pdf.worker.mjs';
+const loadingTask = pdfjsLib.getDocument('./reference/imperium-horizons-rulebook.pdf');
+const pdf = await loadingTask.promise;
+const page = await pdf.getPage(52);
+const viewport = page.getViewport({ scale: 2.5 });
+const canvas = document.getElementById('c');
+canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
+await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+window.__rendered = true;
+</script></body></html>

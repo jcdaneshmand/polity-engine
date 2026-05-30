@@ -85,11 +85,24 @@ describe("commons deck construction", () => {
     const result = buildCommonsDecks({
       cards: [
         card({ id: "unrest_a", cardType: "unrest", suit: "unrest", unrestPileEligible: true }),
-        card({ id: "market_a", setupBannerSuit: "region" })
+        card({ id: "market_a", setupBannerSuit: "civilized" })
       ],
       options: options()
     });
     expect(result.initialMarket[0].cardId).toBe("market_a");
     expect(result.initialMarket[0].attachedUnrestCardIds).toEqual(["unrest_a"]);
+  });
+
+  it("does not attach Unrest under Region market cards", () => {
+    const result = buildCommonsDecks({
+      cards: [
+        card({ id: "unrest_a", cardType: "unrest", suit: "unrest", unrestPileEligible: true }),
+        card({ id: "region_a", cardType: "region", suit: "region", setupBannerSuit: "region" })
+      ],
+      options: options()
+    });
+    expect(result.initialMarket[0].cardId).toBe("region_a");
+    expect(result.initialMarket[0].attachedUnrestCardIds).toEqual([]);
+    expect(result.unrestPile).toEqual(["unrest_a"]);
   });
 });

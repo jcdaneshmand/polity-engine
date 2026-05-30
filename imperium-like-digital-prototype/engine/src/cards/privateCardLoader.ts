@@ -1,6 +1,6 @@
 import type { ExpansionId, NormalizedCardRecord } from "../../../tools/card-import/cardCsvTypes";
 import { loadCardDb } from "./cardLoader";
-import type { Card } from "../game/state";
+import type { Card, ResourceName } from "../game/state";
 import { getNodeFs } from "../local/nodeBuiltins";
 
 /** Local-only private data loader. generated-private JSON is gitignored and must be explicitly requested. */
@@ -20,6 +20,15 @@ export function loadCardDbWithOptionalPrivateData(opts?: { usePrivate?: boolean;
     return true;
   });
   const fromPrivate: Record<string, Card> = {};
-  filtered.forEach((r) => { fromPrivate[r.id] = { id: r.id, displayName: r.displayName, type: r.cardType as any, cardType: r.cardType as any, suit: r.suit as any, cost: r.cost.materials + r.cost.population + r.cost.progress + r.cost.goods, tags: r.tags, effects: r.effects as any, stateRequirement: r.stateRequirement, allowedModes: r.allowedModes, disallowedModes: r.disallowedModes, playerCountRequirement: r.playerCountRequirement, startingLocation: r.startingLocation, ownership: r.ownership, commonsSetId: r.commonsSetId, setupBannerSuit: r.setupBannerSuit as any, commonsGroup: r.commonsGroup, replacementForCardId: r.replacementForCardId, replacementGroupId: r.replacementGroupId, conflictsWithNationIds: r.conflictsWithNationIds, delayableInLoweredAggression: r.delayableInLoweredAggression, marketEligible: r.marketEligible, smallDeckEligible: r.smallDeckEligible, mainDeckEligible: r.mainDeckEligible, unrestPileEligible: r.unrestPileEligible, fameDeckEligible: r.fameDeckEligible }; });
+  const toEngineCost = (cost: NormalizedCardRecord["developmentCost"]): Partial<Record<ResourceName, number>> => ({
+    materials: cost.materials,
+    influence: cost.population,
+    knowledge: cost.progress,
+    goods: cost.goods
+  });
+  const toAcquireCost = (cost: NormalizedCardRecord["cost"]): Card["cost"] => cost.population === 0 && cost.progress === 0 && cost.goods === 0
+    ? cost.materials
+    : toEngineCost(cost);
+  filtered.forEach((r) => { fromPrivate[r.id] = { id: r.id, displayName: r.displayName, type: r.cardType as any, cardType: r.cardType as any, suit: r.suit as any, suitIcons: r.suitIcons as any, vp: r.vp, cost: toAcquireCost(r.cost), developmentCost: toEngineCost(r.developmentCost), tags: r.tags, effects: r.effects as any, stateRequirement: r.stateRequirement, allowedModes: r.allowedModes, disallowedModes: r.disallowedModes, playerCountRequirement: r.playerCountRequirement, startingLocation: r.startingLocation, ownership: r.ownership, commonsSetId: r.commonsSetId, setupBannerSuit: r.setupBannerSuit as any, commonsGroup: r.commonsGroup, replacementForCardId: r.replacementForCardId, replacementGroupId: r.replacementGroupId, conflictsWithNationIds: r.conflictsWithNationIds, delayableInLoweredAggression: r.delayableInLoweredAggression, marketEligible: r.marketEligible, smallDeckEligible: r.smallDeckEligible, mainDeckEligible: r.mainDeckEligible, unrestPileEligible: r.unrestPileEligible, fameDeckEligible: r.fameDeckEligible }; });
   return fromPrivate;
 }

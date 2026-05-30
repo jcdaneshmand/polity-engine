@@ -13,6 +13,10 @@ export function applySetupOverrides(player: PlayerState, ruleset: NationRuleset)
     if (ov.op === "set_action_tokens_base") {
       player.actionTokensBase = ov.count; player.actionsRemaining = ov.count; player.actionTokensAvailable = ov.count;
     }
+    if (ov.op === "create_side_area") {
+      player.sideAreas ??= {};
+      player.sideAreas[ov.areaId] ??= [];
+    }
   }
   return sideAreas;
 }

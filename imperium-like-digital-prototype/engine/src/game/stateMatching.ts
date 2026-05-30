@@ -1,0 +1,57 @@
+import type { GameState } from "./state";
+
+export function normalizeStateToken(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const normalized = value.toLowerCase().replace(/[_\s-]+/g, "");
+  if (normalized === "empire" || normalized === "civilised") return "civilized";
+  if (normalized === "barbarian" || normalized === "uncivilised") return "uncivilized";
+  return normalized;
+}
+
+function stateCardTokens(G: GameState, cardId: string): string[] {
+  const stateCard = G.cardDb[cardId];
+  return [
+    cardId,
+    stateCard?.displayName,
+    stateCard?.suit,
+    ...(stateCard?.tags ?? [])
+  ].map(normalizeStateToken).filter(Boolean) as string[];
+}
+
+export function stateCardSupports(G: GameState, cardId: string, state: string | undefined): boolean {
+  const expected = normalizeStateToken(state);
+  return !!expected && stateCardTokens(G, cardId).includes(expected);
+}
+
+export function stateCardMatches(G: GameState, cardId: string, state: string | undefined): boolean {
+  const expected = normalizeStateToken(state);
+  if (!expected) return false;
+  const activeState = normalizeStateToken(G.cardStates?.[cardId]?.activeState);
+  if (activeState) return activeState === expected;
+  return stateCardSupports(G, cardId, expected);
+}
+
+export function currentStateMatches(G: GameState, playerId: string, state: string | undefined): boolean {
+  const expected = normalizeStateToken(state);
+  if (!expected) return false;
+  const stateCardId = G.players[playerId]?.stateArea[0];
+  return stateCardId ? stateCardMatches(G, stateCardId, state) : false;
+}
+
+export function activateState(G: GameState, playerId: string, state: string | undefined): void {
+  if (!state) return;
+  const player = G.players[playerId];
+  if (!player) return;
+  const stateIndex = player.stateArea.findIndex((cardId) => stateCardMatches(G, cardId, state) || stateCardSupports(G, cardId, state));
+  if (stateIndex >= 0) {
+    const [stateCardId] = player.stateArea.splice(stateIndex, 1);
+    if (stateCardId) {
+      player.stateArea.unshift(stateCardId);
+      G.cardStates ??= {};
+      G.cardStates[stateCardId] ??= {};
+      G.cardStates[stateCardId].activeState = normalizeStateToken(state);
+    }
+    return;
+  }
+  if (!player.stateArea.includes(state)) player.stateArea.unshift(state);
+}

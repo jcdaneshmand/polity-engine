@@ -24,5 +24,5 @@ export const preciousCardsModule: RulesModule = {
 export const shortGameModule: RulesModule = {
   id: "short_game",
   kind: "variant",
-  modifyDeckConstruction: (ctx) => { ctx.setupReport.shortGameExiled = 10; ctx.setupReport.shortGameNationAdvanced = 1; }
+  modifyDeckConstruction: () => {}
 };

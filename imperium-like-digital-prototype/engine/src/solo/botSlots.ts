@@ -1,6 +1,6 @@
 import type { BotSlot, BotState, SlotNumber } from "./botTypes";
 
-export function initializeBotSlots(slotCount: 5 | 6): Record<number, BotSlot> {
+export function initializeBotSlots(slotCount: 4 | 5 | 6): Record<number, BotSlot> {
   const slots: Record<number, BotSlot> = {};
   for (let i = 1; i <= slotCount; i++) slots[i] = { slotNumber: i as SlotNumber, face: "down" };
   return slots;

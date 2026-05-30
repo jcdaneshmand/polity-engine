@@ -17,10 +17,12 @@ export function normalizeCard(row: PrivateCardCsvRow): NormalizedCardRecord {
   const disallowedModes = tags(row.disallowed_modes || "") as any[];
   const ownership = (row.ownership?.trim() || "commons") as any;
   const commonsSetId = row.commons_set_id?.trim() || (ownership === "commons" ? "classics" : undefined);
+  const suitIcons = tags(row.suit_icons || "") as any[];
 
   return {
     id: row.card_id.trim(), displayName: row.public_placeholder_name.trim(), privateName: row.card_name_private.trim() || undefined,
     sourceBox: row.source_box.trim() || undefined, setOrNation: row.set_or_nation.trim() || undefined, suit: row.suit as any, cardType: row.card_type as any,
+    ...(suitIcons.length ? { suitIcons } : {}),
     stateRequirement: row.state_requirement.trim() || undefined, cost, developmentCost, vp: { mode: row.vp_mode as VpMode, value: row.vp_value.trim()===""?null:Number(row.vp_value) },
     startingLocation: row.starting_location as any, playerCountRequirement: row.player_count_requirement.trim()||undefined,
     isTradeRouteExpansion, rawEffectTextPrivate: row.raw_effect_text_private.trim()||undefined,

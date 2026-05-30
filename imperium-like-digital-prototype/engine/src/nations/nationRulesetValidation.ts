@@ -1,9 +1,10 @@
 import type { ExpansionId, GameMode, VariantId } from "../options/gameOptions";
-import type { ResourceName } from "../game/state";
+import type { CardType, ResourceName, Suit } from "../game/state";
 import type {
   BotOverride,
   CleanupOverride,
   CollapseOverride,
+  EffectCondition,
   NationHookRule,
   NationHookTrigger,
   NationRuleset,
@@ -33,8 +34,24 @@ const RULESET_TAGS: NationRulesetTag[] = [
 const GAME_MODES: GameMode[] = ["multiplayer", "solo", "practice"];
 const VARIANTS: VariantId[] = ["lowered_aggression", "quick_setup", "precious_cards", "short_game"];
 const EXPANSIONS: ExpansionId[] = ["trade_routes"];
-const HOOK_TRIGGERS: NationHookTrigger[] = ["before_setup_player", "after_setup_player", "before_play_card", "after_play_card", "before_acquire", "after_acquire", "before_reshuffle", "after_reshuffle", "before_solstice", "after_solstice", "before_scoring", "after_scoring"];
+const HOOK_TRIGGERS: NationHookTrigger[] = ["before_setup_player", "after_setup_player", "before_play_card", "after_play_card", "before_acquire", "after_acquire", "before_reshuffle", "after_reshuffle", "after_develop", "after_gain_unrest", "before_solstice", "after_solstice", "before_scoring", "after_scoring"];
 const RESOURCE_NAMES: ResourceName[] = ["materials", "knowledge", "influence", "unrest", "goods"];
+const CARD_TYPES: CardType[] = ["action", "unit", "technology", "legacy", "in_play", "attack", "power", "state", "development", "accession", "nation", "region", "unrest", "fame", "trade_route", "bot_state", "other"];
+const SUITS: Suit[] = ["military", "civic", "economic", "unrest", "wild", "region", "uncivilized", "civilized", "tributary", "fame", "power", "trade_route", "none", "multi"];
+const CONDITION_OP_REQUIREMENTS: Record<EffectCondition["op"], string[]> = {
+  always: [],
+  state_is: ["state"],
+  zone_empty: ["zoneId"],
+  zone_has_at_least: ["zoneId", "count"],
+  card_in_zone: ["cardId", "zoneId"],
+  expansion_enabled: ["expansion"],
+  variant_enabled: ["variant"],
+  mode_is: ["mode"],
+  payload_card_is: ["payloadKey", "cardId"],
+  payload_card_suit_is: ["payloadKey", "suit"],
+  payload_card_type_is: ["payloadKey", "cardType"],
+  payload_card_has_tag: ["payloadKey", "tag"],
+};
 
 const has = (set: string[], value: unknown): value is string => typeof value === "string" && set.includes(value);
 const hasFields = (obj: unknown, fields: string[]) => typeof obj === "object" && obj !== null && fields.every((f) => Object.prototype.hasOwnProperty.call(obj, f));
@@ -73,6 +90,42 @@ function asArray<T>(nationId: string, issues: ValidationIssue[], field: string, 
   return value as T[];
 }
 
+function validateCondition(nationId: string, field: string, condition: unknown): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  if (condition === undefined) return issues;
+  if (!hasFields(condition, ["op"])) {
+    issues.push({ nationId, field, reason: "missing op" });
+    return issues;
+  }
+  const op = (condition as { op: unknown }).op;
+  if (!has(Object.keys(CONDITION_OP_REQUIREMENTS), op)) {
+    issues.push({ nationId, field: `${field}.op`, reason: `unsupported op '${String(op)}'` });
+    return issues;
+  }
+  const required = CONDITION_OP_REQUIREMENTS[op as EffectCondition["op"]];
+  if (!hasFields(condition, required)) {
+    issues.push({ nationId, field, reason: `op '${op}' requires fields: ${required.join(", ")}` });
+    return issues;
+  }
+  const typed = condition as Partial<EffectCondition>;
+  if (typed.op === "expansion_enabled" && !has(EXPANSIONS, typed.expansion)) {
+    issues.push({ nationId, field: `${field}.expansion`, reason: `invalid expansion '${String(typed.expansion)}'` });
+  }
+  if (typed.op === "variant_enabled" && !has(VARIANTS, typed.variant)) {
+    issues.push({ nationId, field: `${field}.variant`, reason: `invalid variant '${String(typed.variant)}'` });
+  }
+  if (typed.op === "mode_is" && !has(GAME_MODES, typed.mode)) {
+    issues.push({ nationId, field: `${field}.mode`, reason: `invalid mode '${String(typed.mode)}'` });
+  }
+  if (typed.op === "payload_card_suit_is" && !has(SUITS, typed.suit)) {
+    issues.push({ nationId, field: `${field}.suit`, reason: `invalid suit '${String(typed.suit)}'` });
+  }
+  if (typed.op === "payload_card_type_is" && !has(CARD_TYPES, typed.cardType)) {
+    issues.push({ nationId, field: `${field}.cardType`, reason: `invalid card type '${String(typed.cardType)}'` });
+  }
+  return issues;
+}
+
 function validateHookRules(nationId: string, hookRules: NationHookRule[]): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   if (!Array.isArray(hookRules)) {
@@ -89,6 +142,7 @@ function validateHookRules(nationId: string, hookRules: NationHookRule[]): Valid
       return;
     }
     if (!has(HOOK_TRIGGERS, hook.trigger)) issues.push({ nationId, field: `${base}.trigger`, reason: `invalid trigger '${String(hook.trigger)}'` });
+    issues.push(...validateCondition(nationId, `${base}.condition`, hook.condition));
     if (!Array.isArray(hook.effects)) {
       issues.push({ nationId, field: `${base}.effects`, reason: "effects must be an array" });
       return;
@@ -138,29 +192,40 @@ export function validateNationRuleset(ruleset: NationRuleset): ValidationIssue[]
     set_initial_resources: ["resources"],
     gain_resource: ["resource", "count"],
     set_action_tokens_base: ["count"],
+    move_cards_to_unrest_supply: ["cardIds"],
+    create_side_area: ["areaId", "displayName"],
   }));
   issues.push(...validateOverrides<ZoneOverride>(nationId, "zoneOverrides", ruleset.zoneOverrides, {
     disable_history: ["replacementBehavior"],
+    replace_history_with_zone: ["zoneId", "displayName"],
     create_zone: ["zoneId", "displayName", "visibility"],
   }));
   issues.push(...validateOverrides<StateOverride>(nationId, "stateOverrides", ruleset.stateOverrides, {
     start_as_state: ["state"],
     never_flip_to_empire: [],
+    flip_state_on_solstice: ["sequence"],
+    take_unrest_when_spending_resource: ["resource"],
   }));
   issues.push(...validateOverrides<ReshuffleOverride>(nationId, "reshuffleOverrides", ruleset.reshuffleOverrides, {
     skip_default_nation_card_addition: [],
+    development_available_from_start: [],
+    trigger_game_end_when_card_added: ["cardId"],
+    place_nation_card_in_play_when_added: ["cardId"],
     custom_reshuffle_effect: ["effect"],
   }));
   issues.push(...validateOverrides<CleanupOverride>(nationId, "cleanupOverrides", ruleset.cleanupOverrides, {
     prevent_voluntary_discard: [],
+    market_resource_added: ["resource", "count"],
     custom_cleanup_effect: ["effect"],
   }));
   issues.push(...validateOverrides<SolsticeOverride>(nationId, "solsticeOverrides", ruleset.solsticeOverrides, {
     flip_state: [],
+    remove_play_card_and_nation_deck_if_resource_empty: ["cardId", "resource"],
     custom_solstice_effect: ["effect"],
   }));
   issues.push(...validateOverrides<ScoringOverride>(nationId, "scoringOverrides", ruleset.scoringOverrides, {
     exclude_zone_from_scoring: ["zoneId"],
+    score_resource_ratio: ["resource", "denominator"],
     custom_scoring_effect: ["effect"],
   }));
   issues.push(...validateOverrides<CollapseOverride>(nationId, "collapseOverrides", ruleset.collapseOverrides, {
@@ -169,12 +234,22 @@ export function validateNationRuleset(ruleset: NationRuleset): ValidationIssue[]
   }));
   issues.push(...validateOverrides<BotOverride>(nationId, "botOverrides", ruleset.botOverrides, {
     skip_default_dynasty_setup: [],
+    custom_dynasty_setup: ["config"],
+    custom_bot_state_stack: ["cardIds"],
+    initial_bot_state_table: ["tableId"],
     bot_custom_cleanup: ["effect"],
   }));
   issues.push(...validateOverrides<ShortGameOverride>(nationId, "shortGameOverrides", ruleset.shortGameOverrides, {
     excluded_from_short_game: [],
     custom_short_game_setup: ["effect"],
     add_nation_cards_to_discard: ["count"],
+    skip_accession_development_exile: [],
+    remove_starting_resource: ["resource", "count"],
+    remove_starting_resources: ["resources"],
+    develop_one_remove_one_development: ["developCardId", "removeCardId"],
+    move_development_cards_to_discard: ["cardIds"],
+    move_one_advanced_nation_card_to_side_area: ["areaId"],
+    garrison_development_and_add_nation_to_starting_deck: ["developmentCardId", "hostCardId"],
   }));
   issues.push(...validateHookRules(nationId, ruleset.hookRules));
 
@@ -186,6 +261,25 @@ export function validateNationRuleset(ruleset: NationRuleset): ValidationIssue[]
     }
     if (override.op === "gain_resource" && !has(RESOURCE_NAMES, override.resource)) {
       issues.push({ nationId, field: `setupOverrides[${i}].resource`, reason: `invalid resource '${String(override.resource)}'` });
+    }
+  });
+  if (Array.isArray(ruleset.shortGameOverrides)) ruleset.shortGameOverrides.forEach((override, i) => {
+    if (override.op === "remove_starting_resource" && !has(RESOURCE_NAMES, override.resource)) {
+      issues.push({ nationId, field: `shortGameOverrides[${i}].resource`, reason: `invalid resource '${String(override.resource)}'` });
+    }
+    if (override.op === "remove_starting_resources") {
+      if (!Array.isArray(override.resources)) {
+        issues.push({ nationId, field: `shortGameOverrides[${i}].resources`, reason: "resources must be an array" });
+      } else {
+        override.resources.forEach((resource, j) => {
+          if (!has(RESOURCE_NAMES, resource)) {
+            issues.push({ nationId, field: `shortGameOverrides[${i}].resources[${j}]`, reason: `invalid resource '${String(resource)}'` });
+          }
+        });
+      }
+    }
+    if (override.op === "move_one_advanced_nation_card_to_side_area" && override.selection !== undefined && !has(["first", "random"], override.selection)) {
+      issues.push({ nationId, field: `shortGameOverrides[${i}].selection`, reason: `invalid selection '${String(override.selection)}'` });
     }
   });
 

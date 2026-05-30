@@ -50,7 +50,7 @@ describe("Exile acquisition", () => {
     expect(G.unrestPile).toEqual(["unrest_from_supply"]);
   });
 
-  it("collapses immediately when Exile acquisition needs Unrest and none is available", () => {
+  it("does not finish Exile acquisition when required Unrest causes Collapse", () => {
     const G = createInitialState();
     G.players["0"].exile = ["exiled_action"];
     G.cardDb.exiled_action = {
@@ -65,8 +65,10 @@ describe("Exile acquisition", () => {
     };
     G.unrestPile = [];
 
-    expect(acquireFromExile(G, { playerId: "0", cardId: "exiled_action" })).toBe(true);
+    expect(acquireFromExile(G, { playerId: "0", cardId: "exiled_action" })).toBe(false);
 
+    expect(G.players["0"].exile).toEqual(["exiled_action"]);
+    expect(G.players["0"].hand).not.toContain("exiled_action");
     expect(G.gameover?.reason).toBe("collapse:unrest_pile_empty");
   });
 });

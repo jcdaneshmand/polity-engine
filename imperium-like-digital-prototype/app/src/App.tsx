@@ -18,7 +18,9 @@ export default function App() {
       setup: (ctx: Parameters<NonNullable<typeof PrototypeGame.setup>>[0]) =>
         PrototypeGame.setup!(ctx, {
           options: session.options,
-          playerNationIds: session.playerNationIds
+          playerNationIds: session.playerNationIds,
+          soloBotNationId: session.soloBotNationId,
+          randomSeed: String(session.id)
         })
     };
 

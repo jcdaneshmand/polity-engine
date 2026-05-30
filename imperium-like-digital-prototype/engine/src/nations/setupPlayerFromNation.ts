@@ -11,7 +11,7 @@ export function setupPlayerFromNation(args: { nation: NationDefinition; cardDb: 
   const p: PlayerState = {
     deck: args.shuffle([...args.nation.startingDeckCardIds]), hand: [], discard: [], playArea: [], history: [], exile: [],
     powerArea: [...args.nation.powerCardIds], stateArea: [...args.nation.stateCardIds], developmentArea: [...args.nation.developmentCardIds], nationDeck: [...args.nation.nationDeckCardIds], accessionCardId: args.nation.accessionCardId,
-    sideAreas: {}, resources: { materials: 0, knowledge: 0, influence: 0, unrest: 0, goods: 0 }, actionsRemaining: args.nation.actionTokensBase,
+    sideAreas: {}, resources: { materials: 0, knowledge: 0, influence: 0, unrest: 0, goods: 0 }, actionsRemaining: args.nation.actionTokensBase, handSize: 5,
     actionTokensBase: args.nation.actionTokensBase, exhaustTokensBase: args.nation.exhaustTokensBase, actionTokensAvailable: args.nation.actionTokensBase, exhaustTokensAvailable: args.nation.exhaustTokensBase,
     progressionTokens: { nationDeck: 0, developmentArea: 0 }
   };

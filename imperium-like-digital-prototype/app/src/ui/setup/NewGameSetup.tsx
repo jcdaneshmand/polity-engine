@@ -1,9 +1,13 @@
 import { useMemo, useState } from "react";
 import type { CommonsSetId, ExpansionId, GameMode, GameOptions, SoloDifficulty, VariantId } from "../../../../engine/src/options/gameOptions";
+import { loadNationDb } from "../../../../engine/src/nations/nationLoader";
+import { loadBotStateTables } from "../../../../engine/src/solo/botStateTableLoader";
+import { getBotNationSetupOptions } from "./botNationOptions";
 
 export type NewGameSessionConfig = {
   options: GameOptions;
   playerNationIds: Record<string, string>;
+  soloBotNationId?: string;
 };
 
 type NewGameSetupProps = {
@@ -43,10 +47,18 @@ const soloDifficulties: Array<{ id: SoloDifficulty; label: string }> = [
   { id: "supreme_ruler", label: "Supreme Ruler" }
 ];
 
-const nationOptions: Array<{ id: string; label: string; requiresExpansion?: ExpansionId }> = [
-  { id: DEFAULT_NATION_ID, label: "Sun Coast Accord" },
-  { id: "test_nation_river_court", label: "River Court Forum", requiresExpansion: "trade_routes" }
-];
+type NationOption = { id: string; label: string };
+
+function getNationOptions(enabledExpansions: ExpansionId[]): NationOption[] {
+  return Object.values(loadNationDb({ enabledExpansions })).map((nation) => ({
+    id: nation.id,
+    label: nation.displayName
+  }));
+}
+
+function firstNationId(nations: NationOption[]): string {
+  return nations[0]?.id ?? DEFAULT_NATION_ID;
+}
 
 function playerCountForMode(mode: GameMode, requested: 1 | 2 | 3 | 4): 1 | 2 | 3 | 4 {
   if (mode === "solo" || mode === "practice") return 1;
@@ -64,6 +76,7 @@ export default function NewGameSetup({ onStart }: NewGameSetupProps) {
   const [enabledVariants, setEnabledVariants] = useState<VariantId[]>([]);
   const [commonsSetId, setCommonsSetId] = useState<CommonsSetId>("classics");
   const [soloDifficulty, setSoloDifficulty] = useState<SoloDifficulty>("chieftain");
+  const [soloBotNationId, setSoloBotNationId] = useState<string>("random");
   const [playerNationIds, setPlayerNationIds] = useState<Record<string, string>>({
     "0": DEFAULT_NATION_ID,
     "1": DEFAULT_NATION_ID,
@@ -73,8 +86,12 @@ export default function NewGameSetup({ onStart }: NewGameSetupProps) {
 
   const normalizedPlayerCount = playerCountForMode(mode, playerCount);
   const availableNations = useMemo(
-    () => nationOptions.filter((nation) => !nation.requiresExpansion || enabledExpansions.includes(nation.requiresExpansion)),
+    () => getNationOptions(enabledExpansions),
     [enabledExpansions]
+  );
+  const botNationOptions = useMemo(
+    () => getBotNationSetupOptions(availableNations, loadBotStateTables()),
+    [availableNations]
   );
   const activePlayerIds = Array.from({ length: normalizedPlayerCount }, (_, index) => String(index));
 
@@ -86,16 +103,17 @@ export default function NewGameSetup({ onStart }: NewGameSetupProps) {
   const updateExpansions = (expansionId: ExpansionId) => {
     setEnabledExpansions((current) => {
       const next = toggleItem(current, expansionId);
-      if (!next.includes("trade_routes")) {
-        setPlayerNationIds((nations) =>
-          Object.fromEntries(
-            Object.entries(nations).map(([playerId, nationId]) => [
-              playerId,
-              nationId === "test_nation_river_court" ? DEFAULT_NATION_ID : nationId
-            ])
-          )
-        );
-      }
+      const nextNations = getNationOptions(next);
+      const nextNationIds = new Set(nextNations.map((nation) => nation.id));
+      setPlayerNationIds((nations) =>
+        Object.fromEntries(
+          Object.entries(nations).map(([playerId, nationId]) => [
+            playerId,
+            nextNationIds.has(nationId) ? nationId : firstNationId(nextNations)
+          ])
+        )
+      );
+      setSoloBotNationId((nationId) => nationId === "random" || nextNationIds.has(nationId) ? nationId : "random");
       return next;
     });
   };
@@ -111,7 +129,7 @@ export default function NewGameSetup({ onStart }: NewGameSetupProps) {
     };
     const selectedNations = Object.fromEntries(activePlayerIds.map((playerId) => [playerId, playerNationIds[playerId] ?? DEFAULT_NATION_ID]));
 
-    onStart({ options, playerNationIds: selectedNations });
+    onStart({ options, playerNationIds: selectedNations, ...(mode === "solo" ? { soloBotNationId } : {}) });
   };
 
   return (
@@ -157,16 +175,30 @@ export default function NewGameSetup({ onStart }: NewGameSetupProps) {
           </fieldset>
 
           {mode === "solo" ? (
-            <label className="setup-section setup-field">
-              <span>Solo difficulty</span>
-              <select value={soloDifficulty} onChange={(event: { target: HTMLSelectElement }) => setSoloDifficulty(event.target.value as SoloDifficulty)}>
-                {soloDifficulties.map((difficulty) => (
-                  <option key={difficulty.id} value={difficulty.id}>
-                    {difficulty.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <>
+              <label className="setup-section setup-field">
+                <span>Solo difficulty</span>
+                <select value={soloDifficulty} onChange={(event: { target: HTMLSelectElement }) => setSoloDifficulty(event.target.value as SoloDifficulty)}>
+                  {soloDifficulties.map((difficulty) => (
+                    <option key={difficulty.id} value={difficulty.id}>
+                      {difficulty.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="setup-section setup-field">
+                <span>Bot nation</span>
+                <select value={soloBotNationId} onChange={(event: { target: HTMLSelectElement }) => setSoloBotNationId(event.target.value)}>
+                  <option value="random">Random</option>
+                  {botNationOptions.map((nation) => (
+                    <option key={nation.id} value={nation.id}>
+                      {nation.label} - {nation.statusLabel}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
           ) : null}
 
           <label className="setup-section setup-field">

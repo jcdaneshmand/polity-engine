@@ -15,6 +15,7 @@ export type NewGameSessionConfig = {
 
 type NewGameSetupProps = {
   onStart: (config: NewGameSessionConfig) => void;
+  onOpenCardEntry?: () => void;
 };
 
 const DEFAULT_NATION_ID = "test_nation_sun_coast";
@@ -75,7 +76,7 @@ function toggleItem<T extends string>(items: T[], item: T): T[] {
   return items.includes(item) ? items.filter((value) => value !== item) : [...items, item];
 }
 
-export default function NewGameSetup({ onStart }: NewGameSetupProps) {
+export default function NewGameSetup({ onStart, onOpenCardEntry }: NewGameSetupProps) {
   const [mode, setMode] = useState<GameMode>("multiplayer");
   const [playerCount, setPlayerCount] = useState<1 | 2 | 3 | 4>(2);
   const [enabledExpansions, setEnabledExpansions] = useState<ExpansionId[]>([]);
@@ -302,6 +303,9 @@ export default function NewGameSetup({ onStart }: NewGameSetupProps) {
               <span>Upload JSON or CSV files</span>
               <input type="file" multiple accept=".json,.csv,application/json,text/csv" onChange={importPrivateFiles} />
             </label>
+            <button type="button" onClick={onOpenCardEntry}>
+              Card Entry Tool
+            </button>
             {privateFileStatuses.length ? (
               <div className="private-file-list">
                 {privateFileStatuses.map((file) => (

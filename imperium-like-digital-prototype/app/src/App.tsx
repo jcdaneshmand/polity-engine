@@ -44,11 +44,11 @@ export default function App() {
       <div className="app-home">
         <div className="app-home-bar">
           <strong>Polity Engine</strong>
-          <button type="button" onClick={() => setHomeView("private-data")}>
-            Private Data
-          </button>
         </div>
-        <NewGameSetup onStart={(config) => setSession({ ...config, id: Date.now() })} />
+        <NewGameSetup
+          onStart={(config) => setSession({ ...config, id: Date.now() })}
+          onOpenCardEntry={() => setHomeView("private-data")}
+        />
       </div>
     );
   }
@@ -64,9 +64,6 @@ export default function App() {
         </div>
         <button type="button" onClick={() => setSession(null)}>
           New Game
-        </button>
-        <button type="button" onClick={() => { setSession(null); setHomeView("private-data"); }}>
-          Private Data
         </button>
       </div>
       <GameClient key={session.id} />

@@ -1,24 +1,26 @@
 # Polity Engine
 
-Polity Engine is an unofficial companion tool for players who own physical copies of Imperium. It is intended to help with bookkeeping, rules resolution, card and nation cataloging, and solo or table play support.
+Polity Engine is a rules engine and companion app based on Imperium. It focuses on rules automation, bookkeeping, card and nation cataloging, and solo bot support.
 
-This project is intended as a personal-use companion for owners of the physical game. It is designed to reduce bookkeeping and improve the play experience, not to replace the physical product.
+The app is data-driven: users can upload their own local card data, nation data, ruleset data, and AI bot configuration CSVs. It is intended as a personal-use tool for people working from physical copies they own.
 
-The repository does not include official card text, artwork, nation files, decklists, scans, rulebook text, or other proprietary Osprey Games content. Users create and import their own private local CSV data from physical copies they legally own.
+Polity Engine does not include official Osprey Games assets or datasets. It provides the scaffolding for a rules engine and import workflow, while user-created data stays local and private.
 
 ## Important Disclaimer
 
 - This is an unofficial fan-made project.
 - This project is not affiliated with, endorsed by, sponsored by, or approved by Osprey Games or the Imperium designers.
 - Imperium and related names, terminology, artwork, and game content remain the property of their respective rights holders.
-- This repository does not include official card data, card text, images, decklists, nation files, scans, photos, rulebook text, or reproductions of game components.
-- Users are responsible for creating and using private local data only from copies of the game they legally own.
+- This repository does not distribute official card data, card text, images, decklists, nation files, scans, photos, rulebook text, or reproductions of game components.
+- Users are responsible for any private local data they create or import.
 
 ## Project Intent
 
-The long-term goal is to support and enhance the experience of people who already own the physical game. The app is a rules automation, bookkeeping, cataloging, and solo-play companion.
+The long-term goal is to build a flexible rules engine for Imperium-style play: resolving rules, tracking game state, managing card and nation metadata, and running solo bot logic from uploaded configuration data.
 
-Any official dataset, demo mode using real Imperium content, hosted public database, or public distribution of Imperium data would require explicit permission from the rights holder.
+The project is designed to reduce bookkeeping and improve personal table play. It is not meant to replace the physical game or provide an official digital edition.
+
+Any official dataset, demo mode using real Imperium content, hosted public database, or public distribution of Imperium data would require permission from the rights holder.
 
 ## What This Project Includes
 
@@ -26,9 +28,10 @@ Any official dataset, demo mode using real Imperium content, hosted public datab
 - A Vite, React, and TypeScript companion app.
 - CSV import/export tools.
 - Card and nation CSV maker.
-- Local private data import.
+- Local private data import for cards, nations, rulesets, strategy profiles, and AI bot tables.
 - Example schema files and fake/demo data only.
 - Solo and table bookkeeping support.
+- AI bot configuration import and validation.
 
 ## What This Project Does Not Include
 
@@ -110,17 +113,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev-check.ps1
 The intended workflow is local and private:
 
 1. Open the card/nation CSV maker from the app.
-2. Enter catalog and rules-support data from your own physical copy.
-3. Export CSV files.
+2. Enter the card, nation, ruleset, and bot configuration data you want to use locally.
+3. Export CSV files from the maker.
 4. Store those CSV files in a private ignored folder such as `imperium-like-digital-prototype/private-card-data/`.
 5. Import those CSV files into the app.
-6. Use the app for personal play assistance, bookkeeping, setup support, and solo/table rules automation.
+6. Use the app for rules automation, bookkeeping, setup support, and solo/table assistance.
 
-Private CSVs are for your own local use. Do not commit official card text, official nation data, copied rulebook text, scans, artwork, photos, or decklists to this repository.
+Private CSVs are for local use. The repository should only contain schemas, tools, engine code, documentation, and fictional demo data.
 
 ## CSV Import and Export Workflow
 
-Template CSV files live in `imperium-like-digital-prototype/private-card-data/` and are safe examples of the expected schema. User-created CSVs in that folder are ignored by git.
+Template CSV files live in `imperium-like-digital-prototype/private-card-data/` and demonstrate the expected schema. User-created CSVs in that folder are ignored by git.
 
 Common commands from `imperium-like-digital-prototype`:
 
@@ -153,11 +156,11 @@ npm run bot-trade:validate
 npm run bot-trade:import
 ```
 
-These commands expect private local inputs unless you pass explicit `--input` and `--output` arguments.
+These commands expect local inputs unless you pass explicit `--input` and `--output` arguments.
 
 ## Data Policy
 
-Private card, nation, strategy, ruleset, bot table, and generated JSON files should not be committed to the repository.
+Private card, nation, strategy, ruleset, bot table, and generated JSON files should stay out of the repository.
 
 Ignored local data locations include:
 
@@ -173,7 +176,7 @@ Committed files in `imperium-like-digital-prototype/private-card-data/` should b
 
 ## Demo Data
 
-Any included demo data should be fictional placeholder data created only to demonstrate the schema, rules-engine behavior, and app functionality. Demo data should not reproduce official Imperium card text, artwork, nation files, decklists, scans, rulebook text, or other proprietary game content.
+Any included demo data should be fictional placeholder data created to demonstrate the schema, rules-engine behavior, and app functionality. Demo data should not reproduce official Imperium card text, artwork, nation files, decklists, scans, rulebook text, or other game content.
 
 ## Usage Notes
 
@@ -206,9 +209,9 @@ Example game options:
 
 ## Contribution Guidelines
 
-Contributions should respect the project boundary and use fake/demo data only.
+Contributions should keep the repository focused on engine code, UI, import tools, schemas, documentation, and fictional demo data.
 
-Do not submit pull requests containing:
+Please do not submit pull requests containing:
 
 - Official card text.
 - Official artwork, scans, photos, or reproduced component images.

@@ -4,7 +4,7 @@ import { loadNationDb } from "../../../../engine/src/nations/nationLoader";
 import { loadBotStateTables } from "../../../../engine/src/solo/botStateTableLoader";
 import type { PrivateDataBundle } from "../../../../engine/src/setup/privateDataBundle";
 import { getBotNationSetupOptions } from "./botNationOptions";
-import { hasPrivateData, importPrivateDataFiles, type PrivateDataFileStatus } from "./privateDataImport";
+import { getPrivateDataReadyMessage, getPrivateDataRecordCounts, hasPrivateData, importPrivateDataFiles, type PrivateDataFileStatus } from "./privateDataImport";
 
 export type NewGameSessionConfig = {
   options: GameOptions;
@@ -85,6 +85,7 @@ export default function NewGameSetup({ onStart, onOpenCardEntry }: NewGameSetupP
   const [soloDifficulty, setSoloDifficulty] = useState<SoloDifficulty>("chieftain");
   const [soloBotNationId, setSoloBotNationId] = useState<string>("random");
   const [privateData, setPrivateData] = useState<PrivateDataBundle>({});
+  const [privateDataConfirmed, setPrivateDataConfirmed] = useState(false);
   const [privateFileStatuses, setPrivateFileStatuses] = useState<PrivateDataFileStatus[]>([]);
   const [playerNationIds, setPlayerNationIds] = useState<Record<string, string>>({
     "1": DEFAULT_NATION_ID,
@@ -94,9 +95,13 @@ export default function NewGameSetup({ onStart, onOpenCardEntry }: NewGameSetupP
   });
 
   const normalizedPlayerCount = playerCountForMode(mode, playerCount);
+  const confirmedPrivateData = privateDataConfirmed ? privateData : undefined;
+  const privateDataCounts = useMemo(() => getPrivateDataRecordCounts(privateData), [privateData]);
+  const hasLoadedPrivateData = privateDataCounts.length > 0;
+  const privateDataReadyMessage = getPrivateDataReadyMessage(privateDataCounts);
   const availableNations = useMemo(
-    () => getNationOptions(enabledExpansions, privateData),
-    [enabledExpansions, privateData]
+    () => getNationOptions(enabledExpansions, confirmedPrivateData),
+    [enabledExpansions, confirmedPrivateData]
   );
   const botNationOptions = useMemo(
     () => getBotNationSetupOptions(availableNations, loadBotStateTables()),
@@ -112,7 +117,7 @@ export default function NewGameSetup({ onStart, onOpenCardEntry }: NewGameSetupP
   const updateExpansions = (expansionId: ExpansionId) => {
     setEnabledExpansions((current) => {
       const next = toggleItem(current, expansionId);
-      const nextNations = getNationOptions(next, privateData);
+      const nextNations = getNationOptions(next, confirmedPrivateData);
       const nextNationIds = new Set(nextNations.map((nation) => nation.id));
       setPlayerNationIds((nations) =>
         Object.fromEntries(
@@ -142,8 +147,23 @@ export default function NewGameSetup({ onStart, onOpenCardEntry }: NewGameSetupP
       options,
       playerNationIds: selectedNations,
       ...(mode === "solo" ? { soloBotNationId } : {}),
-      ...(hasPrivateData(privateData) ? { privateData } : {})
+      ...(privateDataConfirmed && hasPrivateData(privateData) ? { privateData } : {})
     });
+  };
+
+  const applyPrivateDataToSetup = (nextPrivateData: PrivateDataBundle) => {
+    const nextNations = getNationOptions(enabledExpansions, nextPrivateData);
+    const nextNationIds = new Set(nextNations.map((nation) => nation.id));
+    setPlayerNationIds((current) =>
+      Object.fromEntries(
+        activePlayerIds.map((playerId) => [
+          playerId,
+          nextNationIds.has(current[playerId]) ? current[playerId] : firstNationId(nextNations)
+        ])
+      )
+    );
+    setSoloBotNationId((nationId) => nationId === "random" || nextNationIds.has(nationId) ? nationId : "random");
+    setPrivateDataConfirmed(true);
   };
 
   const importPrivateFiles = async (event: { target: HTMLInputElement }) => {
@@ -151,20 +171,19 @@ export default function NewGameSetup({ onStart, onOpenCardEntry }: NewGameSetupP
     if (!files.length) return;
     const result = await importPrivateDataFiles(files.map((file) => ({ name: file.name, text: () => file.text() })));
     setPrivateData(result.privateData);
+    setPrivateDataConfirmed(false);
     setPrivateFileStatuses(result.files);
-    if (result.privateData.nations?.length) {
-      const nextNations = getNationOptions(enabledExpansions, result.privateData);
-      const nextNationIds = new Set(nextNations.map((nation) => nation.id));
-      setPlayerNationIds((current) =>
-        Object.fromEntries(
-          activePlayerIds.map((playerId) => [
-            playerId,
-            nextNationIds.has(current[playerId]) ? current[playerId] : firstNationId(nextNations)
-          ])
-        )
-      );
-      setSoloBotNationId((nationId) => nationId === "random" || nextNationIds.has(nationId) ? nationId : "random");
-    }
+    const fallbackNations = getNationOptions(enabledExpansions);
+    const fallbackNationIds = new Set(fallbackNations.map((nation) => nation.id));
+    setPlayerNationIds((current) =>
+      Object.fromEntries(
+        activePlayerIds.map((playerId) => [
+          playerId,
+          fallbackNationIds.has(current[playerId]) ? current[playerId] : firstNationId(fallbackNations)
+        ])
+      )
+    );
+    setSoloBotNationId((nationId) => nationId === "random" || fallbackNationIds.has(nationId) ? nationId : "random");
   };
 
   return (
@@ -303,9 +322,22 @@ export default function NewGameSetup({ onStart, onOpenCardEntry }: NewGameSetupP
               <span>Upload JSON or CSV files</span>
               <input type="file" multiple accept=".json,.csv,application/json,text/csv" onChange={importPrivateFiles} />
             </label>
-            <button type="button" onClick={onOpenCardEntry}>
-              Card and Nation Transcription Tool
-            </button>
+            <div className="private-data-actions">
+              <button type="button" onClick={onOpenCardEntry}>
+                Card and Nation Transcription Tool
+              </button>
+              <button className="primary-action" type="button" disabled={!hasLoadedPrivateData} onClick={() => applyPrivateDataToSetup(privateData)}>
+                Use This Private Data
+              </button>
+            </div>
+            {hasLoadedPrivateData ? (
+              <div className={`private-data-ready ${privateDataConfirmed ? "is-confirmed" : ""}`}>
+                <strong>{privateDataConfirmed ? "Private data will be used when you start the game." : privateDataReadyMessage}</strong>
+                <span>Export CSVs from the transcription tool, then upload them here before starting a game.</span>
+              </div>
+            ) : (
+              <p className="setup-help">Export CSVs from the transcription tool, then upload them here before starting a game.</p>
+            )}
             {privateFileStatuses.length ? (
               <div className="private-file-list">
                 {privateFileStatuses.map((file) => (

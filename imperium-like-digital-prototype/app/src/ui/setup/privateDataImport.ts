@@ -28,6 +28,20 @@ export type PrivateDataImportResult = {
   files: PrivateDataFileStatus[];
 };
 
+export type PrivateDataRecordCount = {
+  label: string;
+  count: number;
+};
+
+const privateDataCountLabels: Array<{ key: keyof PrivateDataBundle; label: string; singular: string }> = [
+  { key: "cards", label: "cards", singular: "card" },
+  { key: "nations", label: "nations", singular: "nation" },
+  { key: "nationRulesets", label: "rulesets", singular: "ruleset" },
+  { key: "nationStrategy", label: "strategy notes", singular: "strategy note" },
+  { key: "botStateTables", label: "bot state tables", singular: "bot state table" },
+  { key: "botTradeRoutesTables", label: "bot trade route tables", singular: "bot trade route table" }
+];
+
 function roleFromFileName(name: string): PrivateDataRole | undefined {
   const lower = name.toLowerCase();
   if (lower.includes("bot-trade") || lower.includes("bot_trade")) return "botTradeRoutesTables";
@@ -140,4 +154,26 @@ export function hasPrivateData(privateData: PrivateDataBundle): boolean {
     || Object.keys(privateData.botStateTables ?? {}).length
     || Object.keys(privateData.botTradeRoutesTables ?? {}).length
   );
+}
+
+export function getPrivateDataRecordCounts(privateData: PrivateDataBundle): PrivateDataRecordCount[] {
+  return privateDataCountLabels
+    .map(({ key, label }) => {
+      const value = privateData[key];
+      return {
+        label,
+        count: Array.isArray(value) ? value.length : Object.keys(value ?? {}).length
+      };
+    })
+    .filter((item) => item.count > 0);
+}
+
+export function getPrivateDataReadyMessage(counts: PrivateDataRecordCount[]): string {
+  if (!counts.length) return "No private data loaded yet.";
+  const labels = counts.map((item) => {
+    const meta = privateDataCountLabels.find((entry) => entry.label === item.label);
+    const label = item.count === 1 ? meta?.singular ?? item.label : item.label;
+    return `${item.count} ${label}`;
+  });
+  return `Private data loaded for this game: ${labels.join(", ")}.`;
 }

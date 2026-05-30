@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { importPrivateDataFiles } from "../../../app/src/ui/setup/privateDataImport";
+import { getPrivateDataRecordCounts, getPrivateDataReadyMessage, importPrivateDataFiles } from "../../../app/src/ui/setup/privateDataImport";
 
 describe("private data browser import", () => {
   it("imports normalized JSON files by role", async () => {
@@ -28,5 +28,25 @@ describe("private data browser import", () => {
       commonsSetId: "custom"
     });
     expect(result.files[0]).toMatchObject({ role: "cards", format: "csv", status: "loaded" });
+  });
+});
+describe("private data setup import status", () => {
+  it("summarizes loaded private data counts for setup confirmation", () => {
+    const counts = getPrivateDataRecordCounts({
+      cards: [{ id: "card_a" } as any, { id: "card_b" } as any],
+      nations: [{ id: "nation_a" } as any],
+      nationRulesets: [{ nationId: "nation_a" } as any],
+      botStateTables: { nation_a: [] as any },
+      botTradeRoutesTables: { nation_a: [] as any }
+    });
+
+    expect(counts).toEqual([
+      { label: "cards", count: 2 },
+      { label: "nations", count: 1 },
+      { label: "rulesets", count: 1 },
+      { label: "bot state tables", count: 1 },
+      { label: "bot trade route tables", count: 1 }
+    ]);
+    expect(getPrivateDataReadyMessage(counts)).toBe("Private data loaded for this game: 2 cards, 1 nation, 1 ruleset, 1 bot state table, 1 bot trade route table.");
   });
 });

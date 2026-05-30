@@ -999,6 +999,10 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
             </fieldset>
           ) : null}
           <label className="private-entry-wide">Notes <textarea rows={3} value={draft.notes} onChange={draftChange("notes")} /></label>
+          <div className="private-entry-duplicate-help private-entry-wide">
+            <p><strong>Duplicate Structure</strong> copies card shape and metadata, then clears ID, names, private text, implemented, and tested.</p>
+            <p><strong>Duplicate Full</strong> copies the previous draft including private name and rules text, then clears only the card ID.</p>
+          </div>
           <div className="private-entry-footer private-entry-wide">
             <button type="button" onClick={() => duplicatePrevious(false)}>Duplicate Structure</button>
             <button type="button" onClick={() => duplicatePrevious(true)}>Duplicate Full</button>

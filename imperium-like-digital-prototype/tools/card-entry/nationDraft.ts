@@ -1,4 +1,4 @@
-import type { PrivateNationCsvRow } from "../card-import/nationCsvTypes";
+import type { NationRuleHook, PrivateNationCsvRow, SetupRule } from "../card-import/nationCsvTypes";
 
 export const nationCsvColumns = [
   "nation_id",
@@ -45,6 +45,7 @@ export type NationEntryDraft = {
 };
 
 export type NationCardRole = "power" | "state" | "starting" | "nation" | "accession" | "development";
+export type NationJsonTemplateField = "specialSetupJson" | "passiveRulesJson";
 
 export function createBlankNationDraft(nationId = ""): NationEntryDraft {
   return {
@@ -148,4 +149,32 @@ export function appendCardIdToNationDraftRoles(draft: NationEntryDraft, cardId: 
     if (role === "development") return { ...current, developmentCardIds: appendPipeValue(current.developmentCardIds, cardId) };
     return { ...current, accessionCardId: cardId.trim() || current.accessionCardId };
   }, draft);
+}
+
+function parseJsonArray(value: string): unknown[] {
+  if (!value.trim()) return [];
+  const parsed = JSON.parse(value);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+export function insertNationJsonTemplate(
+  draft: NationEntryDraft,
+  field: "specialSetupJson",
+  template: SetupRule
+): NationEntryDraft;
+export function insertNationJsonTemplate(
+  draft: NationEntryDraft,
+  field: "passiveRulesJson",
+  template: NationRuleHook
+): NationEntryDraft;
+export function insertNationJsonTemplate(
+  draft: NationEntryDraft,
+  field: NationJsonTemplateField,
+  template: SetupRule | NationRuleHook
+): NationEntryDraft {
+  const current = parseJsonArray(draft[field]);
+  return {
+    ...draft,
+    [field]: JSON.stringify([...current, template])
+  };
 }

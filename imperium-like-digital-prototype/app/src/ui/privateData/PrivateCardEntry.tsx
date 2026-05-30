@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import Papa from "papaparse";
 import type { PrivateCardCsvRow } from "../../../../tools/card-import/cardCsvTypes";
-import type { PrivateNationCsvRow } from "../../../../tools/card-import/nationCsvTypes";
+import type { NationRuleHook, PrivateNationCsvRow, SetupRule } from "../../../../tools/card-import/nationCsvTypes";
 import type { NationRulesetTag } from "../../../../engine/src/nations/nationRulesetTypes";
 import type { PrivateNationRulesetCsvRow } from "../../../../tools/card-import/nationRulesetCsvTypes";
 import { commonsBatchProfiles, createNationBatchProfile } from "../../../../tools/card-entry/batchProfiles";
@@ -20,6 +20,7 @@ import {
   appendOrReplaceNationRow,
   appendCardIdToNationDraftRoles,
   createBlankNationDraft,
+  insertNationJsonTemplate,
   nationCsvColumns,
   nationDraftToCsvRow,
   nationRowToDraft,
@@ -110,6 +111,17 @@ const suitOptions = ["", "region", "uncivilized", "civilized", "tributary", "fam
 const suitIconOptions = ["region", "uncivilized", "civilized", "tributary", "fame", "unrest", "power", "trade_route"];
 const cardTypeOptions = ["", "action", "in_play", "attack", "power", "state", "development", "accession", "nation", "region", "unrest", "fame", "trade_route", "bot_state", "other"];
 const startOptions = ["draw_deck", "nation_deck", "accession", "development_area", "in_play", "supply", "market", "fame_deck", "unrest_pile", "bot_deck", "box", "other"];
+const playerCountOptions: Array<{ value: CardEntryDraft["playerCountRequirement"]; label: string }> = [
+  { value: "", label: "Any" },
+  { value: "1+", label: "1+" },
+  { value: "2+", label: "2+" },
+  { value: "3+", label: "3+" },
+  { value: "4+", label: "4+" }
+];
+const expansionRequirementOptions = [
+  { value: "", label: "None" },
+  { value: "trade_routes", label: "Trade Routes" }
+];
 const vpModeOptions = ["none", "fixed", "variable", "negative", "conditional"];
 const variableVpFormulaOptions: Array<{ value: VariableVpFormula; label: string }> = [
   { value: "per_card", label: "Per card" },
@@ -128,6 +140,16 @@ const nationCardRoleOptions: Array<{ id: NationCardRole; label: string; cardType
   { id: "nation", label: "Nation Deck", cardType: "nation", startingLocation: "nation_deck" },
   { id: "accession", label: "Accession", cardType: "accession", startingLocation: "accession" },
   { id: "development", label: "Development", cardType: "development", startingLocation: "development_area" }
+];
+const specialSetupTemplates: Array<{ label: string; value: SetupRule }> = [
+  { label: "Gain 2 materials", value: { op: "gain_resource", resource: "materials", count: 2 } },
+  { label: "Create side area", value: { op: "create_side_area", areaId: "vault", displayName: "Vault" } },
+  { label: "Card to history", value: { op: "place_card_in_area", cardId: "card_id_here", area: "history" } }
+];
+const passiveRuleTemplates: Array<{ label: string; value: NationRuleHook }> = [
+  { label: "On develop: gain goods", value: { trigger: "on_develop", effects: [{ op: "gain_resource", resource: "goods", amount: 1 }] } },
+  { label: "On acquire: gain materials", value: { trigger: "on_acquire", effects: [{ op: "gain_resource", resource: "materials", amount: 1 }] } },
+  { label: "On scoring hook", value: { trigger: "on_scoring", effects: [{ op: "gain_resource", resource: "progress", amount: 1 }] } }
 ];
 
 function profileFromSelection(profileId: string, nationId: string): CardEntryBatchProfile {
@@ -386,6 +408,14 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
 
   const applyVariableVpDetails = () => {
     setDraft((current) => applyVariableVpDraftDetails(current, variableVpDetails));
+  };
+
+  const insertSpecialSetupTemplate = (template: typeof specialSetupTemplates[number]["value"]) => {
+    setNationDraft((current) => insertNationJsonTemplate(current, "specialSetupJson", template));
+  };
+
+  const insertPassiveRuleTemplate = (template: typeof passiveRuleTemplates[number]["value"]) => {
+    setNationDraft((current) => insertNationJsonTemplate(current, "passiveRulesJson", template));
   };
 
   const resetDraftForProfile = (profile: CardEntryBatchProfile) => {
@@ -716,11 +746,23 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
                 <label>Development IDs <input value={nationDraft.developmentCardIds} onChange={nationDraftChange("developmentCardIds")} /></label>
                 <label>Action Tokens <input value={nationDraft.actionTokensBase} onChange={nationDraftChange("actionTokensBase")} /></label>
                 <label>Exhaust Tokens <input value={nationDraft.exhaustTokensBase} onChange={nationDraftChange("exhaustTokensBase")} /></label>
-                <label>Required Expansions <input value={nationDraft.requiredExpansions} onChange={nationDraftChange("requiredExpansions")} /></label>
+                <label>Required Expansions <select value={nationDraft.requiredExpansions} onChange={nationDraftChange("requiredExpansions")}>{expansionRequirementOptions.map((option) => <option key={option.label} value={option.value}>{option.label}</option>)}</select></label>
                 <label>Implemented <select value={nationDraft.implemented} onChange={nationDraftChange("implemented")}><option value="false">false</option><option value="true">true</option></select></label>
                 <label>Tested <select value={nationDraft.tested} onChange={nationDraftChange("tested")}><option value="false">false</option><option value="true">true</option></select></label>
-                <label className="private-entry-wide">Special Setup JSON <textarea rows={3} value={nationDraft.specialSetupJson} onChange={nationDraftChange("specialSetupJson")} /></label>
-                <label className="private-entry-wide">Passive Rules JSON <textarea rows={3} value={nationDraft.passiveRulesJson} onChange={nationDraftChange("passiveRulesJson")} /></label>
+                <fieldset className="private-entry-choice-fieldset private-entry-wide">
+                  <legend>Advanced Nation JSON</legend>
+                  <p className="private-entry-help">Keep these as [] for ordinary nations. Use Special Setup only for setup exceptions like starting resources, side areas, or cards placed outside normal slots. Use Passive Rules for executable nation-wide hooks; Nation Builder Traits are the safer readable classification layer.</p>
+                  <label>Special Setup JSON <textarea rows={3} value={nationDraft.specialSetupJson} onChange={nationDraftChange("specialSetupJson")} /></label>
+                  <div className="private-entry-template-row">
+                    {specialSetupTemplates.map((template) => <button type="button" key={template.label} onClick={() => insertSpecialSetupTemplate(template.value)}>{template.label}</button>)}
+                  </div>
+                  <p className="private-entry-example">Examples: [{"{\"op\":\"gain_resource\",\"resource\":\"materials\",\"count\":2}"}, {"{\"op\":\"create_side_area\",\"areaId\":\"vault\",\"displayName\":\"Vault\"}"}]</p>
+                  <label>Passive Rules JSON <textarea rows={3} value={nationDraft.passiveRulesJson} onChange={nationDraftChange("passiveRulesJson")} /></label>
+                  <div className="private-entry-template-row">
+                    {passiveRuleTemplates.map((template) => <button type="button" key={template.label} onClick={() => insertPassiveRuleTemplate(template.value)}>{template.label}</button>)}
+                  </div>
+                  <p className="private-entry-example">Example: [{"{\"trigger\":\"on_develop\",\"effects\":[{\"op\":\"gain_resource\",\"resource\":\"goods\",\"amount\":1}]}"}]</p>
+                </fieldset>
                 <label className="private-entry-wide">Notes <textarea rows={2} value={nationDraft.notes} onChange={nationDraftChange("notes")} /></label>
               </div>
 
@@ -754,7 +796,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
                 <label>Linked Nation ID <input value={rulesetDraft.nationId || nationDraft.nationId || nationId} readOnly /></label>
                 <label>Ruleset Name <input value={rulesetDraft.publicPlaceholderName} onChange={rulesetDraftChange("publicPlaceholderName")} /></label>
                 <label>Private Ruleset Name <input value={rulesetDraft.privateName} onChange={rulesetDraftChange("privateName")} /></label>
-                <label>Required Expansions <input value={rulesetDraft.requiredExpansions} onChange={rulesetDraftChange("requiredExpansions")} /></label>
+                <label>Required Expansions <select value={rulesetDraft.requiredExpansions} onChange={rulesetDraftChange("requiredExpansions")}>{expansionRequirementOptions.map((option) => <option key={option.label} value={option.value}>{option.label}</option>)}</select></label>
                 <label>Implemented <select value={rulesetDraft.implemented} onChange={rulesetDraftChange("implemented")}><option value="false">false</option><option value="true">true</option></select></label>
                 <label>Tested <select value={rulesetDraft.tested} onChange={rulesetDraftChange("tested")}><option value="false">false</option><option value="true">true</option></select></label>
                 <label className="private-entry-wide">Public Summary <input value={rulesetDraft.publicSummary} onChange={rulesetDraftChange("publicSummary")} /></label>
@@ -803,7 +845,8 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
           <label>Type <select value={draft.cardType} onChange={draftChange("cardType")}>{cardTypeOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
           <label>State <input value={draft.stateRequirement} onChange={draftChange("stateRequirement")} /></label>
           <label>Start <select value={draft.startingLocation} onChange={draftChange("startingLocation")}>{startOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
-          <label>Players <input value={draft.playerCountRequirement} onChange={draftChange("playerCountRequirement")} /></label>
+          <label>Players <select value={draft.playerCountRequirement} onChange={(event: { target: HTMLSelectElement }) => updateDraft("playerCountRequirement", event.target.value)}>{playerCountOptions.map((option) => <option key={option.label} value={option.value}>{option.label}</option>)}</select></label>
+          <label>Required Expansion <select value={draft.requiredExpansions} onChange={draftChange("requiredExpansions")}>{expansionRequirementOptions.map((option) => <option key={option.label} value={option.value}>{option.label}</option>)}</select></label>
           <label>Cost M <input value={draft.costMaterials} onChange={draftChange("costMaterials")} /></label>
           <label>Cost P <input value={draft.costPopulation} onChange={draftChange("costPopulation")} /></label>
           <label>Cost Prog <input value={draft.costProgress} onChange={draftChange("costProgress")} /></label>

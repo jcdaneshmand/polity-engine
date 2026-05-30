@@ -3,6 +3,7 @@ import {
   appendOrReplaceNationRow,
   appendCardIdToNationDraftRoles,
   createBlankNationDraft,
+  insertNationJsonTemplate,
   nationDraftToCsvRow,
   nationRowToDraft,
   sortNationRowsByName
@@ -67,5 +68,22 @@ describe("nation entry drafts", () => {
     const draft = appendCardIdToNationDraftRoles(createBlankNationDraft("romans"), "romans_accession", ["accession"]);
 
     expect(draft.accessionCardId).toBe("romans_accession");
+  });
+
+  it("inserts special setup and passive rule JSON templates into array fields", () => {
+    const withSetup = insertNationJsonTemplate(createBlankNationDraft("romans"), "specialSetupJson", {
+      op: "gain_resource",
+      resource: "materials",
+      count: 2
+    });
+    const withPassive = insertNationJsonTemplate(withSetup, "passiveRulesJson", {
+      trigger: "on_develop",
+      effects: [{ op: "gain_resource", resource: "goods", amount: 1 }]
+    });
+
+    expect(JSON.parse(withPassive.specialSetupJson)).toEqual([{ op: "gain_resource", resource: "materials", count: 2 }]);
+    expect(JSON.parse(withPassive.passiveRulesJson)).toEqual([
+      { trigger: "on_develop", effects: [{ op: "gain_resource", resource: "goods", amount: 1 }] }
+    ]);
   });
 });

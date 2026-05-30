@@ -168,6 +168,35 @@
   overflow-wrap: anywhere;
 }
 
+.private-entry-help,
+.private-entry-example {
+  color: #637174;
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0 0 10px;
+}
+
+.private-entry-example {
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  overflow-wrap: anywhere;
+}
+
+.private-entry-template-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 10px;
+}
+
+.private-entry-template-row button {
+  border: 1px solid #4d5e62;
+  border-radius: 4px;
+  background: #fff;
+  color: #263238;
+  cursor: pointer;
+  padding: 6px 10px;
+}
+
 .private-entry-vp-builder-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(130px, 1fr));

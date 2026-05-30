@@ -138,6 +138,36 @@
   overflow-wrap: anywhere;
 }
 
+.private-entry-choice-fieldset {
+  border: 1px solid #c2c9c7;
+  margin: 0;
+  padding: 10px;
+}
+
+.private-entry-choice-fieldset legend {
+  color: #425054;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 4px;
+}
+
+.private-entry-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(130px, 1fr));
+  gap: 8px 12px;
+}
+
+.private-entry-choice-grid label {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.private-entry-choice-grid span {
+  overflow-wrap: anywhere;
+}
+
 .private-entry-wide {
   grid-column: 1 / -1;
 }
@@ -184,7 +214,8 @@
     grid-template-columns: repeat(2, minmax(130px, 1fr));
   }
 
-  .private-entry-trait-grid {
+  .private-entry-trait-grid,
+  .private-entry-choice-grid {
     grid-template-columns: 1fr;
   }
 }

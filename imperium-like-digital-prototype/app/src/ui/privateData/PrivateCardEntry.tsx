@@ -5,15 +5,17 @@ import type { PrivateNationCsvRow } from "../../../../tools/card-import/nationCs
 import type { NationRulesetTag } from "../../../../engine/src/nations/nationRulesetTypes";
 import type { PrivateNationRulesetCsvRow } from "../../../../tools/card-import/nationRulesetCsvTypes";
 import { commonsBatchProfiles, createNationBatchProfile } from "../../../../tools/card-entry/batchProfiles";
-import { createBlankCardDraft, csvRowToDraft, draftToCsvRow, duplicateCardDraft } from "../../../../tools/card-entry/cardDraft";
+import { createBlankCardDraft, csvRowToDraft, draftToCsvRow, duplicateCardDraft, toggleDraftSuitIcon } from "../../../../tools/card-entry/cardDraft";
 import type { CardEntryBatchProfile, CardEntryDraft } from "../../../../tools/card-entry/cardEntryTypes";
 import {
   appendOrReplaceNationRow,
+  appendCardIdToNationDraftRoles,
   createBlankNationDraft,
   nationCsvColumns,
   nationDraftToCsvRow,
   nationRowToDraft,
   sortNationRowsByName,
+  type NationCardRole,
   type NationEntryDraft
 } from "../../../../tools/card-entry/nationDraft";
 import {
@@ -96,9 +98,18 @@ const csvColumns = [
 ];
 
 const suitOptions = ["", "region", "uncivilized", "civilized", "tributary", "fame", "unrest", "power", "trade_route", "none", "multi"];
+const suitIconOptions = ["region", "uncivilized", "civilized", "tributary", "fame", "unrest", "power", "trade_route"];
 const cardTypeOptions = ["", "action", "in_play", "attack", "power", "state", "development", "accession", "nation", "region", "unrest", "fame", "trade_route", "bot_state", "other"];
 const startOptions = ["draw_deck", "nation_deck", "accession", "development_area", "in_play", "supply", "market", "fame_deck", "unrest_pile", "bot_deck", "box", "other"];
 const vpModeOptions = ["none", "fixed", "variable", "negative", "conditional"];
+const nationCardRoleOptions: Array<{ id: NationCardRole; label: string; cardType?: CardEntryDraft["cardType"]; startingLocation?: CardEntryDraft["startingLocation"] }> = [
+  { id: "power", label: "Power", cardType: "power" },
+  { id: "state", label: "State", cardType: "state" },
+  { id: "starting", label: "Starting Deck", startingLocation: "draw_deck" },
+  { id: "nation", label: "Nation Deck", cardType: "nation", startingLocation: "nation_deck" },
+  { id: "accession", label: "Accession", cardType: "accession", startingLocation: "accession" },
+  { id: "development", label: "Development", cardType: "development", startingLocation: "development_area" }
+];
 
 function profileFromSelection(profileId: string, nationId: string): CardEntryBatchProfile {
   if (profileId === "nation-custom") return createNationBatchProfile(nationId.trim());
@@ -277,6 +288,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
   const [nationFileName, setNationFileName] = useState("imperium_nations_private.csv");
   const [nationStatus, setNationStatus] = useState("No private nation CSV loaded. New nation rows stay in this browser until exported.");
   const [nationFileHandle, setNationFileHandle] = useState<FileSystemFileHandleLike | null>(null);
+  const [selectedNationCardRoles, setSelectedNationCardRoles] = useState<NationCardRole[]>(["nation"]);
   const [rulesetRows, setRulesetRows] = useState<PrivateNationRulesetCsvRow[]>([]);
   const [rulesetDraft, setRulesetDraft] = useState<NationRulesetEntryDraft>(createBlankNationRulesetDraft());
   const [rulesetFileName, setRulesetFileName] = useState("imperium_nation_rulesets_private.csv");
@@ -322,6 +334,24 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
 
   const rulesetDraftChange = (field: keyof NationRulesetEntryDraft) => (event: { target: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement }) => {
     updateRulesetDraft(field, event.target.value);
+  };
+
+  const applyNationCardRoleDefaults = (role: NationCardRole) => {
+    const option = nationCardRoleOptions.find((item) => item.id === role);
+    if (option?.cardType) updateDraft("cardType", option.cardType);
+    if (option?.startingLocation) updateDraft("startingLocation", option.startingLocation);
+  };
+
+  const toggleNationCardRole = (role: NationCardRole) => {
+    const isSelected = selectedNationCardRoles.includes(role);
+    setSelectedNationCardRoles((current) => current.includes(role) ? current.filter((value) => value !== role) : [...current, role]);
+    if (!isSelected) {
+      applyNationCardRoleDefaults(role);
+    }
+  };
+
+  const toggleSuitIcon = (suitIcon: string) => {
+    setDraft((current) => toggleDraftSuitIcon(current, suitIcon));
   };
 
   const resetDraftForProfile = (profile: CardEntryBatchProfile) => {
@@ -465,6 +495,17 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
     setRows(nextRows);
     setPreviousDraft(draft);
     setDraft(createBlankCardDraft(selectedProfile));
+    if (isNationBatch && selectedNationCardRoles.length > 0 && row.card_id.trim()) {
+      if (!nationDraft.nationId.trim()) {
+        setNationStatus("Choose or add a nation before assigning card roles.");
+      } else {
+        const nextNationDraft = appendCardIdToNationDraftRoles(nationDraft, row.card_id.trim(), selectedNationCardRoles);
+        const nextNationRows = appendOrReplaceNationRow(nationRows, nationDraftToCsvRow(nextNationDraft));
+        setNationDraft(nextNationDraft);
+        setNationRows(nextNationRows);
+        setNationStatus(`Added ${row.card_id} to ${nextNationDraft.nationId || "new nation"} definition roles.`);
+      }
+    }
     setStatus(`Saved ${row.card_id}. Rows: ${nextRows.length}.`);
   };
 
@@ -490,7 +531,8 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
   };
 
   const saveRulesetRow = () => {
-    const row = nationRulesetDraftToCsvRow(rulesetDraft);
+    const linkedNationId = nationDraft.nationId.trim() || nationId.trim();
+    const row = nationRulesetDraftToCsvRow({ ...rulesetDraft, nationId: linkedNationId });
     const nextRows = appendOrReplaceNationRulesetRow(rulesetRows, row);
     const messages = validateNationRulesetRows(nextRows);
     const firstFatal = messages.find((message) => message.level === "fatal");
@@ -499,6 +541,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
       return;
     }
     setRulesetRows(nextRows);
+    setRulesetDraft((current) => ({ ...current, nationId: row.nation_id.trim() }));
     setRulesetStatus(`Saved ruleset ${row.nation_id}. Rows: ${nextRows.length}.`);
   };
 
@@ -674,6 +717,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
               </div>
 
               <div className="private-entry-nation-grid">
+                <label>Linked Nation ID <input value={rulesetDraft.nationId || nationDraft.nationId || nationId} readOnly /></label>
                 <label>Ruleset Name <input value={rulesetDraft.publicPlaceholderName} onChange={rulesetDraftChange("publicPlaceholderName")} /></label>
                 <label>Private Ruleset Name <input value={rulesetDraft.privateName} onChange={rulesetDraftChange("privateName")} /></label>
                 <label>Required Expansions <input value={rulesetDraft.requiredExpansions} onChange={rulesetDraftChange("requiredExpansions")} /></label>
@@ -711,6 +755,17 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
           <label>Placeholder Name <input value={draft.publicPlaceholderName} onChange={draftChange("publicPlaceholderName")} /></label>
           <label>Suit <select value={draft.suit} onChange={draftChange("suit")}>{suitOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
           <label>Suit Icons <input value={draft.suitIcons} onChange={draftChange("suitIcons")} /></label>
+          <fieldset className="private-entry-choice-fieldset private-entry-wide">
+            <legend>Suit Icon Checkboxes</legend>
+            <div className="private-entry-choice-grid">
+              {suitIconOptions.map((suitIcon) => (
+                <label key={suitIcon}>
+                  <input type="checkbox" checked={draft.suitIcons.split("|").map((value) => value.trim()).includes(suitIcon)} onChange={() => toggleSuitIcon(suitIcon)} />
+                  <span>{suitIcon}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
           <label>Type <select value={draft.cardType} onChange={draftChange("cardType")}>{cardTypeOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
           <label>State <input value={draft.stateRequirement} onChange={draftChange("stateRequirement")} /></label>
           <label>Start <select value={draft.startingLocation} onChange={draftChange("startingLocation")}>{startOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
@@ -723,6 +778,19 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
           <label>VP <input value={draft.vpValue} onChange={draftChange("vpValue")} /></label>
           <label>Tags <input value={draft.tags} onChange={draftChange("tags")} /></label>
           <label className="private-entry-wide">Raw Private Text <textarea rows={6} value={draft.rawEffectTextPrivate} onChange={draftChange("rawEffectTextPrivate")} /></label>
+          {isNationBatch ? (
+            <fieldset className="private-entry-choice-fieldset private-entry-wide">
+              <legend>Nation Definition Slots</legend>
+              <div className="private-entry-choice-grid">
+                {nationCardRoleOptions.map((role) => (
+                  <label key={role.id}>
+                    <input type="checkbox" checked={selectedNationCardRoles.includes(role.id)} onChange={() => toggleNationCardRole(role.id)} />
+                    <span>{role.label}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ) : null}
           <label className="private-entry-wide">Notes <textarea rows={3} value={draft.notes} onChange={draftChange("notes")} /></label>
           <div className="private-entry-footer private-entry-wide">
             <button type="button" onClick={() => duplicatePrevious(false)}>Duplicate Structure</button>

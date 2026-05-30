@@ -1,6 +1,10 @@
 import type { PrivateCardCsvRow } from "../card-import/cardCsvTypes";
 import type { CardEntryBatchProfile, CardEntryDraft, DuplicateCardDraftOptions } from "./cardEntryTypes";
 
+function pipeValues(value: string): string[] {
+  return value.split("|").map((part) => part.trim()).filter(Boolean);
+}
+
 export function createBlankCardDraft(profile: CardEntryBatchProfile): CardEntryDraft {
   return {
     cardId: "",
@@ -71,6 +75,16 @@ export function duplicateCardDraft(draft: CardEntryDraft, options: DuplicateCard
   }
 
   return duplicate;
+}
+
+export function toggleDraftSuitIcon(draft: CardEntryDraft, suitIcon: string): CardEntryDraft {
+  const trimmed = suitIcon.trim();
+  if (!trimmed) return draft;
+  const values = pipeValues(draft.suitIcons);
+  const nextValues = values.includes(trimmed)
+    ? values.filter((value) => value !== trimmed)
+    : [...values, trimmed];
+  return { ...draft, suitIcons: nextValues.join("|") };
 }
 
 export function draftToCsvRow(draft: CardEntryDraft): PrivateCardCsvRow {

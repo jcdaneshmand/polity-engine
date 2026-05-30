@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { commonsBatchProfiles } from "../../../tools/card-entry/batchProfiles";
-import { createBlankCardDraft } from "../../../tools/card-entry/cardDraft";
+import { createBlankCardDraft, toggleDraftSuitIcon } from "../../../tools/card-entry/cardDraft";
 import { createCardEntryService } from "../../../tools/card-entry/cardEntryService";
 
 const fixtureRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -60,5 +60,14 @@ describe("card entry service", () => {
     expect(result.ok).toBe(false);
     expect(result.report.counts.fatal).toBeGreaterThan(0);
     expect(service.getSession().rows).toHaveLength(0);
+  });
+
+  it("toggles suit icons as a stable pipe-delimited list", () => {
+    const draft = createBlankCardDraft(commonsBatchProfiles[0]);
+    const withIcons = toggleDraftSuitIcon(toggleDraftSuitIcon(draft, "civilized"), "uncivilized");
+    const withoutDuplicate = toggleDraftSuitIcon(withIcons, "civilized");
+
+    expect(withIcons.suitIcons).toBe("civilized|uncivilized");
+    expect(withoutDuplicate.suitIcons).toBe("uncivilized");
   });
 });

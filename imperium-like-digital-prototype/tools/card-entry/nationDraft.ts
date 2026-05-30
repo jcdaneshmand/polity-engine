@@ -44,6 +44,8 @@ export type NationEntryDraft = {
   tested: "true" | "false";
 };
 
+export type NationCardRole = "power" | "state" | "starting" | "nation" | "accession" | "development";
+
 export function createBlankNationDraft(nationId = ""): NationEntryDraft {
   return {
     nationId,
@@ -129,4 +131,21 @@ export function sortNationRowsByName(rows: PrivateNationCsvRow[]): PrivateNation
     const rightLabel = right.public_placeholder_name || right.nation_name_private || right.nation_id || "";
     return leftLabel.localeCompare(rightLabel);
   });
+}
+
+function appendPipeValue(current: string, nextValue: string): string {
+  const values = current.split("|").map((value) => value.trim()).filter(Boolean);
+  if (!nextValue.trim() || values.includes(nextValue.trim())) return values.join("|");
+  return [...values, nextValue.trim()].join("|");
+}
+
+export function appendCardIdToNationDraftRoles(draft: NationEntryDraft, cardId: string, roles: NationCardRole[]): NationEntryDraft {
+  return roles.reduce((current, role) => {
+    if (role === "power") return { ...current, powerCardIds: appendPipeValue(current.powerCardIds, cardId) };
+    if (role === "state") return { ...current, stateCardIds: appendPipeValue(current.stateCardIds, cardId) };
+    if (role === "starting") return { ...current, startingDeckCardIds: appendPipeValue(current.startingDeckCardIds, cardId) };
+    if (role === "nation") return { ...current, nationDeckCardIds: appendPipeValue(current.nationDeckCardIds, cardId) };
+    if (role === "development") return { ...current, developmentCardIds: appendPipeValue(current.developmentCardIds, cardId) };
+    return { ...current, accessionCardId: cardId.trim() || current.accessionCardId };
+  }, draft);
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   appendOrReplaceNationRow,
+  appendCardIdToNationDraftRoles,
   createBlankNationDraft,
   nationDraftToCsvRow,
   nationRowToDraft,
@@ -51,5 +52,20 @@ describe("nation entry drafts", () => {
     ];
 
     expect(sortNationRowsByName(rows).map((row) => row.nation_id)).toEqual(["alpha", "zeta"]);
+  });
+
+  it("adds a saved card id to selected nation definition roles without duplicates", () => {
+    const draft = appendCardIdToNationDraftRoles(createBlankNationDraft("romans"), "romans_card_a", ["power", "state", "development"]);
+    const duplicate = appendCardIdToNationDraftRoles(draft, "romans_card_a", ["power", "state", "development"]);
+
+    expect(duplicate.powerCardIds).toBe("romans_card_a");
+    expect(duplicate.stateCardIds).toBe("romans_card_a");
+    expect(duplicate.developmentCardIds).toBe("romans_card_a");
+  });
+
+  it("sets singleton nation definition roles from a saved card id", () => {
+    const draft = appendCardIdToNationDraftRoles(createBlankNationDraft("romans"), "romans_accession", ["accession"]);
+
+    expect(draft.accessionCardId).toBe("romans_accession");
   });
 });

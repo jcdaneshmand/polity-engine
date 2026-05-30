@@ -172,3 +172,22 @@
     gap: 2px;
   }
 }
+.app-home-bar {
+  align-items: center;
+  background: #171513;
+  border-bottom: 1px solid #39332e;
+  color: #f6efe4;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 10px 16px;
+}
+
+.app-home-bar button {
+  background: #f6efe4;
+  border: 1px solid #c9bba8;
+  border-radius: 4px;
+  color: #1f1b18;
+  cursor: pointer;
+  padding: 7px 10px;
+}

@@ -1,0 +1,136 @@
+.private-entry-screen {
+  min-height: 100vh;
+  background: #f3f0e8;
+  color: #20282c;
+  padding: 20px;
+}
+
+.private-entry-panel {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.private-entry-heading,
+.private-entry-actions,
+.private-entry-footer,
+.private-entry-batch,
+.private-entry-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.private-entry-heading {
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.private-entry-kicker {
+  margin: 0 0 4px;
+  color: #637174;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.private-entry-heading h1 {
+  margin: 0;
+  font-size: 28px;
+}
+
+.private-entry-status {
+  justify-content: space-between;
+  border: 1px solid #c2c9c7;
+  background: #fff;
+  margin-bottom: 14px;
+  padding: 9px 10px;
+}
+
+.private-entry-status.is-error {
+  border-color: #a94442;
+  color: #8d2b29;
+}
+
+.private-entry-batch {
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.private-entry-batch label,
+.private-entry-grid label {
+  display: grid;
+  gap: 4px;
+  color: #425054;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.private-entry-batch label {
+  min-width: 190px;
+}
+
+.private-entry-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.private-entry-grid input,
+.private-entry-grid select,
+.private-entry-grid textarea,
+.private-entry-batch input,
+.private-entry-batch select {
+  border: 1px solid #aeb9b9;
+  border-radius: 4px;
+  min-width: 0;
+  padding: 8px;
+}
+
+.private-entry-grid textarea {
+  resize: vertical;
+}
+
+.private-entry-wide {
+  grid-column: 1 / -1;
+}
+
+.private-entry-footer {
+  justify-content: flex-end;
+}
+
+.private-entry-actions button,
+.private-entry-footer button {
+  border: 1px solid #4d5e62;
+  border-radius: 4px;
+  background: #fff;
+  color: #263238;
+  cursor: pointer;
+  padding: 8px 12px;
+}
+
+.private-entry-actions .primary-action,
+.private-entry-footer .primary-action {
+  background: #263238;
+  color: #fff;
+}
+
+.private-entry-messages {
+  margin: 14px 0 0;
+  padding-left: 20px;
+}
+
+.private-entry-messages .is-error {
+  color: #8d2b29;
+}
+
+@media (max-width: 780px) {
+  .private-entry-heading,
+  .private-entry-status {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .private-entry-grid {
+    grid-template-columns: repeat(2, minmax(130px, 1fr));
+  }
+}

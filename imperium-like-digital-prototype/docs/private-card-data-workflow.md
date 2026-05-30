@@ -14,6 +14,29 @@ Private card and nation data stays local and gitignored.
 4. Import:
    - `npm run cards:import -- --input private-card-data/imperium_cards_private.csv --output generated-private/cards.normalized.json --report generated-private/card-import-report.json`
 
+## Keyboard transcription desk
+
+For physical card entry, use the app's keyboard-first transcription desk:
+
+```sh
+npm run dev
+```
+
+Open the app and choose **Private Data**.
+
+The desk can open `private-card-data/imperium_cards_private.csv` in browsers that support the File System Access API. When direct save is unavailable, it downloads a replacement CSV that uses the existing header from `private-card-data/card-data-template.csv`.
+
+Recommended flow:
+
+1. Choose a Commons batch profile and enter Commons cards first.
+2. Use `Ctrl+Enter` to save the current card and move to the next blank card.
+3. Use `Ctrl+D` to duplicate safe structure from the previous card without copying private text.
+4. Use `Ctrl+Shift+D` only when intentionally copying private text for a variant or near-duplicate.
+5. Leave `effect_ops_json` blank during the identity/raw-text pass unless the effect is already obvious.
+6. Run `npm run cards:validate -- --input private-card-data/imperium_cards_private.csv` after each batch.
+
+Nation deck entry can happen in any nation order. Choose the Nation Deck batch, enter the nation ID, and use that nation ID as `set_or_nation`.
+
 ## Nation data workflow
 - Cards and nations are separate private files.
 - Cards define behavior units.

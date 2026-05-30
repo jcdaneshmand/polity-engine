@@ -61,6 +61,7 @@ function pendingInterruption(G: GameState): string | undefined {
   if (G.pendingDrawChoice) return "pending_draw_choice";
   if (G.pendingFindChoice) return "pending_find_choice";
   if (G.pendingAcquireChoice) return "pending_acquire_choice";
+  if (G.pendingMarketCardChoice) return "pending_market_card_choice";
   if (G.pendingBreakThroughChoice) return "pending_break_through_choice";
   if (G.pendingExileChoice) return "pending_exile_choice";
   if (G.pendingGarrisonChoice) return "pending_garrison_choice";
@@ -386,6 +387,13 @@ export function resolvePendingSolsticeOrderChoice(G: GameState, playerId: string
   const completed = runOrderedSolsticeCardEffects(G, playerId, pending.phase, cardIds, paused, randomNumber);
   if (!completed) return true;
   G.log.push({ round: G.round, playerId, message: `SolsticeOrderChoiceResolved(${pending.phase}/cards=${cardIds.length})` });
+  if (pending.phase === "end_of_solstice") {
+    const ruleset = G.activeNationRulesets?.[playerId];
+    if (ruleset) applyEndOfSolsticeRemovals(G, playerId, ruleset);
+    if (G.gameover) return true;
+    runNationHooks({ G, playerId, trigger: "after_solstice", randomNumber });
+    if (pauseForPendingInterruption(G, playerId, paused)) return true;
+  }
   continuePausedSolstice(G, playerId, randomNumber);
   return true;
 }

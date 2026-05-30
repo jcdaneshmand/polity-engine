@@ -10,6 +10,50 @@ import { card, cardDb, nationDb } from "./commonsTestFixtures";
 
 describe("setup pipeline",()=>{
   it("default creates playable 2p",()=>{ const G=createInitialGameState(); expect(Object.keys(G.players).length).toBe(2); });
+  it("uses explicitly provided player ids without creating player 0",()=> {
+    const G=createInitialGameState({
+      options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[]},
+      playerNationIds:{"1":"test_nation_sun_coast","2":"test_nation_sun_coast"}
+    });
+    expect(Object.keys(G.players)).toEqual(["1","2"]);
+    expect(G.playOrder).toEqual(["1","2"]);
+    expect(G.players["0"]).toBeUndefined();
+  });
+  it("can create a game from uploaded in-memory private card and nation data",()=> {
+    const G=createInitialGameState({
+      options:{playerCount:1,mode:"practice",enabledExpansions:[],enabledVariants:[],commonsSetId:"custom"},
+      playerNationIds:{"1":"uploaded_nation"},
+      privateData:{
+        cards:[
+          card({id:"uploaded_starter",ownership:"nation",startingLocation:"draw_deck"}),
+          card({id:"uploaded_market_1",displayName:"Uploaded Market 1",ownership:"commons",startingLocation:"market",commonsSetId:"custom"}),
+          card({id:"uploaded_market_2",displayName:"Uploaded Market 2",ownership:"commons",startingLocation:"market",commonsSetId:"custom"}),
+          card({id:"uploaded_market_3",displayName:"Uploaded Market 3",ownership:"commons",startingLocation:"market",commonsSetId:"custom"}),
+          card({id:"uploaded_market_4",displayName:"Uploaded Market 4",ownership:"commons",startingLocation:"market",commonsSetId:"custom"}),
+          card({id:"uploaded_market_5",displayName:"Uploaded Market 5",ownership:"commons",startingLocation:"market",commonsSetId:"custom"})
+        ],
+        nations:[{
+          id:"uploaded_nation",
+          displayName:"Uploaded Nation",
+          powerCardIds:[],
+          stateCardIds:[],
+          startingDeckCardIds:["uploaded_starter"],
+          nationDeckCardIds:[],
+          developmentCardIds:[],
+          setupRules:[],
+          passiveRules:[],
+          actionTokensBase:3,
+          exhaustTokensBase:5,
+          requiredExpansions:[],
+          implemented:true,
+          tested:true
+        }]
+      }
+    } as any);
+    expect(Object.keys(G.players)).toEqual(["1"]);
+    expect(G.players["1"].hand).toContain("uploaded_starter");
+    expect(G.market).toEqual(["uploaded_market_1","uploaded_market_2","uploaded_market_3","uploaded_market_4","uploaded_market_5"]);
+  });
   it("sets default State token capacity to 3 Actions and 5 Exhausts",()=>{
     const G=createInitialGameState();
     expect(G.players["0"].actionTokensBase).toBe(3);
@@ -63,6 +107,62 @@ describe("setup pipeline",()=>{
     expect(currentStateMatches(G,"0","barbarian")).toBe(true);
     expect(currentStateMatches(G,"0","empire")).toBe(false);
   });
+  it("routes setup History placements through a nation History replacement zone",()=>{
+    const G=createInitialGameStateFromPipeline({
+      options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[]},
+      playerNationIds:{"0":"history_setup_nation","1":"history_setup_nation"},
+      cardDb:cardDb([
+        card({id:"setup_history_card",ownership:"nation",startingLocation:"box"}),
+        card({id:"market_1"}),
+        card({id:"market_2"}),
+        card({id:"market_3"}),
+        card({id:"market_4"}),
+        card({id:"market_5"})
+      ]),
+      nationDb:{
+        history_setup_nation:{
+          id:"history_setup_nation",
+          displayName:"History Setup Nation",
+          powerCardIds:[],
+          stateCardIds:[],
+          startingDeckCardIds:[],
+          nationDeckCardIds:[],
+          developmentCardIds:[],
+          setupRules:[{op:"place_card_in_area",area:"history",cardId:"setup_history_card"}],
+          passiveRules:[],
+          actionTokensBase:3,
+          exhaustTokensBase:5,
+          requiredExpansions:[],
+          implemented:true,
+          tested:true
+        } as any
+      },
+      privateData:{
+        nationRulesets:[{
+          nationId:"history_setup_nation",
+          displayName:"History Setup Rules",
+          rulesetTags:["alternate_history_zone"],
+          requiredExpansions:[],
+          setupOverrides:[],
+          zoneOverrides:[{op:"replace_history_with_zone",zoneId:"sunken",displayName:"Sunken",cardsScore:true} as any],
+          stateOverrides:[],
+          reshuffleOverrides:[],
+          cleanupOverrides:[],
+          solsticeOverrides:[],
+          scoringOverrides:[],
+          collapseOverrides:[],
+          botOverrides:[],
+          shortGameOverrides:[],
+          hookRules:[],
+          implemented:true,
+          tested:true
+        }]
+      }
+    } as any);
+
+    expect(G.players["0"].history).toEqual([]);
+    expect(G.players["0"].sideAreas?.sunken).toEqual(["setup_history_card"]);
+  });
   it("preserves imported suit icon metadata in the runtime card database",()=>{
     const G=createInitialGameStateFromPipeline({
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[]},
@@ -94,6 +194,43 @@ describe("setup pipeline",()=>{
     });
 
     expect(G.cardDb.empire_locked_card.stateRequirement).toBe("empire");
+  });
+  it("draws an opening hand of five cards from each player's starting deck",()=>{
+    const startingCards = Array.from({ length: 6 }, (_, index) => `starter_${index + 1}`);
+    const G=createInitialGameStateFromPipeline({
+      options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[]},
+      playerNationIds:{"0":"opening_hand_nation","1":"opening_hand_nation"},
+      cardDb:cardDb([
+        ...startingCards.map((id) => card({ id, ownership:"nation", startingLocation:"draw_deck" })),
+        card({id:"market_1"}),
+        card({id:"market_2"}),
+        card({id:"market_3"}),
+        card({id:"market_4"}),
+        card({id:"market_5"})
+      ]),
+      nationDb:{
+        opening_hand_nation:{
+          id:"opening_hand_nation",
+          displayName:"Opening Hand Nation",
+          powerCardIds:[],
+          stateCardIds:[],
+          startingDeckCardIds:startingCards,
+          nationDeckCardIds:[],
+          developmentCardIds:[],
+          setupRules:[],
+          passiveRules:[],
+          actionTokensBase:3,
+          exhaustTokensBase:5,
+          requiredExpansions:[],
+          implemented:true,
+          tested:true
+        }
+      }
+    });
+
+    expect(G.players["0"].hand).toEqual(["starter_1","starter_2","starter_3","starter_4","starter_5"]);
+    expect(G.players["0"].deck).toEqual(["starter_6"]);
+    expect(G.players["1"].hand).toHaveLength(5);
   });
   it("builds source deck state for market refill",()=>{
     const G=createInitialGameState();

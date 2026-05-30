@@ -36,13 +36,20 @@ function costLabel(cost: Record<string, number>, resourceLabels: ResourceLabels)
     .join(", ") || "0";
 }
 
-export function MarketRow({ cards, selectedId, resources, resourceLabels = {}, actionHintsByCardId = {}, onSelect }: { cards: any[]; selectedId?: string; resources?: any; resourceLabels?: ResourceLabels; actionHintsByCardId?: Record<string, { labels: string[]; highlighted: boolean }>; onSelect: (id: string) => void }) {
+export function marketResourceTokens(resources: Record<string, number> | undefined, resourceLabels: ResourceLabels): string[] {
+  return ["materials", "influence", "knowledge", "goods", "unrest"]
+    .filter((resource) => Number(resources?.[resource] ?? 0) > 0)
+    .map((resource) => `${resources?.[resource]} ${resourceLabel(resource, resourceLabels)}`);
+}
+
+export function MarketRow({ cards, selectedId, resources, resourceLabels = {}, actionHintsByCardId = {}, marketResources = {}, onSelect }: { cards: any[]; selectedId?: string; resources?: any; resourceLabels?: ResourceLabels; actionHintsByCardId?: Record<string, { labels: string[]; highlighted: boolean }>; marketResources?: Record<string, Record<string, number>>; onSelect: (id: string) => void }) {
   const slots = Array.from({ length: 5 }, (_, i) => cards[i]);
   return <section className="market-row">{slots.map((c, i) => {
     const cost = cardCost(c);
     const label = costLabel(cost, resourceLabels);
     const payable = !!c && canPayCost(resources, cost);
     const hints = c ? actionHintsByCardId[c.id] : undefined;
+    const tokens = c ? marketResourceTokens(marketResources[c.id], resourceLabels) : [];
     return <CardSlot key={i} slot={i + 1} attached={c ? `Cost ${label}` : "empty"}>
       <CardTile
         card={c}
@@ -51,6 +58,7 @@ export function MarketRow({ cards, selectedId, resources, resourceLabels = {}, a
         selected={selectedId === c?.id}
         affordability={c ? (payable ? `Cost ${label}` : `Need ${label}`) : undefined}
         actionHints={hints?.labels}
+        resourceTokens={tokens}
         highlighted={hints?.highlighted}
         onSelect={() => c && onSelect(c.id)}
       />

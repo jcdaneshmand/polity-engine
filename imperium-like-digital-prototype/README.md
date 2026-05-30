@@ -1,4 +1,4 @@
-# imperium-like-digital-prototype
+# Polity Engine
 
 ## Purpose
 A private, original-content prototype for a digital asymmetric civilization/deck-building style game. This repository provides a generic, data-driven rules engine scaffold and a minimal React UI built for fast iteration.

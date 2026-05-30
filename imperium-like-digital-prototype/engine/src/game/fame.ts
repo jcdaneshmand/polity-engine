@@ -41,6 +41,7 @@ export function resolveBotKingOfKings(G: GameState): boolean {
   const fameDeck = ensureFameDeck(G);
   const specialBottomCardId = fameDeck.specialBottomCardId;
   if (!specialBottomCardId) return false;
+  if (fameDeck.specialBottomSide === "face_down") return false;
   if (fameDeck.resolvedSpecialByPlayer[bot.botId]) {
     G.log.push({ round: G.round, playerId: bot.botId, message: `FameSpecialSkipped(already_resolved/${specialBottomCardId})` });
     return false;
@@ -86,11 +87,9 @@ export function gainFameCardsForBot(G: GameState, bot: BotState, count: number):
 
 export function peekFameCards(G: GameState, count: number): string[] {
   const fameDeck = ensureFameDeck(G);
-  const visible = fameDeck.available.slice(0, count);
-  if (visible.length === 0 && count > 0 && fameDeck.specialBottomCardId) {
-    return [fameDeck.specialBottomCardId];
-  }
-  return visible;
+  if (fameDeck.available.length > 0) return fameDeck.available.slice(0, count);
+  if (fameDeck.specialBottomCardId && fameDeck.specialBottomSide !== "face_down" && count > 0) return [fameDeck.specialBottomCardId];
+  return [];
 }
 
 export function takeFameCard(G: GameState, playerId: string): string | undefined {
@@ -103,6 +102,7 @@ export function takeFameCard(G: GameState, playerId: string): string | undefined
 
   const specialBottomCardId = fameDeck.specialBottomCardId;
   if (!specialBottomCardId) return undefined;
+  if (fameDeck.specialBottomSide === "face_down") return undefined;
   if (fameDeck.resolvedSpecialByPlayer[playerId]) {
     G.log.push({ round: G.round, playerId, message: `FameSpecialSkipped(already_resolved/${specialBottomCardId})` });
     return undefined;

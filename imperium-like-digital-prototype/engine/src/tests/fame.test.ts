@@ -76,6 +76,18 @@ describe("Fame deck", () => {
     expect(G.scoring).toBeUndefined();
   });
 
+  it("does not peek the special bottom Fame card after it is face down", () => {
+    const G = createInitialState();
+    G.fameDeck = {
+      available: [],
+      specialBottomCardId: "fame_bottom",
+      specialBottomSide: "face_down",
+      resolvedSpecialByPlayer: {}
+    };
+
+    expect(peekFameCards(G, 1)).toEqual([]);
+  });
+
   it("resolves King of Kings for an uncivilized State by gaining 6 Progress", () => {
     const G = createInitialState();
     G.cardDb.uncivilized_state = {
@@ -187,6 +199,20 @@ describe("Fame deck", () => {
     expect(G.fameDeck.specialBottomSide).toBe("B");
     expect(G.scoring).toBeUndefined();
     expect(G.log.at(-1)?.message).toBe("FameSpecialSkipped(already_resolved/fame_bottom)");
+  });
+
+  it("does not take the special bottom Fame card after it is face down", () => {
+    const G = createInitialState();
+    G.fameDeck = {
+      available: [],
+      specialBottomCardId: "fame_bottom",
+      specialBottomSide: "face_down",
+      resolvedSpecialByPlayer: {}
+    };
+
+    expect(takeFameCard(G, "0")).toBeUndefined();
+    expect(G.fameDeck.specialBottomCardId).toBe("fame_bottom");
+    expect(G.scoring).toBeUndefined();
   });
 
   it("triggers scoring when a different player resolves side B of the special bottom Fame card", () => {
@@ -302,5 +328,26 @@ describe("Fame deck", () => {
     expect(G.solo?.bot.botDeck).toEqual(["existing_top"]);
     expect(G.scoring).toBeUndefined();
     expect(G.log.at(-1)?.message).toBe("FameSpecialSkipped(already_resolved/king_of_kings)");
+  });
+
+  it("does nothing if the Bot would gain King of Kings after it is face down", () => {
+    const G = createInitialState();
+    addSoloBot(G, {
+      botStateSide: "F",
+      botDeck: ["existing_top"],
+      botDynastyDeck: ["dynasty_top"]
+    });
+    G.fameDeck = {
+      available: [],
+      specialBottomCardId: "king_of_kings",
+      specialBottomSide: "face_down",
+      resolvedSpecialByPlayer: {}
+    };
+
+    expect(resolveBotKingOfKings(G)).toBe(false);
+    expect(G.solo?.bot.resources.knowledge).toBeUndefined();
+    expect(G.solo?.bot.botDynastyDeck).toEqual(["dynasty_top"]);
+    expect(G.solo?.bot.botDeck).toEqual(["existing_top"]);
+    expect(G.scoring).toBeUndefined();
   });
 });

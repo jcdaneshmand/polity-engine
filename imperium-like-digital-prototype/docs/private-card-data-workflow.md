@@ -28,6 +28,19 @@ Validate/import nations:
 Combined:
 - `npm run private:import-all`
 
+## CSV and JSON schemas
+The setup screen accepts either generated normalized JSON or raw private CSV files. Keep official names/text in local-only files and use public placeholder fields for screenshots, demos, or shared reports.
+
+Supported uploads:
+- Cards: `cards.normalized.json` or a card CSV copied from `private-card-data/card-data-template.csv`.
+- Nations: `nations.normalized.json` or a nation CSV copied from `private-card-data/nation-data-template.csv`.
+- Nation rulesets: `nation-rulesets.normalized.json` or a ruleset CSV copied from `private-card-data/nation-ruleset-template.csv`.
+- Nation strategy: `nation-strategy.normalized.json` or a strategy CSV copied from `private-card-data/nation-strategy-template.csv`.
+- Bot state tables: `bot-state-tables.normalized.json` or a bot table CSV copied from `private-card-data/bot-state-table-template.csv`.
+- Bot trade route tables: `bot-trade-routes-tables.normalized.json` or a trade route table CSV copied from `private-card-data/bot-trade-routes-table-template.csv`.
+
+CSV schemas are the header rows in the committed template files under `private-card-data/`. JSON uploads use the normalized records emitted by the import commands above; wrapper objects are also accepted for matching roles, such as `{ "cards": [...] }`, `{ "nations": [...] }`, `{ "nationRulesets": [...] }`, `{ "nationStrategy": [...] }`, `{ "botStateTables": { ... } }`, and `{ "botTradeRoutesTables": { ... } }`.
+
 ## Safety and legal boundary
 - Private official names/text must stay local.
 - Use `public_placeholder_name` for screenshots/demos.

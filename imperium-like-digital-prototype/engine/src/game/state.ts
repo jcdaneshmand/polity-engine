@@ -11,7 +11,7 @@ export type DrawSourceZone = "deck" | "discard" | "exile";
 export type PlayerExileSource = "hand" | "discard" | "deck" | "playArea" | "history" | "garrison";
 export type FindSourceZone = "hand" | "discard" | "deck" | "nationDeck" | "playArea" | "history";
 export type LookSourceZone = "deck" | "nationDeck" | "fameDeck";
-export type ReturnUnrestSourceZone = "hand" | "discard";
+export type ReturnUnrestSourceZone = "hand" | "playArea" | "discard" | "deck" | "history";
 export type PlaceOnDeckSourceZone = "hand" | "discard";
 export type SwapSourceZone = "hand" | "discard" | "deck";
 export type ResourceName = "materials" | "knowledge" | "influence" | "unrest" | "goods";
@@ -47,6 +47,8 @@ export type Effect =
   | { trigger: EffectTrigger; op: "move_self_to_history" }
   | { trigger: EffectTrigger; op: "exile_card"; source: "market" | PlayerExileSource; cardId?: string; suit?: Suit; cardType?: CardType; count?: number }
   | { trigger: EffectTrigger; op: "acquire_card"; count: number; source?: "market" | "exile"; cardId?: string; suit?: Suit; cardType?: CardType; destination?: "hand" | "discard" }
+  | { trigger: EffectTrigger; op: "gain_card"; count: number; source: "market"; cardId?: string; suit?: Suit; cardType?: CardType; destination?: "hand" | "discard" }
+  | { trigger: EffectTrigger; op: "take_card"; count: number; source: "market"; cardId?: string; suit?: Suit; cardType?: CardType; destination?: "hand" | "discard" }
   | { trigger: EffectTrigger; op: "break_through"; suit: Suit; source: "market" | "deck" | "exile"; count: number; cardId?: string }
   | { trigger: EffectTrigger; op: "find_card"; cardId?: string; suit?: Suit; cardType?: CardType; destination: ZoneName; sourceZones?: FindSourceZone[] }
   | { trigger: EffectTrigger; op: "look_cards"; source: LookSourceZone; count: number }
@@ -95,6 +97,7 @@ export interface PlayerState {
 }
 export interface GameState {
   players: Record<string, PlayerState>; cardDb: Record<string, Card>; market: string[]; marketRefillPool: string[]; sharedDiscard: string[]; log: GameLogEntry[]; round: number;
+  playOrder?: string[];
   resourceSupply?: Partial<Record<ResourceName, number>>;
   marketSlots?: MarketSlot[];
   marketResources?: Record<string, Partial<Record<ResourceName, number>>>;
@@ -109,6 +112,7 @@ export interface GameState {
   pendingDrawChoice?: { playerId: string; sourceCardId?: string; source: Exclude<DrawSourceZone, "deck">; cardIds: string[]; remainingCount: number; resumeEffects?: Effect[] };
   pendingFindChoice?: { playerId: string; sourceCardId?: string; cardIds: string[]; destination: ZoneName; resumeEffects?: Effect[] };
   pendingAcquireChoice?: { playerId: string; sourceCardId?: string; source: "market" | "exile"; cardIds: string[]; destination: "hand" | "discard"; resumeEffects?: Effect[] };
+  pendingMarketCardChoice?: { playerId: string; sourceCardId?: string; op: "gain_card" | "take_card"; cardIds: string[]; destination: "hand" | "discard"; resumeEffects?: Effect[] };
   pendingBreakThroughChoice?: { playerId: string; sourceCardId?: string; source: "market" | "exile"; suit: Suit; cardIds: string[]; resumeEffects?: Effect[] };
   pendingExileChoice?: { playerId: string; sourceCardId?: string; source: "market" | PlayerExileSource; cardIds: string[]; optional?: boolean; resumeEffects?: Effect[] };
   pendingGarrisonChoice?: { playerId: string; sourceCardId?: string; hostCardIds: string[]; cardIds: string[]; resumeEffects?: Effect[] };

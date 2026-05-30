@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { getActionHintsByCardId, getAvailableActionsForSelection, getPendingUiState, getSelectedCard } from "../../../app/src/ui/controller/selectionModel";
+import { getActionHintsByCardId, getAvailableActionsForSelection, getMarketCardClickAction, getPendingUiState, getSelectedCard } from "../../../app/src/ui/controller/selectionModel";
 import { compactReason, groupActionsForMenu } from "../../../app/src/ui/layout/ActionMenu";
+import { formatLogMessage } from "../../../app/src/ui/layout/GameLogPanel";
+import { marketResourceTokens } from "../../../app/src/ui/layout/MarketRow";
 
 describe("selection model", () => {
   const G:any = { cardDb:{c1:{id:"c1",displayName:"Card1"},m1:{id:"m1",displayName:"Market1",cost:2}}, market:["m1"], players:{"0":{hand:["c1"],actionsRemaining:1,resources:{materials:3}}} };
@@ -72,10 +74,86 @@ describe("selection model", () => {
       detail:"Choose 1 card"
     });
   });
+  it("summarizes pending Gain/Take market card choices for the board banner",()=> {
+    expect(getPendingUiState({...G,pendingMarketCardChoice:{playerId:"0",sourceCardId:"picker",op:"take_card",cardIds:["m1"],destination:"hand"}},ctx)).toMatchObject({
+      title:"Pending Take Card",
+      detail:"Choose 1 market card"
+    });
+  });
+  it("describes pending Exile as one choice from options",()=> {
+    expect(getPendingUiState({...G,pendingExileChoice:{playerId:"0",sourceCardId:"practice_market_churn",source:"market",cardIds:["m1","m2","m3","m4"],optional:true}},ctx)).toMatchObject({
+      title:"Pending Exile",
+      detail:"Choose 1 market card to exile, or skip"
+    });
+    expect(getPendingUiState({...G,pendingExileChoice:{playerId:"0",sourceCardId:"picker",source:"market",cardIds:["m1","m2","m3","m4"]}},ctx)).toMatchObject({
+      title:"Pending Exile",
+      detail:"Choose 1 card to exile from 4 options"
+    });
+  });
+  it("describes cleanup market resource as choosing one destination card",()=> {
+    expect(getPendingUiState({...G,pendingCleanupMarketResourceChoice:{playerId:"0",resource:"knowledge",amount:1,cardIds:["m1","m2","m3","m4","m5"]}},ctx)).toMatchObject({
+      title:"Pending Cleanup Resource",
+      detail:"Choose a market card for 1 cleanup resource"
+    });
+  });
   it("builds card action hints and highlights from available actions",()=> {
     const withPending={...G,pendingAcquireChoice:{playerId:"0",sourceCardId:"picker",source:"market",cardIds:["m1"],destination:"hand"}};
     const hints=getActionHintsByCardId(getAvailableActionsForSelection(null,withPending,ctx));
     expect(hints.m1).toMatchObject({ highlighted:true, labels:["Acquire"] });
+  });
+  it("builds market-card choice actions and highlights",()=> {
+    const withPending={...G,pendingMarketCardChoice:{playerId:"0",sourceCardId:"picker",op:"gain_card",cardIds:["m1"],destination:"hand"}};
+    const actions=getAvailableActionsForSelection(null,withPending,ctx);
+    expect(actions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label:"Gain Market1", action:"resolveMarketCardChoice", enabled:true, cardId:"m1" })
+    ]));
+    expect(getActionHintsByCardId(actions,"market").m1).toMatchObject({ highlighted:true, labels:["Gain"] });
+  });
+  it("keeps Play hints scoped to hand cards",()=> {
+    const actions=getAvailableActionsForSelection({kind:"hand_card",id:"c1"},G,ctx);
+    expect(getActionHintsByCardId(actions,"hand").c1.labels).toContain("Play");
+    expect(getActionHintsByCardId(actions,"market").c1?.labels ?? []).not.toContain("Play");
+  });
+  it("formats market cleanup resource tokens for market cards",()=> {
+    expect(marketResourceTokens({ knowledge:2, goods:1 },{})).toEqual(["2 Progress","1 Goods"]);
+  });
+  it("formats engine log codes into readable player messages",()=> {
+    expect(formatLogMessage("MarketInitialized(slots=5)")).toBe("Market initialized with 5 cards.");
+    expect(formatLogMessage("CleanupMarketResourceChoicePending(options=5)")).toBe("Choose a market card for the cleanup resource.");
+    expect(formatLogMessage("TurnPhase(cleanup): draw_up(hand=5)")).toBe("Cleanup: drew up to 5 cards in hand.");
+    expect(formatLogMessage("MarketDecks(main=5,region=0,uncivilized=0,civilized=0,tributary=0)")).toBe("Market decks: Main 5, Region 0, Uncivilized 0, Civilized 0, Tributary 0.");
+    expect(formatLogMessage("TurnPhase(action_execution): playCard(test_action_foundry_shift)")).toBe("Played Foundry Shift.");
+  });
+  it("clicking an eligible market card resolves pending cleanup resource directly",()=> {
+    const clickAction=getMarketCardClickAction({...G,pendingCleanupMarketResourceChoice:{playerId:"0",resource:"knowledge",amount:1,cardIds:["m1"]}},ctx,"m1");
+    expect(clickAction).toEqual({ action:"resolveCleanupMarketResource", cardId:"m1", enabled:true });
+    expect(getMarketCardClickAction({...G,pendingCleanupMarketResourceChoice:{playerId:"1",resource:"knowledge",amount:1,cardIds:["m1"]}},ctx,"m1")).toBeUndefined();
+  });
+  it("clicking an eligible market card resolves practice churn Exile directly",()=> {
+    const clickAction=getMarketCardClickAction({
+      ...G,
+      pendingExileChoice:{playerId:"0",sourceCardId:"practice_market_churn",source:"market",cardIds:["m1"],optional:true}
+    },ctx,"m1");
+    expect(clickAction).toEqual({ action:"resolveExileChoice", cardId:"m1", enabled:true });
+    expect(getMarketCardClickAction({
+      ...G,
+      pendingExileChoice:{playerId:"0",sourceCardId:"picker",source:"market",cardIds:["m1"],optional:true}
+    },ctx,"m1")).toBeUndefined();
+    expect(getMarketCardClickAction({
+      ...G,
+      pendingExileChoice:{playerId:"1",sourceCardId:"practice_market_churn",source:"market",cardIds:["m1"],optional:true}
+    },ctx,"m1")).toBeUndefined();
+  });
+  it("clicking an eligible market card resolves pending Gain/Take directly",()=> {
+    const clickAction=getMarketCardClickAction({
+      ...G,
+      pendingMarketCardChoice:{playerId:"0",sourceCardId:"picker",op:"take_card",cardIds:["m1"],destination:"hand"}
+    },ctx,"m1");
+    expect(clickAction).toEqual({ action:"resolveMarketCardChoice", cardId:"m1", enabled:true });
+    expect(getMarketCardClickAction({
+      ...G,
+      pendingMarketCardChoice:{playerId:"1",sourceCardId:"picker",op:"take_card",cardIds:["m1"],destination:"hand"}
+    },ctx,"m1")).toBeUndefined();
   });
   it("scales order choices by first-card options instead of all permutations",()=> {
     const withLookOrder = {

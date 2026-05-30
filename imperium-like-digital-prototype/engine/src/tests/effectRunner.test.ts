@@ -736,6 +736,40 @@ describe("effectRunner", () => {
     expect(G.log.at(-1)?.message).toBe("UnrestReturned(discard_unrest/discard)");
   });
 
+  it("return_unrest can move specified Unrest cards from scored deck and History zones", () => {
+    const G = createInitialState();
+    G.players["0"].deck = ["deck_unrest"];
+    G.players["0"].history = ["history_unrest"];
+    G.unrestPile = [];
+    for (const id of ["deck_unrest", "history_unrest"]) {
+      G.cardDb[id] = {
+        id,
+        displayName: id,
+        type: "unrest",
+        cardType: "unrest",
+        suit: "unrest",
+        cost: 0,
+        tags: [],
+        effects: []
+      };
+    }
+
+    expect(runEffects({ G, playerId: "0" }, [
+      { trigger: "on_play", op: "return_unrest", cardId: "deck_unrest", sourceZones: ["deck"] } as any
+    ])).toBe(true);
+    expect(runEffects({ G, playerId: "0" }, [
+      { trigger: "on_play", op: "return_unrest", cardId: "history_unrest", sourceZones: ["history"] } as any
+    ])).toBe(true);
+
+    expect(G.players["0"].deck).toEqual([]);
+    expect(G.players["0"].history).toEqual([]);
+    expect(G.unrestPile).toEqual(["deck_unrest", "history_unrest"]);
+    expect(G.log.map((entry) => entry.message)).toEqual(expect.arrayContaining([
+      "UnrestReturned(deck_unrest/deck)",
+      "UnrestReturned(history_unrest/history)"
+    ]));
+  });
+
   it("return_unrest creates a choice from hand and discard and resumes remaining effects", () => {
     const G = createInitialState();
     G.players["0"].hand = ["hand_unrest"];
@@ -1292,6 +1326,36 @@ describe("effectRunner", () => {
     expect(G.log.at(-1)?.message).toBe("ExiledFromDiscard(discard_civilized)");
   });
 
+  it("exile_card treats a nation History replacement zone as History", () => {
+    const G = createInitialState();
+    G.players["0"].history = [];
+    G.players["0"].sideAreas = { sunken: ["history_civilized"] };
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      zoneOverrides: [{ op: "replace_history_with_zone", zoneId: "sunken", displayName: "Sunken", cardsScore: true } as any]
+    };
+    G.cardDb.history_civilized = {
+      id: "history_civilized",
+      displayName: "History Civilized",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+
+    const result = runEffects({ G, playerId: "0", selfCardId: "history_exiler" }, [
+      { trigger: "on_play", op: "exile_card", source: "history", cardId: "history_civilized" } as any
+    ]);
+
+    expect(result).toBe(true);
+    expect(G.players["0"].history).toEqual([]);
+    expect(G.players["0"].sideAreas?.sunken).toEqual([]);
+    expect(G.players["0"].exile).toEqual(["history_civilized"]);
+    expect(G.log.at(-1)?.message).toBe("ExiledFromSunken(history_civilized)");
+  });
+
   it("exile_card removes a play-area host with its garrisoned cards and collects resources", () => {
     const G = createInitialState();
     G.players["0"].playArea = ["play_region"];
@@ -1566,6 +1630,172 @@ describe("effectRunner", () => {
     expect(G.log.at(-1)?.message).toBe("AcquireChoicePending(market_picker/source=market/options=1)");
   });
 
+  it("gain_card moves a matching market card with market resources and tucked Unrest but does not trigger on-acquire text", () => {
+    const G = createInitialState();
+    G.market = ["market_gain"];
+    G.marketRefillPool = ["market_refill"];
+    G.marketDecks = undefined;
+    G.marketResources = { market_gain: { knowledge: 1 } };
+    G.marketUnrest = { market_gain: ["test_unrest_1"] };
+    G.unrestPile = ["test_unrest_2"];
+    G.cardDb.market_gain = {
+      id: "market_gain",
+      displayName: "Market Gain",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_acquire", op: "gain_resource", resource: "materials", amount: 3 } as any]
+    };
+    G.cardDb.market_refill = {
+      id: "market_refill",
+      displayName: "Market Refill",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+
+    runEffects({ G, playerId: "0" }, [{ trigger: "on_play", op: "gain_card", source: "market", suit: "civilized", count: 1 } as any]);
+
+    expect(G.players["0"].hand).toContain("market_gain");
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["0"].resources.materials).toBe(0);
+    expect(G.players["0"].hand).toContain("test_unrest_1");
+    expect(G.market).toEqual(["market_refill"]);
+    expect(G.marketUnrest.market_refill).toEqual(["test_unrest_2"]);
+    expect(G.log.some((entry) => entry.message === "CardGainedFromMarket(market_gain/destination=hand)")).toBe(true);
+  });
+
+  it("take_card moves a matching market card but returns tucked Unrest instead of taking it", () => {
+    const G = createInitialState();
+    G.market = ["market_take"];
+    G.marketRefillPool = ["market_refill"];
+    G.marketDecks = undefined;
+    G.marketResources = { market_take: { knowledge: 1 } };
+    G.marketUnrest = { market_take: ["test_unrest_1"] };
+    G.unrestPile = ["test_unrest_2"];
+    G.cardDb.market_take = {
+      id: "market_take",
+      displayName: "Market Take",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb.market_refill = {
+      id: "market_refill",
+      displayName: "Market Refill",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+
+    runEffects({ G, playerId: "0" }, [{ trigger: "on_play", op: "take_card", source: "market", suit: "civilized", count: 1 } as any]);
+
+    expect(G.players["0"].hand).toContain("market_take");
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["0"].discard).not.toContain("test_unrest_1");
+    expect(G.unrestPile).toContain("test_unrest_1");
+    expect(G.market).toEqual(["market_refill"]);
+    expect(G.log.some((entry) => entry.message === "CardTakenFromMarket(market_take/destination=hand)")).toBe(true);
+  });
+
+  it("gain_card pauses for an explicit market choice when multiple cards match", () => {
+    const G = createInitialState();
+    G.market = ["market_gain_a", "market_gain_b", "market_region"];
+    G.marketRefillPool = [];
+    G.marketDecks = undefined;
+    for (const id of ["market_gain_a", "market_gain_b"]) {
+      G.cardDb[id] = {
+        id,
+        displayName: id,
+        type: "action",
+        cardType: "action",
+        suit: "civilized",
+        cost: 0,
+        tags: [],
+        effects: []
+      };
+    }
+    G.cardDb.market_region = {
+      id: "market_region",
+      displayName: "Market Region",
+      type: "region",
+      cardType: "region",
+      suit: "region",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+
+    runEffects({ G, playerId: "0", selfCardId: "gain_source" }, [
+      { trigger: "on_play", op: "gain_card", source: "market", suit: "civilized", count: 1 } as any
+    ]);
+
+    expect(G.pendingMarketCardChoice).toEqual({
+      playerId: "0",
+      sourceCardId: "gain_source",
+      op: "gain_card",
+      cardIds: ["market_gain_a", "market_gain_b"],
+      destination: "hand"
+    });
+    expect(G.players["0"].hand).not.toContain("market_gain_a");
+    expect(G.players["0"].hand).not.toContain("market_gain_b");
+    expect(G.market).toEqual(["market_gain_a", "market_gain_b", "market_region"]);
+    expect(G.log.at(-1)?.message).toBe("MarketCardChoicePending(gain_source/gain_card/options=2)");
+  });
+
+  it("resolves a take_card market choice without taking tucked Unrest and then resumes effects", () => {
+    const G = createInitialState();
+    G.market = ["market_take_a", "market_take_b"];
+    G.marketRefillPool = ["market_refill"];
+    G.marketDecks = undefined;
+    G.marketResources = { market_take_b: { knowledge: 1 } };
+    G.marketUnrest = { market_take_b: ["test_unrest_1"] };
+    G.unrestPile = ["test_unrest_2"];
+    for (const id of ["market_take_a", "market_take_b", "market_refill"]) {
+      G.cardDb[id] = {
+        id,
+        displayName: id,
+        type: "action",
+        cardType: "action",
+        suit: "civilized",
+        cost: 0,
+        tags: [],
+        effects: [{ trigger: "on_acquire", op: "gain_resource", resource: "materials", amount: 3 } as any]
+      };
+    }
+
+    runEffects({ G, playerId: "0", selfCardId: "take_source" }, [
+      { trigger: "on_play", op: "take_card", source: "market", suit: "civilized", count: 1 } as any,
+      { trigger: "on_play", op: "gain_resource", resource: "influence", amount: 2 } as any
+    ]);
+
+    expect(G.pendingMarketCardChoice?.cardIds).toEqual(["market_take_a", "market_take_b"]);
+    expect(G.players["0"].resources.influence).toBe(0);
+
+    (moves as any).resolveMarketCardChoice({ G, ctx: { currentPlayer: "0" } as any }, "market_take_b");
+
+    expect(G.pendingMarketCardChoice).toBeUndefined();
+    expect(G.players["0"].hand).toContain("market_take_b");
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["0"].resources.materials).toBe(0);
+    expect(G.players["0"].resources.influence).toBe(2);
+    expect(G.unrestPile).toContain("test_unrest_1");
+    expect(G.players["0"].hand).not.toContain("test_unrest_1");
+    expect(G.market).toEqual(["market_take_a", "market_refill"]);
+    expect(G.log.some((entry) => entry.message === "MarketCardChoiceResolved(take_source/take_card/market_take_b)")).toBe(true);
+  });
+
   it("break_through from market returns tucked unrest instead of taking it", () => {
     const G = createInitialState();
     G.market = ["test_action_foundry_shift"];
@@ -1670,6 +1900,104 @@ describe("effectRunner", () => {
     expect(G.market).toEqual(["market_uncivilized_a", "market_region", "market_uncivilized_b"]);
     expect(G.players["0"].hand).toEqual([]);
     expect(G.log.at(-1)?.message).toBe("BreakThroughChoicePending(market_breaker/source=market/options=2)");
+  });
+
+  it("break_through from Market pauses for a new choice when refill creates multiple matches mid-effect", () => {
+    const G = createInitialState();
+    G.market = ["market_region", "market_uncivilized_b", "market_uncivilized_a"];
+    G.marketDecks = {
+      mainDeck: ["main_fallback"],
+      regionDeck: [],
+      uncivilizedDeck: ["market_uncivilized_refill"],
+      civilizedDeck: [],
+      tributaryDeck: []
+    };
+    G.unrestPile = ["test_unrest_1"];
+    G.cardDb.market_region = {
+      id: "market_region",
+      displayName: "Market Region",
+      type: "region",
+      cardType: "region",
+      suit: "region",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    for (const id of ["market_uncivilized_a", "market_uncivilized_b", "market_uncivilized_refill", "main_fallback"]) {
+      G.cardDb[id] = {
+        id,
+        displayName: id,
+        type: "action",
+        cardType: "action",
+        suit: "uncivilized",
+        cost: 0,
+        tags: [],
+        effects: []
+      };
+    }
+
+    runEffects({ G, playerId: "0", selfCardId: "market_breaker" }, [{
+      trigger: "on_play",
+      op: "break_through",
+      suit: "uncivilized",
+      source: "market",
+      cardId: "market_uncivilized_a",
+      count: 2
+    } as any]);
+
+    expect(G.players["0"].hand).toEqual(["market_uncivilized_a"]);
+    expect(G.market).toEqual(["market_region", "market_uncivilized_b", "market_uncivilized_refill"]);
+    expect(G.pendingBreakThroughChoice).toEqual({
+      playerId: "0",
+      sourceCardId: "market_breaker",
+      source: "market",
+      suit: "uncivilized",
+      cardIds: ["market_uncivilized_b", "market_uncivilized_refill"]
+    });
+  });
+
+  it("does not log direct market Break-through success when refill triggers Collapse", () => {
+    const G = createInitialState();
+    G.market = ["market_uncivilized"];
+    G.marketRefillPool = ["refill_civilized"];
+    G.marketDecks = undefined;
+    G.unrestPile = [];
+    G.cardDb.market_uncivilized = {
+      id: "market_uncivilized",
+      displayName: "Market Uncivilized",
+      type: "action",
+      cardType: "action",
+      suit: "uncivilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb.refill_civilized = {
+      id: "refill_civilized",
+      displayName: "Refill Civilized",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb.p0_unrest = { id: "p0_unrest", displayName: "Unrest", type: "unrest", cardType: "unrest", suit: "unrest", cost: 0, tags: ["unrest"], effects: [] };
+    G.cardDb.p1_unrest = { id: "p1_unrest", displayName: "Unrest", type: "unrest", cardType: "unrest", suit: "unrest", cost: 0, tags: ["unrest"], effects: [] };
+    G.players["0"].discard = ["p0_unrest"];
+    G.players["1"].discard = ["p1_unrest"];
+
+    runEffects({ G, playerId: "0" }, [{
+      trigger: "on_play",
+      op: "break_through",
+      source: "market",
+      suit: "uncivilized",
+      cardId: "market_uncivilized",
+      count: 1
+    } as any]);
+
+    expect(G.gameover?.reason).toBe("collapse:unrest_pile_empty");
+    expect(G.log.some((entry) => entry.message === "BreakThroughMarket(market_uncivilized/uncivilized)")).toBe(false);
   });
 
   it("break_through can take a specified matching card from Exile without taking Unrest", () => {
@@ -1961,12 +2289,37 @@ describe("effectRunner", () => {
     expect(G.lookedCards?.cardIds).toEqual(["accession_card"]);
   });
 
-  it("look_cards ignores the special bottom Fame card unless it is the only Fame card available", () => {
+  it("look_cards can reveal a separately tracked Accession when it is the only Nation card left", () => {
+    const G = createInitialState();
+    G.players["0"].nationDeck = [];
+    G.players["0"].accessionCardId = "accession_card";
+    G.cardDb.accession_card = {
+      id: "accession_card",
+      displayName: "Accession",
+      type: "accession",
+      cardType: "accession",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+
+    runEffects({ G, playerId: "0" }, [{
+      trigger: "on_play",
+      op: "look_cards",
+      source: "nationDeck",
+      count: 1
+    } as any]);
+
+    expect(G.lookedCards?.cardIds).toEqual(["accession_card"]);
+  });
+
+  it("look_cards ignores King of Kings while ordinary Fame remains, but reveals it when it is the only face-up Fame card", () => {
     const G = createInitialState();
     G.fameDeck = {
       available: ["fame_top"],
       specialBottomCardId: "fame_bottom",
-      specialBottomSide: "face_down",
+      specialBottomSide: "B",
       resolvedSpecialByPlayer: {}
     };
 
@@ -1992,6 +2345,16 @@ describe("effectRunner", () => {
     } as any]);
 
     expect(G.lookedCards?.cardIds).toEqual(["fame_bottom"]);
+
+    G.fameDeck.specialBottomSide = "face_down";
+    runEffects({ G, playerId: "0" }, [{
+      trigger: "on_play",
+      op: "look_cards",
+      source: "fameDeck",
+      count: 2
+    } as any]);
+
+    expect(G.lookedCards?.cardIds).toEqual([]);
   });
 
   it("find_card shuffles searched Draw and Nation decks and does not Find the accession card", () => {
@@ -2122,6 +2485,39 @@ describe("effectRunner", () => {
     expect(G.players["0"].history).toEqual([]);
     expect(G.players["0"].hand).toEqual(["history_target", "history_target"]);
     expect(G.log.at(-1)?.message).toBe("FindResolved(history_target/history->hand)");
+  });
+
+  it("find_card treats a nation History replacement zone as History", () => {
+    const G = createInitialState();
+    G.players["0"].history = [];
+    G.players["0"].sideAreas = { sunken: ["history_target"] };
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      zoneOverrides: [{ op: "replace_history_with_zone", zoneId: "sunken", displayName: "Sunken", cardsScore: true } as any]
+    };
+    G.cardDb.history_target = {
+      id: "history_target",
+      displayName: "History Target",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+
+    runEffects({ G, playerId: "0" }, [{
+      trigger: "on_play",
+      op: "find_card",
+      cardId: "history_target",
+      sourceZones: ["history"],
+      destination: "hand"
+    } as any]);
+
+    expect(G.players["0"].history).toEqual([]);
+    expect(G.players["0"].sideAreas?.sunken).toEqual([]);
+    expect(G.players["0"].hand).toEqual(["history_target"]);
+    expect(G.log.at(-1)?.message).toBe("FindResolved(history_target/sunken->hand)");
   });
 
   it("find_card by criteria can include History as the searched source", () => {
@@ -2557,6 +2953,29 @@ describe("effectRunner", () => {
     expect(G.pendingDevelopmentChoice).toBeUndefined();
     expect(p.resources.knowledge).toBe(0);
     expect(G.log.at(-1)?.message).toBe("DevelopmentSkipped(no_payable_cards)");
+  });
+
+  it("does not resolve a Develop effect for nations whose Development area is replaced", () => {
+    const G = createInitialState();
+    const p = G.players["0"];
+    p.developmentArea = ["test_action_scholars_circle"];
+    p.resources.materials = 2;
+    G.cardDb.test_action_scholars_circle.developmentCost = { materials: 2 };
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      rulesetTags: ["no_development_area", "quest_development_replacement"] as any
+    };
+
+    const result = runEffects({ G, playerId: "0", selfCardId: "develop_source" }, [
+      { trigger: "on_play", op: "develop" },
+      { trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }
+    ] as any);
+
+    expect(result).toBe(false);
+    expect(G.pendingDevelopmentChoice).toBeUndefined();
+    expect(p.developmentArea).toEqual(["test_action_scholars_circle"]);
+    expect(p.resources.knowledge).toBe(0);
+    expect(G.log.at(-1)?.message).toBe("DevelopmentSkipped(no_development_area)");
   });
 
   it("stops later effects when a conditional branch cannot pay its cost", () => {

@@ -1,8 +1,9 @@
 import type { GameState } from "./state";
-import type { ScoringOverride, ZoneOverride } from "../nations/nationRulesetTypes";
+import type { ScoringOverride } from "../nations/nationRulesetTypes";
 import { runEffects } from "../cards/effectRunner";
 import { runNationHooks } from "../nations/nationRulesetHooks";
 import { currentStateMatches } from "./stateMatching";
+import { actualScoredHistoryZoneIds } from "./history";
 
 function logOverride(G: GameState, playerId: string, nationId: string, category: string, op: string): void {
   G.log.push({ round: G.round, playerId, message: `NationRulesetApplied(${nationId}/${category}/${op})` });
@@ -17,14 +18,6 @@ function getZoneCards(G: GameState, playerId: string, zoneId: string): string[] 
   if (G.specialZones?.[playerId]?.[zoneId]?.cardIds) return G.specialZones[playerId][zoneId].cardIds;
   if (G.globalSpecialZones?.[zoneId]?.cardIds) return G.globalSpecialZones[zoneId].cardIds;
   return [];
-}
-
-function isDisableHistoryOverride(override: ZoneOverride): override is Extract<ZoneOverride, { op: "disable_history" }> {
-  return override.op === "disable_history";
-}
-
-function isHistoryReplacementOverride(override: ZoneOverride): override is Extract<ZoneOverride, { op: "replace_history_with_zone" }> {
-  return override.op === "replace_history_with_zone";
 }
 
 function cardVp(G: GameState, cardId: string): number {
@@ -121,6 +114,7 @@ function hasPendingInterruption(G: GameState): boolean {
     ?? G.pendingDrawChoice
     ?? G.pendingFindChoice
     ?? G.pendingAcquireChoice
+    ?? G.pendingMarketCardChoice
     ?? G.pendingBreakThroughChoice
     ?? G.pendingExileChoice
     ?? G.pendingGarrisonChoice
@@ -146,8 +140,7 @@ function garrisonedCardsInScoringZones(G: GameState, playerId: string, scoringZo
 }
 
 function collapseUnrestCount(G: GameState, playerId: string): number {
-  const p = G.players[playerId];
-  const ownedZoneIds = ["hand", "playArea", "deck", "discard", "history"];
+  const ownedZoneIds = ["hand", "playArea", "deck", "discard", ...actualScoredHistoryZoneIds(G, playerId)];
   const ownedCards = ownedZoneIds.flatMap((zoneId) => getZoneCards(G, playerId, zoneId));
   const garrisonedCards = ownedZoneIds
     .flatMap((zoneId) => getZoneCards(G, playerId, zoneId))
@@ -160,6 +153,53 @@ function applyAutoWinCollapseOverride(G: GameState, playerId: string, ruleset: N
   logOverride(G, playerId, ruleset.nationId, "collapse", "auto_win_if_zone_empty");
   G.gameover = { winner: playerId, reason: `auto_win_if_zone_empty:${zoneId}` };
   G.log.push({ round: G.round, playerId, message: `CollapseAutoWin(${ruleset.nationId}/${zoneId})` });
+}
+
+function isDirectReturnUnrestEffect(effect: unknown): boolean {
+  const op = (effect as { op?: unknown }).op;
+  const cardId = (effect as { cardId?: unknown }).cardId;
+  return op === "return_unrest" && typeof cardId === "string";
+}
+
+function isCollapseTieBreakReturnUnrestHook(hook: { trigger?: string; effects?: unknown[] }): boolean {
+  if (hook.trigger !== "before_scoring" || !hook.effects?.length) return false;
+  return hook.effects.every(isDirectReturnUnrestEffect);
+}
+
+function scoringReturnUnrestSourceZones(G: GameState, playerId: string): string[] {
+  return ["hand", "playArea", "discard", "deck", ...actualScoredHistoryZoneIds(G, playerId)];
+}
+
+function expandScoringReturnUnrestSources(G: GameState, hook: NonNullable<GameState["activeNationRulesets"]>[string]["hookRules"][number], playerId: string): typeof hook {
+  if (hook.trigger !== "before_scoring") return hook;
+  return {
+    ...hook,
+    effects: hook.effects.map((effect) => {
+      if ((effect as { op?: unknown }).op !== "return_unrest" || (effect as { sourceZones?: unknown }).sourceZones) return effect;
+      return {
+        ...effect,
+        sourceZones: scoringReturnUnrestSourceZones(G, playerId) as any
+      };
+    })
+  };
+}
+
+function applyCollapseTieBreakReturnUnrestHooks(G: GameState, playerIds: string[]): void {
+  for (const playerId of playerIds) {
+    const ruleset = G.activeNationRulesets?.[playerId];
+    if (!ruleset) continue;
+    const eligibleHooks = ruleset.hookRules
+      .filter(isCollapseTieBreakReturnUnrestHook)
+      .map((hook) => expandScoringReturnUnrestSources(G, hook, playerId));
+    if (eligibleHooks.length === 0) continue;
+    const originalHooks = ruleset.hookRules;
+    ruleset.hookRules = eligibleHooks;
+    try {
+      runNationHooks({ G, playerId, trigger: "before_scoring" });
+    } finally {
+      ruleset.hookRules = originalHooks;
+    }
+  }
 }
 
 export function applyCollapseWinChecks(G: GameState, playerId: string, randomNumber?: () => number): boolean {
@@ -207,6 +247,7 @@ export function applyScoringLifecycleOnce(G: GameState, playerId: string): boole
   const startOverrideIndex = pending?.overrideIndex ?? 0;
 
   if (!pending) {
+    ruleset.hookRules = ruleset.hookRules.map((hook) => expandScoringReturnUnrestSources(G, hook, playerId));
     runNationHooks({ G, playerId, trigger: "before_scoring" });
     if (G.gameover) return false;
     if (hasPendingInterruption(G)) {
@@ -288,8 +329,9 @@ export function triggerCollapse(G: GameState, reason: string, triggeredBy?: stri
   const sorted = Object.entries(scores).sort(([, a], [, b]) => a - b);
   const lowScore = sorted[0]?.[1] ?? 0;
   const winners = sorted.filter(([, score]) => score === lowScore).map(([playerId]) => playerId);
+  if (winners.length > 1) applyCollapseTieBreakReturnUnrestHooks(G, winners);
   const tieBreakScores = winners.length > 1
-    ? Object.fromEntries(winners.map((playerId) => [playerId, scorePlayer(G, playerId)]))
+    ? Object.fromEntries(winners.map((playerId) => [playerId, calculatePlayerScore(G, playerId)]))
     : undefined;
   const tieBreakWinners = tieBreakScores
     ? Object.entries(tieBreakScores)
@@ -375,20 +417,17 @@ export function advanceScoringAtRoundBoundary(G: GameState): void {
 
 export function scorePlayer(G: GameState, playerId: string): number {
   if (!applyScoringLifecycleOnce(G, playerId)) return 0;
+  return calculatePlayerScore(G, playerId);
+}
 
+function calculatePlayerScore(G: GameState, playerId: string): number {
   const p = G.players[playerId];
   const ruleset = G.activeNationRulesets?.[playerId];
   const excludedZones = new Set((ruleset?.scoringOverrides ?? []).filter((ov) => ov.op === "exclude_zone_from_scoring").map((ov) => ov.zoneId));
-  const disableHistory = ruleset?.zoneOverrides?.find(isDisableHistoryOverride);
-  const replacementHistory = ruleset?.zoneOverrides?.find(isHistoryReplacementOverride);
-  const historyZoneId = replacementHistory?.zoneId ?? (disableHistory?.replacementBehavior === "alternate_zone" ? "alternate_history" : "history");
   const baseScoringZones = ["hand", "playArea", "deck", "discard", "powerArea"];
-  const historyScore = replacementHistory?.cardsScore === false
-    ? 0
-    : disableHistory && disableHistory.replacementBehavior !== "alternate_zone"
-    ? 0
-    : scoreZone(G, playerId, historyZoneId, excludedZones);
-  const cardScore = baseScoringZones.reduce((sum, zoneId) => sum + scoreZone(G, playerId, zoneId, excludedZones), historyScore);
-  const garrisonScore = scoreCardIds(G, garrisonedCardsInScoringZones(G, playerId, [...baseScoringZones, historyZoneId], excludedZones));
+  const historyZoneIds = actualScoredHistoryZoneIds(G, playerId);
+  const scoredZoneIds = [...baseScoringZones, ...historyZoneIds];
+  const cardScore = scoredZoneIds.reduce((sum, zoneId) => sum + scoreZone(G, playerId, zoneId, excludedZones), 0);
+  const garrisonScore = scoreCardIds(G, garrisonedCardsInScoringZones(G, playerId, scoredZoneIds, excludedZones));
   return cardScore + garrisonScore + scoreResourcePool(G, playerId);
 }

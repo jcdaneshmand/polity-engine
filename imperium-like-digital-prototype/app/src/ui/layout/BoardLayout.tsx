@@ -8,7 +8,7 @@ import { GameLogPanel } from "./GameLogPanel";
 import { BotRow } from "./BotRow";
 import { ZoneDetailPanel } from "./ZoneDetailPanel";
 import { TurnStatusBar } from "./TurnStatusBar";
-import { getActionHintsByCardId, getAvailableActionsForSelection, getPendingUiState, getSelectedCard, type Selection } from "../controller/selectionModel";
+import { getActionHintsByCardId, getAvailableActionsForSelection, getMarketCardClickAction, getPendingUiState, getSelectedCard, type Selection } from "../controller/selectionModel";
 import { CONTROLLER_HINTS } from "../controller/controllerHints";
 import { handleBoardKeyDown } from "../controller/keyboardControls";
 import { getBotPiles, getCurrentPlayer, getInspectableLookedCards, getInspectableZone, getMarketCards, getRecentLogEntries, getSharedPiles } from "./uiSelectors";
@@ -31,7 +31,8 @@ export default function BoardLayout({ G, ctx, moves }: any) {
   const lookedZone = getInspectableLookedCards(G, ctx.currentPlayer);
   const actions = useMemo(() => getAvailableActionsForSelection(selection, G, ctx), [selection, G, ctx]);
   const pending = getPendingUiState(G, ctx);
-  const actionHintsByCardId = useMemo(() => getActionHintsByCardId(actions), [actions]);
+  const handActionHintsByCardId = useMemo(() => getActionHintsByCardId(actions, "hand"), [actions]);
+  const marketActionHintsByCardId = useMemo(() => getActionHintsByCardId(actions, "market"), [actions]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => handleBoardKeyDown(e, { onEndTurn: () => moves.endTurn?.(), onClear: () => setSelection(null), onCyclePanel: () => {}, onShortcut: () => {} });
@@ -49,6 +50,7 @@ export default function BoardLayout({ G, ctx, moves }: any) {
     if (a.action === "resolveDrawChoice" && a.cardId) moves.resolveDrawChoice?.(a.cardId);
     if (a.action === "resolveFindChoice" && a.cardId) moves.resolveFindChoice?.(a.cardId);
     if (a.action === "resolveAcquireChoice" && a.cardId) moves.resolveAcquireChoice?.(a.cardId);
+    if (a.action === "resolveMarketCardChoice" && a.cardId) moves.resolveMarketCardChoice?.(a.cardId);
     if (a.action === "resolveExileChoice" && a.cardId) moves.resolveExileChoice?.(a.cardId);
     if (a.action === "skipExileChoice") moves.skipExileChoice?.();
     if (a.action === "resolveBreakThroughChoice" && a.cardId) moves.resolveBreakThroughChoice?.(a.cardId);
@@ -78,13 +80,22 @@ export default function BoardLayout({ G, ctx, moves }: any) {
     if (a.action === "cancel") { setSelection(null); setDetailCardId(null); }
   };
 
+  const onMarketCardClick = (id: string) => {
+    const directAction = getMarketCardClickAction(G, ctx, id);
+    if (directAction) {
+      onAction(directAction);
+      return;
+    }
+    setSelection({kind:"market_slot",id});
+  };
+
   return <div className="board-layout">
     <div className="left">
       <TurnStatusBar G={G} ctx={ctx} player={player} pending={pending} />
       <SharedAreaRow piles={shared} round={G.round ?? 1} />
-      <MarketRow cards={marketCards} selectedId={selection?.id} resources={player?.resources} resourceLabels={resourceLabels} actionHintsByCardId={actionHintsByCardId} onSelect={(id)=>setSelection({kind:"market_slot",id})} />
+      <MarketRow cards={marketCards} selectedId={selection?.id} resources={player?.resources} resourceLabels={resourceLabels} actionHintsByCardId={marketActionHintsByCardId} marketResources={G.marketResources ?? {}} onSelect={onMarketCardClick} />
       <BotRow bot={G.solo?.bot} cardDb={G.cardDb ?? {}} selectedId={selection?.kind === "bot_zone" ? selection.id : undefined} resourceLabels={resourceLabels} onSelectZone={(id)=>setSelection({kind:"bot_zone",id})} />
-      <PlayerArea player={player} cardDb={G.cardDb ?? {}} resourceLabels={resourceLabels} selectedId={selection?.id} selectedZoneId={selection?.kind === "player_zone" ? selection.id : undefined} actionHintsByCardId={actionHintsByCardId} onSelectZone={(id:string)=>setSelection({kind:"player_zone",id,playerId:ctx.currentPlayer})} onSelect={(id:string)=>setSelection({kind:"hand_card",id,playerId:ctx.currentPlayer})} />
+      <PlayerArea player={player} cardDb={G.cardDb ?? {}} resourceLabels={resourceLabels} selectedId={selection?.id} selectedZoneId={selection?.kind === "player_zone" ? selection.id : undefined} actionHintsByCardId={handActionHintsByCardId} onSelectZone={(id:string)=>setSelection({kind:"player_zone",id,playerId:ctx.currentPlayer})} onSelect={(id:string)=>setSelection({kind:"hand_card",id,playerId:ctx.currentPlayer})} />
       <div className="panel hints">{CONTROLLER_HINTS.map((h)=> <div key={h}>{h}</div>)}</div>
     </div>
     <div className="right">

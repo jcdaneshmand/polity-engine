@@ -2,12 +2,15 @@ import { useMemo, useState } from "react";
 import type { CommonsSetId, ExpansionId, GameMode, GameOptions, SoloDifficulty, VariantId } from "../../../../engine/src/options/gameOptions";
 import { loadNationDb } from "../../../../engine/src/nations/nationLoader";
 import { loadBotStateTables } from "../../../../engine/src/solo/botStateTableLoader";
+import type { PrivateDataBundle } from "../../../../engine/src/setup/privateDataBundle";
 import { getBotNationSetupOptions } from "./botNationOptions";
+import { hasPrivateData, importPrivateDataFiles, type PrivateDataFileStatus } from "./privateDataImport";
 
 export type NewGameSessionConfig = {
   options: GameOptions;
   playerNationIds: Record<string, string>;
   soloBotNationId?: string;
+  privateData?: PrivateDataBundle;
 };
 
 type NewGameSetupProps = {
@@ -49,8 +52,11 @@ const soloDifficulties: Array<{ id: SoloDifficulty; label: string }> = [
 
 type NationOption = { id: string; label: string };
 
-function getNationOptions(enabledExpansions: ExpansionId[]): NationOption[] {
-  return Object.values(loadNationDb({ enabledExpansions })).map((nation) => ({
+function getNationOptions(enabledExpansions: ExpansionId[], privateData?: PrivateDataBundle): NationOption[] {
+  const nations = privateData?.nations?.length ? privateData.nations : Object.values(loadNationDb({ enabledExpansions }));
+  return nations
+    .filter((nation) => !nation.requiredExpansions.some((expansion) => !enabledExpansions.includes(expansion)) && !(nation.excludedExpansions ?? []).some((expansion) => enabledExpansions.includes(expansion)))
+    .map((nation) => ({
     id: nation.id,
     label: nation.displayName
   }));
@@ -77,23 +83,25 @@ export default function NewGameSetup({ onStart }: NewGameSetupProps) {
   const [commonsSetId, setCommonsSetId] = useState<CommonsSetId>("classics");
   const [soloDifficulty, setSoloDifficulty] = useState<SoloDifficulty>("chieftain");
   const [soloBotNationId, setSoloBotNationId] = useState<string>("random");
+  const [privateData, setPrivateData] = useState<PrivateDataBundle>({});
+  const [privateFileStatuses, setPrivateFileStatuses] = useState<PrivateDataFileStatus[]>([]);
   const [playerNationIds, setPlayerNationIds] = useState<Record<string, string>>({
-    "0": DEFAULT_NATION_ID,
     "1": DEFAULT_NATION_ID,
     "2": DEFAULT_NATION_ID,
-    "3": DEFAULT_NATION_ID
+    "3": DEFAULT_NATION_ID,
+    "4": DEFAULT_NATION_ID
   });
 
   const normalizedPlayerCount = playerCountForMode(mode, playerCount);
   const availableNations = useMemo(
-    () => getNationOptions(enabledExpansions),
-    [enabledExpansions]
+    () => getNationOptions(enabledExpansions, privateData),
+    [enabledExpansions, privateData]
   );
   const botNationOptions = useMemo(
     () => getBotNationSetupOptions(availableNations, loadBotStateTables()),
     [availableNations]
   );
-  const activePlayerIds = Array.from({ length: normalizedPlayerCount }, (_, index) => String(index));
+  const activePlayerIds = Array.from({ length: normalizedPlayerCount }, (_, index) => String(index + 1));
 
   const updateMode = (nextMode: GameMode) => {
     setMode(nextMode);
@@ -103,7 +111,7 @@ export default function NewGameSetup({ onStart }: NewGameSetupProps) {
   const updateExpansions = (expansionId: ExpansionId) => {
     setEnabledExpansions((current) => {
       const next = toggleItem(current, expansionId);
-      const nextNations = getNationOptions(next);
+      const nextNations = getNationOptions(next, privateData);
       const nextNationIds = new Set(nextNations.map((nation) => nation.id));
       setPlayerNationIds((nations) =>
         Object.fromEntries(
@@ -129,7 +137,33 @@ export default function NewGameSetup({ onStart }: NewGameSetupProps) {
     };
     const selectedNations = Object.fromEntries(activePlayerIds.map((playerId) => [playerId, playerNationIds[playerId] ?? DEFAULT_NATION_ID]));
 
-    onStart({ options, playerNationIds: selectedNations, ...(mode === "solo" ? { soloBotNationId } : {}) });
+    onStart({
+      options,
+      playerNationIds: selectedNations,
+      ...(mode === "solo" ? { soloBotNationId } : {}),
+      ...(hasPrivateData(privateData) ? { privateData } : {})
+    });
+  };
+
+  const importPrivateFiles = async (event: { target: HTMLInputElement }) => {
+    const files = Array.from(event.target.files ?? []);
+    if (!files.length) return;
+    const result = await importPrivateDataFiles(files.map((file) => ({ name: file.name, text: () => file.text() })));
+    setPrivateData(result.privateData);
+    setPrivateFileStatuses(result.files);
+    if (result.privateData.nations?.length) {
+      const nextNations = getNationOptions(enabledExpansions, result.privateData);
+      const nextNationIds = new Set(nextNations.map((nation) => nation.id));
+      setPlayerNationIds((current) =>
+        Object.fromEntries(
+          activePlayerIds.map((playerId) => [
+            playerId,
+            nextNationIds.has(current[playerId]) ? current[playerId] : firstNationId(nextNations)
+          ])
+        )
+      );
+      setSoloBotNationId((nationId) => nationId === "random" || nextNationIds.has(nationId) ? nationId : "random");
+    }
   };
 
   return (
@@ -137,7 +171,7 @@ export default function NewGameSetup({ onStart }: NewGameSetupProps) {
       <section className="setup-panel" aria-labelledby="setup-title">
         <div className="setup-heading">
           <div>
-            <p className="setup-kicker">Prototype setup</p>
+            <p className="setup-kicker">Polity Engine setup</p>
             <h1 id="setup-title">New Game</h1>
           </div>
           <button className="primary-action" type="button" onClick={startGame}>
@@ -241,7 +275,7 @@ export default function NewGameSetup({ onStart }: NewGameSetupProps) {
             <div className="nation-grid">
               {activePlayerIds.map((playerId) => (
                 <label key={playerId} className="setup-field">
-                  <span>Player {Number(playerId) + 1}</span>
+                  <span>Player {playerId}</span>
                   <select value={playerNationIds[playerId] ?? DEFAULT_NATION_ID} onChange={(event: { target: HTMLSelectElement }) => setPlayerNationIds((current) => ({ ...current, [playerId]: event.target.value }))}>
                     {availableNations.map((nation) => (
                       <option key={nation.id} value={nation.id}>
@@ -253,7 +287,44 @@ export default function NewGameSetup({ onStart }: NewGameSetupProps) {
               ))}
             </div>
           </fieldset>
+
+          <fieldset className="setup-section setup-section--wide">
+            <legend>Private Data</legend>
+            <p className="setup-help">
+              Upload generated JSON files such as cards.normalized.json and nations.normalized.json, or raw private CSV files such as imperium_cards_private.csv and imperium_nations_private.csv. Optional files include nation rulesets, nation strategy, bot state tables, and bot trade route tables.
+              {" "}
+              <a href="https://github.com/jcdaneshmand/polity-engine/blob/main/imperium-like-digital-prototype/docs/private-card-data-workflow.md#csv-and-json-schemas" target="_blank" rel="noreferrer">
+                View the private data schema reference
+              </a>
+              .
+            </p>
+            <label className="setup-field">
+              <span>Upload JSON or CSV files</span>
+              <input type="file" multiple accept=".json,.csv,application/json,text/csv" onChange={importPrivateFiles} />
+            </label>
+            {privateFileStatuses.length ? (
+              <div className="private-file-list">
+                {privateFileStatuses.map((file) => (
+                  <div key={file.name} className={`private-file-status private-file-status--${file.status}`}>
+                    <strong>{file.name}</strong>
+                    <span>{file.message}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </fieldset>
         </div>
+        <p className="setup-attribution">
+          Imperium: Classics, Imperium: Legends, and Imperium: Horizons are owned by Osprey Games. Visit the{" "}
+          <a href="https://www.ospreypublishing.com/uk/discover/osprey-games/imperium/" target="_blank" rel="noreferrer">
+            official Osprey Imperium page
+          </a>
+          . Polity Engine is an open-source, free, non-commercial fan project; view the{" "}
+          <a href="https://github.com/jcdaneshmand/polity-engine" target="_blank" rel="noreferrer">
+            GitHub repository
+          </a>
+          . It does not include copyrighted card text, artwork, logos, or other protected materials from those games.
+        </p>
       </section>
     </main>
   );

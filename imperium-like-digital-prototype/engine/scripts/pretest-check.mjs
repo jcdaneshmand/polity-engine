@@ -11,7 +11,7 @@ const workspaceNodeModules = path.join(workspaceRoot, 'node_modules');
 const requireFromEngine = createRequire(path.join(engineDir, 'package.json'));
 
 function printInstallGuidance() {
-  console.error('Unable to find `vitest` for @prototype/engine tests.');
+  console.error('Unable to find `vitest` for @polity-engine/engine tests.');
   console.error('Run `npm install` from `/workspace/polity-engine/imperium-like-digital-prototype`.');
   console.error('Reminder: root-level `/workspace/polity-engine` is not the canonical command root for workspace scripts.');
 }

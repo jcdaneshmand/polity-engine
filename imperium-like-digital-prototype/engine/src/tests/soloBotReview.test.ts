@@ -815,6 +815,42 @@ describe("solo bot setup from imported cards", () => {
     expect(bot.slots[1].cardId).toBe("bot_one");
   });
 
+  it("keeps the last resolved Bot slot card visible for the UI after cleanup", () => {
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        bot_used: card({ id: "bot_used", displayName: "Bot Used", suit: "region", cardType: "attack", startingLocation: "bot_deck" }),
+        bot_refill: card({ id: "bot_refill", displayName: "Bot Refill", suit: "civilized", cardType: "action", startingLocation: "bot_deck" })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    Object.values(bot.slots).forEach((slot) => { slot.cardId = undefined; slot.face = "down"; slot.blockedByDie = false; });
+    bot.slots[1].cardId = "bot_used";
+    bot.botDeck = ["bot_refill"];
+    bot.botDiscard = [];
+    G.solo!.botStateTables = {
+      [bot.botStateTableId]: {
+        id: "test_table",
+        botNationId: "test_nation_sun_coast",
+        displayName: "Test Table",
+        side: "S",
+        rows: [
+          { id: "history", priority: 1, trigger: { kind: "other" }, effects: [{ op: "bot_put_revealed_card_into_history" }], implemented: true, tested: true }
+        ]
+      }
+    };
+
+    runBotTurn({ G, rollDie: () => 5 });
+
+    expect(bot.botHistory).toContain("bot_used");
+    expect(bot.slots[1].cardId).toBe("bot_refill");
+    expect(bot.slots[1].face).toBe("down");
+    expect(bot.revealedSlotCard).toEqual({ slotNumber: 1, cardId: "bot_used" });
+  });
+
   it("human_recall pauses the Bot turn for a human Region choice and resumes after it resolves", () => {
     const G = createInitialGameStateFromPipeline({
       options,

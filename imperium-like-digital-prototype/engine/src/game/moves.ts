@@ -3,7 +3,7 @@ import { resolvePendingTradeChoice, runAcquireTriggers, runEffects, runTriggered
 import type { DrawSourceZone, Effect, EffectTrigger, FindSourceZone, GameState, LookSourceZone, PlaceOnDeckSourceZone, PlayerExileSource, ResourceName, ReturnUnrestSourceZone, Suit, SwapSourceZone, ZoneName } from "./state";
 import { continuePendingNationHooks, runNationHooks } from "../nations/nationRulesetHooks";
 import { continuePausedBotTurn } from "../solo/botTurn";
-import { continuePendingReshuffleLifecycle, resolvePendingDevelopmentChoice, resolvePendingShortGameDevelopmentExileChoice, skipPendingDevelopmentChoice } from "./zones";
+import { canUseDevelopmentArea, continuePendingReshuffleLifecycle, resolvePendingDevelopmentChoice, resolvePendingShortGameDevelopmentExileChoice, skipPendingDevelopmentChoice } from "./zones";
 import { continuePendingUnrestAllocationResolution, continuePendingUnrestTake } from "./unrest";
 import { collectMarketResources, collectMarketUnrest, resolveCleanupMarketResourceChoice, startCleanupMarketResourceChoice } from "./marketResources";
 import { refillMarketSlot } from "./marketRefill";
@@ -21,15 +21,18 @@ import {
   recallRegionToHand
 } from "./regions";
 import { breakThrough } from "./breakThrough";
-import { acquireFromExile, exileMarketCard, exilePlayerCard } from "./exile";
-import { acquireMarketCard } from "./marketAcquire";
-import { resolvePendingUnrestAllocationChoice, returnUnrestCard } from "./unrest";
+import { acquireFromExile, exileMarketCard, exilePlayerCard, playerExileSourceCards } from "./exile";
+import { acquireMarketCard, gainMarketCard, takeMarketCard } from "./marketAcquire";
+import { resolvePendingUnrestAllocationChoice, returnUnrestCard, zoneCardsForReturnUnrest } from "./unrest";
 import { currentStateMatches, normalizeStateToken } from "./stateMatching";
 import { placeCardOnDeck } from "./deckPlacement";
 import { giveCardToPlayer } from "./giveCard";
 import { availableSwapChoices, swapCardWithMarket } from "./swap";
 import { cardHasSuitIcon } from "./suitIcons";
 import { startPracticeMarketExileChoice } from "../solo/practiceMode";
+import { peekFameCards } from "./fame";
+import { isAccessionCard, lookableNationDeckCards } from "./nationDeck";
+import { actualHistorySourceZoneIds, moveCardsToHistoryDestination } from "./history";
 
 interface MoveCtx {
   G: GameState;
@@ -64,6 +67,7 @@ function blockingPendingChoice(G: GameState): string | undefined {
   if (G.pendingDrawChoice) return "pending_draw_choice";
   if (G.pendingFindChoice) return "pending_find_choice";
   if (G.pendingAcquireChoice) return "pending_acquire_choice";
+  if (G.pendingMarketCardChoice) return "pending_market_card_choice";
   if (G.pendingBreakThroughChoice) return "pending_break_through_choice";
   if (G.pendingExileChoice) return "pending_exile_choice";
   if (G.pendingGarrisonChoice) return "pending_garrison_choice";
@@ -88,6 +92,7 @@ type ResumablePendingChoice =
   | NonNullable<GameState["pendingDrawChoice"]>
   | NonNullable<GameState["pendingFindChoice"]>
   | NonNullable<GameState["pendingAcquireChoice"]>
+  | NonNullable<GameState["pendingMarketCardChoice"]>
   | NonNullable<GameState["pendingBreakThroughChoice"]>
   | NonNullable<GameState["pendingExileChoice"]>
   | NonNullable<GameState["pendingGarrisonChoice"]>
@@ -107,6 +112,7 @@ function pendingEffectInterruption(G: GameState): ResumablePendingChoice | undef
     ?? G.pendingDrawChoice
     ?? G.pendingFindChoice
     ?? G.pendingAcquireChoice
+    ?? G.pendingMarketCardChoice
     ?? G.pendingBreakThroughChoice
     ?? G.pendingExileChoice
     ?? G.pendingGarrisonChoice
@@ -329,6 +335,7 @@ function canDrawAtLeastOneCardOrReshuffle(G: GameState, playerId: string): boole
 }
 
 function canPayAnyDevelopmentCard(G: GameState, playerId: string): boolean {
+  if (!canUseDevelopmentArea(G, playerId)) return false;
   const p = G.players[playerId];
   return p.developmentArea.some((cardId) => canPayResourceCosts(G, playerId, G.cardDb[cardId]?.developmentCost ?? {}));
 }
@@ -347,13 +354,10 @@ function canGainFameCard(G: GameState, playerId: string): boolean {
 function canLookAtCards(G: GameState, playerId: string, source: LookSourceZone): boolean {
   const p = G.players[playerId];
   if (source === "deck") return p.deck.length > 0;
-  if (source === "nationDeck") {
-    const nonAccessionCards = p.nationDeck.filter((cardId) => !isFindAccessionCard(G, p, cardId));
-    return nonAccessionCards.length > 0 || p.nationDeck.length > 0;
-  }
+  if (source === "nationDeck") return lookableNationDeckCards(G, p).length > 0;
   const fameDeck = G.fameDeck;
   if (!fameDeck) return false;
-  return fameDeck.available.length > 0 || Boolean(fameDeck.specialBottomCardId && fameDeck.specialBottomSide !== "face_down");
+  return peekFameCards(G, 1).length > 0;
 }
 
 function canResolveTradeEffect(G: GameState, playerId: string): boolean {
@@ -371,14 +375,25 @@ function canResolveTradeEffect(G: GameState, playerId: string): boolean {
 }
 
 function isFindAccessionCard(G: GameState, p: GameState["players"][string], cardId: string): boolean {
-  const card = G.cardDb[cardId];
-  return cardId === p.accessionCardId
-    || (card?.cardType ?? card?.type) === "accession"
-    || (card?.tags ?? []).includes("accession");
+  return isAccessionCard(G, p, cardId);
 }
 
-function searchableFindZoneCards(G: GameState, p: GameState["players"][string], zone: FindSourceZone): string[] {
-  const cards = p[zone];
+function findSourceZoneCardsForLegality(G: GameState, playerId: string, zone: string): string[] {
+  const player = G.players[playerId];
+  const direct = (player as unknown as Record<string, unknown>)[zone];
+  if (Array.isArray(direct)) return direct as string[];
+  if (player.sideAreas?.[zone]) return player.sideAreas[zone];
+  if (G.specialZones?.[playerId]?.[zone]?.cardIds) return G.specialZones[playerId][zone].cardIds;
+  if (G.globalSpecialZones?.[zone]?.cardIds) return G.globalSpecialZones[zone].cardIds;
+  return [];
+}
+
+function searchableFindZoneCards(G: GameState, playerId: string, zone: FindSourceZone): string[] {
+  const p = G.players[playerId];
+  if (zone === "history") {
+    return actualHistorySourceZoneIds(G, playerId).flatMap((zoneId) => findSourceZoneCardsForLegality(G, playerId, zoneId));
+  }
+  const cards = findSourceZoneCardsForLegality(G, playerId, zone);
   return zone === "nationDeck" ? cards.filter((cardId) => !isFindAccessionCard(G, p, cardId)) : cards;
 }
 
@@ -387,8 +402,7 @@ function returnUnrestSourceZones(effect: Extract<Effect, { op: "return_unrest" }
 }
 
 function canResolveReturnUnrestEffect(G: GameState, playerId: string, effect: Extract<Effect, { op: "return_unrest" }>): boolean {
-  const p = G.players[playerId];
-  return returnUnrestSourceZones(effect).some((zone) => p[zone].some((cardId) =>
+  return returnUnrestSourceZones(effect).some((zone) => (zoneCardsForReturnUnrest(G, playerId, zone) ?? []).some((cardId) =>
     isUnrestCard(G, cardId) && (!effect.cardId || cardId === effect.cardId)
   ));
 }
@@ -473,10 +487,6 @@ function isPlayerExileSource(source: Extract<Effect, { op: "exile_card" }>["sour
   return source !== "market";
 }
 
-function playerExileSourceCards(G: GameState, playerId: string, source: PlayerExileSource): string[] {
-  return source === "garrison" ? garrisonedCardsInPlay(G, playerId) : G.players[playerId][source];
-}
-
 function playerCardMatchesExileEffect(G: GameState, playerId: string, cardId: string, effect: Extract<Effect, { op: "exile_card" }>): boolean {
   const card = G.cardDb[cardId];
   if (!card) return false;
@@ -551,6 +561,8 @@ function canResolveEffectText(G: GameState, playerId: string, effect: Effect, se
         ? G.market.some((cardId) => marketCardMatchesExileEffect(G, cardId, effect))
         : playerExileSourceCards(G, playerId, effect.source).some((cardId) => playerCardMatchesExileEffect(G, playerId, cardId, effect));
     case "acquire_card":
+    case "gain_card":
+    case "take_card":
       return effect.source === "exile"
         ? p.exile.some((cardId) => (!effect.cardId || cardId === effect.cardId) && (!effect.suit || cardHasSuitIcon(G.cardDb[cardId], effect.suit)) && (!effect.cardType || (G.cardDb[cardId]?.cardType ?? G.cardDb[cardId]?.type) === effect.cardType))
         : G.market.some((cardId) => (!effect.cardId || cardId === effect.cardId) && (!effect.suit || cardHasSuitIcon(G.cardDb[cardId], effect.suit)) && (!effect.cardType || (G.cardDb[cardId]?.cardType ?? G.cardDb[cardId]?.type) === effect.cardType));
@@ -561,7 +573,7 @@ function canResolveEffectText(G: GameState, playerId: string, effect: Effect, se
           ? p.exile.some((cardId) => cardHasSuitIcon(G.cardDb[cardId], effect.suit))
           : true;
     case "find_card":
-      return ((effect.sourceZones?.length ? effect.sourceZones : ["hand", "discard", "deck", "nationDeck"]) as FindSourceZone[]).some((zone) => searchableFindZoneCards(G, p, zone).some((cardId) =>
+      return ((effect.sourceZones?.length ? effect.sourceZones : ["hand", "discard", "deck", "nationDeck"]) as FindSourceZone[]).some((zone) => searchableFindZoneCards(G, playerId, zone).some((cardId) =>
         (!effect.cardId || cardId === effect.cardId) && (!effect.suit || cardHasSuitIcon(G.cardDb[cardId], effect.suit)) && (!effect.cardType || (G.cardDb[cardId]?.cardType ?? G.cardDb[cardId]?.type) === effect.cardType)
       ));
     case "look_cards":
@@ -663,20 +675,38 @@ type FindZone = FindSourceZone;
 function findCardZone(G: GameState, playerId: string, cardId: string): FindZone | undefined {
   const p = G.players[playerId];
   const zones: FindZone[] = ["hand", "discard", "deck", "nationDeck", "playArea", "history"];
-  return zones.find((zone) => p[zone].includes(cardId));
+  const directZone = zones.find((zone) => p[zone].includes(cardId));
+  if (directZone) return directZone;
+  const sideZone = Object.entries(p.sideAreas ?? {}).find(([, cards]) => cards.includes(cardId))?.[0];
+  if (sideZone) return sideZone as FindZone;
+  const playerSpecialZone = Object.entries(G.specialZones?.[playerId] ?? {}).find(([, zone]) => zone.cardIds.includes(cardId))?.[0];
+  if (playerSpecialZone) return playerSpecialZone as FindZone;
+  return Object.entries(G.globalSpecialZones ?? {}).find(([, zone]) => zone.cardIds.includes(cardId))?.[0] as FindZone | undefined;
 }
 
-function movePlayerCard(G: GameState, playerId: string, cardId: string, destination: ZoneName): boolean {
+function findCardZoneCards(G: GameState, playerId: string, zoneId: string): string[] | undefined {
+  const p = G.players[playerId];
+  const direct = (p as unknown as Record<string, unknown>)[zoneId];
+  if (Array.isArray(direct)) return direct as string[];
+  if (p.sideAreas?.[zoneId]) return p.sideAreas[zoneId];
+  if (G.specialZones?.[playerId]?.[zoneId]?.cardIds) return G.specialZones[playerId][zoneId].cardIds;
+  if (G.globalSpecialZones?.[zoneId]?.cardIds) return G.globalSpecialZones[zoneId].cardIds;
+  return undefined;
+}
+
+function movePlayerCard(G: GameState, playerId: string, cardId: string, destination: ZoneName): string | undefined {
   const p = G.players[playerId];
   const fromZone = findCardZone(G, playerId, cardId);
-  if (!fromZone) return false;
-  if (fromZone === destination) return true;
-  const sourceCards = p[fromZone];
+  if (!fromZone) return undefined;
+  if (fromZone === destination) return destination;
+  const sourceCards = findCardZoneCards(G, playerId, fromZone);
+  if (!sourceCards) return undefined;
   const index = sourceCards.indexOf(cardId);
-  if (index < 0) return false;
+  if (index < 0) return undefined;
   sourceCards.splice(index, 1);
+  if (destination === "history") return moveCardsToHistoryDestination(G, playerId, [cardId]);
   p[destination].push(cardId);
-  return true;
+  return destination;
 }
 
 function removeOneCard(cards: string[], cardId: string): boolean {
@@ -1029,7 +1059,8 @@ export function resolveFindChoice({ G, ctx, random }: MoveCtx, cardId: string): 
   }
   const snapshot = cloneGameState(G);
   const resumeEffects = pending.resumeEffects ?? [];
-  if (!movePlayerCard(G, ctx.currentPlayer, cardId, pending.destination)) {
+  const resolvedDestination = movePlayerCard(G, ctx.currentPlayer, cardId, pending.destination);
+  if (!resolvedDestination) {
     logInvalidMove(G, ctx.currentPlayer, "resolveFindChoice", `find_move_failed(${cardId})`);
     return;
   }
@@ -1040,7 +1071,7 @@ export function resolveFindChoice({ G, ctx, random }: MoveCtx, cardId: string): 
     logInvalidMove(G, ctx.currentPlayer, "resolveFindChoice", `resume_effect_failed(${cardId})`);
     return;
   }
-  G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: `FindChoiceResolved(${pending.sourceCardId ?? "unknown"}/${cardId}->${pending.destination})` });
+  G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: `FindChoiceResolved(${pending.sourceCardId ?? "unknown"}/${cardId}->${resolvedDestination})` });
   continuePausedRulesSequences(G, ctx, random?.Number);
 }
 
@@ -1087,6 +1118,41 @@ export function resolveAcquireChoice({ G, ctx, random }: MoveCtx, cardId: string
     return;
   }
   G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: `AcquireChoiceResolved(${pending.sourceCardId ?? "unknown"}/${cardId})` });
+  continuePausedRulesSequences(G, ctx, random?.Number);
+}
+
+export function resolveMarketCardChoice({ G, ctx, random }: MoveCtx, cardId: string): void {
+  const pending = G.pendingMarketCardChoice;
+  if (!pending) {
+    logInvalidMove(G, ctx.currentPlayer, "resolveMarketCardChoice", "no_pending_market_card_choice");
+    return;
+  }
+  if (pending.playerId !== ctx.currentPlayer) {
+    logInvalidMove(G, ctx.currentPlayer, "resolveMarketCardChoice", `pending_market_card_for_player(${pending.playerId})`);
+    return;
+  }
+  if (!pending.cardIds.includes(cardId)) {
+    logInvalidMove(G, ctx.currentPlayer, "resolveMarketCardChoice", `card_not_in_market_card_options(${cardId})`);
+    return;
+  }
+  const snapshot = cloneGameState(G);
+  const resumeEffects = pending.resumeEffects ?? [];
+  const moved = pending.op === "gain_card"
+    ? gainMarketCard(G, { playerId: ctx.currentPlayer, cardId, destination: pending.destination })
+    : takeMarketCard(G, { playerId: ctx.currentPlayer, cardId, destination: pending.destination });
+  if (!moved) {
+    logInvalidMove(G, ctx.currentPlayer, "resolveMarketCardChoice", `market_card_choice_failed(${cardId})`);
+    return;
+  }
+  G.pendingMarketCardChoice = undefined;
+  if (returnIfGameover(G)) return;
+  if (!resumeEffectsAfterPendingChoice({ G, ctx, random }, pending.sourceCardId, resumeEffects)) {
+    if (returnIfGameover(G)) return;
+    restoreGameState(G, snapshot);
+    logInvalidMove(G, ctx.currentPlayer, "resolveMarketCardChoice", `resume_effect_failed(${cardId})`);
+    return;
+  }
+  G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: `MarketCardChoiceResolved(${pending.sourceCardId ?? "unknown"}/${pending.op}/${cardId})` });
   continuePausedRulesSequences(G, ctx, random?.Number);
 }
 
@@ -1560,14 +1626,6 @@ function sameCardSet(a: string[], b: string[]): boolean {
   return counts.size === 0;
 }
 
-function isAccessionCardForLook(G: GameState, playerId: string, cardId: string): boolean {
-  const player = G.players[playerId];
-  const card = G.cardDb[cardId];
-  return cardId === player.accessionCardId
-    || (card?.cardType ?? card?.type) === "accession"
-    || (card?.tags ?? []).includes("accession");
-}
-
 function reorderLookedCards(G: GameState, playerId: string, source: LookSourceZone, orderedCardIds: string[]): boolean {
   const player = G.players[playerId];
   if (source === "deck") {
@@ -1576,8 +1634,8 @@ function reorderLookedCards(G: GameState, playerId: string, source: LookSourceZo
     return true;
   }
   if (source === "nationDeck") {
-    const accessionCards = player.nationDeck.filter((cardId) => isAccessionCardForLook(G, playerId, cardId));
-    const nonAccessionCards = player.nationDeck.filter((cardId) => !isAccessionCardForLook(G, playerId, cardId));
+    const accessionCards = player.nationDeck.filter((cardId) => isAccessionCard(G, player, cardId));
+    const nonAccessionCards = player.nationDeck.filter((cardId) => !isAccessionCard(G, player, cardId));
     if (!sameCardSet(nonAccessionCards.slice(0, orderedCardIds.length), orderedCardIds)) return false;
     player.nationDeck = [...orderedCardIds, ...nonAccessionCards.slice(orderedCardIds.length), ...accessionCards];
     return true;

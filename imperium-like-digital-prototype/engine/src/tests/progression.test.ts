@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createInitialState } from "../game/initialState";
+import { createInitialState as createInitialStateFromEngine } from "../game/initialState";
 import { createInitialGameStateFromPipeline } from "../setup/setupPipeline";
 import { resolveChoice, resolveDevelopmentChoice, resolveExileChoice, resolveLookOrderChoice, resolveShortGameDevelopmentExileChoice, resolveSwapChoice, skipDevelopmentChoice } from "../game/moves";
 import { currentStateMatches } from "../game/stateMatching";
@@ -8,6 +8,12 @@ import type { GameOptions } from "../options/gameOptions";
 import { card, cardDb } from "./commonsTestFixtures";
 
 const ctx = { currentPlayer: "0" } as any;
+
+function createInitialState(args?: Parameters<typeof createInitialStateFromEngine>[0]) {
+  const G = createInitialStateFromEngine({ ...args, usePrivateData: args?.usePrivateData ?? false });
+  for (const player of Object.values(G.players)) player.hand = [];
+  return G;
+}
 
 describe("reshuffle progression", () => {
   it("runs imported nation passive rules at their matching reshuffle hook", () => {
@@ -157,7 +163,7 @@ describe("reshuffle progression", () => {
   });
 
   it("adds the top nation card to discard before shuffling", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = [];
     p.discard = ["test_action_archive_survey"];
@@ -172,7 +178,7 @@ describe("reshuffle progression", () => {
   });
 
   it("runs nation progression when a draw needs reshuffle even if discard starts empty", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = [];
     p.discard = [];
@@ -189,7 +195,7 @@ describe("reshuffle progression", () => {
   });
 
   it("can offer development on reshuffle even if discard starts empty", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = [];
     p.discard = [];
@@ -211,7 +217,7 @@ describe("reshuffle progression", () => {
   });
 
   it("flips state when the accession card is added from the nation deck", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = [];
     p.discard = ["test_action_archive_survey"];
@@ -226,7 +232,7 @@ describe("reshuffle progression", () => {
   });
 
   it("flips the active side of a single two-sided State card on accession", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = [];
     p.discard = ["test_action_archive_survey"];
@@ -258,7 +264,7 @@ describe("reshuffle progression", () => {
   });
 
   it("does not flip state on accession for nations that never become empire", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = [];
     p.discard = ["test_action_archive_survey"];
@@ -294,7 +300,7 @@ describe("reshuffle progression", () => {
   });
 
   it("recognizes an accession-typed Nation card as the accession even without a separate pointer", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = [];
     p.discard = ["test_action_archive_survey"];
@@ -318,7 +324,7 @@ describe("reshuffle progression", () => {
   });
 
   it("flips only the active two-sided state pair on accession", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = [];
     p.discard = ["test_action_archive_survey"];
@@ -332,7 +338,7 @@ describe("reshuffle progression", () => {
   });
 
   it("adds a separately tracked accession card before offering Development", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = [];
     p.discard = ["test_action_archive_survey"];
@@ -364,7 +370,7 @@ describe("reshuffle progression", () => {
   });
 
   it("short game accession pauses reshuffle for a Development removal choice", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     G.options = { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: ["short_game"] };
     const p = G.players["0"];
     p.deck = [];
@@ -405,7 +411,7 @@ describe("reshuffle progression", () => {
   });
 
   it("short game accession can skip the Development removal for nation exceptions", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     G.options = { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: ["short_game"] };
     const p = G.players["0"];
     p.deck = [];
@@ -455,7 +461,7 @@ describe("reshuffle progression", () => {
   });
 
   it("creates a pending development choice when the nation deck is empty", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = [];
     p.discard = ["test_action_archive_survey"];
@@ -477,8 +483,30 @@ describe("reshuffle progression", () => {
     expect(p.discard).toEqual(["test_action_archive_survey"]);
   });
 
+  it("does not offer reshuffle Development for nations whose Development area is replaced", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = ["test_action_archive_survey"];
+    p.nationDeck = [];
+    p.developmentArea = ["test_action_scholars_circle"];
+    p.resources.materials = 2;
+    G.cardDb.test_action_scholars_circle.developmentCost = { materials: 2 };
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      rulesetTags: ["no_development_area", "quest_development_replacement"] as any
+    };
+
+    const drawn = drawCardWithReshuffleLifecycle(G, "0", () => 0);
+
+    expect(drawn).toBe("test_action_archive_survey");
+    expect(G.pendingDevelopmentChoice).toBeUndefined();
+    expect(p.developmentArea).toEqual(["test_action_scholars_circle"]);
+    expect(p.progressionTokens?.developmentArea).toBe(0);
+  });
+
   it("allows the player to skip a payable Development choice during reshuffle", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = [];
     p.discard = ["test_action_archive_survey"];
@@ -511,7 +539,7 @@ describe("reshuffle progression", () => {
   });
 
   it("adds Nation cards before offering Development even when development is available from the start", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = [];
     p.discard = ["test_action_archive_survey"];
@@ -554,7 +582,7 @@ describe("reshuffle progression", () => {
   });
 
   it("can offer development for no-Nation-deck nations that develop from the start", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = [];
     p.discard = [];
@@ -603,7 +631,7 @@ describe("reshuffle progression", () => {
   });
 
   it("triggers scoring when a configured terminal nation card is added on reshuffle", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = [];
     p.discard = ["test_action_archive_survey"];
@@ -649,8 +677,58 @@ describe("reshuffle progression", () => {
     });
   });
 
+  it("does not flip state when a configured terminal accession-style Nation card is added on reshuffle", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = ["test_action_archive_survey"];
+    p.nationDeck = ["terminal_accession_card"];
+    p.stateArea = ["barbarian_state", "civilized_state"];
+    G.cardDb.terminal_accession_card = {
+      id: "terminal_accession_card",
+      displayName: "Terminal Accession",
+      type: "accession",
+      cardType: "accession",
+      suit: "none",
+      cost: 0,
+      tags: ["accession"],
+      effects: []
+    };
+    G.activeNationRulesets = {
+      "0": {
+        nationId: "terminal_progression",
+        displayName: "Terminal Progression",
+        rulesetTags: ["zenith_card"],
+        requiredExpansions: [],
+        setupOverrides: [],
+        zoneOverrides: [],
+        stateOverrides: [],
+        reshuffleOverrides: [{ op: "trigger_game_end_when_card_added", cardId: "terminal_accession_card" } as any],
+        cleanupOverrides: [],
+        solsticeOverrides: [],
+        scoringOverrides: [],
+        collapseOverrides: [],
+        botOverrides: [],
+        shortGameOverrides: [],
+        hookRules: [],
+        implemented: true,
+        tested: true
+      }
+    };
+
+    drawCardWithReshuffleLifecycle(G, "0", () => 0);
+
+    expect(p.stateArea).toEqual(["barbarian_state", "civilized_state"]);
+    expect(G.scoring).toEqual({
+      reason: "nation_card_added:terminal_accession_card",
+      triggeredBy: "0",
+      phase: "finish_current_round"
+    });
+    expect(G.log.some((entry) => entry.message === "StateFlippedOnAccession(terminal_accession_card)")).toBe(false);
+  });
+
   it("moves a configured nadir Nation card to play instead of discard without flipping State", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = [];
     p.discard = ["discard_seed"];
@@ -723,7 +801,7 @@ describe("reshuffle progression", () => {
   });
 
   it("resolves a paid development choice, shuffles, and resumes the interrupted draw", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = [];
     p.discard = ["test_action_archive_survey"];
@@ -749,7 +827,7 @@ describe("reshuffle progression", () => {
   });
 
   it("resolves a card-driven development choice without using a progression token, shuffling, or drawing", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = ["test_action_archive_survey"];
     p.discard = ["test_action_foundry_shift"];
@@ -780,7 +858,7 @@ describe("reshuffle progression", () => {
   });
 
   it("resolves a free card-driven development choice without paying its Development cost", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = ["test_action_archive_survey"];
     p.discard = ["test_action_foundry_shift"];
@@ -808,7 +886,7 @@ describe("reshuffle progression", () => {
   });
 
   it("delays after-reshuffle hooks until a pending development choice completes", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = [];
     p.discard = ["test_action_archive_survey"];
@@ -839,7 +917,7 @@ describe("reshuffle progression", () => {
   });
 
   it("pauses the interrupted draw when after-reshuffle creates a pending choice", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = [];
     p.discard = ["test_action_archive_survey"];
@@ -878,7 +956,7 @@ describe("reshuffle progression", () => {
   });
 
   it("pauses and resumes later after-reshuffle overrides when an earlier override creates a pending choice", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = [];
     p.discard = ["test_action_archive_survey"];
@@ -939,7 +1017,7 @@ describe("reshuffle progression", () => {
   });
 
   it("pauses the interrupted draw when after-reshuffle creates a pending Exile choice", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = [];
     p.discard = ["test_action_archive_survey"];
@@ -991,7 +1069,7 @@ describe("reshuffle progression", () => {
   });
 
   it("pauses the interrupted draw when after-reshuffle creates a pending Look order choice", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = [];
     p.discard = ["test_action_archive_survey", "test_action_foundry_shift"];
@@ -1028,7 +1106,7 @@ describe("reshuffle progression", () => {
   });
 
   it("pauses later nation hooks when an earlier hook creates a pending Look order choice", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = [];
     p.discard = ["test_action_archive_survey", "test_action_foundry_shift"];
@@ -1071,7 +1149,7 @@ describe("reshuffle progression", () => {
   });
 
   it("pauses the interrupted draw when after-reshuffle creates a pending Swap choice", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = [];
     p.discard = ["test_action_archive_survey"];
@@ -1122,7 +1200,7 @@ describe("reshuffle progression", () => {
   });
 
   it("triggers normal scoring when the last Development card is developed", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = [];
     p.discard = ["test_action_archive_survey"];
@@ -1147,7 +1225,7 @@ describe("reshuffle progression", () => {
   });
 
   it("uses goods to cover development material shortfalls atomically", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = [];
     p.discard = ["test_action_archive_survey"];
@@ -1175,7 +1253,7 @@ describe("reshuffle progression", () => {
   });
 
   it("applies state-gated Progress spend penalties during Development payments", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = [];
     p.discard = ["test_action_archive_survey"];
@@ -1216,7 +1294,7 @@ describe("reshuffle progression", () => {
   });
 
   it("honors the selected Progress/Goods substitution when paying a Development cost", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = [];
     p.discard = [];
@@ -1254,8 +1332,30 @@ describe("reshuffle progression", () => {
     expect(p.developmentArea).toEqual([]);
   });
 
+  it("rejects selected Development payments that include extra resources", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = [];
+    p.nationDeck = [];
+    p.developmentArea = ["test_action_scholars_circle"];
+    p.resources.materials = 0;
+    p.resources.knowledge = 1;
+    p.resources.goods = 1;
+    G.cardDb.test_action_scholars_circle.developmentCost = { materials: 2 };
+
+    drawCardWithReshuffleLifecycle(G, "0", () => 0);
+    resolveDevelopmentChoice({ G, ctx, random: { Number: () => 0 } }, "test_action_scholars_circle", { knowledge: 1, goods: 1 });
+
+    expect(G.pendingDevelopmentChoice?.cardIds).toEqual(["test_action_scholars_circle"]);
+    expect(p.resources.knowledge).toBe(1);
+    expect(p.resources.goods).toBe(1);
+    expect(p.developmentArea).toEqual(["test_action_scholars_circle"]);
+    expect(p.discard).toEqual([]);
+  });
+
   it("does not offer development cards when total goods substitution cannot cover the full cost", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = [];
     p.discard = ["test_action_archive_survey"];
@@ -1277,7 +1377,7 @@ describe("reshuffle progression", () => {
   });
 
   it("stops reshuffle progression when before_reshuffle triggers Collapse", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     G.unrestPile = [];
     G.players["1"].resources.unrest = 1;
@@ -1323,7 +1423,7 @@ describe("reshuffle progression", () => {
   });
 
   it("pauses reshuffle progression when before_reshuffle creates a pending choice", () => {
-    const G = createInitialState();
+    const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
     p.deck = [];
     p.discard = ["test_action_archive_survey"];

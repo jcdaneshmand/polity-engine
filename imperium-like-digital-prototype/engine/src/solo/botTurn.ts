@@ -30,6 +30,7 @@ function hasPendingInterruption(G: GameState): boolean {
     ?? G.pendingDrawChoice
     ?? G.pendingFindChoice
     ?? G.pendingAcquireChoice
+    ?? G.pendingMarketCardChoice
     ?? G.pendingBreakThroughChoice
     ?? G.pendingExileChoice
     ?? G.pendingGarrisonChoice
@@ -67,6 +68,7 @@ function resolveBotSlots(G: GameState, slots: BotSlot[], effectsRemaining?: numb
     const slot = slots[index];
     const cardId = revealSlotCard(bot, slot.slotNumber);
     const table = G.solo.botStateTables[bot.botStateTableId];
+    if (cardId) bot.revealedSlotCard = { slotNumber: slot.slotNumber, cardId };
     if (cardId && table) resolveBotCard({ G, bot, revealedCardId: cardId, source: "slot", table });
     if (G.gameover) return true;
     slot.cardId = undefined;
@@ -81,6 +83,7 @@ export function runBotTurn(args: { G: GameState; rollDie?: () => number; randomN
   const { G } = args;
   if (!G.solo) return G;
   const bot = G.solo.bot;
+  bot.revealedSlotCard = undefined;
   const roll = args.rollDie ? args.rollDie() : 1;
   rollAndBlockSlot(bot, roll);
   const effectLimit = bot.difficultyConfig.botEffectsPerTurn ?? Number.POSITIVE_INFINITY;

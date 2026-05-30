@@ -197,13 +197,21 @@ function orderedPermutations(cardIds: string[]): string[][] {
 
 export function getPendingUiState(G: any, ctx: any): { title: string; detail: string; playerId?: string } | undefined {
   const plural = (count: number, singular: string) => `${count} ${singular}${count === 1 ? "" : "s"}`;
+  const pendingExileDetail = (pendingExileChoice: any) => {
+    const optionCount = pendingExileChoice.cardIds?.length ?? 0;
+    if (pendingExileChoice.sourceCardId === "practice_market_churn" && pendingExileChoice.source === "market") {
+      return `Choose 1 market card to exile${pendingExileChoice.optional ? ", or skip" : ""}`;
+    }
+    return optionCount > 1 ? `Choose 1 card to exile from ${plural(optionCount, "option")}` : "Choose 1 card to exile";
+  };
   const pending =
     G.pendingChoice ? { title: "Pending Choice", detail: plural(G.pendingChoice.choices?.length ?? 0, "option"), playerId: G.pendingChoice.playerId } :
     G.pendingDrawChoice ? { title: "Pending Draw", detail: plural(G.pendingDrawChoice.cardIds?.length ?? 0, "card"), playerId: G.pendingDrawChoice.playerId } :
     G.pendingFindChoice ? { title: "Pending Find", detail: plural(G.pendingFindChoice.cardIds?.length ?? 0, "card"), playerId: G.pendingFindChoice.playerId } :
     G.pendingAcquireChoice ? { title: "Pending Acquire", detail: `Choose ${plural(G.pendingAcquireChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingAcquireChoice.playerId } :
+    G.pendingMarketCardChoice ? { title: G.pendingMarketCardChoice.op === "take_card" ? "Pending Take Card" : "Pending Gain Card", detail: `Choose ${plural(G.pendingMarketCardChoice.cardIds?.length ?? 0, "market card")}`, playerId: G.pendingMarketCardChoice.playerId } :
     G.pendingBreakThroughChoice ? { title: "Pending Break Through", detail: `Choose ${plural(G.pendingBreakThroughChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingBreakThroughChoice.playerId } :
-    G.pendingExileChoice ? { title: "Pending Exile", detail: `Choose ${plural(G.pendingExileChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingExileChoice.playerId } :
+    G.pendingExileChoice ? { title: "Pending Exile", detail: pendingExileDetail(G.pendingExileChoice), playerId: G.pendingExileChoice.playerId } :
     G.pendingGarrisonChoice ? { title: "Pending Garrison", detail: `${plural(G.pendingGarrisonChoice.cardIds?.length ?? 0, "card")} / ${plural(G.pendingGarrisonChoice.hostCardIds?.length ?? 0, "host")}`, playerId: G.pendingGarrisonChoice.playerId } :
     G.pendingRegionChoice ? { title: "Pending Region", detail: `Choose ${plural(G.pendingRegionChoice.cardIds?.length ?? 0, "region")}`, playerId: G.pendingRegionChoice.playerId } :
     G.pendingDevelopmentChoice ? { title: "Pending Development", detail: `Choose ${plural(G.pendingDevelopmentChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingDevelopmentChoice.playerId } :
@@ -216,7 +224,11 @@ export function getPendingUiState(G: any, ctx: any): { title: string; detail: st
     G.pendingUnrestAllocationChoice ? { title: "Pending Unrest Allocation", detail: plural(G.pendingUnrestAllocationChoice.availableUnrestCardIds?.length ?? 0, "Unrest"), playerId: G.pendingUnrestAllocationChoice.playerId } :
     G.pendingSolsticeOrderChoice ? { title: "Pending Solstice Order", detail: `Choose first of ${plural(G.pendingSolsticeOrderChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingSolsticeOrderChoice.playerId } :
     G.pendingLookOrderChoice ? { title: "Pending Look Order", detail: `Choose first of ${plural(G.pendingLookOrderChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingLookOrderChoice.playerId } :
-    G.pendingCleanupMarketResourceChoice ? { title: "Pending Cleanup Resource", detail: `Choose ${plural(G.pendingCleanupMarketResourceChoice.cardIds?.length ?? 0, "market card")}`, playerId: G.pendingCleanupMarketResourceChoice.playerId } :
+    G.pendingCleanupMarketResourceChoice ? {
+      title: "Pending Cleanup Resource",
+      detail: `Choose a market card for ${plural(G.pendingCleanupMarketResourceChoice.amount ?? 1, "cleanup resource")}`,
+      playerId: G.pendingCleanupMarketResourceChoice.playerId
+    } :
     G.pendingCleanupDiscardChoice ? { title: "Pending Cleanup Discard", detail: plural(G.pendingCleanupDiscardChoice.cardIds?.length ?? 0, "card"), playerId: G.pendingCleanupDiscardChoice.playerId } :
     undefined;
   if (!pending) return undefined;
@@ -227,20 +239,59 @@ function hintLabel(action: any): string {
   return String(action.label ?? "").replace(/^Choose \d+:\s*/, "").replace(/^Break Through\s+/, "Break Through");
 }
 
-export function getActionHintsByCardId(actions: any[]): Record<string, { labels: string[]; highlighted: boolean }> {
+type HintZone = "hand" | "market";
+
+function actionHintZone(action: any, idField: "cardId" | "marketCardId"): HintZone | undefined {
+  if (idField === "marketCardId") return "market";
+  if (action.action === "play" || action.action === "garrison" || action.action === "revolt" || action.action === "resolveCleanupDiscard") return "hand";
+  if (action.action === "acquire" || action.action === "resolveAcquireChoice" || action.action === "resolveMarketCardChoice" || action.action === "resolveBreakThroughChoice" || action.action === "resolveCleanupMarketResource") return "market";
+  if (action.action === "innovate" && action.source === "market") return "market";
+  return undefined;
+}
+
+export function getActionHintsByCardId(actions: any[], zone?: HintZone): Record<string, { labels: string[]; highlighted: boolean }> {
   const hints: Record<string, { labels: string[]; highlighted: boolean }> = {};
-  const add = (cardId: string | undefined, label: string, highlighted: boolean) => {
+  const add = (cardId: string | undefined, label: string, highlighted: boolean, hintZone?: HintZone) => {
     if (!cardId) return;
+    if (zone && hintZone && zone !== hintZone) return;
     hints[cardId] ??= { labels: [], highlighted: false };
     if (!hints[cardId].labels.includes(label)) hints[cardId].labels.push(label);
     hints[cardId].highlighted ||= highlighted;
   };
   actions.forEach((action) => {
     const highlighted = action.enabled && String(action.action).startsWith("resolve");
-    if (action.cardId) add(action.cardId, hintLabel(action).split(" ")[0] || action.label, highlighted);
-    if (action.marketCardId) add(action.marketCardId, hintLabel(action).split(" ")[0] || action.label, highlighted);
+    if (action.cardId) add(action.cardId, hintLabel(action).split(" ")[0] || action.label, highlighted, actionHintZone(action, "cardId"));
+    if (action.marketCardId) add(action.marketCardId, hintLabel(action).split(" ")[0] || action.label, highlighted, actionHintZone(action, "marketCardId"));
   });
   return hints;
+}
+
+export function getMarketCardClickAction(G: any, ctx: any, cardId: string): { action: "resolveCleanupMarketResource" | "resolveExileChoice" | "resolveMarketCardChoice"; cardId: string; enabled: true } | undefined {
+  const pending = G.pendingCleanupMarketResourceChoice;
+  if (pending?.playerId === ctx.currentPlayer) {
+    const eligibleCardIds = pending.cardIds ?? G.market ?? [];
+    if (eligibleCardIds.includes(cardId)) return { action: "resolveCleanupMarketResource", cardId, enabled: true };
+  }
+
+  const pendingMarketCardChoice = G.pendingMarketCardChoice;
+  if (
+    pendingMarketCardChoice?.playerId === ctx.currentPlayer
+    && (pendingMarketCardChoice.cardIds ?? []).includes(cardId)
+  ) {
+    return { action: "resolveMarketCardChoice", cardId, enabled: true };
+  }
+
+  const pendingExile = G.pendingExileChoice;
+  if (
+    pendingExile?.playerId === ctx.currentPlayer
+    && pendingExile.source === "market"
+    && pendingExile.sourceCardId === "practice_market_churn"
+    && (pendingExile.cardIds ?? []).includes(cardId)
+  ) {
+    return { action: "resolveExileChoice", cardId, enabled: true };
+  }
+
+  return undefined;
 }
 
 export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx: any) {
@@ -330,6 +381,23 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Acquire choice first" });
+    return actions;
+  }
+  const pendingMarketCardChoice = G.pendingMarketCardChoice;
+  if (pendingMarketCardChoice) {
+    const isCurrentPlayer = pendingMarketCardChoice.playerId === ctx.currentPlayer;
+    const verb = pendingMarketCardChoice.op === "take_card" ? "Take" : "Gain";
+    (pendingMarketCardChoice.cardIds ?? []).forEach((cardId: string) => {
+      const card = getCardById(G, cardId);
+      actions.push({
+        label: `${verb} ${card?.displayName ?? cardId}`,
+        action: "resolveMarketCardChoice",
+        enabled: isCurrentPlayer,
+        reason: isCurrentPlayer ? undefined : `Waiting for player ${pendingMarketCardChoice.playerId}`,
+        cardId
+      });
+    });
+    actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:`Resolve the pending ${verb} choice first` });
     return actions;
   }
   const pendingExileChoice = G.pendingExileChoice;

@@ -1,6 +1,7 @@
 import type { GameState, ReturnUnrestSourceZone } from "./state";
 import { runNationHooks } from "../nations/nationRulesetHooks";
 import { triggerCollapse } from "./scoring";
+import { actualHistorySourceZoneIds } from "./history";
 
 function activeRecipients(G: GameState, playerIds: string[]): string[] {
   return playerIds.filter((playerId) => !!G.players[playerId]);
@@ -12,6 +13,7 @@ function hasPendingInterruption(G: GameState): boolean {
     ?? G.pendingDrawChoice
     ?? G.pendingFindChoice
     ?? G.pendingAcquireChoice
+    ?? G.pendingMarketCardChoice
     ?? G.pendingBreakThroughChoice
     ?? G.pendingExileChoice
     ?? G.pendingGarrisonChoice
@@ -111,17 +113,39 @@ export function isUnrestCard(G: GameState, cardId: string): boolean {
   return card?.suit === "unrest" || card?.cardType === "unrest" || card?.type === "unrest";
 }
 
+export function zoneCardsForReturnUnrest(G: GameState, playerId: string, zoneId: string): string[] | undefined {
+  if (zoneId === "history") {
+    const zones = actualHistorySourceZoneIds(G, playerId);
+    if (zones.length !== 1 || zones[0] !== "history") {
+      return zones.flatMap((zone) => zoneCardsForReturnUnrest(G, playerId, zone) ?? []);
+    }
+  }
+  const player = G.players[playerId];
+  if (!player) return undefined;
+  const direct = (player as unknown as Record<string, unknown>)[zoneId];
+  if (Array.isArray(direct)) return direct as string[];
+  if (player.sideAreas?.[zoneId]) return player.sideAreas[zoneId];
+  if (G.specialZones?.[playerId]?.[zoneId]?.cardIds) return G.specialZones[playerId][zoneId].cardIds;
+  if (G.globalSpecialZones?.[zoneId]?.cardIds) return G.globalSpecialZones[zoneId].cardIds;
+  return undefined;
+}
+
 export function returnUnrestCard(G: GameState, playerId: string, cardId: string, sourceZones: ReturnUnrestSourceZone[]): ReturnUnrestSourceZone | undefined {
   const player = G.players[playerId];
   if (!player || !isUnrestCard(G, cardId)) return undefined;
   for (const zone of sourceZones) {
-    const index = player[zone].indexOf(cardId);
-    if (index < 0) continue;
-    player[zone].splice(index, 1);
-    G.unrestPile ??= [];
-    G.unrestPile.push(cardId);
-    G.log.push({ round: G.round, playerId, message: `UnrestReturned(${cardId}/${zone})` });
-    return zone;
+    const resolvedZones = zone === "history" ? actualHistorySourceZoneIds(G, playerId) : [zone];
+    for (const resolvedZone of resolvedZones) {
+      const cards = zoneCardsForReturnUnrest(G, playerId, resolvedZone);
+      if (!cards) continue;
+      const index = cards.indexOf(cardId);
+      if (index < 0) continue;
+      cards.splice(index, 1);
+      G.unrestPile ??= [];
+      G.unrestPile.push(cardId);
+      G.log.push({ round: G.round, playerId, message: `UnrestReturned(${cardId}/${resolvedZone})` });
+      return resolvedZone as ReturnUnrestSourceZone;
+    }
   }
   return undefined;
 }

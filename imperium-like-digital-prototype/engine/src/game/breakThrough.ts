@@ -30,8 +30,9 @@ function breakThroughFromMarket(G: GameState, playerId: string, suit: Suit, card
   collectMarketResources(G, playerId, acquiredCardId);
   G.players[playerId].hand.push(acquiredCardId);
   returnMarketUnrest(G, playerId, acquiredCardId);
-  G.log.push({ round: G.round, playerId, message: `BreakThroughMarket(${acquiredCardId}/${suit})` });
   refillMarketSlot(G, { playerId, slotIndex, acquiredCardId });
+  if (G.gameover) return true;
+  G.log.push({ round: G.round, playerId, message: `BreakThroughMarket(${acquiredCardId}/${suit})` });
   return true;
 }
 

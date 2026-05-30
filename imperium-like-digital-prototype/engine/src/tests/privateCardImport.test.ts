@@ -22,6 +22,8 @@ describe("private card import", () => {
     const effect_ops_json=JSON.stringify([
       {trigger:"on_play",op:"acquire_card",source:"exile",suit:"civilized",count:1},
       {trigger:"on_play",op:"acquire_card",source:"market",suit:"civilized",count:1},
+      {trigger:"on_play",op:"gain_card",source:"market",suit:"civilized",count:1},
+      {trigger:"on_play",op:"take_card",source:"market",suit:"civilized",count:1},
       {trigger:"on_play",op:"break_through",source:"exile",suit:"civilized",count:1},
       {trigger:"on_play",op:"break_through",source:"market",suit:"civilized",count:1},
       {trigger:"on_play",op:"take_unrest",targetPlayerIds:["1","0"],count:1},

@@ -548,6 +548,125 @@ describe("turn loop", () => {
     expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): no_resolvable_on_play_effects(${card})`);
   });
 
+  it("plays return-Unrest text that targets a nation History replacement zone", () => {
+    const G = createInitialState();
+    const card = "test_action_archive_survey";
+    const unrestCard = "sunken_unrest";
+    G.cardDb[card] = {
+      ...G.cardDb[card],
+      effects: [{ trigger: "on_play", op: "return_unrest", cardId: unrestCard, sourceZones: ["sunken"] } as any]
+    };
+    G.cardDb[unrestCard] = {
+      id: unrestCard,
+      displayName: "Sunken Unrest",
+      type: "unrest",
+      cardType: "unrest",
+      suit: "unrest",
+      cost: 0,
+      tags: ["unrest"],
+      effects: []
+    };
+    G.players["0"].hand = [card];
+    G.players["0"].sideAreas = { sunken: [unrestCard] };
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.unrestPile = [];
+
+    playCard({ G, ctx }, card);
+
+    expect(G.players["0"].hand).toEqual([]);
+    expect(G.players["0"].discard).toContain(card);
+    expect(G.players["0"].sideAreas?.sunken).toEqual([]);
+    expect(G.unrestPile).toEqual([unrestCard]);
+    expect(G.players["0"].actionsRemaining).toBe(0);
+    expect(G.players["0"].actionTokensAvailable).toBe(0);
+  });
+
+  it("treats a nation History replacement zone as History for return-Unrest text", () => {
+    const G = createInitialState();
+    const card = "test_action_archive_survey";
+    const unrestCard = "sunken_unrest";
+    G.cardDb[card] = {
+      ...G.cardDb[card],
+      effects: [{ trigger: "on_play", op: "return_unrest", cardId: unrestCard, sourceZones: ["history"] } as any]
+    };
+    G.cardDb[unrestCard] = {
+      id: unrestCard,
+      displayName: "Sunken Unrest",
+      type: "unrest",
+      cardType: "unrest",
+      suit: "unrest",
+      cost: 0,
+      tags: ["unrest"],
+      effects: []
+    };
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      zoneOverrides: [{ op: "replace_history_with_zone", zoneId: "sunken", displayName: "Sunken", cardsScore: true } as any]
+    };
+    G.players["0"].hand = [card];
+    G.players["0"].history = [];
+    G.players["0"].sideAreas = { sunken: [unrestCard] };
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.unrestPile = [];
+
+    playCard({ G, ctx }, card);
+
+    expect(G.players["0"].hand).toEqual([]);
+    expect(G.players["0"].discard).toContain(card);
+    expect(G.players["0"].history).toEqual([]);
+    expect(G.players["0"].sideAreas?.sunken).toEqual([]);
+    expect(G.unrestPile).toEqual([unrestCard]);
+  });
+
+  it("creates a Return Unrest choice from a nation History replacement zone when History is the source", () => {
+    const G = createInitialState();
+    const card = "test_action_archive_survey";
+    const unrestCard = "sunken_unrest";
+    G.cardDb[card] = {
+      ...G.cardDb[card],
+      effects: [{ trigger: "on_play", op: "return_unrest", sourceZones: ["history"] } as any]
+    };
+    G.cardDb[unrestCard] = {
+      id: unrestCard,
+      displayName: "Sunken Unrest",
+      type: "unrest",
+      cardType: "unrest",
+      suit: "unrest",
+      cost: 0,
+      tags: ["unrest"],
+      effects: []
+    };
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      zoneOverrides: [{ op: "replace_history_with_zone", zoneId: "sunken", displayName: "Sunken", cardsScore: true } as any]
+    };
+    G.players["0"].hand = [card];
+    G.players["0"].history = [];
+    G.players["0"].sideAreas = { sunken: [unrestCard] };
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.unrestPile = [];
+
+    playCard({ G, ctx }, card);
+
+    expect(G.pendingReturnUnrestChoice).toEqual({
+      playerId: "0",
+      sourceCardId: card,
+      cardIds: [unrestCard],
+      sourceZones: ["history"]
+    });
+    expect(G.players["0"].sideAreas?.sunken).toEqual([unrestCard]);
+
+    resolveReturnUnrestChoice({ G, ctx }, unrestCard);
+
+    expect(G.pendingReturnUnrestChoice).toBeUndefined();
+    expect(G.players["0"].sideAreas?.sunken).toEqual([]);
+    expect(G.unrestPile).toEqual([unrestCard]);
+    expect(G.players["0"].discard).toContain(card);
+  });
+
   it("does not play a develop-only card when no Development card is payable", () => {
     const G = createInitialState();
     const card = "test_action_archive_survey";
@@ -595,6 +714,36 @@ describe("turn loop", () => {
     expect(G.players["0"].actionsRemaining).toBe(1);
     expect(G.players["0"].actionTokensAvailable).toBe(1);
     expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): no_resolvable_on_play_effects(${card})`);
+  });
+
+  it("plays a Fame-look-only card when only face-up King of Kings remains", () => {
+    const G = createInitialState();
+    const card = "test_action_archive_survey";
+    G.cardDb[card] = {
+      ...G.cardDb[card],
+      effects: [{ trigger: "on_play", op: "look_cards", source: "fameDeck", count: 2 } as any]
+    };
+    G.fameDeck = {
+      available: [],
+      specialBottomCardId: "king_of_kings",
+      specialBottomSide: "B",
+      resolvedSpecialByPlayer: {}
+    };
+    G.players["0"].hand = [card];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+
+    playCard({ G, ctx }, card);
+
+    expect(G.players["0"].hand).toEqual([]);
+    expect(G.players["0"].discard).toContain(card);
+    expect(G.players["0"].actionsRemaining).toBe(0);
+    expect(G.players["0"].actionTokensAvailable).toBe(0);
+    expect(G.lookedCards).toEqual({
+      playerId: "0",
+      source: "fameDeck",
+      cardIds: ["king_of_kings"]
+    });
   });
 
   it("does not play a choose-one card when every choice has an unaffordable cost", () => {
@@ -789,6 +938,40 @@ describe("turn loop", () => {
       playerId: "0",
       source: "deck",
       cardIds: ["test_action_foundry_shift"]
+    });
+    expect(G.players["0"].discard).toContain(card);
+  });
+
+  it("plays a Nation-Look-only card when only a separately tracked Accession remains", () => {
+    const G = createInitialState();
+    const card = "test_action_archive_survey";
+    G.cardDb[card] = {
+      ...G.cardDb[card],
+      effects: [{ trigger: "on_play", op: "look_cards", source: "nationDeck", count: 1 } as any]
+    };
+    G.cardDb.accession_card = {
+      id: "accession_card",
+      displayName: "Accession",
+      type: "accession",
+      cardType: "accession",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.players["0"].hand = [card];
+    G.players["0"].nationDeck = [];
+    G.players["0"].accessionCardId = "accession_card";
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+
+    playCard({ G, ctx }, card);
+
+    expect(G.players["0"].hand).toEqual([]);
+    expect(G.lookedCards).toEqual({
+      playerId: "0",
+      source: "nationDeck",
+      cardIds: ["accession_card"]
     });
     expect(G.players["0"].discard).toContain(card);
   });
@@ -1547,6 +1730,77 @@ describe("turn loop", () => {
     expect(currentStateMatches(G, "0", "native")).toBe(true);
     expect(currentStateMatches(G, "0", "alien")).toBe(false);
     expect(G.log.some((entry) => entry.message === "StateActivatedOnSolsticeRemoval(reactor_explosion/native)")).toBe(true);
+  });
+
+  it("applies End-of-Solstice nation removals after resolving an ordered End-of-Solstice choice", () => {
+    const G = createInitialState();
+    const p = G.players["0"];
+    p.playArea = ["reactor_explosion", "end_gain_card", "end_spend_card"];
+    p.nationDeck = ["remaining_nation_1"];
+    p.resources.knowledge = 0;
+    p.stateArea = ["alien_state"];
+    G.cardDb.reactor_explosion = {
+      id: "reactor_explosion",
+      displayName: "Reactor Explosion",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb.end_gain_card = {
+      id: "end_gain_card",
+      displayName: "End Gain",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "end_of_solstice", op: "gain_resource", resource: "materials", amount: 1 } as any]
+    };
+    G.cardDb.end_spend_card = {
+      id: "end_spend_card",
+      displayName: "End Spend",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "end_of_solstice", op: "spend_resource", resource: "materials", amount: 1 } as any]
+    };
+    G.cardDb.alien_state = {
+      id: "alien_state",
+      displayName: "Alien / Gone Native",
+      type: "state",
+      cardType: "state",
+      suit: "none",
+      cost: 0,
+      tags: ["alien", "native"],
+      effects: []
+    };
+    G.cardStates = { alien_state: { activeState: "alien" } };
+    G.activeNationRulesets!["0"].solsticeOverrides = [
+      { op: "remove_play_card_and_nation_deck_if_resource_empty", cardId: "reactor_explosion", resource: "knowledge", state: "alien" } as any
+    ];
+
+    onTurnEnd(G, { currentPlayer: "1", playOrder: ["0", "1"] } as any);
+
+    expect(G.pendingSolsticeOrderChoice).toEqual({
+      playerId: "0",
+      phase: "end_of_solstice",
+      cardIds: ["end_gain_card", "end_spend_card"]
+    });
+    expect(p.playArea).toContain("reactor_explosion");
+
+    resolveSolsticeOrderChoice({ G, ctx, random: { Number: () => 0 } }, ["end_gain_card", "end_spend_card"]);
+
+    expect(G.pendingSolsticeOrderChoice).toBeUndefined();
+    expect(p.resources.materials).toBe(0);
+    expect(p.playArea).toEqual(["end_gain_card", "end_spend_card"]);
+    expect(p.nationDeck).toEqual([]);
+    expect(p.exile).toEqual(["reactor_explosion", "remaining_nation_1"]);
+    expect(G.log.some((entry) => entry.message === "SolsticeRemovedPlayCardAndNationDeck(reactor_explosion/removed=2)")).toBe(true);
   });
 
   it("does not reapply start-as-state overrides after Go Native has activated", () => {
@@ -3953,6 +4207,105 @@ describe("turn loop", () => {
     expect(G.log.at(-1)?.message).toBe("FindChoiceResolved(finder/history_civilized->discard)");
   });
 
+  it("routes pending Find choices with a History destination through no-History discard replacement", () => {
+    const G = createInitialState();
+    G.players["0"].hand = ["found_card"];
+    G.cardDb.found_card = {
+      id: "found_card",
+      displayName: "Found Card",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      rulesetTags: ["no_history", "discard_instead_of_history"] as any,
+      zoneOverrides: [{ op: "disable_history", replacementBehavior: "discard" } as any]
+    };
+    G.pendingFindChoice = {
+      playerId: "0",
+      sourceCardId: "finder",
+      cardIds: ["found_card"],
+      destination: "history"
+    };
+
+    resolveFindChoice({ G, ctx }, "found_card");
+
+    expect(G.pendingFindChoice).toBeUndefined();
+    expect(G.players["0"].hand).toEqual([]);
+    expect(G.players["0"].history).toEqual([]);
+    expect(G.players["0"].discard).toEqual(["found_card"]);
+    expect(G.log.at(-1)?.message).toBe("FindChoiceResolved(finder/found_card->discard)");
+  });
+
+  it("resolves pending Find choices selected from a nation History replacement zone", () => {
+    const G = createInitialState();
+    G.players["0"].sideAreas = { sunken: ["found_card"] };
+    G.cardDb.found_card = {
+      id: "found_card",
+      displayName: "Found Card",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.pendingFindChoice = {
+      playerId: "0",
+      sourceCardId: "finder",
+      cardIds: ["found_card"],
+      destination: "discard"
+    };
+
+    resolveFindChoice({ G, ctx }, "found_card");
+
+    expect(G.pendingFindChoice).toBeUndefined();
+    expect(G.players["0"].sideAreas?.sunken).toEqual([]);
+    expect(G.players["0"].discard).toEqual(["found_card"]);
+    expect(G.log.at(-1)?.message).toBe("FindChoiceResolved(finder/found_card->discard)");
+  });
+
+  it("plays Find text that sources History from a nation History replacement zone", () => {
+    const G = createInitialState();
+    const finder = "test_action_archive_survey";
+    G.players["0"].hand = [finder];
+    G.players["0"].history = [];
+    G.players["0"].sideAreas = { sunken: ["found_card"] };
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.cardDb[finder] = {
+      ...G.cardDb[finder],
+      effects: [{ trigger: "on_play", op: "find_card", sourceZones: ["history"], cardId: "found_card", destination: "discard" } as any]
+    };
+    G.cardDb.found_card = {
+      id: "found_card",
+      displayName: "Found Card",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      zoneOverrides: [{ op: "replace_history_with_zone", zoneId: "sunken", displayName: "Sunken", cardsScore: true } as any]
+    };
+
+    playCard({ G, ctx }, finder);
+
+    expect(G.players["0"].hand).toEqual([]);
+    expect(G.players["0"].history).toEqual([]);
+    expect(G.players["0"].sideAreas?.sunken).toEqual([]);
+    expect(G.players["0"].discard).toEqual(["found_card", finder]);
+    expect(G.players["0"].actionsRemaining).toBe(0);
+    expect(G.players["0"].actionTokensAvailable).toBe(0);
+  });
+
   it("resumes remaining effects after resolving a pending Find choice", () => {
     const G = createInitialState();
     G.players["0"].hand = ["test_action_foundry_shift"];
@@ -4243,6 +4596,40 @@ describe("turn loop", () => {
 
     expect(G.pendingExileChoice).toBeUndefined();
     expect(G.players["0"].history).toEqual([]);
+    expect(G.players["0"].exile).toEqual(["history_card"]);
+    expect(G.log.at(-1)?.message).toBe("ExileChoiceResolved(history_exiler/history_card)");
+  });
+
+  it("resolves a pending History Exile choice from a nation History replacement zone", () => {
+    const G = createInitialState();
+    G.players["0"].history = [];
+    G.players["0"].sideAreas = { sunken: ["history_card"] };
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      zoneOverrides: [{ op: "replace_history_with_zone", zoneId: "sunken", displayName: "Sunken", cardsScore: true } as any]
+    };
+    G.cardDb.history_card = {
+      id: "history_card",
+      displayName: "History Card",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.pendingExileChoice = {
+      playerId: "0",
+      sourceCardId: "history_exiler",
+      source: "history",
+      cardIds: ["history_card"]
+    } as any;
+
+    resolveExileChoice({ G, ctx }, "history_card");
+
+    expect(G.pendingExileChoice).toBeUndefined();
+    expect(G.players["0"].history).toEqual([]);
+    expect(G.players["0"].sideAreas?.sunken).toEqual([]);
     expect(G.players["0"].exile).toEqual(["history_card"]);
     expect(G.log.at(-1)?.message).toBe("ExileChoiceResolved(history_exiler/history_card)");
   });

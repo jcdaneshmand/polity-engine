@@ -5,6 +5,7 @@ import { runNationHooks } from "../nations/nationRulesetHooks";
 import { canPayResourceCosts, payResourceCosts, type ResourceCost } from "./payments";
 import { triggerScoring } from "./scoring";
 import { activateState } from "./stateMatching";
+import { isAccessionCard } from "./nationDeck";
 
 function logOverride(G: GameState, playerId: string, nationId: string, category: string, op: string): void {
   G.log.push({ round: G.round, playerId, message: `NationRulesetApplied(${nationId}/${category}/${op})` });
@@ -34,6 +35,11 @@ function canSpendProgressionToken(player: PlayerState): boolean {
   return !hasProgressionMarker(player) && player.exhaustTokensAvailable > 0;
 }
 
+export function canUseDevelopmentArea(G: GameState, playerId: string): boolean {
+  const tags = G.activeNationRulesets?.[playerId]?.rulesetTags ?? [];
+  return !tags.includes("no_development_area") && !tags.includes("quest_development_replacement");
+}
+
 function spendProgressionToken(player: PlayerState, destination: "nationDeck" | "developmentArea"): void {
   const tokens = ensureProgressionTokens(player);
   player.exhaustTokensAvailable -= 1;
@@ -44,19 +50,13 @@ function hasNationProgressionCards(player: PlayerState): boolean {
   return player.nationDeck.length > 0 || Boolean(player.accessionCardId);
 }
 
-function isAccessionCard(G: GameState, player: PlayerState, cardId: string): boolean {
-  const card = G.cardDb[cardId];
-  return cardId === player.accessionCardId
-    || (card?.cardType ?? card?.type) === "accession"
-    || (card?.tags ?? []).includes("accession");
-}
-
 function hasPendingInterruption(G: GameState): boolean {
   return Boolean(
     G.pendingChoice
     ?? G.pendingDrawChoice
     ?? G.pendingFindChoice
     ?? G.pendingAcquireChoice
+    ?? G.pendingMarketCardChoice
     ?? G.pendingBreakThroughChoice
     ?? G.pendingExileChoice
     ?? G.pendingGarrisonChoice
@@ -101,6 +101,7 @@ function flipStateForAccession(G: GameState, playerId: string, accessionCardId: 
 }
 
 function payableDevelopmentCards(G: GameState, playerId: string): string[] {
+  if (!canUseDevelopmentArea(G, playerId)) return [];
   const p = G.players[playerId];
   return p.developmentArea.filter((cardId) => canPayDevelopmentCost(G, playerId, cardId));
 }
@@ -174,6 +175,7 @@ function shouldSkipDefaultNationProgression(G: GameState, playerId: string): boo
 }
 
 function canDevelopBeforeNationDeckEmpty(G: GameState, playerId: string): boolean {
+  if (!canUseDevelopmentArea(G, playerId)) return false;
   const ruleset = G.activeNationRulesets?.[playerId];
   return (ruleset?.reshuffleOverrides ?? []).some((ov) => ov.op === "development_available_from_start")
     || (ruleset?.rulesetTags ?? []).includes("development_area_available_from_start");
@@ -183,6 +185,11 @@ function triggerScoringForTerminalNationCard(G: GameState, playerId: string, car
   const ruleset = G.activeNationRulesets?.[playerId];
   const triggers = (ruleset?.reshuffleOverrides ?? []).filter((ov) => ov.op === "trigger_game_end_when_card_added");
   if (triggers.some((ov) => ov.cardId === cardId)) triggerScoring(G, `nation_card_added:${cardId}`, playerId);
+}
+
+function isTerminalNationCard(G: GameState, playerId: string, cardId: string): boolean {
+  const ruleset = G.activeNationRulesets?.[playerId];
+  return (ruleset?.reshuffleOverrides ?? []).some((ov) => ov.op === "trigger_game_end_when_card_added" && ov.cardId === cardId);
 }
 
 function nationCardInPlayOverride(G: GameState, playerId: string, cardId: string): { suppressStateFlip?: boolean } | undefined {
@@ -211,7 +218,7 @@ function canAttemptReshuffleLifecycle(G: GameState, playerId: string): boolean {
   if (shouldSkipDefaultNationProgression(G, playerId)) {
     return canSpendProgressionToken(p) && canDevelopBeforeNationDeckEmpty(G, playerId) && p.developmentArea.length > 0;
   }
-  return canSpendProgressionToken(p) && (hasNationProgressionCards(p) || p.developmentArea.length > 0);
+  return canSpendProgressionToken(p) && (hasNationProgressionCards(p) || (canUseDevelopmentArea(G, playerId) && p.developmentArea.length > 0));
 }
 
 export function drawCard(player: PlayerState, randomNumber?: () => number, allowAutoReshuffle = true): string | null {
@@ -259,12 +266,12 @@ export function maybeReshuffleDeck(G: GameState, playerId: string, randomNumber?
       else p.discard.push(nationCard.cardId);
       spendProgressionToken(p, hasNationProgressionCards(p) ? "nationDeck" : "developmentArea");
       G.log.push({ round: G.round, playerId, message: inPlayOverride ? `NationCardAddedToPlayOnReshuffle(${nationCard.cardId})` : `NationCardAddedOnReshuffle(${nationCard.cardId})` });
-      if (nationCard.isAccession && !inPlayOverride?.suppressStateFlip) flipStateForAccession(G, playerId, nationCard.cardId);
+      if (nationCard.isAccession && !inPlayOverride?.suppressStateFlip && !isTerminalNationCard(G, playerId, nationCard.cardId)) flipStateForAccession(G, playerId, nationCard.cardId);
       triggerScoringForTerminalNationCard(G, playerId, nationCard.cardId);
       if (nationCard.isAccession && startShortGameDevelopmentExileChoice(G, playerId, resumeDrawCount)) {
         return { attempted: true, shuffled: false };
       }
-    } else if (p.developmentArea.length > 0) {
+    } else if (canUseDevelopmentArea(G, playerId) && p.developmentArea.length > 0) {
       const cardIds = payableDevelopmentCards(G, playerId);
       if (cardIds.length > 0) {
         G.pendingDevelopmentChoice = { playerId, cardIds, resumeDrawCount, allowSkip: true };
@@ -284,6 +291,7 @@ export function maybeReshuffleDeck(G: GameState, playerId: string, randomNumber?
 export function resolvePendingDevelopmentChoice(G: GameState, playerId: string, cardId: string, randomNumber?: () => number, payment?: ResourceCost): boolean {
   const pending = G.pendingDevelopmentChoice;
   if (!pending || pending.playerId !== playerId || !pending.cardIds.includes(cardId)) return false;
+  if (!canUseDevelopmentArea(G, playerId)) return false;
   const usesProgressionToken = pending.usesProgressionToken !== false;
   const paysDevelopmentCost = pending.free !== true;
   if ((usesProgressionToken && !canSpendProgressionToken(G.players[playerId])) || (paysDevelopmentCost && !canPayDevelopmentCost(G, playerId, cardId))) return false;
@@ -336,6 +344,10 @@ export function resolvePendingShortGameDevelopmentExileChoice(G: GameState, play
 }
 
 export function createCardDrivenDevelopmentChoice(G: GameState, playerId: string, sourceCardId?: string, options: { free?: boolean } = {}): boolean {
+  if (!canUseDevelopmentArea(G, playerId)) {
+    G.log.push({ round: G.round, playerId, message: "DevelopmentSkipped(no_development_area)" });
+    return false;
+  }
   const p = G.players[playerId];
   if (p.developmentArea.length === 0) {
     G.log.push({ round: G.round, playerId, message: "DevelopmentSkipped(no_development_area)" });

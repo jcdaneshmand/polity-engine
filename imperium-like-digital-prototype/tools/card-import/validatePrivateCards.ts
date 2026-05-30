@@ -34,6 +34,8 @@ const effectOps = new Set([
   "move_self_to_history",
   "exile_card",
   "acquire_card",
+  "gain_card",
+  "take_card",
   "break_through",
   "find_card",
   "conditional_resource_at_least",

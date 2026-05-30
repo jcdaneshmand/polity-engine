@@ -199,6 +199,36 @@ describe("trade routes module", () => {
     expect(G.cardStates?.completed_route).toBeUndefined();
   });
 
+  it("profit routes History-bound cards through no-History discard replacement", () => {
+    const G = createInitialGameState({ options: { playerCount:2, mode:"multiplayer", enabledExpansions:["trade_routes"], enabledVariants:[] } });
+    G.cardDb.completed_route = {
+      id: "completed_route",
+      displayName: "Completed Route",
+      type: "trade_route",
+      cardType: "trade_route",
+      suit: "trade_route",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_play", op: "profit", destination: "history", effects: [] } as any]
+    };
+    G.players["0"].playArea = ["completed_route"];
+    G.players["0"].resources.goods = 0;
+    G.cardStates = { completed_route: { resources: { goods: 3 } } };
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      rulesetTags: ["no_history", "discard_instead_of_history"] as any,
+      zoneOverrides: [{ op: "disable_history", replacementBehavior: "discard" } as any]
+    };
+
+    const resolved = runEffects({ G, playerId:"0", selfCardId:"completed_route", enabledExpansions:["trade_routes"] }, [{ trigger:"on_play", op:"profit", destination: "history", effects: [] } as any]);
+
+    expect(resolved).toBe(true);
+    expect(G.players["0"].playArea).not.toContain("completed_route");
+    expect(G.players["0"].history).not.toContain("completed_route");
+    expect(G.players["0"].discard).toContain("completed_route");
+    expect(G.players["0"].resources.goods).toBe(3);
+  });
+
   it("profit moves a completed route to discard unless the effect specifies another destination", () => {
     const G = createInitialGameState({ options: { playerCount:2, mode:"multiplayer", enabledExpansions:["trade_routes"], enabledVariants:[] } });
     G.cardDb.completed_route = {

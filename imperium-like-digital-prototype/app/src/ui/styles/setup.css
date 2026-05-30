@@ -37,6 +37,17 @@
   text-transform: uppercase;
 }
 
+.setup-help {
+  margin: 0 0 10px;
+  color: #d9c7a7;
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.setup-help a {
+  color: #ffe0a3;
+}
+
 .setup-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -130,9 +141,71 @@
   font: inherit;
 }
 
+.setup-field input[type="file"] {
+  min-height: 38px;
+  box-sizing: border-box;
+  border: 1px dashed #7a6a57;
+  border-radius: 6px;
+  background: #25221f;
+  color: #f3ead8;
+  padding: 7px 8px;
+}
+
+.private-file-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.private-file-status {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.8fr) minmax(0, 1.2fr);
+  gap: 8px;
+  align-items: center;
+  border: 1px solid #6e5f50;
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: #332d28;
+  color: #d9c7a7;
+  font-size: 0.82rem;
+}
+
+.private-file-status strong {
+  overflow: hidden;
+  color: #f3ead8;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.private-file-status--loaded { border-color: #7d9478; }
+.private-file-status--error { border-color: #b56d5e; }
+.private-file-status--skipped { border-color: #8b7a65; }
+
+.setup-attribution {
+  margin: 14px 0 0;
+  color: #d9c7a7;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.setup-attribution a {
+  color: #ffe0a3;
+}
+
 .game-shell {
   min-height: 100vh;
+  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   background: #1f1d1b;
+}
+
+.game-shell .bgio-client {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .game-shell-bar {

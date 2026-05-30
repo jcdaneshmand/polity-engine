@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { getCardOrientation } from "../../../app/src/ui/layout/cardOrientation";
 import { CardTile } from "../../../app/src/ui/components/CardTile";
-import { CardDetailPanel } from "../../../app/src/ui/layout/CardDetailPanel";
+import { CardDetailPanel, formatCardDetailEffect, formatCardDetailResourceCost } from "../../../app/src/ui/layout/CardDetailPanel";
+import { BotRow } from "../../../app/src/ui/layout/BotRow";
 import { renderToStaticMarkup } from "react-dom/server";
 
 describe("card orientation", () => {
@@ -29,5 +30,38 @@ describe("card orientation", () => {
     expect(html).toContain("A");
     expect(html).not.toContain("PrivateX");
     expect(html).not.toContain("secret");
+  });
+  it("CardDetailPanel formats costs and effects for players", () => {
+    expect(formatCardDetailResourceCost({ materials:2, knowledge:1, goods:0 })).toBe("2 Materials, 1 Progress");
+    expect(formatCardDetailEffect({ trigger:"on_play", op:"gain_resource", resource:"materials", amount:2 })).toBe("On play: gain 2 Materials.");
+    expect(formatCardDetailEffect({ trigger:"on_solstice", op:"draw", count:1 })).toBe("On solstice: draw 1 card.");
+  });
+  it("BotRow hides face-down slot card identities", () => {
+    const html = renderToStaticMarkup(BotRow({
+      bot:{botNationId:"bot",botStateSide:"A",difficulty:"normal",slots:{1:{slotNumber:1,cardId:"secret_bot_card",face:"down"}}},
+      cardDb:{secret_bot_card:{id:"secret_bot_card",displayName:"Secret Bot Card",effects:[],tags:[]}},
+      onSelectZone:()=>{}
+    } as any));
+    expect(html).toContain("Face Down");
+    expect(html).not.toContain("Secret Bot Card");
+  });
+  it("BotRow shows the Bot card that was just revealed from a slot", () => {
+    const html = renderToStaticMarkup(BotRow({
+      bot:{
+        botNationId:"bot",
+        botStateSide:"A",
+        difficulty:"normal",
+        revealedSlotCard:{slotNumber:1,cardId:"secret_bot_card"},
+        slots:{1:{slotNumber:1,cardId:"refill_bot_card",face:"down"}}
+      },
+      cardDb:{
+        secret_bot_card:{id:"secret_bot_card",displayName:"Secret Bot Card",effects:[],tags:[]},
+        refill_bot_card:{id:"refill_bot_card",displayName:"Refill Bot Card",effects:[],tags:[]}
+      },
+      onSelectZone:()=>{}
+    } as any));
+    expect(html).toContain("Revealed from Slot 1");
+    expect(html).toContain("Secret Bot Card");
+    expect(html).not.toContain("Refill Bot Card");
   });
 });

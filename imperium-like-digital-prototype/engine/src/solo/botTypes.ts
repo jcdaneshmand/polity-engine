@@ -35,6 +35,7 @@ export type BotState = {
   difficultyConfig: SoloDifficultyConfig;
   customCleanupEffects?: Extract<BotOverride, { op: "bot_custom_cleanup" }>["effect"];
   unresolvedSlot?: SlotNumber;
+  revealedSlotCard?: { slotNumber: SlotNumber; cardId: string };
   lastDieRoll?: number;
   botLog: GameLogEntry[];
 };

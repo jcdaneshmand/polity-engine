@@ -19,6 +19,9 @@ import { runEffects } from "../cards/effectRunner";
 import { runNationHooks } from "../nations/nationRulesetHooks";
 import type { NationHookTrigger, NationRuleset, NationRulesetApplicationReport } from "../nations/nationRulesetTypes";
 import { activateState } from "../game/stateMatching";
+import { moveCardsToHistoryDestination } from "../game/history";
+import type { PrivateDataBundle } from "./privateDataBundle";
+import { recordById } from "./privateDataBundle";
 
 function buildGameCardDb(cards: NormalizedCardRecord[]): GameState["cardDb"] {
   return Object.fromEntries(filteredCardEntries(cards)) as GameState["cardDb"];
@@ -161,6 +164,14 @@ function buildFameDeckState(commonsSetup: NonNullable<GameState["setupReport"]>[
   };
 }
 
+function drawOpeningHand(player: GameState["players"][string]): void {
+  const handSize = player.handSize ?? 5;
+  while (player.hand.length < handSize && player.deck.length > 0) {
+    const cardId = player.deck.shift();
+    if (cardId) player.hand.push(cardId);
+  }
+}
+
 function seededIndex(seed: string | undefined, length: number): number {
   if (length <= 0) return 0;
   if (!seed) return 0;
@@ -198,6 +209,16 @@ function passiveRuleHookTrigger(trigger: NationDefinition["passiveRules"][number
 function initializeDefaultStateSide(game: GameState, playerId: string, ruleset: NationRuleset): void {
   if ((ruleset.stateOverrides ?? []).some((ov) => ov.op === "start_as_state")) return;
   activateState(game, playerId, "barbarian");
+}
+
+function routeSetupHistoryCards(game: GameState, playerId: string): void {
+  const player = game.players[playerId];
+  if (!player.history.length) return;
+  const cardIds = player.history.splice(0);
+  const destination = moveCardsToHistoryDestination(game, playerId, cardIds);
+  if (destination !== "history") {
+    game.log.push({ round: game.round, playerId, message: `SetupHistoryRouted(destination=${destination}/count=${cardIds.length})` });
+  }
 }
 
 function mergeImportedPassiveRules(nation: NationDefinition, ruleset: NationRuleset): NationRuleset {
@@ -239,7 +260,7 @@ function resolveSoloBotNationId(args: {
   return args.requestedBotNationId;
 }
 
-export function createInitialGameStateFromPipeline(args: { options: GameOptions; playerNationIds?: Record<string,string>; soloBotNationId?: string; cardDb: Record<string, NormalizedCardRecord>; nationDb: Record<string, NationDefinition>; randomSeed?: string; usePrivateRules?: boolean; privateRulesetPath?: string; privateStrategyPath?: string; privateBotStateTablePath?: string; privateBotTradeRoutesTablePath?: string; }): GameState {
+export function createInitialGameStateFromPipeline(args: { options: GameOptions; playerNationIds?: Record<string,string>; soloBotNationId?: string; cardDb: Record<string, NormalizedCardRecord>; nationDb: Record<string, NationDefinition>; randomSeed?: string; usePrivateRules?: boolean; privateData?: PrivateDataBundle; privateRulesetPath?: string; privateStrategyPath?: string; privateBotStateTablePath?: string; privateBotTradeRoutesTablePath?: string; }): GameState {
   const validation = validateGameOptions(args.options);
   const fatals = validation.issues.filter((i) => i.level === "fatal");
   if (fatals.length) throw new Error(fatals.map((f) => f.message).join("; "));
@@ -249,9 +270,13 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   const defaultSelected = Object.fromEntries(
     Array.from({ length: options.playerCount }, (_, i) => [String(i), "test_nation_sun_coast"])
   ) as Record<string, string>;
-  const selected = { ...defaultSelected, ...(args.playerNationIds ?? {}) };
-  const rulesetDb = loadNationRulesets({ usePrivate: args.usePrivateRules, privatePath: args.privateRulesetPath });
-  const strategyDb = loadNationStrategyProfiles({ usePrivate: args.usePrivateRules, privatePath: args.privateStrategyPath });
+  const selected = args.playerNationIds ? { ...args.playerNationIds } : defaultSelected;
+  const rulesetDb = args.privateData?.nationRulesets
+    ? { ...loadNationRulesets(), ...recordById(args.privateData.nationRulesets, (ruleset) => ruleset.nationId) }
+    : loadNationRulesets({ usePrivate: args.usePrivateRules, privatePath: args.privateRulesetPath });
+  const strategyDb = args.privateData?.nationStrategy
+    ? { ...loadNationStrategyProfiles(), ...recordById(args.privateData.nationStrategy, (profile) => profile.nationId) }
+    : loadNationStrategyProfiles({ usePrivate: args.usePrivateRules, privatePath: args.privateStrategyPath });
   const activeNationRulesets: Record<string, any> = {};
   const activeNationStrategyProfiles: Record<string, any> = {};
   const rulesetReports: NationRulesetApplicationReport[] = [];
@@ -264,6 +289,7 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   const extraUnrestSupplyCardIds: string[] = [];
   const game: GameState = {
     players,
+    playOrder: Object.keys(selected),
     cardDb: buildGameCardDb(filteredCards),
     market: [],
     marketRefillPool: [],
@@ -312,6 +338,7 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
         player.sideAreas[ov.zoneId] ??= [];
       }
     }
+    routeSetupHistoryCards(game, pid);
     for (const ov of ruleset.stateOverrides) {
       if (ov.op === "start_as_state") activateState(game, pid, ov.state);
     }
@@ -454,6 +481,7 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   game.fameDeck = buildFameDeckState(commonsSetup, options.playerCount, options.enabledExpansions.includes("trade_routes"));
   modules.forEach((m)=>m.modifyFameSetup?.(ctx as any));
   modules.forEach((m)=>m.modifyPlayerSetup?.(ctx as any));
+  Object.values(players).forEach(drawOpeningHand);
   game.cardDb = buildRuntimeCardDb({
     filteredCards,
     sourceCards: args.cardDb,
@@ -478,8 +506,8 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   });
   if (options.mode === "practice") (game as any).practiceClock = { turnsRemaining: 12, progressTokens: 12 };
   if (options.mode === "solo") {
-    const botStateTables = loadBotStateTables({ usePrivate: args.usePrivateRules, privatePath: args.privateBotStateTablePath });
-    const botTradeRoutesTables = loadBotTradeRoutesTables({ usePrivate: args.usePrivateRules, privatePath: args.privateBotTradeRoutesTablePath });
+    const botStateTables = args.privateData?.botStateTables ?? loadBotStateTables({ usePrivate: args.usePrivateRules, privatePath: args.privateBotStateTablePath });
+    const botTradeRoutesTables = args.privateData?.botTradeRoutesTables ?? loadBotTradeRoutesTables({ usePrivate: args.usePrivateRules, privatePath: args.privateBotTradeRoutesTablePath });
     const botNation = args.nationDb[soloBotNationId!];
     const botRuleset = mergeImportedPassiveRules(
       botNation,

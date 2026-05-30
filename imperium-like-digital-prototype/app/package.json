@@ -1,5 +1,5 @@
 {
-  "name": "@prototype/app",
+  "name": "@polity-engine/app",
   "version": "0.1.0",
   "private": true,
   "type": "module",

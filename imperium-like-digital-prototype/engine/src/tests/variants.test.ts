@@ -432,12 +432,14 @@ describe("variants",()=>{
       });
 
       expect(G.players["0"].discard).toEqual(["n1", "n2"]);
-      expect(G.players["0"].deck).toEqual(["n3"]);
+      expect(G.players["0"].hand).toEqual(["n3"]);
+      expect(G.players["0"].deck).toEqual([]);
       expect(G.players["0"].nationDeck).toEqual(["n4"]);
       expect(G.players["0"].developmentArea).toEqual(["graal_card"]);
       expect(G.cardStates?.court_card?.garrisonedCardIds).toEqual(["quest_card"]);
       expect(G.players["1"].discard).toEqual(["n1", "n2"]);
-      expect(G.players["1"].deck).toEqual(["n3"]);
+      expect(G.players["1"].hand).toEqual(["n3"]);
+      expect(G.players["1"].deck).toEqual([]);
       expect(G.players["1"].developmentArea).toEqual(["graal_card"]);
       expect(G.setupReport?.shortGameNationAdvanced).toBe(4);
     } finally {

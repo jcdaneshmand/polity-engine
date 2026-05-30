@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createInitialState } from "../game/initialState";
 import { finalizeNormalScoring, scoreBot, scorePlayer, triggerCollapse, triggerScoring } from "../game/scoring";
-import { resolveChoice, resolveExileChoice, resolveGiveCardChoice, resolvePlaceOnDeckChoice, resolveReturnUnrestChoice, resolveSwapChoice } from "../game/moves";
+import { resolveChoice, resolveExileChoice, resolveGiveCardChoice, resolveMarketCardChoice, resolvePlaceOnDeckChoice, resolveReturnUnrestChoice, resolveSwapChoice } from "../game/moves";
 import { onTurnEnd } from "../game/turn";
 
 function vpCard(id: string, vp: unknown): any {
@@ -321,6 +321,26 @@ describe("scoring", () => {
     });
   });
 
+  it("collapse scoring counts Unrest in nation-specific History replacement zones", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      flooded_unrest: unrestCard("flooded_unrest")
+    };
+    G.players["0"].sideAreas = { flooded: ["flooded_unrest"] };
+    G.activeNationRulesets!["0"].zoneOverrides = [
+      { op: "replace_history_with_zone", zoneId: "flooded", displayName: "Flooded" }
+    ];
+
+    triggerCollapse(G, "test_collapse");
+
+    expect(G.gameover).toEqual({
+      winner: "1",
+      reason: "collapse:test_collapse",
+      scores: { "0": 1, "1": 0 }
+    });
+  });
+
   it("collapse scoring does not count Unrest cards in the Power area", () => {
     const G = createInitialState();
     G.cardDb = {
@@ -453,6 +473,103 @@ describe("scoring", () => {
       reason: "collapse:test_collapse",
       scores: { "0": 1, "1": 1 },
       tieBreakScores: { "0": 2, "1": 2 }
+    });
+  });
+
+  it("collapse tie-break scoring does not run normal scoring lifecycle hooks", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      p0_unrest: unrestCard("p0_unrest"),
+      p1_unrest: unrestCard("p1_unrest")
+    };
+    G.players["0"].discard = ["p0_unrest"];
+    G.players["1"].discard = ["p1_unrest"];
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      hookRules: [{
+        trigger: "before_scoring",
+        effects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 5 } as any],
+        implemented: true,
+        tested: true
+      } as any]
+    };
+
+    triggerCollapse(G, "test_collapse");
+
+    expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.gameover).toEqual({
+      winner: "0,1",
+      reason: "collapse:test_collapse",
+      scores: { "0": 1, "1": 1 },
+      tieBreakScores: { "0": 0, "1": 0 }
+    });
+  });
+
+  it("collapse tie-break scoring allows tied players to return Unrest from scoring zones without changing the original Unrest tie", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      p0_vp: vpCard("p0_vp", 1),
+      p0_unrest: { ...unrestCard("p0_unrest"), vp: { mode: "negative", value: 2 } },
+      p1_unrest: unrestCard("p1_unrest")
+    };
+    G.players["0"].powerArea = ["p0_vp"];
+    G.players["0"].deck = ["p0_unrest"];
+    G.players["1"].hand = ["p1_unrest"];
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      hookRules: [{
+        trigger: "before_scoring",
+        effects: [{ trigger: "on_play", op: "return_unrest", cardId: "p0_unrest" } as any],
+        implemented: true,
+        tested: true
+      } as any]
+    };
+
+    triggerCollapse(G, "test_collapse");
+
+    expect(G.players["0"].deck).toEqual([]);
+    expect(G.unrestPile).toContain("p0_unrest");
+    expect(G.gameover).toEqual({
+      winner: "0",
+      reason: "collapse:test_collapse",
+      scores: { "0": 1, "1": 1 },
+      tieBreakScores: { "0": 1, "1": 0 }
+    });
+  });
+
+  it("collapse tie-break scoring can return Unrest from a nation-specific History replacement zone", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      p0_vp: vpCard("p0_vp", 1),
+      flooded_unrest: { ...unrestCard("flooded_unrest"), vp: { mode: "negative", value: 2 } },
+      p1_unrest: unrestCard("p1_unrest")
+    };
+    G.players["0"].powerArea = ["p0_vp"];
+    G.players["0"].sideAreas = { flooded: ["flooded_unrest"] };
+    G.players["1"].hand = ["p1_unrest"];
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      zoneOverrides: [{ op: "replace_history_with_zone", zoneId: "flooded", displayName: "Flooded" }],
+      hookRules: [{
+        trigger: "before_scoring",
+        effects: [{ trigger: "on_play", op: "return_unrest", cardId: "flooded_unrest" } as any],
+        implemented: true,
+        tested: true
+      } as any]
+    };
+
+    triggerCollapse(G, "test_collapse");
+
+    expect(G.players["0"].sideAreas?.flooded).toEqual([]);
+    expect(G.unrestPile).toContain("flooded_unrest");
+    expect(G.gameover).toEqual({
+      winner: "0",
+      reason: "collapse:test_collapse",
+      scores: { "0": 1, "1": 1 },
+      tieBreakScores: { "0": 1, "1": 0 }
     });
   });
 
@@ -678,6 +795,80 @@ describe("scoring", () => {
     });
   });
 
+  it("normal scoring return-Unrest hooks can return specified Unrest from any scored zone", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      p0_vp: vpCard("p0_vp", 5),
+      p1_vp: vpCard("p1_vp", 2),
+      deck_unrest: { ...unrestCard("deck_unrest"), vp: { mode: "negative", value: 4 } }
+    };
+    G.players["0"].powerArea = ["p0_vp"];
+    G.players["0"].deck = ["deck_unrest"];
+    G.players["1"].powerArea = ["p1_vp"];
+    G.scoring = { reason: "test_trigger", triggeredBy: "0", phase: "final_round", finalRound: 1 };
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      hookRules: [{
+        trigger: "before_scoring",
+        effects: [{ trigger: "on_play", op: "return_unrest", cardId: "deck_unrest" } as any]
+      } as any]
+    };
+
+    finalizeNormalScoring(G);
+
+    expect(G.players["0"].deck).toEqual([]);
+    expect(G.unrestPile).toContain("deck_unrest");
+    expect(G.gameover).toEqual({
+      winner: "0",
+      reason: "normal_scoring:test_trigger",
+      scores: { "0": 5, "1": 2 }
+    });
+  });
+
+  it("normal scoring return-Unrest choices include nation-specific History replacement zones", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      p0_vp: vpCard("p0_vp", 5),
+      p1_vp: vpCard("p1_vp", 2),
+      flooded_unrest: { ...unrestCard("flooded_unrest"), vp: { mode: "negative", value: 4 } }
+    };
+    G.players["0"].powerArea = ["p0_vp"];
+    G.players["0"].sideAreas = { flooded: ["flooded_unrest"] };
+    G.players["1"].powerArea = ["p1_vp"];
+    G.scoring = { reason: "test_trigger", triggeredBy: "0", phase: "final_round", finalRound: 1 };
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      zoneOverrides: [{ op: "replace_history_with_zone", zoneId: "flooded", displayName: "Flooded" }],
+      hookRules: [{
+        trigger: "before_scoring",
+        effects: [{ trigger: "on_play", op: "return_unrest" } as any]
+      } as any]
+    };
+
+    finalizeNormalScoring(G);
+
+    expect(G.pendingReturnUnrestChoice).toEqual({
+      playerId: "0",
+      cardIds: ["flooded_unrest"],
+      sourceZones: ["hand", "playArea", "discard", "deck", "flooded"]
+    });
+    expect(G.pendingScoringFinalization).toEqual({ playerIds: ["0", "1"], scores: {}, nextPlayerIndex: 0 });
+    expect(G.gameover).toBeUndefined();
+
+    resolveReturnUnrestChoice({ G, ctx: { currentPlayer: "0" } as any }, "flooded_unrest");
+
+    expect(G.pendingReturnUnrestChoice).toBeUndefined();
+    expect(G.players["0"].sideAreas?.flooded).toEqual([]);
+    expect(G.unrestPile).toContain("flooded_unrest");
+    expect(G.gameover).toEqual({
+      winner: "0",
+      reason: "normal_scoring:test_trigger",
+      scores: { "0": 5, "1": 2 }
+    });
+  });
+
   it("pauses normal scoring finalization when before_scoring creates newer pending keyword choices", () => {
     const scenarios = [
       {
@@ -714,6 +905,20 @@ describe("scoring", () => {
         },
         resolve(G: ReturnType<typeof createInitialState>) {
           resolveSwapChoice({ G, ctx: { currentPlayer: "0" } as any }, "hand_civilized", "market_civilized");
+        }
+      },
+      {
+        expectedKey: "pendingMarketCardChoice",
+        effect: { trigger: "on_play", op: "take_card", source: "market", suit: "civilized", count: 1 },
+        setup(G: ReturnType<typeof createInitialState>) {
+          G.market = ["market_civilized_a", "market_civilized_b"];
+          G.marketRefillPool = [];
+          G.marketDecks = undefined;
+          G.cardDb.market_civilized_a = { ...vpCard("market_civilized_a", 0), suit: "civilized" };
+          G.cardDb.market_civilized_b = { ...vpCard("market_civilized_b", 0), suit: "civilized" };
+        },
+        resolve(G: ReturnType<typeof createInitialState>) {
+          resolveMarketCardChoice({ G, ctx: { currentPlayer: "0" } as any }, "market_civilized_b");
         }
       }
     ] as const;

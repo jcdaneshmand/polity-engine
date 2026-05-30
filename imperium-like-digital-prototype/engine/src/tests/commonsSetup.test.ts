@@ -137,7 +137,7 @@ describe("commons setup", () => {
         }
       }
     });
-    expect(G.players["0"].deck).toContain("legacy_starting_card");
+    expect(G.players["0"].hand).toContain("legacy_starting_card");
     expect(G.cardDb.legacy_starting_card).toBeDefined();
     expect(G.cardDb.legends_commons).toBeDefined();
   });

@@ -20,6 +20,7 @@ export default function App() {
           options: session.options,
           playerNationIds: session.playerNationIds,
           soloBotNationId: session.soloBotNationId,
+          privateData: session.privateData,
           randomSeed: String(session.id)
         })
     };
@@ -40,7 +41,7 @@ export default function App() {
     <div className="game-shell">
       <div className="game-shell-bar">
         <div>
-          <strong>Prototype Game</strong>
+          <strong>Polity Engine</strong>
           <span>
             {session.options.mode} / {session.options.playerCount} player{session.options.playerCount === 1 ? "" : "s"}
           </span>

@@ -77,6 +77,22 @@ function paymentIsAvailable(G: GameState, playerId: string, payment: ResourceCos
   return RESOURCE_NAMES.every((resource) => (payment[resource] ?? 0) >= 0 && (payment[resource] ?? 0) <= (resources[resource] ?? 0));
 }
 
+function selectedPaymentMatchesCost(payment: ResourceCost, cost: ResourceCost): boolean {
+  const selected = Object.fromEntries(RESOURCE_NAMES.map((resource) => [resource, payment[resource] ?? 0])) as Record<ResourceName, number>;
+  if (selected.unrest !== (cost.unrest ?? 0)) return false;
+  if (selected.knowledge < (cost.knowledge ?? 0)) return false;
+  if (selected.goods < (cost.goods ?? 0)) return false;
+
+  const extraProgress = selected.knowledge - (cost.knowledge ?? 0);
+  const extraGoods = selected.goods - (cost.goods ?? 0);
+  const materialShortfall = Math.max(0, (cost.materials ?? 0) - selected.materials);
+  const influenceShortfall = Math.max(0, (cost.influence ?? 0) - selected.influence);
+
+  return selected.materials <= (cost.materials ?? 0)
+    && selected.influence <= (cost.influence ?? 0)
+    && extraProgress + extraGoods === Math.ceil(materialShortfall / 2) + influenceShortfall;
+}
+
 function applySpentResourceOverrides(G: GameState, playerId: string, spent: Partial<Record<ResourceName, number>>): void {
   const ruleset = G.activeNationRulesets?.[playerId];
   if (!ruleset) return;
@@ -92,7 +108,7 @@ function applySpentResourceOverrides(G: GameState, playerId: string, spent: Part
 }
 
 export function payResourceCosts(G: GameState, playerId: string, cost: ResourceCost, payment?: ResourceCost): boolean {
-  if (!canPayResourceCosts(G, playerId, cost) || (payment && (!paymentIsAvailable(G, playerId, payment) || !resourcesCanPayCost(payment, cost)))) {
+  if (!canPayResourceCosts(G, playerId, cost) || (payment && (!paymentIsAvailable(G, playerId, payment) || !selectedPaymentMatchesCost(payment, cost)))) {
     const required = Object.entries(cost)
       .filter(([, amount]) => (amount ?? 0) > 0)
       .map(([resource, amount]) => `${resource}=${amount}`)

@@ -121,6 +121,15 @@ export function duplicateCardDraft(draft: CardEntryDraft, options: DuplicateCard
   return duplicate;
 }
 
+export function getNextNumericCardId(rows: Array<Record<string, string>>): string {
+  const highest = rows.reduce((max, row) => {
+    const value = row.card_id?.trim() ?? "";
+    if (!/^\d+$/.test(value)) return max;
+    return Math.max(max, Number(value));
+  }, 0);
+  return String(highest + 1);
+}
+
 export function toggleDraftSuitIcon(draft: CardEntryDraft, suitIcon: string): CardEntryDraft {
   const trimmed = suitIcon.trim();
   if (!trimmed) return draft;

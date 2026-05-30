@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { commonsBatchProfiles, createNationBatchProfile } from "../../../tools/card-entry/batchProfiles";
-import { createBlankCardDraft, duplicateCardDraft, draftToCsvRow } from "../../../tools/card-entry/cardDraft";
+import { createBlankCardDraft, duplicateCardDraft, draftToCsvRow, getNextNumericCardId } from "../../../tools/card-entry/cardDraft";
 
 describe("card entry batch profiles", () => {
   it("defines the commons batches in the transcription order", () => {
@@ -71,5 +71,15 @@ describe("card entry batch profiles", () => {
     const duplicate = duplicateCardDraft(original, { includePrivateText: true });
 
     expect(duplicate.rawEffectTextPrivate).toBe("same variant text");
+  });
+
+  it("finds the next numeric card id while ignoring legacy non-numeric ids", () => {
+    expect(getNextNumericCardId([
+      { card_id: "1" } as any,
+      { card_id: "legacy_card" } as any,
+      { card_id: "007" } as any,
+      { card_id: "3a" } as any
+    ])).toBe("8");
+    expect(getNextNumericCardId([])).toBe("1");
   });
 });

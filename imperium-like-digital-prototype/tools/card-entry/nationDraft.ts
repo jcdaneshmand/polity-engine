@@ -141,10 +141,19 @@ export function appendOrReplaceNationRow(rows: PrivateNationCsvRow[], row: Priva
   return rows.map((existing, existingIndex) => (existingIndex === index ? row : existing));
 }
 
+export function getNextNumericNationId(rows: Array<Record<string, string>>): string {
+  const highest = rows.reduce((max, row) => {
+    const value = row.nation_id?.trim() ?? "";
+    if (!/^\d+$/.test(value)) return max;
+    return Math.max(max, Number(value));
+  }, 0);
+  return String(highest + 1);
+}
+
 export function sortNationRowsByName(rows: PrivateNationCsvRow[]): PrivateNationCsvRow[] {
   return [...rows].sort((left, right) => {
-    const leftLabel = left.public_placeholder_name || left.nation_name_private || left.nation_id || "";
-    const rightLabel = right.public_placeholder_name || right.nation_name_private || right.nation_id || "";
+    const leftLabel = left.nation_name_private || left.public_placeholder_name || left.nation_id || "";
+    const rightLabel = right.nation_name_private || right.public_placeholder_name || right.nation_id || "";
     return leftLabel.localeCompare(rightLabel);
   });
 }
@@ -172,7 +181,7 @@ export function summarizeNationDeckProgress(draft: NationEntryDraft): NationDeck
 
   return {
     nationId: draft.nationId,
-    label: draft.publicPlaceholderName || draft.privateName || draft.nationId || "New nation",
+    label: draft.privateName || draft.publicPlaceholderName || draft.nationId || "New nation",
     slots,
     totalCards: slots.reduce((total, slot) => total + slot.count, 0)
   };

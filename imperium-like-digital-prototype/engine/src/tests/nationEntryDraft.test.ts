@@ -3,6 +3,7 @@ import {
   appendOrReplaceNationRow,
   appendCardIdToNationDraftRoles,
   createBlankNationDraft,
+  getNextNumericNationId,
   insertNationJsonTemplate,
   nationDraftToCsvRow,
   nationRowToDraft,
@@ -112,11 +113,20 @@ describe("nation entry drafts", () => {
 
   it("summarizes loaded nation rows by deck counts", () => {
     const rows = [
-      nationDraftToCsvRow({ ...createBlankNationDraft("romans"), publicPlaceholderName: "Romans", startingDeckCardIds: "a|b", nationDeckCardIds: "c" }),
-      nationDraftToCsvRow({ ...createBlankNationDraft("celts"), publicPlaceholderName: "Celts", developmentCardIds: "d|e" })
+      nationDraftToCsvRow({ ...createBlankNationDraft("romans"), privateName: "Actual Romans", publicPlaceholderName: "Romans", startingDeckCardIds: "a|b", nationDeckCardIds: "c" }),
+      nationDraftToCsvRow({ ...createBlankNationDraft("celts"), privateName: "Actual Celts", publicPlaceholderName: "Celts", developmentCardIds: "d|e" })
     ];
 
-    expect(summarizeNationRowsDeckProgress(rows).map((summary) => summary.label)).toEqual(["Celts", "Romans"]);
+    expect(summarizeNationRowsDeckProgress(rows).map((summary) => summary.label)).toEqual(["Actual Celts", "Actual Romans"]);
     expect(summarizeNationRowsDeckProgress(rows).find((summary) => summary.nationId === "romans")?.totalCards).toBe(3);
+  });
+
+  it("finds the next numeric nation id while ignoring legacy non-numeric ids", () => {
+    expect(getNextNumericNationId([
+      { nation_id: "1" } as any,
+      { nation_id: "legacy_nation" } as any,
+      { nation_id: "004" } as any
+    ])).toBe("5");
+    expect(getNextNumericNationId([])).toBe("1");
   });
 });

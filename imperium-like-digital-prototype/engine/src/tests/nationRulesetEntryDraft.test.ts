@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   appendOrReplaceNationRulesetRow,
+  buildNationRulesetName,
   createBlankNationRulesetDraft,
   nationRulesetDraftToCsvRow,
   nationRulesetTagOptions,
@@ -45,5 +46,10 @@ describe("nation ruleset entry drafts", () => {
     const replacement = nationRulesetDraftToCsvRow({ ...createBlankNationRulesetDraft("romans"), publicPlaceholderName: "New" });
 
     expect(appendOrReplaceNationRulesetRow([original], replacement)).toEqual([replacement]);
+  });
+
+  it("builds a readable ruleset name from selected traits", () => {
+    expect(buildNationRulesetName(["default_nation_deck", "fame_focus", "no_history"], "Romans")).toBe("Default Nation Deck + Fame Focus + No History");
+    expect(buildNationRulesetName([], "Romans")).toBe("Romans Ruleset");
   });
 });

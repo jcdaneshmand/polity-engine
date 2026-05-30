@@ -112,6 +112,17 @@ function splitTags(value: string | undefined): NationRulesetTag[] {
   return (value || "").split("|").map((tag) => tag.trim()).filter(Boolean) as NationRulesetTag[];
 }
 
+function titleizeTag(tag: NationRulesetTag): string {
+  return tag.split("_").map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`).join(" ");
+}
+
+export function buildNationRulesetName(tags: NationRulesetTag[], fallbackName: string): string {
+  const selected = tags.map(titleizeTag);
+  if (selected.length) return selected.join(" + ");
+  const fallback = fallbackName.trim() || "Nation";
+  return `${fallback} Ruleset`;
+}
+
 export function createBlankNationRulesetDraft(nationId = ""): NationRulesetEntryDraft {
   return {
     nationId,

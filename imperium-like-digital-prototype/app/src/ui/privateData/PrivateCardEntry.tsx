@@ -12,6 +12,7 @@ import {
   draftToCsvRow,
   duplicateCardDraft,
   getCardEntryShortcutAction,
+  getNextNumericCardId,
   toggleDraftSuitIcon,
   type VariableVpDraftDetails,
   type VariableVpFormula
@@ -21,6 +22,7 @@ import {
   appendOrReplaceNationRow,
   appendCardIdToNationDraftRoles,
   createBlankNationDraft,
+  getNextNumericNationId,
   insertNationJsonTemplate,
   nationCsvColumns,
   nationDraftToCsvRow,
@@ -33,6 +35,7 @@ import {
 } from "../../../../tools/card-entry/nationDraft";
 import {
   appendOrReplaceNationRulesetRow,
+  buildNationRulesetName,
   createBlankNationRulesetDraft,
   nationRulesetCsvColumns,
   nationRulesetDraftToCsvRow,
@@ -322,7 +325,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
   const [profileId, setProfileId] = useState(commonsBatchProfiles[0].id);
   const [nationId, setNationId] = useState("");
   const [rows, setRows] = useState<PrivateCardCsvRow[]>([]);
-  const [draft, setDraft] = useState<CardEntryDraft>(createBlankCardDraft(commonsBatchProfiles[0]));
+  const [draft, setDraft] = useState<CardEntryDraft>({ ...createBlankCardDraft(commonsBatchProfiles[0]), cardId: "1" });
   const [previousDraft, setPreviousDraft] = useState<CardEntryDraft | null>(null);
   const [fileName, setFileName] = useState("imperium_cards_private.csv");
   const [status, setStatus] = useState("No private CSV loaded. New saves stay in this browser until exported.");
@@ -336,7 +339,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
     note: ""
   });
   const [nationRows, setNationRows] = useState<PrivateNationCsvRow[]>([]);
-  const [nationDraft, setNationDraft] = useState<NationEntryDraft>(createBlankNationDraft());
+  const [nationDraft, setNationDraft] = useState<NationEntryDraft>(createBlankNationDraft("1"));
   const [nationFileName, setNationFileName] = useState("imperium_nations_private.csv");
   const [nationStatus, setNationStatus] = useState("No private nation CSV loaded. New nation rows stay in this browser until exported.");
   const [nationFileHandle, setNationFileHandle] = useState<FileSystemFileHandleLike | null>(null);
@@ -355,6 +358,10 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
   const sortedNationRows = useMemo(() => sortNationRowsByName(nationRows), [nationRows]);
   const currentNationDeckProgress = useMemo(() => summarizeNationDeckProgress(nationDraft), [nationDraft]);
   const allNationDeckProgress = useMemo(() => summarizeNationRowsDeckProgress(nationRows), [nationRows]);
+  const generatedRulesetName = useMemo(
+    () => buildNationRulesetName(rulesetDraft.rulesetTags, nationDraft.privateName || nationDraft.publicPlaceholderName || nationId),
+    [nationDraft.privateName, nationDraft.publicPlaceholderName, nationId, rulesetDraft.rulesetTags]
+  );
   const cardIdOptions = useMemo(() => {
     const ids = new Set<string>();
     rows.forEach((row) => { if (row.card_id?.trim()) ids.add(row.card_id.trim()); });
@@ -396,6 +403,12 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
     updateNationDraft(field, event.target.value);
   };
 
+  const nationNameChange = (event: { target: HTMLInputElement }) => {
+    const value = event.target.value;
+    setNationDraft((current) => ({ ...current, privateName: value, publicPlaceholderName: value }));
+    setRulesetDraft((current) => ({ ...current, privateName: value, publicPlaceholderName: value }));
+  };
+
   const rulesetDraftChange = (field: keyof NationRulesetEntryDraft) => (event: { target: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement }) => {
     updateRulesetDraft(field, event.target.value);
   };
@@ -434,8 +447,16 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
     setNationDraft((current) => insertNationJsonTemplate(current, "passiveRulesJson", template));
   };
 
-  const resetDraftForProfile = (profile: CardEntryBatchProfile) => {
-    setDraft(createBlankCardDraft(profile));
+  const createAutoNumberedDraft = (profile: CardEntryBatchProfile, availableRows = rows): CardEntryDraft => ({
+    ...createBlankCardDraft(profile),
+    cardId: getNextNumericCardId(availableRows)
+  });
+
+  const createAutoNumberedNationDraft = (availableRows = nationRows): NationEntryDraft =>
+    createBlankNationDraft(getNextNumericNationId(availableRows));
+
+  const resetDraftForProfile = (profile: CardEntryBatchProfile, availableRows = rows) => {
+    setDraft(createAutoNumberedDraft(profile, availableRows));
   };
 
   const changeProfile = (nextProfileId: string) => {
@@ -459,11 +480,11 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
 
   const selectNation = (nextNationId: string, availableRows = nationRows, availableRulesetRows = rulesetRows) => {
     if (nextNationId === "__new__") {
-      setNationId("");
-      const blankNation = createBlankNationDraft();
+      const blankNation = createAutoNumberedNationDraft(availableRows);
+      setNationId(blankNation.nationId);
       setNationDraft(blankNation);
-      setRulesetDraft(createBlankNationRulesetDraft());
-      resetDraftForProfile(createNationBatchProfile(""));
+      setRulesetDraft(createBlankNationRulesetDraft(blankNation.nationId));
+      resetDraftForProfile(createNationBatchProfile(blankNation.nationId));
       setNationStatus("Started a new nation definition row.");
       return;
     }
@@ -484,9 +505,11 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
         multiple: false
       });
       const file = await handle.getFile();
+      const nextRows = parseCsv(await file.text());
       setFileHandle(handle);
       setFileName(file.name);
-      setRows(parseCsv(await file.text()));
+      setRows(nextRows);
+      resetDraftForProfile(selectedProfile, nextRows);
       setCardDirty(false);
       setStatus(`Loaded ${file.name}.`);
       return;
@@ -496,9 +519,11 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
 
   const importCsvFile = async (file: File | undefined) => {
     if (!file) return;
+    const nextRows = parseCsv(await file.text());
     setFileHandle(null);
     setFileName(file.name);
-    setRows(parseCsv(await file.text()));
+    setRows(nextRows);
+    resetDraftForProfile(selectedProfile, nextRows);
     setCardDirty(false);
     setStatus(`Loaded ${file.name}. Saving will download a replacement CSV.`);
   };
@@ -518,6 +543,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
       setNationDirty(false);
       const firstNation = sortNationRowsByName(nextRows)[0];
       if (firstNation?.nation_id) selectNation(firstNation.nation_id, nextRows);
+      else setNationDraft(createAutoNumberedNationDraft(nextRows));
       setNationStatus(`Loaded ${file.name}.`);
       return;
     }
@@ -533,6 +559,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
     setNationDirty(false);
     const firstNation = sortNationRowsByName(nextRows)[0];
     if (firstNation?.nation_id) selectNation(firstNation.nation_id, nextRows);
+    else setNationDraft(createAutoNumberedNationDraft(nextRows));
     setNationStatus(`Loaded ${file.name}. Saving will download a replacement CSV.`);
   };
 
@@ -568,7 +595,8 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
   };
 
   const saveCurrentCard = () => {
-    const row = draftToCsvRow(draft);
+    const draftForSave = draft.cardId.trim() ? draft : { ...draft, cardId: getNextNumericCardId(rows) };
+    const row = draftToCsvRow(draftForSave);
     const nextRows = rows.some((existing) => existing.card_id?.trim() === row.card_id.trim())
       ? rows.map((existing) => (existing.card_id?.trim() === row.card_id.trim() ? row : existing))
       : [...rows, row];
@@ -580,8 +608,8 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
     }
     setRows(nextRows);
     setCardDirty(true);
-    setPreviousDraft(draft);
-    setDraft(createBlankCardDraft(selectedProfile));
+    setPreviousDraft(draftForSave);
+    setDraft(createAutoNumberedDraft(selectedProfile, nextRows));
     if (isNationBatch && selectedNationCardRoles.length > 0 && row.card_id.trim()) {
       if (!nationDraft.nationId.trim()) {
         setNationStatus("Choose or add a nation before assigning card roles.");
@@ -598,7 +626,15 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
   };
 
   const saveNationRow = () => {
-    const row = nationDraftToCsvRow(nationDraft);
+    const nationDraftForSave = nationDraft.nationId.trim()
+      ? nationDraft
+      : { ...nationDraft, nationId: getNextNumericNationId(nationRows) };
+    const nationName = nationDraftForSave.privateName.trim() || nationDraftForSave.publicPlaceholderName.trim();
+    const row = nationDraftToCsvRow({
+      ...nationDraftForSave,
+      privateName: nationName,
+      publicPlaceholderName: nationName
+    });
     const nextRows = appendOrReplaceNationRow(nationRows, row);
     const messages = validateNationRows(nextRows);
     const firstFatal = messages.find((message) => message.level === "fatal");
@@ -609,6 +645,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
     setNationRows(nextRows);
     setNationDirty(true);
     setNationId(row.nation_id.trim());
+    setNationDraft(nationRowToDraft(row));
     resetDraftForProfile(createNationBatchProfile(row.nation_id.trim()));
     setRulesetDraft((current) => ({
       ...current,
@@ -621,7 +658,12 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
 
   const saveRulesetRow = () => {
     const linkedNationId = nationDraft.nationId.trim() || nationId.trim();
-    const row = nationRulesetDraftToCsvRow({ ...rulesetDraft, nationId: linkedNationId });
+    const row = nationRulesetDraftToCsvRow({
+      ...rulesetDraft,
+      nationId: linkedNationId,
+      privateName: generatedRulesetName,
+      publicPlaceholderName: generatedRulesetName
+    });
     const nextRows = appendOrReplaceNationRulesetRow(rulesetRows, row);
     const messages = validateNationRulesetRows(nextRows);
     const firstFatal = messages.find((message) => message.level === "fatal");
@@ -689,7 +731,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
       setStatus("No previous card to duplicate.");
       return;
     }
-    setDraft(duplicateCardDraft(previousDraft, { includePrivateText }));
+    setDraft({ ...duplicateCardDraft(previousDraft, { includePrivateText }), cardId: getNextNumericCardId(rows) });
   };
 
   useEffect(() => {
@@ -771,7 +813,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
                 <option value="__new__">Add new nation...</option>
                 {sortedNationRows.map((row) => (
                   <option key={row.nation_id} value={row.nation_id}>
-                    {row.public_placeholder_name || row.nation_name_private || row.nation_id}
+                    {row.nation_name_private || row.public_placeholder_name || row.nation_id}
                   </option>
                 ))}
               </select>
@@ -843,9 +885,8 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
               </div>
 
               <div className="private-entry-nation-grid">
-                <label>Nation ID <input value={nationDraft.nationId} onChange={nationDraftChange("nationId")} onBlur={() => resetDraftForProfile(createNationBatchProfile(nationDraft.nationId))} /></label>
-                <label>Private Name <input value={nationDraft.privateName} onChange={nationDraftChange("privateName")} /></label>
-                <label>Placeholder Name <input value={nationDraft.publicPlaceholderName} onChange={nationDraftChange("publicPlaceholderName")} /></label>
+                <label>Nation ID (auto) <input value={nationDraft.nationId} readOnly /></label>
+                <label>Nation Name <input value={nationDraft.privateName || nationDraft.publicPlaceholderName} onChange={nationNameChange} /></label>
                 <label>Source Box <input value={nationDraft.sourceBox} onChange={nationDraftChange("sourceBox")} /></label>
                 <label>Complexity <input value={nationDraft.complexity} onChange={nationDraftChange("complexity")} /></label>
                 <label>Power Card IDs <input list="private-card-id-options" value={nationDraft.powerCardIds} onChange={nationDraftChange("powerCardIds")} /></label>
@@ -904,8 +945,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
 
               <div className="private-entry-nation-grid">
                 <label>Linked Nation ID <input value={rulesetDraft.nationId || nationDraft.nationId || nationId} readOnly /></label>
-                <label>Ruleset Name <input value={rulesetDraft.publicPlaceholderName} onChange={rulesetDraftChange("publicPlaceholderName")} /></label>
-                <label>Private Ruleset Name <input value={rulesetDraft.privateName} onChange={rulesetDraftChange("privateName")} /></label>
+                <label>Ruleset Name <input value={generatedRulesetName} readOnly /></label>
                 <label>Required Expansions <select value={rulesetDraft.requiredExpansions} onChange={rulesetDraftChange("requiredExpansions")}>{expansionRequirementOptions.map((option) => <option key={option.label} value={option.value}>{option.label}</option>)}</select></label>
                 <label>Implemented <select value={rulesetDraft.implemented} onChange={rulesetDraftChange("implemented")}><option value="false">false</option><option value="true">true</option></select></label>
                 <label>Tested <select value={rulesetDraft.tested} onChange={rulesetDraftChange("tested")}><option value="false">false</option><option value="true">true</option></select></label>
@@ -936,8 +976,8 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
         ) : null}
 
         <form className="private-entry-grid" onSubmit={(event: { preventDefault: () => void }) => { event.preventDefault(); saveCurrentCard(); }}>
-          <label>Card ID <input list="private-card-id-options" value={draft.cardId} onChange={draftChange("cardId")} autoFocus /></label>
-          <label>Private Name <input value={draft.privateName} onChange={draftChange("privateName")} /></label>
+          <label>Card ID (auto) <input value={draft.cardId} readOnly autoFocus /></label>
+          <label>Actual Card Name <input value={draft.privateName} onChange={draftChange("privateName")} /></label>
           <label>Placeholder Name <input value={draft.publicPlaceholderName} onChange={draftChange("publicPlaceholderName")} /></label>
           <label>Suit <select ref={setSuitSelectElement} value={draft.suit} onChange={draftChange("suit")}>{suitOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
           <label>Suit Icons <input value={draft.suitIcons} onChange={draftChange("suitIcons")} /></label>
@@ -1000,8 +1040,8 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
           ) : null}
           <label className="private-entry-wide">Notes <textarea rows={3} value={draft.notes} onChange={draftChange("notes")} /></label>
           <div className="private-entry-duplicate-help private-entry-wide">
-            <p><strong>Duplicate Structure</strong> copies card shape and metadata, then clears ID, names, private text, implemented, and tested.</p>
-            <p><strong>Duplicate Full</strong> copies the previous draft including private name and rules text, then clears only the card ID.</p>
+            <p><strong>Duplicate Structure</strong> copies card shape and metadata, assigns the next auto ID, then clears names, private text, implemented, and tested.</p>
+            <p><strong>Duplicate Full</strong> copies the previous draft including actual card name and rules text, then assigns the next auto ID.</p>
           </div>
           <div className="private-entry-footer private-entry-wide">
             <button type="button" onClick={() => duplicatePrevious(false)}>Duplicate Structure</button>

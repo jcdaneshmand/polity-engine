@@ -25,8 +25,31 @@ describe("private card entry navigation", () => {
     const html = renderToStaticMarkup(<PrivateCardEntry onBack={() => {}} />);
 
     expect(html).toContain("Duplicate Structure");
-    expect(html).toContain("copies card shape and metadata, then clears ID, names, private text, implemented, and tested");
+    expect(html).toContain("copies card shape and metadata, assigns the next auto ID, then clears names, private text, implemented, and tested");
     expect(html).toContain("Duplicate Full");
-    expect(html).toContain("copies the previous draft including private name and rules text, then clears only the card ID");
+    expect(html).toContain("copies the previous draft including actual card name and rules text, then assigns the next auto ID");
+  });
+
+  it("labels the private card name as the actual card name", () => {
+    const html = renderToStaticMarkup(<PrivateCardEntry onBack={() => {}} />);
+
+    expect(html).toContain("Actual Card Name");
+    expect(html).not.toContain("Private Name <input");
+  });
+
+  it("labels the private nation name as the nation name", () => {
+    const source = fs.readFileSync(path.resolve(import.meta.dirname, "../../../app/src/ui/privateData/PrivateCardEntry.tsx"), "utf8");
+
+    expect(source).toContain("Nation Name");
+    expect(source).not.toContain("Private Name <input value={nationDraft.privateName}");
+    expect(source).not.toContain("Placeholder Name <input value={nationDraft.publicPlaceholderName}");
+  });
+
+  it("shows one generated ruleset name field", () => {
+    const source = fs.readFileSync(path.resolve(import.meta.dirname, "../../../app/src/ui/privateData/PrivateCardEntry.tsx"), "utf8");
+
+    expect(source).toContain("Ruleset Name");
+    expect(source).not.toContain("Private Ruleset Name");
+    expect(source).toContain("buildNationRulesetName");
   });
 });

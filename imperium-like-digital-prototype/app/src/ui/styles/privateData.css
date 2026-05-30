@@ -91,6 +91,30 @@
   margin: -6px 0 14px;
 }
 
+.private-entry-mode-tabs,
+.private-entry-section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.private-entry-mode-tabs button,
+.private-entry-section-actions button {
+  border: 1px solid #4d5e62;
+  border-radius: 4px;
+  background: #fff;
+  color: #263238;
+  cursor: pointer;
+  padding: 8px 12px;
+}
+
+.private-entry-mode-tabs button.is-active,
+.private-entry-section-actions .primary-action {
+  background: #263238;
+  color: #fff;
+}
+
 .private-entry-shortcuts span {
   border: 1px solid #c2c9c7;
   background: #fff;

@@ -4,7 +4,24 @@ import type { PrivateCardCsvRow } from "../../../../tools/card-import/cardCsvTyp
 import type { NationRuleHook, PrivateNationCsvRow, SetupRule } from "../../../../tools/card-import/nationCsvTypes";
 import type { NationRulesetTag } from "../../../../engine/src/nations/nationRulesetTypes";
 import type { PrivateNationRulesetCsvRow } from "../../../../tools/card-import/nationRulesetCsvTypes";
+import type { PrivateBotStateTableCsvRow } from "../../../../tools/card-import/botStateTableCsvTypes";
+import type { PrivateBotTradeRoutesTableCsvRow } from "../../../../tools/card-import/botTradeRoutesTableCsvTypes";
+import { validatePrivateBotStateTableRows, validatePrivateBotTradeRoutesTableRows } from "../../../../tools/card-import/botTableValidation";
 import { commonsBatchProfiles, createNationBatchProfile } from "../../../../tools/card-entry/batchProfiles";
+import {
+  appendOrReplaceBotStateTableRow,
+  appendOrReplaceBotTradeRoutesTableRow,
+  botStateTableCsvColumns,
+  botStateTableDraftToCsvRow,
+  botStateTableRowToDraft,
+  botTradeRoutesTableCsvColumns,
+  botTradeRoutesTableDraftToCsvRow,
+  botTradeRoutesTableRowToDraft,
+  createBlankBotStateTableDraft,
+  createBlankBotTradeRoutesTableDraft,
+  type BotStateTableEntryDraft,
+  type BotTradeRoutesTableEntryDraft
+} from "../../../../tools/card-entry/botTableDraft";
 import {
   applyVariableVpDraftDetails,
   createBlankCardDraft,
@@ -64,6 +81,8 @@ type ValidationMessage = {
   field: string;
   message: string;
 };
+
+type PrivateEntryMode = "cards" | "nations" | "bot-state" | "bot-trade";
 
 const csvColumns = [
   "card_id",
@@ -157,6 +176,10 @@ const passiveRuleTemplates: Array<{ label: string; value: NationRuleHook }> = [
   { label: "On acquire: gain materials", value: { trigger: "on_acquire", effects: [{ op: "gain_resource", resource: "materials", amount: 1 }] } },
   { label: "On scoring hook", value: { trigger: "on_scoring", effects: [{ op: "gain_resource", resource: "progress", amount: 1 }] } }
 ];
+const botTriggerKindOptions = ["card_id", "card_name_private", "suit", "card_type", "tag", "unrest", "other"];
+const botTableSideOptions = ["S", "A", "B"];
+const botTradeRowTypeOptions = ["route", "end_of_turn"];
+const botMerchantStateOptions = ["", "merchants", "merchant_empire"];
 
 function profileFromSelection(profileId: string, nationId: string): CardEntryBatchProfile {
   if (profileId === "nation-custom") return createNationBatchProfile(nationId.trim());
@@ -173,6 +196,14 @@ function nationRowWithColumns(row: PrivateNationCsvRow): PrivateNationCsvRow {
 
 function nationRulesetRowWithColumns(row: PrivateNationRulesetCsvRow): PrivateNationRulesetCsvRow {
   return Object.fromEntries(nationRulesetCsvColumns.map((column) => [column, row[column] ?? ""])) as PrivateNationRulesetCsvRow;
+}
+
+function botStateTableRowWithColumns(row: PrivateBotStateTableCsvRow): PrivateBotStateTableCsvRow {
+  return Object.fromEntries(botStateTableCsvColumns.map((column) => [column, row[column as keyof PrivateBotStateTableCsvRow] ?? ""])) as PrivateBotStateTableCsvRow;
+}
+
+function botTradeRoutesTableRowWithColumns(row: PrivateBotTradeRoutesTableCsvRow): PrivateBotTradeRoutesTableCsvRow {
+  return Object.fromEntries(botTradeRoutesTableCsvColumns.map((column) => [column, row[column as keyof PrivateBotTradeRoutesTableCsvRow] ?? ""])) as PrivateBotTradeRoutesTableCsvRow;
 }
 
 function parseCsv(text: string): PrivateCardCsvRow[] {
@@ -193,6 +224,18 @@ function parseNationRulesetCsv(text: string): PrivateNationRulesetCsvRow[] {
   return parsed.data;
 }
 
+function parseBotStateTableCsv(text: string): PrivateBotStateTableCsvRow[] {
+  const parsed = Papa.parse<PrivateBotStateTableCsvRow>(text, { header: true, skipEmptyLines: true });
+  if (parsed.errors.length > 0) throw new Error(parsed.errors[0].message);
+  return parsed.data;
+}
+
+function parseBotTradeRoutesTableCsv(text: string): PrivateBotTradeRoutesTableCsvRow[] {
+  const parsed = Papa.parse<PrivateBotTradeRoutesTableCsvRow>(text, { header: true, skipEmptyLines: true });
+  if (parsed.errors.length > 0) throw new Error(parsed.errors[0].message);
+  return parsed.data;
+}
+
 function toCsv(rows: PrivateCardCsvRow[]): string {
   return `${Papa.unparse(rows.map(rowWithColumns), { columns: csvColumns, newline: "\n" })}\n`;
 }
@@ -203,6 +246,14 @@ function toNationCsv(rows: PrivateNationCsvRow[]): string {
 
 function toNationRulesetCsv(rows: PrivateNationRulesetCsvRow[]): string {
   return `${Papa.unparse(rows.map(nationRulesetRowWithColumns), { columns: [...nationRulesetCsvColumns], newline: "\n" })}\n`;
+}
+
+function toBotStateTableCsv(rows: PrivateBotStateTableCsvRow[]): string {
+  return `${Papa.unparse(rows.map(botStateTableRowWithColumns), { columns: [...botStateTableCsvColumns], newline: "\n" })}\n`;
+}
+
+function toBotTradeRoutesTableCsv(rows: PrivateBotTradeRoutesTableCsvRow[]): string {
+  return `${Papa.unparse(rows.map(botTradeRoutesTableRowWithColumns), { columns: [...botTradeRoutesTableCsvColumns], newline: "\n" })}\n`;
 }
 
 function validateRows(rows: PrivateCardCsvRow[]): ValidationMessage[] {
@@ -322,6 +373,7 @@ function downloadCsv(filename: string, content: string) {
 }
 
 export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
+  const [entryMode, setEntryMode] = useState<PrivateEntryMode>("cards");
   const [profileId, setProfileId] = useState(commonsBatchProfiles[0].id);
   const [nationId, setNationId] = useState("");
   const [rows, setRows] = useState<PrivateCardCsvRow[]>([]);
@@ -351,6 +403,18 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
   const [rulesetStatus, setRulesetStatus] = useState("No private ruleset CSV loaded. Builder traits stay in this browser until exported.");
   const [rulesetFileHandle, setRulesetFileHandle] = useState<FileSystemFileHandleLike | null>(null);
   const [rulesetDirty, setRulesetDirty] = useState(false);
+  const [botStateRows, setBotStateRows] = useState<PrivateBotStateTableCsvRow[]>([]);
+  const [botStateDraft, setBotStateDraft] = useState<BotStateTableEntryDraft>(createBlankBotStateTableDraft());
+  const [botStateFileName, setBotStateFileName] = useState("imperium_bot_state_tables_private.csv");
+  const [botStateStatus, setBotStateStatus] = useState("No bot state table CSV loaded. New rows stay in this browser until exported.");
+  const [botStateFileHandle, setBotStateFileHandle] = useState<FileSystemFileHandleLike | null>(null);
+  const [botStateDirty, setBotStateDirty] = useState(false);
+  const [botTradeRows, setBotTradeRows] = useState<PrivateBotTradeRoutesTableCsvRow[]>([]);
+  const [botTradeDraft, setBotTradeDraft] = useState<BotTradeRoutesTableEntryDraft>(createBlankBotTradeRoutesTableDraft());
+  const [botTradeFileName, setBotTradeFileName] = useState("imperium_bot_trade_routes_private.csv");
+  const [botTradeStatus, setBotTradeStatus] = useState("No bot trade route table CSV loaded. New rows stay in this browser until exported.");
+  const [botTradeFileHandle, setBotTradeFileHandle] = useState<FileSystemFileHandleLike | null>(null);
+  const [botTradeDirty, setBotTradeDirty] = useState(false);
   const [suitSelectElement, setSuitSelectElement] = useState<HTMLSelectElement | null>(null);
 
   const selectedProfile = useMemo(() => profileFromSelection(profileId, nationId), [profileId, nationId]);
@@ -372,12 +436,18 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
   const validation = useMemo(() => validateRows(rows), [rows]);
   const nationValidation = useMemo(() => validateNationRows(nationRows), [nationRows]);
   const rulesetValidation = useMemo(() => validateNationRulesetRows(rulesetRows), [rulesetRows]);
+  const botStateReport = useMemo(() => validatePrivateBotStateTableRows(botStateRows), [botStateRows]);
+  const botTradeReport = useMemo(() => validatePrivateBotTradeRoutesTableRows(botTradeRows), [botTradeRows]);
   const fatalCount = validation.filter((message) => message.level === "fatal").length;
   const warningCount = validation.filter((message) => message.level === "warning").length;
   const nationFatalCount = nationValidation.filter((message) => message.level === "fatal").length;
   const nationWarningCount = nationValidation.filter((message) => message.level === "warning").length;
   const rulesetFatalCount = rulesetValidation.filter((message) => message.level === "fatal").length;
   const rulesetWarningCount = rulesetValidation.filter((message) => message.level === "warning").length;
+  const botStateFatalCount = botStateReport.counts.fatal;
+  const botStateWarningCount = botStateReport.counts.warnings;
+  const botTradeFatalCount = botTradeReport.counts.fatal;
+  const botTradeWarningCount = botTradeReport.counts.warnings;
 
   const updateDraft = (field: keyof CardEntryDraft, value: string) => {
     setDraft((current) => ({ ...current, [field]: value }));
@@ -393,6 +463,14 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
 
   const updateRulesetDraft = (field: keyof NationRulesetEntryDraft, value: string) => {
     setRulesetDraft((current) => ({ ...current, [field]: value }));
+  };
+
+  const updateBotStateDraft = (field: keyof BotStateTableEntryDraft, value: string) => {
+    setBotStateDraft((current) => ({ ...current, [field]: value }));
+  };
+
+  const updateBotTradeDraft = (field: keyof BotTradeRoutesTableEntryDraft, value: string) => {
+    setBotTradeDraft((current) => ({ ...current, [field]: value }));
   };
 
   const draftChange = (field: keyof CardEntryDraft) => (event: { target: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement }) => {
@@ -411,6 +489,14 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
 
   const rulesetDraftChange = (field: keyof NationRulesetEntryDraft) => (event: { target: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement }) => {
     updateRulesetDraft(field, event.target.value);
+  };
+
+  const botStateDraftChange = (field: keyof BotStateTableEntryDraft) => (event: { target: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement }) => {
+    updateBotStateDraft(field, event.target.value);
+  };
+
+  const botTradeDraftChange = (field: keyof BotTradeRoutesTableEntryDraft) => (event: { target: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement }) => {
+    updateBotTradeDraft(field, event.target.value);
   };
 
   const applyNationCardRoleDefaults = (role: NationCardRole) => {
@@ -462,6 +548,13 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
   const changeProfile = (nextProfileId: string) => {
     setProfileId(nextProfileId);
     resetDraftForProfile(profileFromSelection(nextProfileId, nationId));
+  };
+
+  const changeEntryMode = (mode: PrivateEntryMode) => {
+    setEntryMode(mode);
+    if (mode === "nations" && profileId !== "nation-custom") {
+      changeProfile("nation-custom");
+    }
   };
 
   const selectRulesetForNation = (nextNationId: string, availableRows = rulesetRows, selectedNationDraft?: NationEntryDraft) => {
@@ -594,6 +687,68 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
     setRulesetStatus(`Loaded ${file.name}. Saving will download a replacement CSV.`);
   };
 
+  const openBotStateCsv = async () => {
+    const picker = window as WindowWithFilePicker;
+    if (picker.showOpenFilePicker) {
+      const [handle] = await picker.showOpenFilePicker({
+        types: [{ description: "Private bot state table CSV", accept: { "text/csv": [".csv"] } }],
+        multiple: false
+      });
+      const file = await handle.getFile();
+      const nextRows = parseBotStateTableCsv(await file.text());
+      setBotStateFileHandle(handle);
+      setBotStateFileName(file.name);
+      setBotStateRows(nextRows);
+      setBotStateDraft(nextRows[0] ? botStateTableRowToDraft(nextRows[0]) : createBlankBotStateTableDraft());
+      setBotStateDirty(false);
+      setBotStateStatus(`Loaded ${file.name}.`);
+      return;
+    }
+    document.getElementById("private-bot-state-file")?.click();
+  };
+
+  const importBotStateCsvFile = async (file: File | undefined) => {
+    if (!file) return;
+    const nextRows = parseBotStateTableCsv(await file.text());
+    setBotStateFileHandle(null);
+    setBotStateFileName(file.name);
+    setBotStateRows(nextRows);
+    setBotStateDraft(nextRows[0] ? botStateTableRowToDraft(nextRows[0]) : createBlankBotStateTableDraft());
+    setBotStateDirty(false);
+    setBotStateStatus(`Loaded ${file.name}. Saving will download a replacement CSV.`);
+  };
+
+  const openBotTradeCsv = async () => {
+    const picker = window as WindowWithFilePicker;
+    if (picker.showOpenFilePicker) {
+      const [handle] = await picker.showOpenFilePicker({
+        types: [{ description: "Private bot trade route table CSV", accept: { "text/csv": [".csv"] } }],
+        multiple: false
+      });
+      const file = await handle.getFile();
+      const nextRows = parseBotTradeRoutesTableCsv(await file.text());
+      setBotTradeFileHandle(handle);
+      setBotTradeFileName(file.name);
+      setBotTradeRows(nextRows);
+      setBotTradeDraft(nextRows[0] ? botTradeRoutesTableRowToDraft(nextRows[0]) : createBlankBotTradeRoutesTableDraft());
+      setBotTradeDirty(false);
+      setBotTradeStatus(`Loaded ${file.name}.`);
+      return;
+    }
+    document.getElementById("private-bot-trade-file")?.click();
+  };
+
+  const importBotTradeCsvFile = async (file: File | undefined) => {
+    if (!file) return;
+    const nextRows = parseBotTradeRoutesTableCsv(await file.text());
+    setBotTradeFileHandle(null);
+    setBotTradeFileName(file.name);
+    setBotTradeRows(nextRows);
+    setBotTradeDraft(nextRows[0] ? botTradeRoutesTableRowToDraft(nextRows[0]) : createBlankBotTradeRoutesTableDraft());
+    setBotTradeDirty(false);
+    setBotTradeStatus(`Loaded ${file.name}. Saving will download a replacement CSV.`);
+  };
+
   const saveCurrentCard = () => {
     const draftForSave = draft.cardId.trim() ? draft : { ...draft, cardId: getNextNumericCardId(rows) };
     const row = draftToCsvRow(draftForSave);
@@ -677,6 +832,34 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
     setRulesetStatus(`Saved ruleset ${row.nation_id}. Rows: ${nextRows.length}.`);
   };
 
+  const saveBotStateRow = () => {
+    const row = botStateTableDraftToCsvRow(botStateDraft);
+    const nextRows = appendOrReplaceBotStateTableRow(botStateRows, row);
+    const report = validatePrivateBotStateTableRows(nextRows);
+    const firstFatal = report.errors.find((message) => message.level === "fatal");
+    if (firstFatal) {
+      setBotStateStatus(`${firstFatal.field}: Row ${firstFatal.row}: ${firstFatal.message}`);
+      return;
+    }
+    setBotStateRows(nextRows);
+    setBotStateDirty(true);
+    setBotStateStatus(`Saved bot state row ${row.row_id}. Rows: ${nextRows.length}.`);
+  };
+
+  const saveBotTradeRow = () => {
+    const row = botTradeRoutesTableDraftToCsvRow(botTradeDraft);
+    const nextRows = appendOrReplaceBotTradeRoutesTableRow(botTradeRows, row);
+    const report = validatePrivateBotTradeRoutesTableRows(nextRows);
+    const firstFatal = report.errors.find((message) => message.level === "fatal");
+    if (firstFatal) {
+      setBotTradeStatus(`${firstFatal.field}: Row ${firstFatal.row}: ${firstFatal.message}`);
+      return;
+    }
+    setBotTradeRows(nextRows);
+    setBotTradeDirty(true);
+    setBotTradeStatus(`Saved bot trade ${row.row_type} row. Rows: ${nextRows.length}.`);
+  };
+
   const saveCsv = async () => {
     const content = toCsv(rows);
     if (fileHandle) {
@@ -720,6 +903,36 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
     downloadCsv(rulesetFileName, content);
     setRulesetDirty(false);
     setRulesetStatus(`Downloaded ${rulesetFileName}.`);
+  };
+
+  const saveBotStateCsv = async () => {
+    const content = toBotStateTableCsv(botStateRows);
+    if (botStateFileHandle) {
+      const writable = await botStateFileHandle.createWritable();
+      await writable.write(content);
+      await writable.close();
+      setBotStateDirty(false);
+      setBotStateStatus(`Saved ${botStateFileName}.`);
+      return;
+    }
+    downloadCsv(botStateFileName, content);
+    setBotStateDirty(false);
+    setBotStateStatus(`Downloaded ${botStateFileName}.`);
+  };
+
+  const saveBotTradeCsv = async () => {
+    const content = toBotTradeRoutesTableCsv(botTradeRows);
+    if (botTradeFileHandle) {
+      const writable = await botTradeFileHandle.createWritable();
+      await writable.write(content);
+      await writable.close();
+      setBotTradeDirty(false);
+      setBotTradeStatus(`Saved ${botTradeFileName}.`);
+      return;
+    }
+    downloadCsv(botTradeFileName, content);
+    setBotTradeDirty(false);
+    setBotTradeStatus(`Downloaded ${botTradeFileName}.`);
   };
 
   const toggleRulesetTrait = (tag: NationRulesetTag) => {
@@ -772,60 +985,76 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
           </div>
           <div className="private-entry-actions">
             <button type="button" onClick={onBack}>Back</button>
-            <button type="button" onClick={openCsv}>Open CSV</button>
-            <button className="primary-action" type="button" onClick={saveCsv}>Save CSV</button>
           </div>
         </div>
 
         <input id="private-card-file" hidden type="file" accept=".csv,text/csv" onChange={(event: { target: HTMLInputElement }) => importCsvFile(event.target.files?.[0])} />
         <input id="private-nation-file" hidden type="file" accept=".csv,text/csv" onChange={(event: { target: HTMLInputElement }) => importNationCsvFile(event.target.files?.[0])} />
         <input id="private-ruleset-file" hidden type="file" accept=".csv,text/csv" onChange={(event: { target: HTMLInputElement }) => importRulesetCsvFile(event.target.files?.[0])} />
+        <input id="private-bot-state-file" hidden type="file" accept=".csv,text/csv" onChange={(event: { target: HTMLInputElement }) => importBotStateCsvFile(event.target.files?.[0])} />
+        <input id="private-bot-trade-file" hidden type="file" accept=".csv,text/csv" onChange={(event: { target: HTMLInputElement }) => importBotTradeCsvFile(event.target.files?.[0])} />
         <datalist id="private-card-id-options">
           {cardIdOptions.map((cardId) => <option key={cardId} value={cardId} />)}
         </datalist>
 
-        <div className={`private-entry-status ${fatalCount > 0 ? "is-error" : ""}`}>
-          <span>{status}</span>
-          <span>{cardDirty ? <strong className="private-entry-unsaved">Card CSV changed</strong> : null}{rows.length} rows / {fatalCount} fatal / {warningCount} warnings</span>
+        <div className="private-entry-mode-tabs" role="tablist" aria-label="Private data entry sections">
+          <button type="button" className={entryMode === "cards" ? "is-active" : ""} onClick={() => changeEntryMode("cards")}>Cards</button>
+          <button type="button" className={entryMode === "nations" ? "is-active" : ""} onClick={() => changeEntryMode("nations")}>Nations</button>
+          <button type="button" className={entryMode === "bot-state" ? "is-active" : ""} onClick={() => changeEntryMode("bot-state")}>Bot State</button>
+          <button type="button" className={entryMode === "bot-trade" ? "is-active" : ""} onClick={() => changeEntryMode("bot-trade")}>Bot Trade Routes</button>
         </div>
 
-        <div className="private-entry-shortcuts">
-          <span>Ctrl+Enter save card</span>
-          <span>Alt+S suit</span>
-          <span>Alt+V apply VP</span>
-          <span>Alt+1-6 slots</span>
-        </div>
+        {entryMode === "cards" || entryMode === "nations" ? (
+          <>
+            <div className="private-entry-section-actions">
+              <button type="button" onClick={openCsv}>Open Card CSV</button>
+              <button className="primary-action" type="button" onClick={saveCsv}>Save Card CSV</button>
+            </div>
 
-        <div className="private-entry-batch">
-          <label>
-            Batch
-            <select value={profileId} onChange={(event: { target: HTMLSelectElement }) => changeProfile(event.target.value)}>
-              {commonsBatchProfiles.map((profile) => (
-                <option key={profile.id} value={profile.id}>{profile.label}</option>
-              ))}
-              <option value="nation-custom">Nation Deck</option>
-            </select>
-          </label>
-          {profileId === "nation-custom" ? (
-            <label>
-              Current Nation
-              <select value={sortedNationRows.some((row) => row.nation_id === nationId) ? nationId : "__new__"} onChange={(event: { target: HTMLSelectElement }) => selectNation(event.target.value)}>
-                <option value="__new__">Add new nation...</option>
-                {sortedNationRows.map((row) => (
-                  <option key={row.nation_id} value={row.nation_id}>
-                    {row.nation_name_private || row.public_placeholder_name || row.nation_id}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          <label>
-            File
-            <input value={fileName} onChange={(event: { target: HTMLInputElement }) => setFileName(event.target.value)} />
-          </label>
-        </div>
+            <div className={`private-entry-status ${fatalCount > 0 ? "is-error" : ""}`}>
+              <span>{status}</span>
+              <span>{cardDirty ? <strong className="private-entry-unsaved">Card CSV changed</strong> : null}{rows.length} rows / {fatalCount} fatal / {warningCount} warnings</span>
+            </div>
 
-        {isNationBatch ? (
+            <div className="private-entry-shortcuts">
+              <span>Ctrl+Enter save card</span>
+              <span>Alt+S suit</span>
+              <span>Alt+V apply VP</span>
+              <span>Alt+1-6 slots</span>
+            </div>
+
+            <div className="private-entry-batch">
+              <label>
+                Batch
+                <select value={profileId} onChange={(event: { target: HTMLSelectElement }) => changeProfile(event.target.value)}>
+                  {commonsBatchProfiles.map((profile) => (
+                    <option key={profile.id} value={profile.id}>{profile.label}</option>
+                  ))}
+                  <option value="nation-custom">Nation Deck</option>
+                </select>
+              </label>
+              {profileId === "nation-custom" ? (
+                <label>
+                  Current Nation
+                  <select value={sortedNationRows.some((row) => row.nation_id === nationId) ? nationId : "__new__"} onChange={(event: { target: HTMLSelectElement }) => selectNation(event.target.value)}>
+                    <option value="__new__">Add new nation...</option>
+                    {sortedNationRows.map((row) => (
+                      <option key={row.nation_id} value={row.nation_id}>
+                        {row.nation_name_private || row.public_placeholder_name || row.nation_id}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              <label>
+                File
+                <input value={fileName} onChange={(event: { target: HTMLInputElement }) => setFileName(event.target.value)} />
+              </label>
+            </div>
+          </>
+        ) : null}
+
+        {entryMode === "nations" && isNationBatch ? (
           <>
             <section className="private-entry-nation-panel" aria-labelledby="private-nation-title">
               <div className="private-entry-subheading">
@@ -975,6 +1204,8 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
           </>
         ) : null}
 
+        {entryMode === "cards" || entryMode === "nations" ? (
+        <>
         <form className="private-entry-grid" onSubmit={(event: { preventDefault: () => void }) => { event.preventDefault(); saveCurrentCard(); }}>
           <label>Card ID (auto) <input value={draft.cardId} readOnly autoFocus /></label>
           <label>Actual Card Name <input value={draft.privateName} onChange={draftChange("privateName")} /></label>
@@ -1058,6 +1289,159 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
               </li>
             ))}
           </ul>
+        ) : null}
+        </>
+        ) : null}
+
+        {entryMode === "bot-state" ? (
+          <section className="private-entry-nation-panel" aria-labelledby="private-bot-state-title">
+            <div className="private-entry-subheading">
+              <div>
+                <h2 id="private-bot-state-title">Bot State Table CSV</h2>
+                <p>Build bot state trigger rows for AI nation behavior.</p>
+              </div>
+              <div className="private-entry-actions">
+                <button type="button" onClick={openBotStateCsv}>Open Bot State CSV</button>
+                <button type="button" onClick={saveBotStateRow}>Save Bot State Row</button>
+                <button className="primary-action" type="button" onClick={saveBotStateCsv}>Save Bot State CSV</button>
+              </div>
+            </div>
+
+            <div className={`private-entry-status ${botStateFatalCount > 0 ? "is-error" : ""}`}>
+              <span>{botStateStatus}</span>
+              <span>{botStateDirty ? <strong className="private-entry-unsaved">Bot state CSV changed</strong> : null}{botStateRows.length} rows / {botStateFatalCount} fatal / {botStateWarningCount} warnings</span>
+            </div>
+
+            <div className="private-entry-batch">
+              <label>
+                File
+                <input value={botStateFileName} onChange={(event: { target: HTMLInputElement }) => setBotStateFileName(event.target.value)} />
+              </label>
+              <label>
+                Existing Row
+                <select value="" onChange={(event: { target: HTMLSelectElement }) => {
+                  const row = botStateRows.find((item) => `${item.table_id}|${item.table_side}|${item.row_id}` === event.target.value);
+                  if (row) setBotStateDraft(botStateTableRowToDraft(row));
+                }}>
+                  <option value="">Load saved row...</option>
+                  {botStateRows.map((row) => (
+                    <option key={`${row.table_id}|${row.table_side}|${row.row_id}`} value={`${row.table_id}|${row.table_side}|${row.row_id}`}>
+                      {row.table_id} / {row.table_side} / {row.row_id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <form className="private-entry-grid" onSubmit={(event: { preventDefault: () => void }) => { event.preventDefault(); saveBotStateRow(); }}>
+              <label>Table ID <input value={botStateDraft.tableId} onChange={botStateDraftChange("tableId")} /></label>
+              <label>Bot Nation ID <input value={botStateDraft.botNationId} onChange={botStateDraftChange("botNationId")} /></label>
+              <label>Table Side <select value={botStateDraft.tableSide} onChange={botStateDraftChange("tableSide")}>{botTableSideOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
+              <label>Row ID <input value={botStateDraft.rowId} onChange={botStateDraftChange("rowId")} /></label>
+              <label>Priority <input value={botStateDraft.priority} onChange={botStateDraftChange("priority")} /></label>
+              <label>Trigger Kind <select value={botStateDraft.triggerKind} onChange={botStateDraftChange("triggerKind")}>{botTriggerKindOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
+              <label>Trigger Value <input value={botStateDraft.triggerValue} onChange={botStateDraftChange("triggerValue")} /></label>
+              <label>Placeholder Label <input value={botStateDraft.publicPlaceholderLabel} onChange={botStateDraftChange("publicPlaceholderLabel")} /></label>
+              <label>Private Trigger Label <input value={botStateDraft.privateTriggerLabel} onChange={botStateDraftChange("privateTriggerLabel")} /></label>
+              <label>Implemented <select value={botStateDraft.implemented} onChange={botStateDraftChange("implemented")}><option value="false">false</option><option value="true">true</option></select></label>
+              <label>Tested <select value={botStateDraft.tested} onChange={botStateDraftChange("tested")}><option value="false">false</option><option value="true">true</option></select></label>
+              <label className="private-entry-wide">Private Effect Text <textarea rows={3} value={botStateDraft.privateEffectText} onChange={botStateDraftChange("privateEffectText")} /></label>
+              <label className="private-entry-wide">Effects JSON <textarea rows={5} value={botStateDraft.effectsJson} onChange={botStateDraftChange("effectsJson")} /></label>
+              <label className="private-entry-wide">Notes <textarea rows={2} value={botStateDraft.notes} onChange={botStateDraftChange("notes")} /></label>
+              <div className="private-entry-footer private-entry-wide">
+                <button type="button" onClick={() => setBotStateDraft(createBlankBotStateTableDraft())}>New Bot State Row</button>
+                <button className="primary-action" type="submit">Save Bot State Row</button>
+              </div>
+            </form>
+
+            {botStateReport.errors.length > 0 ? (
+              <ul className="private-entry-messages">
+                {botStateReport.errors.slice(0, 8).map((message, index) => (
+                  <li key={`${message.field}-${message.row}-${index}`} className={message.level === "fatal" ? "is-error" : ""}>
+                    Row {message.row} {message.field}: {message.message}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </section>
+        ) : null}
+
+        {entryMode === "bot-trade" ? (
+          <section className="private-entry-nation-panel" aria-labelledby="private-bot-trade-title">
+            <div className="private-entry-subheading">
+              <div>
+                <h2 id="private-bot-trade-title">Bot Trade Routes CSV</h2>
+                <p>Build route and end-of-turn rows for AI trade route behavior.</p>
+              </div>
+              <div className="private-entry-actions">
+                <button type="button" onClick={openBotTradeCsv}>Open Bot Trade CSV</button>
+                <button type="button" onClick={saveBotTradeRow}>Save Bot Trade Row</button>
+                <button className="primary-action" type="button" onClick={saveBotTradeCsv}>Save Bot Trade CSV</button>
+              </div>
+            </div>
+
+            <div className={`private-entry-status ${botTradeFatalCount > 0 ? "is-error" : ""}`}>
+              <span>{botTradeStatus}</span>
+              <span>{botTradeDirty ? <strong className="private-entry-unsaved">Bot trade CSV changed</strong> : null}{botTradeRows.length} rows / {botTradeFatalCount} fatal / {botTradeWarningCount} warnings</span>
+            </div>
+
+            <div className="private-entry-batch">
+              <label>
+                File
+                <input value={botTradeFileName} onChange={(event: { target: HTMLInputElement }) => setBotTradeFileName(event.target.value)} />
+              </label>
+              <label>
+                Existing Row
+                <select value="" onChange={(event: { target: HTMLSelectElement }) => {
+                  const row = botTradeRows.find((item) => {
+                    const key = item.row_type === "end_of_turn"
+                      ? `${item.table_id}|${item.row_type}|${item.merchant_state}|${item.priority}`
+                      : `${item.table_id}|${item.row_type}|${item.trade_route_card_id}`;
+                    return key === event.target.value;
+                  });
+                  if (row) setBotTradeDraft(botTradeRoutesTableRowToDraft(row));
+                }}>
+                  <option value="">Load saved row...</option>
+                  {botTradeRows.map((row) => {
+                    const key = row.row_type === "end_of_turn"
+                      ? `${row.table_id}|${row.row_type}|${row.merchant_state}|${row.priority}`
+                      : `${row.table_id}|${row.row_type}|${row.trade_route_card_id}`;
+                    return <option key={key} value={key}>{row.table_id} / {row.row_type} / {row.trade_route_card_id || row.merchant_state}</option>;
+                  })}
+                </select>
+              </label>
+            </div>
+
+            <form className="private-entry-grid" onSubmit={(event: { preventDefault: () => void }) => { event.preventDefault(); saveBotTradeRow(); }}>
+              <label>Table ID <input value={botTradeDraft.tableId} onChange={botTradeDraftChange("tableId")} /></label>
+              <label>Row Type <select value={botTradeDraft.rowType} onChange={botTradeDraftChange("rowType")}>{botTradeRowTypeOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
+              <label>Merchant State <select value={botTradeDraft.merchantState} onChange={botTradeDraftChange("merchantState")}>{botMerchantStateOptions.map((value) => <option key={value} value={value}>{value || "None"}</option>)}</select></label>
+              <label>Priority <input value={botTradeDraft.priority} onChange={botTradeDraftChange("priority")} /></label>
+              <label>Trade Route Card ID <input list="private-card-id-options" value={botTradeDraft.tradeRouteCardId} onChange={botTradeDraftChange("tradeRouteCardId")} /></label>
+              <label>Placeholder Name <input value={botTradeDraft.publicPlaceholderName} onChange={botTradeDraftChange("publicPlaceholderName")} /></label>
+              <label>Private Name <input value={botTradeDraft.privateName} onChange={botTradeDraftChange("privateName")} /></label>
+              <label>Implemented <select value={botTradeDraft.implemented} onChange={botTradeDraftChange("implemented")}><option value="false">false</option><option value="true">true</option></select></label>
+              <label>Tested <select value={botTradeDraft.tested} onChange={botTradeDraftChange("tested")}><option value="false">false</option><option value="true">true</option></select></label>
+              <label className="private-entry-wide">Commerce Effects JSON <textarea rows={4} value={botTradeDraft.commerceEffectsJson} onChange={botTradeDraftChange("commerceEffectsJson")} /></label>
+              <label className="private-entry-wide">Profit Effects JSON <textarea rows={4} value={botTradeDraft.profitEffectsJson} onChange={botTradeDraftChange("profitEffectsJson")} /></label>
+              <label className="private-entry-wide">End-of-Turn Effects JSON <textarea rows={4} value={botTradeDraft.endOfTurnEffectsJson} onChange={botTradeDraftChange("endOfTurnEffectsJson")} /></label>
+              <label className="private-entry-wide">Notes <textarea rows={2} value={botTradeDraft.notes} onChange={botTradeDraftChange("notes")} /></label>
+              <div className="private-entry-footer private-entry-wide">
+                <button type="button" onClick={() => setBotTradeDraft(createBlankBotTradeRoutesTableDraft())}>New Bot Trade Row</button>
+                <button className="primary-action" type="submit">Save Bot Trade Row</button>
+              </div>
+            </form>
+
+            {botTradeReport.errors.length > 0 ? (
+              <ul className="private-entry-messages">
+                {botTradeReport.errors.slice(0, 8).map((message, index) => (
+                  <li key={`${message.field}-${message.row}-${index}`} className={message.level === "fatal" ? "is-error" : ""}>
+                    Row {message.row} {message.field}: {message.message}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </section>
         ) : null}
       </section>
     </main>

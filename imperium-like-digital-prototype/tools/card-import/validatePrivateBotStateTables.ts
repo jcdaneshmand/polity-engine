@@ -1,4 +1,3 @@
-import { parseCsvFile } from "./csvParser";
 import type { BotStateTableImportError, BotStateTableImportReport, PrivateBotStateTableCsvRow } from "./botStateTableCsvTypes";
 
 const triggerKinds = new Set(["card_id", "card_name_private", "suit", "card_type", "tag", "unrest", "other"]);
@@ -129,9 +128,12 @@ export function validatePrivateBotStateTableRows(rows: PrivateBotStateTableCsvRo
 }
 
 if (process.argv[1]?.endsWith("validatePrivateBotStateTables.ts")) {
-  const inputIndex = process.argv.indexOf("--input");
-  const input = inputIndex >= 0 ? process.argv[inputIndex + 1] : "private-card-data/bot-state-table-template.csv";
-  const report = validatePrivateBotStateTableRows(parseCsvFile(input) as PrivateBotStateTableCsvRow[]);
-  console.log(`bot state tables rows=${report.counts.rows} valid=${report.counts.validRows} fatal=${report.counts.fatal} warnings=${report.counts.warnings}`);
-  if (report.counts.fatal > 0) process.exitCode = 1;
+  void (async () => {
+    const { parseCsvFile } = await import("./csvParser");
+    const inputIndex = process.argv.indexOf("--input");
+    const input = inputIndex >= 0 ? process.argv[inputIndex + 1] : "private-card-data/bot-state-table-template.csv";
+    const report = validatePrivateBotStateTableRows(parseCsvFile(input) as PrivateBotStateTableCsvRow[]);
+    console.log(`bot state tables rows=${report.counts.rows} valid=${report.counts.validRows} fatal=${report.counts.fatal} warnings=${report.counts.warnings}`);
+    if (report.counts.fatal > 0) process.exitCode = 1;
+  })();
 }

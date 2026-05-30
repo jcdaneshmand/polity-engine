@@ -11,6 +11,7 @@
 }
 
 .private-entry-heading,
+.private-entry-subheading,
 .private-entry-actions,
 .private-entry-footer,
 .private-entry-batch,
@@ -23,6 +24,22 @@
 .private-entry-heading {
   justify-content: space-between;
   margin-bottom: 14px;
+}
+
+.private-entry-subheading {
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.private-entry-subheading h2 {
+  margin: 0 0 4px;
+  font-size: 20px;
+}
+
+.private-entry-subheading p {
+  margin: 0;
+  color: #637174;
+  font-size: 13px;
 }
 
 .private-entry-kicker {
@@ -57,7 +74,8 @@
 }
 
 .private-entry-batch label,
-.private-entry-grid label {
+.private-entry-grid label,
+.private-entry-nation-grid label {
   display: grid;
   gap: 4px;
   color: #425054;
@@ -69,7 +87,8 @@
   min-width: 190px;
 }
 
-.private-entry-grid {
+.private-entry-grid,
+.private-entry-nation-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(150px, 1fr));
   gap: 10px;
@@ -78,6 +97,9 @@
 .private-entry-grid input,
 .private-entry-grid select,
 .private-entry-grid textarea,
+.private-entry-nation-grid input,
+.private-entry-nation-grid select,
+.private-entry-nation-grid textarea,
 .private-entry-batch input,
 .private-entry-batch select {
   border: 1px solid #aeb9b9;
@@ -86,8 +108,34 @@
   padding: 8px;
 }
 
-.private-entry-grid textarea {
+.private-entry-grid textarea,
+.private-entry-nation-grid textarea {
   resize: vertical;
+}
+
+.private-entry-nation-panel {
+  border: 1px solid #c2c9c7;
+  background: #fff;
+  margin-bottom: 16px;
+  padding: 14px;
+}
+
+.private-entry-trait-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 8px 12px;
+  margin-top: 12px;
+}
+
+.private-entry-trait-grid label {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.private-entry-trait-grid span {
+  overflow-wrap: anywhere;
 }
 
 .private-entry-wide {
@@ -125,12 +173,18 @@
 
 @media (max-width: 780px) {
   .private-entry-heading,
+  .private-entry-subheading,
   .private-entry-status {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .private-entry-grid {
+  .private-entry-grid,
+  .private-entry-nation-grid {
     grid-template-columns: repeat(2, minmax(130px, 1fr));
+  }
+
+  .private-entry-trait-grid {
+    grid-template-columns: 1fr;
   }
 }

@@ -44,16 +44,6 @@ export const commonsBatchProfiles: CardEntryBatchProfile[] = [
       isTradeRouteExpansion: "true",
       requiredExpansions: "trade_routes"
     }
-  },
-  {
-    id: "commons-replacements",
-    label: "Commons > Replacement Cards",
-    kind: "commons",
-    ownership: "commons",
-    setOrNation: "replacements",
-    commonsSetId: "horizons",
-    commonsGroup: "replacement",
-    requiredExpansions: []
   }
 ];
 

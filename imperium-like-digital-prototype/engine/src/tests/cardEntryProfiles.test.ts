@@ -8,8 +8,7 @@ describe("card entry batch profiles", () => {
       "commons-classics",
       "commons-legends",
       "commons-horizons",
-      "commons-trade-routes",
-      "commons-replacements"
+      "commons-trade-routes"
     ]);
   });
 

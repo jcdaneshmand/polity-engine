@@ -1,5 +1,7 @@
 import { runEffects } from "../cards/effectRunner";
+import { actualHistorySourceZoneIds } from "../game/history";
 import { currentStateMatches } from "../game/stateMatching";
+import { cardHasSuitIcon } from "../game/suitIcons";
 import type { Card, GameState } from "../game/state";
 import type { EffectCondition, NationHookTrigger } from "./nationRulesetTypes";
 
@@ -25,7 +27,7 @@ function evaluateCondition(G: GameState, playerId: string, condition?: EffectCon
   if (condition.op === "variant_enabled") return !!G.options?.enabledVariants.includes(condition.variant);
   if (condition.op === "mode_is") return G.options?.mode === condition.mode;
   if (condition.op === "payload_card_is") return getPayloadCardId(payload, condition.payloadKey) === condition.cardId;
-  if (condition.op === "payload_card_suit_is") return getPayloadCard(G, payload, condition.payloadKey)?.suit === condition.suit;
+  if (condition.op === "payload_card_suit_is") return cardHasSuitIcon(getPayloadCard(G, payload, condition.payloadKey), condition.suit);
   if (condition.op === "payload_card_type_is") {
     const card = getPayloadCard(G, payload, condition.payloadKey);
     return (card?.cardType ?? card?.type) === condition.cardType;
@@ -35,6 +37,9 @@ function evaluateCondition(G: GameState, playerId: string, condition?: EffectCon
 }
 
 function getZoneCards(G: GameState, playerId: string, p: GameState["players"][string], zoneId: string): string[] {
+  if (zoneId === "history") {
+    return actualHistorySourceZoneIds(G, playerId).flatMap((resolvedZoneId) => getZoneCards(G, playerId, p, resolvedZoneId));
+  }
   const direct = (p as any)[zoneId];
   if (Array.isArray(direct)) return direct;
   if (p.sideAreas?.[zoneId]) return p.sideAreas[zoneId];
@@ -66,34 +71,40 @@ function hasPendingInterruption(G: GameState): boolean {
   );
 }
 
-export function runNationHooks(args: {G: GameState; playerId: string; trigger: NationHookTrigger; payload?: Record<string, unknown>; randomNumber?: () => number; startIndex?: number}): void {
+export function runNationHooks(args: {G: GameState; playerId: string; trigger: NationHookTrigger; payload?: Record<string, unknown>; randomNumber?: () => number; startIndex?: number}): boolean {
   const ruleset = args.G.activeNationRulesets?.[args.playerId];
-  if (!ruleset) return;
+  if (!ruleset) return true;
   const hooks = [...ruleset.hookRules.filter((h) => h.trigger === args.trigger)].sort((a,b)=>(a.priority??0)-(b.priority??0));
   for (let index = args.startIndex ?? 0; index < hooks.length; index += 1) {
     const hook = hooks[index];
-    if (args.G.gameover || hasPendingInterruption(args.G)) return;
+    if (args.G.gameover || hasPendingInterruption(args.G)) return true;
     if (!evaluateCondition(args.G, args.playerId, hook.condition, args.payload)) continue;
     try {
-      runEffects({ G: args.G, playerId: args.playerId, enabledExpansions: args.G.options?.enabledExpansions, randomNumber: args.randomNumber }, hook.effects as any);
-      if (args.G.gameover) return;
+      const resolved = runEffects({ G: args.G, playerId: args.playerId, enabledExpansions: args.G.options?.enabledExpansions, randomNumber: args.randomNumber }, hook.effects as any);
+      if (!resolved) {
+        args.G.log.push({ round: args.G.round, playerId: args.playerId, message: `Nation hook ${args.trigger} #${index} failed.` });
+        return false;
+      }
+      if (args.G.gameover) return true;
       if (hasPendingInterruption(args.G)) {
         args.G.pendingNationHookContinuation = { playerId: args.playerId, trigger: args.trigger, payload: args.payload, nextIndex: index + 1, resolvedHookIndex: index };
-        return;
+        return true;
       }
       args.G.log.push({ round: args.G.round, playerId: args.playerId, message: `Nation hook ${args.trigger} #${index} resolved.` });
     } catch (err) {
       args.G.log.push({ round: args.G.round, playerId: args.playerId, message: `NationRulesetError(${ruleset.nationId}/${args.trigger}/${index}): ${(err as Error).message}` });
+      return false;
     }
   }
+  return true;
 }
 
 export function continuePendingNationHooks(args: { G: GameState; playerId: string; randomNumber?: () => number }): boolean {
   const continuation = args.G.pendingNationHookContinuation;
-  if (!continuation || continuation.playerId !== args.playerId || hasPendingInterruption(args.G) || args.G.gameover) return false;
+  if (!continuation || continuation.playerId !== args.playerId || hasPendingInterruption(args.G) || args.G.gameover) return true;
   args.G.pendingNationHookContinuation = undefined;
   args.G.log.push({ round: args.G.round, playerId: args.playerId, message: `Nation hook ${continuation.trigger} #${continuation.resolvedHookIndex} resolved.` });
-  runNationHooks({
+  return runNationHooks({
     G: args.G,
     playerId: args.playerId,
     trigger: continuation.trigger,

@@ -4,6 +4,7 @@ import { runEffects } from "../cards/effectRunner";
 import { runNationHooks } from "../nations/nationRulesetHooks";
 import { currentStateMatches } from "./stateMatching";
 import { actualScoredHistoryZoneIds } from "./history";
+import { cardHasSuitIcon } from "./suitIcons";
 
 function logOverride(G: GameState, playerId: string, nationId: string, category: string, op: string): void {
   G.log.push({ round: G.round, playerId, message: `NationRulesetApplied(${nationId}/${category}/${op})` });
@@ -12,6 +13,12 @@ function logOverride(G: GameState, playerId: string, nationId: string, category:
 function getZoneCards(G: GameState, playerId: string, zoneId: string): string[] {
   const p = G.players[playerId];
   if (!p) return [];
+  if (zoneId === "history") {
+    const resolvedZones = actualScoredHistoryZoneIds(G, playerId);
+    if (resolvedZones.length !== 1 || resolvedZones[0] !== "history") {
+      return resolvedZones.flatMap((resolvedZoneId) => getZoneCards(G, playerId, resolvedZoneId));
+    }
+  }
   const direct = (p as any)[zoneId];
   if (Array.isArray(direct)) return direct;
   if (p.sideAreas?.[zoneId]) return p.sideAreas[zoneId];
@@ -20,14 +27,45 @@ function getZoneCards(G: GameState, playerId: string, zoneId: string): string[] 
   return [];
 }
 
-function cardVp(G: GameState, cardId: string): number {
+function countVariableFormula(G: GameState, playerId: string, formula: { op?: string; tag?: unknown; suit?: unknown; zones?: unknown; amountEach?: unknown; cap?: unknown }): number | undefined {
+  if (formula.op !== "count_cards" || typeof formula.amountEach !== "number") return undefined;
+  const zoneIds = Array.isArray(formula.zones) ? formula.zones.filter((zone): zone is string => typeof zone === "string") : ["hand", "playArea", "deck", "discard", "powerArea", ...actualScoredHistoryZoneIds(G, playerId)];
+  const count = zoneIds
+    .flatMap((zoneId) => getZoneCards(G, playerId, zoneId))
+    .filter((matchedCardId) => {
+      const card = G.cardDb[matchedCardId];
+      if (!card) return false;
+      if (typeof formula.tag === "string" && !card.tags.includes(formula.tag)) return false;
+      if (typeof formula.suit === "string" && !cardHasSuitIcon(card, formula.suit as any)) return false;
+      return true;
+    }).length;
+  const score = count * formula.amountEach;
+  return typeof formula.cap === "number" ? Math.min(score, formula.cap) : Math.min(score, 10);
+}
+
+function cardVp(G: GameState, playerId: string, cardId: string, zoneId?: string): number {
   const vp = G.cardDb[cardId]?.vp as unknown;
   if (typeof vp === "number") return vp;
   if (typeof vp === "object" && vp !== null) {
-    const { mode, value } = vp as { mode?: string; value?: unknown };
+    const { mode, value, condition, formula, trueValue, falseValue } = vp as {
+      mode?: string;
+      value?: unknown;
+      condition?: { op?: string; zoneId?: unknown };
+      formula?: { op?: string; tag?: unknown; suit?: unknown; zones?: unknown; amountEach?: unknown; cap?: unknown };
+      trueValue?: unknown;
+      falseValue?: unknown;
+    };
     const numericValue = typeof value === "number" ? value : 0;
     if (mode === "none") return 0;
-    if (mode === "conditional") return 0;
+    if (mode === "conditional" && condition?.op === "self_in_zone") {
+      const isHistoryAlias = condition.zoneId === "history"
+        && typeof zoneId === "string"
+        && actualScoredHistoryZoneIds(G, playerId).includes(zoneId);
+      const matchedValue = zoneId === condition.zoneId || isHistoryAlias ? trueValue : falseValue;
+      return typeof matchedValue === "number" ? matchedValue : numericValue;
+    }
+    if (mode === "conditional") return numericValue;
+    if (mode === "variable" && formula) return countVariableFormula(G, playerId, formula) ?? Math.min(numericValue, 10);
     if (mode === "variable") return Math.min(numericValue, 10);
     if (mode === "negative") return -Math.abs(numericValue);
     return numericValue;
@@ -35,18 +73,30 @@ function cardVp(G: GameState, cardId: string): number {
   return 0;
 }
 
-function scoreCardIds(G: GameState, cardIds: string[]): number {
-  return cardIds.reduce((sum, cardId) => sum + cardVp(G, cardId), 0);
+function scoreCardIds(G: GameState, playerId: string, cardIds: string[], zoneId?: string): number {
+  return cardIds.reduce((sum, cardId) => sum + cardVp(G, playerId, cardId, zoneId), 0);
+}
+
+function zoneIsExcluded(G: GameState, playerId: string, zoneId: string, excludedZones: Set<string>): boolean {
+  if (excludedZones.has(zoneId)) return true;
+  if (zoneId === "history") return false;
+  return excludedZones.has("history") && actualScoredHistoryZoneIds(G, playerId).includes(zoneId);
 }
 
 function botCardVp(G: GameState, cardId: string): number {
   const vp = G.cardDb[cardId]?.vp as unknown;
   if (typeof vp === "number") return vp;
   if (typeof vp === "object" && vp !== null) {
-    const { mode, value } = vp as { mode?: string; value?: unknown };
+    const { mode, value, trueValue, falseValue } = vp as { mode?: string; value?: unknown; trueValue?: unknown; falseValue?: unknown };
     const numericValue = typeof value === "number" ? value : 0;
     if (mode === "none") return 0;
     if (mode === "variable") return numericValue || 5;
+    if (mode === "conditional" && (typeof trueValue === "number" || typeof falseValue === "number")) {
+      return Math.max(
+        typeof trueValue === "number" ? trueValue : numericValue,
+        typeof falseValue === "number" ? falseValue : numericValue
+      );
+    }
     if (mode === "conditional") return numericValue;
     if (mode === "negative") return 0;
     return numericValue;
@@ -86,8 +136,8 @@ function isUnrestCard(G: GameState, cardId: string): boolean {
 }
 
 function scoreZone(G: GameState, playerId: string, zoneId: string, excludedZones: Set<string>): number {
-  if (excludedZones.has(zoneId)) return 0;
-  return scoreCardIds(G, getZoneCards(G, playerId, zoneId));
+  if (zoneIsExcluded(G, playerId, zoneId, excludedZones)) return 0;
+  return scoreCardIds(G, playerId, getZoneCards(G, playerId, zoneId), zoneId);
 }
 
 function isResourceRatioOverride(override: ScoringOverride): override is Extract<ScoringOverride, { op: "score_resource_ratio" }> {
@@ -134,7 +184,7 @@ function hasPendingInterruption(G: GameState): boolean {
 
 function garrisonedCardsInScoringZones(G: GameState, playerId: string, scoringZoneIds: string[], excludedZones: Set<string>): string[] {
   const hostIds = scoringZoneIds
-    .filter((zoneId) => !excludedZones.has(zoneId))
+    .filter((zoneId) => !zoneIsExcluded(G, playerId, zoneId, excludedZones))
     .flatMap((zoneId) => getZoneCards(G, playerId, zoneId));
   return hostIds.flatMap((hostId) => G.cardStates?.[hostId]?.garrisonedCardIds ?? []);
 }
@@ -248,7 +298,7 @@ export function applyScoringLifecycleOnce(G: GameState, playerId: string): boole
 
   if (!pending) {
     ruleset.hookRules = ruleset.hookRules.map((hook) => expandScoringReturnUnrestSources(G, hook, playerId));
-    runNationHooks({ G, playerId, trigger: "before_scoring" });
+    if (!runNationHooks({ G, playerId, trigger: "before_scoring" })) return false;
     if (G.gameover) return false;
     if (hasPendingInterruption(G)) {
       G.pendingScoringLifecycle = { playerId, stage: "overrides", overrideIndex: 0, lifecycleKey: key };
@@ -282,7 +332,7 @@ export function applyScoringLifecycleOnce(G: GameState, playerId: string): boole
   }
 
   if (stage === "after_scoring") {
-    runNationHooks({ G, playerId, trigger: "after_scoring" });
+    if (!runNationHooks({ G, playerId, trigger: "after_scoring" })) return false;
     if (G.gameover) return false;
     if (hasPendingInterruption(G)) {
       G.pendingScoringLifecycle = { playerId, stage: "complete", overrideIndex: 0, lifecycleKey: key };
@@ -428,6 +478,6 @@ function calculatePlayerScore(G: GameState, playerId: string): number {
   const historyZoneIds = actualScoredHistoryZoneIds(G, playerId);
   const scoredZoneIds = [...baseScoringZones, ...historyZoneIds];
   const cardScore = scoredZoneIds.reduce((sum, zoneId) => sum + scoreZone(G, playerId, zoneId, excludedZones), 0);
-  const garrisonScore = scoreCardIds(G, garrisonedCardsInScoringZones(G, playerId, scoredZoneIds, excludedZones));
+  const garrisonScore = scoreCardIds(G, playerId, garrisonedCardsInScoringZones(G, playerId, scoredZoneIds, excludedZones));
   return cardScore + garrisonScore + scoreResourcePool(G, playerId);
 }

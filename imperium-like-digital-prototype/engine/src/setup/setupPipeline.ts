@@ -50,6 +50,9 @@ function filteredCardEntries(cards: NormalizedCardRecord[]) {
     cardType: c.cardType as any,
     suit: c.suit as any,
     suitIcons: c.suitIcons as any,
+    stateActionTokens: c.stateActionTokens,
+    stateExhaustTokens: c.stateExhaustTokens,
+    stateHandSize: c.stateHandSize,
     vp: c.vp,
     cost: mapAcquireCost(c.cost),
     developmentCost: mapResourceCost(c.developmentCost),
@@ -110,17 +113,45 @@ function getPlayerReferencedCardIds(players: GameState["players"]): string[] {
   return [...ids];
 }
 
+function getSpecialZoneReferencedCardIds(game: GameState): string[] {
+  const ids = new Set<string>();
+  for (const zones of Object.values(game.specialZones ?? {})) {
+    for (const zone of Object.values(zones)) zone.cardIds.forEach((cardId) => ids.add(cardId));
+  }
+  for (const zone of Object.values(game.globalSpecialZones ?? {})) {
+    zone.cardIds.forEach((cardId) => ids.add(cardId));
+  }
+  return [...ids];
+}
+
 function buildRuntimeCardDb(args: {
   filteredCards: NormalizedCardRecord[];
   sourceCards: Record<string, NormalizedCardRecord>;
   selectedCommonsCardIds: string[];
-  players: GameState["players"];
+  game: GameState;
 }): GameState["cardDb"] {
   return buildGameCardDb(mergeCardsById(
     args.filteredCards.filter(isRuntimeBaseCard),
     args.sourceCards,
-    [...args.selectedCommonsCardIds, ...getPlayerReferencedCardIds(args.players)]
+    [
+      ...args.selectedCommonsCardIds,
+      ...getPlayerReferencedCardIds(args.game.players),
+      ...getSpecialZoneReferencedCardIds(args.game)
+    ]
   ));
+}
+
+function exileSetupMainDeckCards(game: GameState, cardIds: string[]): void {
+  if (cardIds.length === 0) return;
+  game.globalSpecialZones ??= {};
+  game.globalSpecialZones.exile ??= {
+    id: "exile",
+    displayName: "Exile",
+    cardIds: [],
+    visibility: "public",
+    scoresAsOwned: false
+  };
+  game.globalSpecialZones.exile.cardIds.push(...cardIds);
 }
 
 function cloneMarketSlots(slots: NonNullable<GameState["marketSlots"]>): NonNullable<GameState["marketSlots"]> {
@@ -193,6 +224,16 @@ function seededRandom(seed: string | undefined): (() => number) | undefined {
     state ^= state >>> 16;
     return (state >>> 0) / 4294967296;
   };
+}
+
+function shuffleWithRandom<T>(items: T[], randomNumber?: () => number): T[] {
+  const out = [...items];
+  if (!randomNumber) return out;
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(randomNumber() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
 }
 
 function passiveRuleHookTrigger(trigger: NationDefinition["passiveRules"][number]["trigger"]): NationHookTrigger | undefined {
@@ -320,7 +361,7 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
     );
     const compat = validateNationRulesetCompatibility(nation, ruleset, options);
     if (compat.length) throw new Error(`Ruleset incompatibility for ${nid}: ${compat.join(", ")}`);
-    const player = setupPlayerFromNation({ nation, cardDb: args.cardDb, playerId: pid, shuffle: (x)=>[...x], enabledExpansions: options.enabledExpansions });
+    const player = setupPlayerFromNation({ nation, cardDb: args.cardDb, playerId: pid, shuffle: (x)=>shuffleWithRandom(x, setupRandom), enabledExpansions: options.enabledExpansions });
     players[pid] = player;
     activeNationRulesets[pid] = ruleset;
     if (strategyDb[nid]) activeNationStrategyProfiles[pid] = strategyDb[nid];
@@ -450,7 +491,7 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
     filteredCards,
     sourceCards: args.cardDb,
     selectedCommonsCardIds: commonsSetup.selectedCommonsCards,
-    players
+    game
   });
   const filledMarketSlots = commonsSetup.initialMarket.filter((slot) => slot.cardId);
   game.marketSlots = cloneMarketSlots(filledMarketSlots);
@@ -469,13 +510,16 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
     civilizedDeck: commonsSetup.civilizedDeck,
     tributaryDeck: commonsSetup.tributaryDeck ?? []
   };
+  game.marketDeckBottomCards = commonsSetup.smallDeckBottomCards;
   if (options.enabledVariants.includes("short_game")) {
     const exiledMainCards = game.marketDecks.mainDeck.splice(0, 10);
     setupReport.shortGameExiled = exiledMainCards.length;
+    exileSetupMainDeckCards(game, exiledMainCards);
   }
   if (options.mode === "practice") {
     const exiledMainCards = game.marketDecks.mainDeck.splice(0, 15);
     setupReport.practiceModeExiled = exiledMainCards.length;
+    exileSetupMainDeckCards(game, exiledMainCards);
   }
   modules.forEach((m)=>m.modifyMarketSetup?.(ctx as any));
   game.fameDeck = buildFameDeckState(commonsSetup, options.playerCount, options.enabledExpansions.includes("trade_routes"));
@@ -486,7 +530,7 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
     filteredCards,
     sourceCards: args.cardDb,
     selectedCommonsCardIds: commonsSetup.selectedCommonsCards,
-    players
+    game
   });
   const fameCount = game.fameDeck.available.length + (game.fameDeck.specialBottomCardId ? 1 : 0);
   game.log.push({round:1,playerId:"setup",message:`Setup report delayed=${setupReport.delayedAggressiveCount}`},{round:1,playerId:"setup",message:`Fame cards: ${fameCount}`});
@@ -515,7 +559,7 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
     );
     const compat = validateNationRulesetCompatibility(botNation, botRuleset, options);
     if (compat.length) throw new Error(`Bot ruleset incompatibility for ${soloBotNationId}: ${compat.join(", ")}`);
-    const bot = setupSoloBot({ botNation: botNation as any, botRuleset, cardDb: game.cardDb as any, botStateTables, options, shuffle: (x)=>[...x] });
+    const bot = setupSoloBot({ botNation: botNation as any, botRuleset, cardDb: game.cardDb as any, botStateTables, options, shuffle: (x)=>shuffleWithRandom(x, setupRandom) });
     (game as any).solo = { bot, botStateTables, botTradeRoutesTables };
   }
   return game;

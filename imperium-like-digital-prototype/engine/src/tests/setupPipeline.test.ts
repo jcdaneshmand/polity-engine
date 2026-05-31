@@ -54,6 +54,46 @@ describe("setup pipeline",()=>{
     expect(G.players["1"].hand).toContain("uploaded_starter");
     expect(G.market).toEqual(["uploaded_market_1","uploaded_market_2","uploaded_market_3","uploaded_market_4","uploaded_market_5"]);
   });
+  it("short game setup exiles the top ten remaining Main deck cards into a public Exile zone",()=> {
+    const cards = Array.from({ length: 15 }, (_, index) =>
+      card({ id: `main_${index + 1}`, startingLocation: "market", setupBannerSuit: "none", smallDeckEligible: false, mainDeckEligible: true })
+    );
+    const G=createInitialGameStateFromPipeline({
+      options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:["short_game"]},
+      cardDb:cardDb(cards),
+      nationDb,
+      playerNationIds:{"0":"test_nation_alpha","1":"test_nation_alpha"}
+    });
+
+    expect(G.setupReport?.shortGameExiled).toBe(10);
+    expect(G.globalSpecialZones?.exile).toMatchObject({
+      id: "exile",
+      displayName: "Exile",
+      visibility: "public",
+      scoresAsOwned: false,
+      cardIds: ["main_6","main_7","main_8","main_9","main_10","main_11","main_12","main_13","main_14","main_15"]
+    });
+    expect(G.cardDb.main_15?.id).toBe("main_15");
+  });
+  it("practice setup exiles the top fifteen remaining Main deck cards into a public Exile zone",()=> {
+    const cards = Array.from({ length: 20 }, (_, index) =>
+      card({ id: `practice_main_${index + 1}`, startingLocation: "market", setupBannerSuit: "none", smallDeckEligible: false, mainDeckEligible: true })
+    );
+    const G=createInitialGameStateFromPipeline({
+      options:{playerCount:1,mode:"practice",enabledExpansions:[],enabledVariants:[]},
+      cardDb:cardDb(cards),
+      nationDb,
+      playerNationIds:{"0":"test_nation_alpha"}
+    });
+
+    expect(G.setupReport?.practiceModeExiled).toBe(15);
+    expect(G.globalSpecialZones?.exile?.cardIds).toEqual([
+      "practice_main_6","practice_main_7","practice_main_8","practice_main_9","practice_main_10",
+      "practice_main_11","practice_main_12","practice_main_13","practice_main_14","practice_main_15",
+      "practice_main_16","practice_main_17","practice_main_18","practice_main_19","practice_main_20"
+    ]);
+    expect(G.cardDb.practice_main_20?.id).toBe("practice_main_20");
+  });
   it("sets default State token capacity to 3 Actions and 5 Exhausts",()=>{
     const G=createInitialGameState();
     expect(G.players["0"].actionTokensBase).toBe(3);
@@ -70,6 +110,19 @@ describe("setup pipeline",()=>{
     expect(G.players["0"].actionTokensBase).toBe(3);
     expect(G.players["0"].exhaustTokensBase).toBe(6);
     expect(G.players["0"].exhaustTokensAvailable).toBe(6);
+  });
+  it("uses the rulebook starting resource pool, with Goods replacing Progress for Trade Routes",()=>{
+    const base=createInitialGameState({
+      options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[]},
+      playerNationIds:{"0":"test_nation_sun_coast","1":"test_nation_sun_coast"}
+    });
+    expect(base.players["0"].resources).toMatchObject({ materials:3, influence:2, knowledge:1, goods:0 });
+
+    const tradeRoutes=createInitialGameState({
+      options:{playerCount:2,mode:"multiplayer",enabledExpansions:["trade_routes"],enabledVariants:[]},
+      playerNationIds:{"0":"test_nation_river_court","1":"test_nation_sun_coast"}
+    });
+    expect(tradeRoutes.players["0"].resources).toMatchObject({ materials:3, influence:2, knowledge:0, goods:1 });
   });
   it("sets a two-sided State card to its Barbarian side during default setup",()=>{
     const G=createInitialGameStateFromPipeline({
@@ -354,6 +407,39 @@ describe("setup pipeline",()=>{
     const sequence = (seed: string) => {
       const G = createInitialGameStateFromPipeline({ ...setupArgs, randomSeed: seed });
       return [...G.market, ...G.marketDecks!.mainDeck];
+    };
+
+    expect(sequence("seed-a")).toEqual(sequence("seed-a"));
+    expect(sequence("seed-a")).not.toEqual(sequence("seed-b"));
+  });
+  it("uses randomSeed to deterministically shuffle solo Bot setup",()=>{
+    const setupArgs = {
+      options:{playerCount:1,mode:"solo",enabledExpansions:[],enabledVariants:[],soloDifficulty:"chieftain",commonsSetId:"classics",replacementPolicy:"none"} as GameOptions,
+      playerNationIds:{"0":"test_nation_alpha"},
+      soloBotNationId:"bot_nation",
+      cardDb: cardDb([
+        ...Array.from({ length: 8 }, (_, index) => card({
+          id: `market_${index + 1}`,
+          suit: "none",
+          smallDeckEligible: false
+        })),
+        ...Array.from({ length: 8 }, (_, index) => card({
+          id: `bot_start_${index + 1}`,
+          ownership: "bot",
+          startingLocation: "bot_deck",
+          smallDeckEligible: false,
+          mainDeckEligible: false
+        }))
+      ]),
+      nationDb:{
+        ...nationDb,
+        bot_nation:{ ...nationDb.test_nation_alpha, id:"bot_nation", displayName:"Bot Nation" }
+      }
+    };
+    const sequence = (seed: string) => {
+      const G = createInitialGameStateFromPipeline({ ...setupArgs, randomSeed: seed });
+      const slotCards = Object.values(G.solo!.bot.slots).map((slot) => slot.cardId ?? "empty");
+      return [...slotCards, ...G.solo!.bot.botDeck];
     };
 
     expect(sequence("seed-a")).toEqual(sequence("seed-a"));

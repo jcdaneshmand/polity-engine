@@ -1,5 +1,6 @@
 import type { BotStateTableImportError, BotStateTableImportReport, PrivateBotStateTableCsvRow } from "./botStateTableCsvTypes";
 import type { BotTradeRoutesTableImportError, BotTradeRoutesTableImportReport, PrivateBotTradeRoutesTableCsvRow } from "./botTradeRoutesTableCsvTypes";
+import { collectInvalidResourceNames } from "./normalizeResources";
 
 const triggerKinds = new Set(["card_id", "card_name_private", "suit", "card_type", "tag", "unrest", "other"]);
 const triggerKindsRequiringValue = new Set(["card_id", "card_name_private", "suit", "card_type", "tag"]);
@@ -52,6 +53,10 @@ function validateBotStateEffects(errors: BotStateTableImportError[], row: number
     return true;
   }
   let fatal = false;
+  collectInvalidResourceNames(effects, "effects_json").forEach((invalid) => {
+    errors.push({ level: "fatal", row, field: "effects_json", message: `Invalid resource '${invalid.resource}' at ${invalid.path}` });
+    fatal = true;
+  });
   effects.forEach((effect, index) => {
     if (!effect || typeof effect !== "object" || Array.isArray(effect)) {
       errors.push({ level: "fatal", row, field: "effects_json", message: `effects_json[${index}] must be an object` });
@@ -80,6 +85,10 @@ function validateBotTradeEffects(errors: BotTradeRoutesTableImportError[], row: 
     return true;
   }
   let fatal = false;
+  collectInvalidResourceNames(parsed, field).forEach((invalid) => {
+    errors.push({ level: "fatal", row, field, message: `Invalid resource '${invalid.resource}' at ${invalid.path}` });
+    fatal = true;
+  });
   parsed.forEach((effect, index) => {
     if (!effect || typeof effect !== "object" || Array.isArray(effect)) {
       errors.push({ level: "fatal", row, field, message: `${field}[${index}] must be an object` });

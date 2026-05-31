@@ -56,6 +56,13 @@ function hasMerchantEmpireEndOfTurn(table: any): boolean {
   return (table?.endOfTurnRows ?? []).some((row: any) => String(row.merchantState ?? "").toLowerCase().includes("empire"));
 }
 
+function requiresNationSpecificShortGameRule(nationId: string, ruleset: any): boolean {
+  const tags = ruleset?.rulesetTags ?? [];
+  if (tags.includes("short_game_exception") || tags.includes("short_game_excluded")) return true;
+  const exceptions = new Set(["atlanteans", "arthurians", "cultists", "inuit", "martians", "polynesians", "utopians"]);
+  return exceptions.has(String(nationId).toLowerCase());
+}
+
 export function buildPrivateDataCompletenessReport(input: CompletenessInput): PrivateDataCompletenessReport {
   const rulesetsByNation = new Map(input.rulesets.map((ruleset) => [ruleset.nationId, ruleset]));
   const strategiesByNation = new Map(input.strategies.map((strategy) => [strategy.nationId, strategy]));
@@ -103,6 +110,8 @@ export function buildPrivateDataCompletenessReport(input: CompletenessInput): Pr
 
     if (!ruleset) {
       checks.shortGame = "missing";
+    } else if (!requiresNationSpecificShortGameRule(nationId, ruleset)) {
+      checks.shortGame = "complete";
     } else {
       checks.shortGame = (ruleset.shortGameOverrides ?? []).length > 0 ? "complete" : "incomplete";
       if (checks.shortGame === "incomplete") issues.push("missing_short_game_rule");

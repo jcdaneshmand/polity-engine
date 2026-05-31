@@ -1,4 +1,5 @@
 import type { BotTradeRoutesTableImportError, BotTradeRoutesTableImportReport, PrivateBotTradeRoutesTableCsvRow } from "./botTradeRoutesTableCsvTypes";
+import { collectInvalidResourceNames } from "./normalizeResources";
 
 const rowTypes = new Set(["route", "end_of_turn"]);
 const merchantStates = new Set(["merchants", "merchant_empire"]);
@@ -49,6 +50,10 @@ function validateEffects(errors: BotTradeRoutesTableImportError[], row: number, 
     return true;
   }
   let fatal = false;
+  collectInvalidResourceNames(parsed, field).forEach((invalid) => {
+    errors.push({ level: "fatal", row, field, message: `Invalid resource '${invalid.resource}' at ${invalid.path}` });
+    fatal = true;
+  });
   parsed.forEach((effect, index) => {
     if (!effect || typeof effect !== "object" || Array.isArray(effect)) {
       errors.push({ level: "fatal", row, field, message: `${field}[${index}] must be an object` });

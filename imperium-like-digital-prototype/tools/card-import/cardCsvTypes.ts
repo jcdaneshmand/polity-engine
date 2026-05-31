@@ -2,6 +2,9 @@ export type Suit = "region"|"uncivilized"|"civilized"|"tributary"|"fame"|"unrest
 export type CardType = "action"|"in_play"|"attack"|"power"|"state"|"development"|"accession"|"nation"|"region"|"unrest"|"fame"|"trade_route"|"bot_state"|"other";
 export type StartingLocation = "draw_deck"|"nation_deck"|"accession"|"development_area"|"in_play"|"supply"|"market"|"fame_deck"|"unrest_pile"|"bot_deck"|"box"|"other";
 export type VpMode = "none"|"fixed"|"variable"|"negative"|"conditional";
+export type VpCondition = { op:"self_in_zone"; zoneId:string };
+export type VpFormula = { op:"count_cards"; tag?:string; suit?:Suit; zones?:string[]; amountEach:number; cap?:number };
+export type VpValue = { mode:VpMode; value:number|null; condition?:VpCondition; formula?:VpFormula; trueValue?:number|null; falseValue?:number|null };
 export type EffectOp = Record<string, unknown>;
 export type ExpansionId = "trade_routes";
 export type CommonsSetId = "classics"|"legends"|"horizons"|"custom";
@@ -14,7 +17,8 @@ export interface PrivateCardCsvRow { [k:string]: string; }
 export interface NormalizedCardRecord {
   id:string; displayName:string; privateName?:string; sourceBox?:string; setOrNation?:string; suit:Suit; cardType:CardType; stateRequirement?:string;
   suitIcons?: Suit[];
-  cost:ResourceCost; developmentCost:ResourceCost; vp:{mode:VpMode; value:number|null}; startingLocation:StartingLocation; playerCountRequirement?:CommonsPlayerCountRequirement|string;
+  stateActionTokens?: number; stateExhaustTokens?: number; stateHandSize?: number;
+  cost:ResourceCost; developmentCost:ResourceCost; vp:VpValue; startingLocation:StartingLocation; playerCountRequirement?:CommonsPlayerCountRequirement|string;
   ownership:CommonsOwnership; commonsSetId?:CommonsSetId; setupBannerSuit?:Suit; commonsGroup?:CommonsGroup; replacementForCardId?:string; replacementGroupId?:string; conflictsWithNationIds?:string[]; delayableInLoweredAggression?:boolean; marketEligible?:boolean; smallDeckEligible?:boolean; mainDeckEligible?:boolean; unrestPileEligible?:boolean; fameDeckEligible?:boolean;
   isTradeRouteExpansion:boolean; rawEffectTextPrivate?:string; effects:EffectOp[]; tags:string[]; notes?:string; implemented:boolean; tested:boolean; requiredExpansions?: ExpansionId[]; excludedExpansions?: ExpansionId[]; allowedModes?: ("multiplayer"|"solo"|"practice")[]; disallowedModes?: ("multiplayer"|"solo"|"practice")[];
 }

@@ -33,6 +33,37 @@ describe("trade routes module", () => {
     expect(G.log.at(-1)?.message).toContain("Ignored trade");
   });
 
+  it("does not resolve a Profit action when trade_routes is disabled", () => {
+    const G = createInitialGameState({ options: { playerCount:2, mode:"multiplayer", enabledExpansions:[], enabledVariants:[] } });
+    G.cardDb.completed_route = {
+      id: "completed_route",
+      displayName: "Completed Route",
+      type: "trade_route",
+      cardType: "trade_route",
+      suit: "trade_route",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_play", op: "profit", destination: "history", effects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }] } as any]
+    };
+    G.players["0"].playArea = ["completed_route"];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.players["0"].resources.goods = 0;
+    G.players["0"].resources.knowledge = 0;
+    G.cardStates = { completed_route: { resources: { goods: 3 } } };
+
+    profitCard({ G, ctx: { currentPlayer: "0" } as any }, "completed_route");
+
+    expect(G.players["0"].actionsRemaining).toBe(1);
+    expect(G.players["0"].actionTokensAvailable).toBe(1);
+    expect(G.players["0"].playArea).toEqual(["completed_route"]);
+    expect(G.players["0"].history).not.toContain("completed_route");
+    expect(G.players["0"].resources.goods).toBe(0);
+    expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.cardStates?.completed_route?.resources?.goods).toBe(3);
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(profitCard): trade_routes_disabled");
+  });
+
   it("played Trade Route cards stay in play and resolve Commerce immediately", () => {
     const G = createInitialGameState({ options: { playerCount:2, mode:"multiplayer", enabledExpansions:["trade_routes"], enabledVariants:[] } });
     G.cardDb.route = {

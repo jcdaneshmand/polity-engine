@@ -57,7 +57,148 @@ describe("private card import", () => {
   it("identical names warning",()=>expect(validatePrivateCardsRows([{...base,public_placeholder_name:"Private A"}]).counts.warnings).toBeGreaterThan(0));
   it("normalization defaults cost",()=>expect(normalizeCard(base).cost.materials).toBe(0));
   it("tags parse",()=>expect(normalizeCard(base).tags).toEqual(["knowledge","region"]));
+  it("normalizes rulebook resource names inside nested effect ops to engine resource keys",()=> {
+    const effect_ops_json = JSON.stringify([
+      { trigger:"on_play", op:"gain_resource", resource:"population", amount:1 },
+      { trigger:"on_play", op:"optional", effects:[
+        { trigger:"on_play", op:"spend_resource", resource:"progress", amount:1 }
+      ] },
+      { trigger:"on_play", op:"choose_one", choices:[
+        [{ trigger:"on_play", op:"remove_resource", resource:"goods", amount:1 }],
+        [{ trigger:"on_play", op:"conditional_resource_at_least", resource:"population", atLeast:2, then:[
+          { trigger:"on_play", op:"return_resource", resource:"progress", amount:1 }
+        ], else:[
+          { trigger:"on_play", op:"gain_resource", resource:"materials", amount:1 }
+        ] }]
+      ] }
+    ]);
+
+    expect(normalizeCard({...base,effect_ops_json} as any).effects).toEqual([
+      { trigger:"on_play", op:"gain_resource", resource:"influence", amount:1 },
+      { trigger:"on_play", op:"optional", effects:[
+        { trigger:"on_play", op:"spend_resource", resource:"knowledge", amount:1 }
+      ] },
+      { trigger:"on_play", op:"choose_one", choices:[
+        [{ trigger:"on_play", op:"remove_resource", resource:"goods", amount:1 }],
+        [{ trigger:"on_play", op:"conditional_resource_at_least", resource:"influence", atLeast:2, then:[
+          { trigger:"on_play", op:"return_resource", resource:"knowledge", amount:1 }
+        ], else:[
+          { trigger:"on_play", op:"gain_resource", resource:"materials", amount:1 }
+        ] }]
+      ] }
+    ]);
+  });
+  it("allows rulebook resource names but rejects unknown effect resources",()=> {
+    const validAliases = JSON.stringify([
+      { trigger:"on_play", op:"gain_resource", resource:"population", amount:1 },
+      { trigger:"on_play", op:"conditional_resource_at_least", resource:"progress", atLeast:1, then:[
+        { trigger:"on_play", op:"spend_resource", resource:"goods", amount:1 }
+      ] }
+    ]);
+    const invalidResource = JSON.stringify([
+      { trigger:"on_play", op:"gain_resource", resource:"stone", amount:1 }
+    ]);
+
+    expect(validatePrivateCardsRows([{...base,effect_ops_json:validAliases}]).counts.fatal).toBe(0);
+    const report = validatePrivateCardsRows([{...base,effect_ops_json:invalidResource}]);
+    expect(report.counts.fatal).toBeGreaterThan(0);
+    expect(report.errors.some((e)=>e.field==="effect_ops_json" && e.message.includes("stone"))).toBe(true);
+  });
+  it("rejects unknown resource names inside nested effect branches",()=> {
+    const effect_ops_json = JSON.stringify([
+      { trigger:"on_play", op:"optional", effects:[
+        { trigger:"on_play", op:"gain_resource", resource:"stone", amount:1 }
+      ] },
+      { trigger:"on_play", op:"choose_one", choices:[
+        [{ trigger:"on_play", op:"spend_resource", resource:"ore", amount:1 }],
+        [{ trigger:"on_play", op:"conditional_resource_at_least", resource:"population", atLeast:2, then:[
+          { trigger:"on_play", op:"return_resource", resource:"science", amount:1 }
+        ] }]
+      ] },
+      { trigger:"on_play", op:"commerce", effects:[
+        { trigger:"on_play", op:"remove_resource", resource:"coins", amount:1 }
+      ] }
+    ]);
+
+    const report = validatePrivateCardsRows([{...base,effect_ops_json}]);
+
+    expect(report.counts.fatal).toBeGreaterThan(0);
+    expect(report.errors.map((e)=>e.message)).toEqual(expect.arrayContaining([
+      expect.stringContaining("stone"),
+      expect.stringContaining("ore"),
+      expect.stringContaining("science"),
+      expect.stringContaining("coins")
+    ]));
+  });
   it("explicit suit icons normalize from pipe-separated values",()=> {
     expect(normalizeCard({...base,suit:"multi",suit_icons:"civilized|uncivilized"} as any).suitIcons).toEqual(["civilized","uncivilized"]);
+  });
+  it("normalizes optional State card token and hand-size metadata",()=> {
+    expect(validatePrivateCardsRows([{
+      ...base,
+      card_type:"state",
+      state_action_tokens:"2",
+      state_exhaust_tokens:"6",
+      state_hand_size:"7"
+    } as any]).counts.fatal).toBe(0);
+    expect(normalizeCard({
+      ...base,
+      card_type:"state",
+      state_action_tokens:"2",
+      state_exhaust_tokens:"6",
+      state_hand_size:"7"
+    } as any)).toMatchObject({
+      stateActionTokens: 2,
+      stateExhaustTokens: 6,
+      stateHandSize: 7
+    });
+  });
+  it("normalizes structured conditional VP details from JSON",()=> {
+    const vp_details_json = JSON.stringify({
+      condition: { op: "self_in_zone", zoneId: "history" },
+      trueValue: 8,
+      falseValue: 3
+    });
+
+    expect(validatePrivateCardsRows([{...base,vp_mode:"conditional",vp_details_json}]).counts.fatal).toBe(0);
+    expect(normalizeCard({...base,vp_mode:"conditional",vp_details_json} as any).vp).toEqual({
+      mode: "conditional",
+      value: null,
+      condition: { op: "self_in_zone", zoneId: "history" },
+      trueValue: 8,
+      falseValue: 3
+    });
+  });
+  it("rejects invalid structured VP details",()=> {
+    const report = validatePrivateCardsRows([{
+      ...base,
+      vp_mode:"conditional",
+      vp_details_json: JSON.stringify({ condition: { op: "bad_condition", zoneId: "history" }, trueValue: 8, falseValue: 3 })
+    }]);
+
+    expect(report.counts.fatal).toBeGreaterThan(0);
+    expect(report.errors.some((e)=>e.field==="vp_details_json" && e.message.includes("Unsupported VP condition"))).toBe(true);
+  });
+  it("normalizes structured variable VP formulas from JSON",()=> {
+    const vp_details_json = JSON.stringify({
+      formula: { op: "count_cards", tag: "region", zones: ["playArea","history"], amountEach: 2, cap: 6 }
+    });
+
+    expect(validatePrivateCardsRows([{...base,vp_mode:"variable",vp_details_json}]).counts.fatal).toBe(0);
+    expect(normalizeCard({...base,vp_mode:"variable",vp_details_json} as any).vp).toEqual({
+      mode: "variable",
+      value: null,
+      formula: { op: "count_cards", tag: "region", zones: ["playArea","history"], amountEach: 2, cap: 6 }
+    });
+  });
+  it("rejects invalid structured variable VP formulas",()=> {
+    const report = validatePrivateCardsRows([{
+      ...base,
+      vp_mode:"variable",
+      vp_details_json: JSON.stringify({ formula: { op: "count_cards", tag: "region", amountEach: "2" } })
+    }]);
+
+    expect(report.counts.fatal).toBeGreaterThan(0);
+    expect(report.errors.some((e)=>e.field==="vp_details_json" && e.message.includes("amountEach"))).toBe(true);
   });
 });

@@ -38,6 +38,27 @@ export function currentStateMatches(G: GameState, playerId: string, state: strin
   return stateCardId ? stateCardMatches(G, stateCardId, state) : false;
 }
 
+export function syncPlayerStateCardStats(G: GameState, playerId: string): void {
+  const player = G.players[playerId];
+  if (!player) return;
+  const stateCard = G.cardDb[player.stateArea[0]];
+  if (!stateCard) return;
+  const previousActionBase = player.actionTokensBase;
+  const previousExhaustBase = player.exhaustTokensBase;
+  if (typeof stateCard.stateActionTokens === "number") {
+    player.actionTokensBase = stateCard.stateActionTokens;
+    player.actionsRemaining = player.actionsRemaining === previousActionBase ? stateCard.stateActionTokens : Math.min(player.actionsRemaining, stateCard.stateActionTokens);
+    player.actionTokensAvailable = player.actionTokensAvailable === previousActionBase ? stateCard.stateActionTokens : Math.min(player.actionTokensAvailable, stateCard.stateActionTokens);
+  }
+  if (typeof stateCard.stateExhaustTokens === "number") {
+    player.exhaustTokensBase = stateCard.stateExhaustTokens;
+    player.exhaustTokensAvailable = player.exhaustTokensAvailable === previousExhaustBase ? stateCard.stateExhaustTokens : Math.min(player.exhaustTokensAvailable, stateCard.stateExhaustTokens);
+  }
+  if (typeof stateCard.stateHandSize === "number") {
+    player.handSize = stateCard.stateHandSize;
+  }
+}
+
 export function activateState(G: GameState, playerId: string, state: string | undefined): void {
   if (!state) return;
   const player = G.players[playerId];
@@ -51,7 +72,17 @@ export function activateState(G: GameState, playerId: string, state: string | un
       G.cardStates[stateCardId] ??= {};
       G.cardStates[stateCardId].activeState = normalizeStateToken(state);
     }
+    syncPlayerStateCardStats(G, playerId);
+    return;
+  }
+  if (player.stateArea.length === 1) {
+    const stateCardId = player.stateArea[0];
+    G.cardStates ??= {};
+    G.cardStates[stateCardId] ??= {};
+    G.cardStates[stateCardId].activeState = normalizeStateToken(state);
+    syncPlayerStateCardStats(G, playerId);
     return;
   }
   if (!player.stateArea.includes(state)) player.stateArea.unshift(state);
+  syncPlayerStateCardStats(G, playerId);
 }

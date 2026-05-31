@@ -11,7 +11,7 @@ import { TurnStatusBar } from "./TurnStatusBar";
 import { getActionHintsByCardId, getAvailableActionsForSelection, getMarketCardClickAction, getPendingUiState, getSelectedCard, type Selection } from "../controller/selectionModel";
 import { CONTROLLER_HINTS } from "../controller/controllerHints";
 import { handleBoardKeyDown } from "../controller/keyboardControls";
-import { getBotPiles, getCurrentPlayer, getInspectableLookedCards, getInspectableZone, getMarketCards, getRecentLogEntries, getSharedPiles } from "./uiSelectors";
+import { getBotPiles, getCurrentPlayer, getInspectableLookedCards, getInspectableSharedPile, getInspectableZone, getMarketCards, getRecentLogEntries, getSharedPiles } from "./uiSelectors";
 import { resourceLabelsForGame } from "./resourceDisplay";
 
 export default function BoardLayout({ G, ctx, moves }: any) {
@@ -27,6 +27,7 @@ export default function BoardLayout({ G, ctx, moves }: any) {
   const selectedZone = selection?.kind === "player_zone"
     ? getInspectableZone(player, selection.id, { ownerPlayerId: selection.playerId, viewerPlayerId: ctx.currentPlayer })
     : undefined;
+  const selectedSharedPile = selection?.kind === "pile" ? getInspectableSharedPile(G, selection.id) : undefined;
   const selectedBotZone = selection?.kind === "bot_zone" ? getInspectableZone(G.solo?.bot, selection.id) : undefined;
   const lookedZone = getInspectableLookedCards(G, ctx.currentPlayer);
   const actions = useMemo(() => getAvailableActionsForSelection(selection, G, ctx), [selection, G, ctx]);
@@ -92,7 +93,7 @@ export default function BoardLayout({ G, ctx, moves }: any) {
   return <div className="board-layout">
     <div className="left">
       <TurnStatusBar G={G} ctx={ctx} player={player} pending={pending} />
-      <SharedAreaRow piles={shared} round={G.round ?? 1} />
+      <SharedAreaRow piles={shared} round={G.round ?? 1} selectedId={selection?.kind === "pile" ? selection.id : undefined} onSelectPile={(id)=>setSelection({kind:"pile",id})} />
       <MarketRow cards={marketCards} selectedId={selection?.id} resources={player?.resources} resourceLabels={resourceLabels} actionHintsByCardId={marketActionHintsByCardId} marketResources={G.marketResources ?? {}} onSelect={onMarketCardClick} />
       <BotRow bot={G.solo?.bot} cardDb={G.cardDb ?? {}} selectedId={selection?.kind === "bot_zone" ? selection.id : undefined} resourceLabels={resourceLabels} onSelectZone={(id)=>setSelection({kind:"bot_zone",id})} />
       <PlayerArea player={player} cardDb={G.cardDb ?? {}} resourceLabels={resourceLabels} selectedId={selection?.id} selectedZoneId={selection?.kind === "player_zone" ? selection.id : undefined} actionHintsByCardId={handActionHintsByCardId} onSelectZone={(id:string)=>setSelection({kind:"player_zone",id,playerId:ctx.currentPlayer})} onSelect={(id:string)=>setSelection({kind:"hand_card",id,playerId:ctx.currentPlayer})} />
@@ -106,6 +107,8 @@ export default function BoardLayout({ G, ctx, moves }: any) {
       </div> : null}
       {selection?.kind === "player_zone"
         ? <ZoneDetailPanel title={selection.id} cardIds={selectedZone?.cardIds ?? []} hidden={selectedZone?.hidden} count={selectedZone?.count} cardDb={G.cardDb ?? {}} />
+        : selection?.kind === "pile"
+          ? <ZoneDetailPanel title={(shared.find((p)=>p.id===selection.id)?.label) ?? selection.id} cardIds={selectedSharedPile?.cardIds ?? []} hidden={selectedSharedPile?.hidden} count={selectedSharedPile?.count} cardDb={G.cardDb ?? {}} />
         : selection?.kind === "bot_zone"
           ? <ZoneDetailPanel title={(getBotPiles(G.solo?.bot).find((p)=>p.id===selection.id)?.label) ?? selection.id} cardIds={selectedBotZone?.cardIds ?? []} hidden={selectedBotZone?.hidden} count={selectedBotZone?.count} cardDb={G.cardDb ?? {}} />
           : <CardDetailPanel card={G.cardDb?.[detailCardId ?? ""] ?? detailCard} pinned={!!detailCardId} onUnpin={() => setDetailCardId(null)} />}

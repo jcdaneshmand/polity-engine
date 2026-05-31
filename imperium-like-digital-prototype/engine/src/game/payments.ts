@@ -48,8 +48,10 @@ export function payResourceCost(G: GameState, playerId: string, resource: Resour
   return true;
 }
 
-export function canPayResourceCosts(G: GameState, playerId: string, cost: ResourceCost): boolean {
-  return resourcesCanPayCost(G.players[playerId].resources, cost);
+export function canPayResourceCosts(G: GameState, playerId: string, cost: ResourceCost, payment?: ResourceCost): boolean {
+  if (!resourcesCanPayCost(G.players[playerId].resources, cost)) return false;
+  if (!payment) return true;
+  return paymentIsAvailable(G, playerId, payment) && selectedPaymentMatchesCost(payment, cost);
 }
 
 function resourcesCanPayCost(resources: Partial<Record<ResourceName, number>>, cost: ResourceCost): boolean {
@@ -108,7 +110,7 @@ function applySpentResourceOverrides(G: GameState, playerId: string, spent: Part
 }
 
 export function payResourceCosts(G: GameState, playerId: string, cost: ResourceCost, payment?: ResourceCost): boolean {
-  if (!canPayResourceCosts(G, playerId, cost) || (payment && (!paymentIsAvailable(G, playerId, payment) || !selectedPaymentMatchesCost(payment, cost)))) {
+  if (!canPayResourceCosts(G, playerId, cost, payment)) {
     const required = Object.entries(cost)
       .filter(([, amount]) => (amount ?? 0) > 0)
       .map(([resource, amount]) => `${resource}=${amount}`)

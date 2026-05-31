@@ -56,6 +56,47 @@ const CONDITION_OP_REQUIREMENTS: Record<EffectCondition["op"], string[]> = {
 const has = (set: string[], value: unknown): value is string => typeof value === "string" && set.includes(value);
 const hasFields = (obj: unknown, fields: string[]) => typeof obj === "object" && obj !== null && fields.every((f) => Object.prototype.hasOwnProperty.call(obj, f));
 
+function validateResourceReferences(nationId: string, field: string, value: unknown): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  if (Array.isArray(value)) {
+    value.forEach((entry, index) => {
+      issues.push(...validateResourceReferences(nationId, `${field}[${index}]`, entry));
+    });
+    return issues;
+  }
+  if (typeof value !== "object" || value === null) return issues;
+
+  Object.entries(value as Record<string, unknown>).forEach(([key, entry]) => {
+    const path = `${field}.${key}`;
+    if (key === "resource") {
+      if (!has(RESOURCE_NAMES, entry)) {
+        issues.push({ nationId, field: path, reason: `invalid resource '${String(entry)}'` });
+      }
+      return;
+    }
+    if (key === "resources") {
+      if (Array.isArray(entry)) {
+        entry.forEach((resource, index) => {
+          if (!has(RESOURCE_NAMES, resource)) {
+            issues.push({ nationId, field: `${path}[${index}]`, reason: `invalid resource '${String(resource)}'` });
+          }
+        });
+        return;
+      }
+      if (typeof entry === "object" && entry !== null) {
+        Object.keys(entry).forEach((resource) => {
+          if (!has(RESOURCE_NAMES, resource)) {
+            issues.push({ nationId, field: `${path}.${resource}`, reason: `invalid resource '${resource}'` });
+          }
+        });
+        return;
+      }
+    }
+    issues.push(...validateResourceReferences(nationId, path, entry));
+  });
+  return issues;
+}
+
 function validateOverrides<T extends { op: string }>(nationId: string, field: string, list: unknown, opRequirements: Record<string, string[]>): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   if (!Array.isArray(list)) {
@@ -77,6 +118,7 @@ function validateOverrides<T extends { op: string }>(nationId: string, field: st
     if (!hasFields(entry, required)) {
       issues.push({ nationId, field: path, reason: `op '${op}' requires fields: ${required.join(", ")}` });
     }
+    issues.push(...validateResourceReferences(nationId, path, entry));
   });
   return issues;
 }
@@ -150,6 +192,7 @@ function validateHookRules(nationId: string, hookRules: NationHookRule[]): Valid
     if (hook.effects.some((effect) => typeof effect !== "object" || effect === null || Array.isArray(effect))) {
       issues.push({ nationId, field: `${base}.effects`, reason: "each effect payload entry must be an object" });
     }
+    issues.push(...validateResourceReferences(nationId, `${base}.effects`, hook.effects));
   });
   return issues;
 }
@@ -253,31 +296,7 @@ export function validateNationRuleset(ruleset: NationRuleset): ValidationIssue[]
   }));
   issues.push(...validateHookRules(nationId, ruleset.hookRules));
 
-  if (Array.isArray(ruleset.setupOverrides)) ruleset.setupOverrides.forEach((override, i) => {
-    if (override.op === "set_initial_resources" && override.resources) {
-      Object.keys(override.resources).forEach((resource) => {
-        if (!has(RESOURCE_NAMES, resource)) issues.push({ nationId, field: `setupOverrides[${i}].resources.${resource}`, reason: `invalid resource '${resource}'` });
-      });
-    }
-    if (override.op === "gain_resource" && !has(RESOURCE_NAMES, override.resource)) {
-      issues.push({ nationId, field: `setupOverrides[${i}].resource`, reason: `invalid resource '${String(override.resource)}'` });
-    }
-  });
   if (Array.isArray(ruleset.shortGameOverrides)) ruleset.shortGameOverrides.forEach((override, i) => {
-    if (override.op === "remove_starting_resource" && !has(RESOURCE_NAMES, override.resource)) {
-      issues.push({ nationId, field: `shortGameOverrides[${i}].resource`, reason: `invalid resource '${String(override.resource)}'` });
-    }
-    if (override.op === "remove_starting_resources") {
-      if (!Array.isArray(override.resources)) {
-        issues.push({ nationId, field: `shortGameOverrides[${i}].resources`, reason: "resources must be an array" });
-      } else {
-        override.resources.forEach((resource, j) => {
-          if (!has(RESOURCE_NAMES, resource)) {
-            issues.push({ nationId, field: `shortGameOverrides[${i}].resources[${j}]`, reason: `invalid resource '${String(resource)}'` });
-          }
-        });
-      }
-    }
     if (override.op === "move_one_advanced_nation_card_to_side_area" && override.selection !== undefined && !has(["first", "random"], override.selection)) {
       issues.push({ nationId, field: `shortGameOverrides[${i}].selection`, reason: `invalid selection '${String(override.selection)}'` });
     }

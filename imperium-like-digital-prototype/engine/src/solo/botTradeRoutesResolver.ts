@@ -18,6 +18,10 @@ function allTradeRouteRows(G: GameState): BotTradeRouteRow[] {
   return tradeRouteTables(G).flatMap((table) => table.rows);
 }
 
+function tradeRoutesEnabled(G: GameState): boolean {
+  return Boolean(G.options?.enabledExpansions?.includes("trade_routes"));
+}
+
 function executeBotEffects(G: GameState, bot: BotState, sourceCardId: string, effects: BotEffectOp[]): { resolved: boolean; warnings: string[] } {
   const table = currentBotTable(G, bot);
   if (!table) return { resolved: false, warnings: ["missing bot state table"] };
@@ -82,6 +86,7 @@ function chooseTradeRoute(G: GameState, bot: BotState): { cardId: string; owner:
 }
 
 export function resolveBotTradeRoutesEndOfTurn(G: GameState, bot: BotState): void {
+  if (!tradeRoutesEnabled(G)) return;
   const rows = tradeRouteTables(G)
     .flatMap((table) => table.endOfTurnRows)
     .filter((candidate) => candidate.merchantState === bot.merchantState)
@@ -94,6 +99,7 @@ export function resolveBotTradeRoutesEndOfTurn(G: GameState, bot: BotState): voi
 }
 
 export function resolveBotTrade(G: GameState, bot: BotState): boolean {
+  if (!tradeRoutesEnabled(G)) return false;
   const chosen = chooseTradeRoute(G, bot);
   if (!chosen) {
     if ((bot.resources.goods ?? 0) > 0) {
@@ -106,9 +112,8 @@ export function resolveBotTrade(G: GameState, bot: BotState): boolean {
     return false;
   }
 
-  if (chosen.owner === "bot" && (bot.resources.goods ?? 0) > 0) {
-    bot.resources.goods = (bot.resources.goods ?? 0) - 1;
-    addCardResource(G, chosen.cardId, "goods", 1);
+  if (chosen.owner === "bot") {
+    addCardResource(G, chosen.cardId, "goods", takeResourceFromSupply(G, "goods", 1));
   } else if (chosen.owner === "human") {
     addCardResource(G, chosen.cardId, "goods", takeResourceFromSupply(G, "goods", 1));
     bot.resources.knowledge = (bot.resources.knowledge ?? 0) + takeResourceFromSupply(G, "knowledge", 1);
@@ -118,6 +123,7 @@ export function resolveBotTrade(G: GameState, bot: BotState): boolean {
 }
 
 export function resolveBotTriggerTradeRoute(G: GameState, bot: BotState, tradeRouteCardId?: string): void {
+  if (!tradeRoutesEnabled(G)) return;
   if (!tradeRouteCardId) return;
   const row = tradeRouteRowFor(G, tradeRouteCardId);
   if (!row) return;
@@ -126,6 +132,7 @@ export function resolveBotTriggerTradeRoute(G: GameState, bot: BotState, tradeRo
 }
 
 export function resolveBotProfitsWhereAble(G: GameState, bot: BotState): boolean {
+  if (!tradeRoutesEnabled(G)) return false;
   const profitable = bot.botPlayArea
     .filter((cardId) => isTradeRoute(G, cardId) && cardTokenCount(G, cardId, "goods") >= 3)
     .reverse();

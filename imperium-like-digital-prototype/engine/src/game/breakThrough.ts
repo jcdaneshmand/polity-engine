@@ -1,9 +1,10 @@
 import type { GameState, Suit } from "./state";
 import { collectMarketResources, returnMarketUnrest } from "./marketResources";
-import { deckForSuit, refillMarketSlot } from "./marketRefill";
+import { deckForSuit, drawMarketDeckCard, refillMarketSlot } from "./marketRefill";
 import { gainPlayerResource } from "./resources";
 import { triggerScoringIfMainDeckEmpty } from "./scoringTriggers";
 import { cardHasSuitIcon } from "./suitIcons";
+import { availableExileCards } from "./exile";
 
 function cardMatchesSuit(G: GameState, cardId: string, suit: Suit): boolean {
   return cardHasSuitIcon(G.cardDb[cardId], suit);
@@ -43,7 +44,7 @@ function gainBreakThroughFallback(G: GameState, playerId: string, suit: Suit): v
 
 function breakThroughFromDeck(G: GameState, playerId: string, suit: Suit, randomNumber?: () => number): boolean {
   const sourceDeck = deckForSuit(suit);
-  const smallDeckCard = sourceDeck ? G.marketDecks?.[sourceDeck].shift() : undefined;
+  const smallDeckCard = sourceDeck ? drawMarketDeckCard(G, sourceDeck) : undefined;
   if (smallDeckCard) {
     G.players[playerId].hand.push(smallDeckCard);
     G.log.push({ round: G.round, playerId, message: `BreakThroughDeck(${smallDeckCard}/${sourceDeck})` });
@@ -75,13 +76,19 @@ function breakThroughFromDeck(G: GameState, playerId: string, suit: Suit, random
 
 function breakThroughFromExile(G: GameState, playerId: string, suit: Suit, cardId?: string): boolean {
   const player = G.players[playerId];
-  const exileIndex = cardId
-    ? player.exile.findIndex((exiledCardId) => exiledCardId === cardId && cardMatchesSuit(G, exiledCardId, suit))
-    : player.exile.findIndex((exiledCardId) => cardMatchesSuit(G, exiledCardId, suit));
-  if (exileIndex < 0) return false;
-
-  const [acquiredCardId] = player.exile.splice(exileIndex, 1);
+  const acquiredCardId = cardId
+    ? availableExileCards(G, playerId).find((exiledCardId) => exiledCardId === cardId && cardMatchesSuit(G, exiledCardId, suit))
+    : availableExileCards(G, playerId).find((exiledCardId) => cardMatchesSuit(G, exiledCardId, suit));
   if (!acquiredCardId) return false;
+
+  const personalIndex = player.exile.indexOf(acquiredCardId);
+  if (personalIndex >= 0) player.exile.splice(personalIndex, 1);
+  else {
+    const globalExile = G.globalSpecialZones?.exile?.cardIds;
+    const globalIndex = globalExile?.indexOf(acquiredCardId) ?? -1;
+    if (globalIndex < 0) return false;
+    globalExile?.splice(globalIndex, 1);
+  }
   player.hand.push(acquiredCardId);
   G.log.push({ round: G.round, playerId, message: `BreakThroughExile(${acquiredCardId}/${suit})` });
   return true;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getBotPiles, getCurrentPlayer, getInspectableLookedCards, getInspectableZone, getMarketCards, getRecentLogEntries, getSharedPiles, getZoneCards } from "../../../app/src/ui/layout/uiSelectors";
+import { getBotPiles, getCurrentPlayer, getInspectableLookedCards, getInspectableSharedPile, getInspectableZone, getMarketCards, getRecentLogEntries, getSharedPiles, getZoneCards } from "../../../app/src/ui/layout/uiSelectors";
 
 describe("ui selectors",()=>{
   it("handles missing market",()=> expect(getMarketCards({market:null} as any)).toEqual([]));
@@ -11,7 +11,8 @@ describe("ui selectors",()=>{
       marketDecks:{regionDeck:["r1","r2"],uncivilizedDeck:["u1"],civilizedDeck:["c1","c2","c3"],mainDeck:["m1"],tributaryDeck:["t1"]},
       fameDeck:{available:["f1"],specialBottomCardId:"king",specialBottomSide:"B",resolvedSpecialByPlayer:{}},
       unrestPile:["unrest1","unrest2"],
-      players:{"0":{exile:["e1"]},"1":{exile:["e2","e3"]}}
+      players:{"0":{exile:["e1"]},"1":{exile:["e2","e3"]}},
+      globalSpecialZones:{exile:{id:"exile",displayName:"Exile",cardIds:["setup_e1","setup_e2"],visibility:"public",scoresAsOwned:false}}
     };
 
     expect(Object.fromEntries(getSharedPiles(G).map((pile)=>[pile.id,pile.count]))).toMatchObject({
@@ -21,8 +22,49 @@ describe("ui selectors",()=>{
       main:1,
       fame:2,
       unrest:2,
-      exile:3
+      exile:5
     });
+  });
+  it("exposes public Exile card identities without exposing hidden deck identities",()=> {
+    const G:any={
+      marketDecks:{mainDeck:["hidden_main"],regionDeck:["hidden_region"]},
+      players:{"0":{exile:["personal_e1"]},"1":{exile:["personal_e2"]}},
+      globalSpecialZones:{
+        exile:{id:"exile",displayName:"Exile",cardIds:["setup_e1","setup_e2"],visibility:"public",scoresAsOwned:false},
+        hidden_archive:{id:"hidden_archive",displayName:"Hidden",cardIds:["secret"],visibility:"owner",scoresAsOwned:false}
+      }
+    };
+
+    expect(getInspectableSharedPile(G,"exile")).toEqual({ hidden:false, cardIds:["setup_e1","setup_e2","personal_e1","personal_e2"], count:4 });
+    expect(getInspectableSharedPile(G,"main")).toEqual({ hidden:true, cardIds:[], count:1 });
+    expect(getInspectableSharedPile(G,"region")).toEqual({ hidden:true, cardIds:[], count:1 });
+    expect(getInspectableSharedPile(G,"hidden_archive")).toEqual({ hidden:true, cardIds:[], count:1 });
+  });
+  it("exposes only the public bottom card for small market decks that still contain it",()=> {
+    const G:any={
+      marketDecks:{regionDeck:["hidden_region_top","public_region_bottom"],uncivilizedDeck:["public_uncivilized_bottom"],mainDeck:["hidden_main"]},
+      marketDeckBottomCards:{regionDeck:"public_region_bottom",uncivilizedDeck:"public_uncivilized_bottom"}
+    };
+
+    expect(getInspectableSharedPile(G,"region")).toEqual({ hidden:false, cardIds:["public_region_bottom"], count:2 });
+    expect(getInspectableSharedPile(G,"uncivilized")).toEqual({ hidden:false, cardIds:["public_uncivilized_bottom"], count:1 });
+    expect(getInspectableSharedPile(G,"main")).toEqual({ hidden:true, cardIds:[], count:1 });
+
+    G.marketDecks.regionDeck = ["public_region_bottom", "new_hidden_bottom"];
+    expect(getInspectableSharedPile(G,"region")).toEqual({ hidden:true, cardIds:[], count:2 });
+  });
+  it("keeps ordinary Fame cards hidden but exposes the face-up special bottom Fame card once it is alone",()=> {
+    const G:any={
+      fameDeck:{available:["hidden_fame"],specialBottomCardId:"king_of_kings",specialBottomSide:"A",resolvedSpecialByPlayer:{}}
+    };
+
+    expect(getInspectableSharedPile(G,"fame")).toEqual({ hidden:true, cardIds:[], count:2 });
+
+    G.fameDeck.available = [];
+    expect(getInspectableSharedPile(G,"fame")).toEqual({ hidden:false, cardIds:["king_of_kings"], count:1 });
+
+    G.fameDeck.specialBottomSide = "face_down";
+    expect(getInspectableSharedPile(G,"fame")).toEqual({ hidden:true, cardIds:[], count:1 });
   });
   it("returns cards for a selected player zone",()=> {
     const player:any={deck:["a"],nationDeck:["n1"],sideAreas:{vault:["v1"]}};
@@ -38,10 +80,10 @@ describe("ui selectors",()=>{
     expect(getInspectableZone(player,"hand")).toEqual({ hidden: false, cardIds: ["h1"], count: 1 });
     expect(getInspectableZone(player,"developmentArea")).toEqual({ hidden: false, cardIds: ["dev1"], count: 1 });
   });
-  it("shows History to its owner and count-only to opponents",()=> {
+  it("shows History card identities to all players",()=> {
     const player:any={history:["hist1","hist2"]};
     expect(getInspectableZone(player,"history",{ ownerPlayerId:"0", viewerPlayerId:"0" })).toEqual({ hidden: false, cardIds: ["hist1","hist2"], count: 2 });
-    expect(getInspectableZone(player,"history",{ ownerPlayerId:"0", viewerPlayerId:"1" })).toEqual({ hidden: true, cardIds: [], count: 2 });
+    expect(getInspectableZone(player,"history",{ ownerPlayerId:"0", viewerPlayerId:"1" })).toEqual({ hidden: false, cardIds: ["hist1","hist2"], count: 2 });
   });
   it("shows hand to its owner and count-only to opponents",()=> {
     const player:any={hand:["h1","h2"]};

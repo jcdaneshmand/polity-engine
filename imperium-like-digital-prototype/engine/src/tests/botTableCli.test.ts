@@ -3,6 +3,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { normalizeBotStateTables } from "../../../tools/card-import/normalizeBotStateTable";
+import { normalizeBotTradeRoutesTables } from "../../../tools/card-import/normalizeBotTradeRoutesTable";
+import { validatePrivateBotStateTableRows } from "../../../tools/card-import/validatePrivateBotStateTables";
+import { validatePrivateBotTradeRoutesTableRows } from "../../../tools/card-import/validatePrivateBotTradeRoutesTables";
 
 function findWorkspaceRoot(start: string): string {
   let current = start;
@@ -25,6 +29,165 @@ function runTool(scriptName: string, args: string[] = []) {
 }
 
 describe("bot table CLI tools", () => {
+  it("normalizes rulebook resource names in Bot state table effects", () => {
+    const imported = normalizeBotStateTables([{
+      table_id: "test_table",
+      bot_nation_id: "test_bot",
+      table_side: "S",
+      row_id: "row_resource",
+      priority: "1",
+      trigger_kind: "other",
+      trigger_value: "",
+      public_placeholder_label: "Resource row",
+      private_trigger_label: "",
+      private_effect_text: "",
+      effects_json: JSON.stringify([
+        { op: "bot_gain_resource", resource: "progress", count: 1 },
+        { op: "bot_pay_resource_then", resource: "population", count: 1, effects: [
+          { op: "human_gain_resource", resource: "progress", count: 1 }
+        ] },
+        { op: "bot_spend_resource_to_state_card", spendResource: "population", spendCount: 1, placeResource: "progress", placeCount: 1 }
+      ]),
+      implemented: "true",
+      tested: "true",
+      notes: ""
+    }]);
+
+    expect(imported.test_table_S.rows[0].effects).toEqual([
+      { op: "bot_gain_resource", resource: "knowledge", count: 1 },
+      { op: "bot_pay_resource_then", resource: "influence", count: 1, effects: [
+        { op: "human_gain_resource", resource: "knowledge", count: 1 }
+      ] },
+      { op: "bot_spend_resource_to_state_card", spendResource: "influence", spendCount: 1, placeResource: "knowledge", placeCount: 1 }
+    ]);
+  });
+
+  it("normalizes rulebook resource names in Bot Trade Routes effects", () => {
+    const imported = normalizeBotTradeRoutesTables([
+      {
+        table_id: "trade_table",
+        row_type: "route",
+        merchant_state: "",
+        priority: "",
+        trade_route_card_id: "route_1",
+        public_placeholder_name: "Route One",
+        private_name: "",
+        commerce_effects_json: JSON.stringify([{ op: "bot_gain_resource", resource: "progress", count: 1 }]),
+        profit_effects_json: JSON.stringify([{ op: "human_gain_resource", resource: "population", count: 1 }]),
+        end_of_turn_effects_json: "",
+        implemented: "true",
+        tested: "true",
+        notes: ""
+      },
+      {
+        table_id: "trade_table",
+        row_type: "end_of_turn",
+        merchant_state: "merchants",
+        priority: "1",
+        trade_route_card_id: "",
+        public_placeholder_name: "",
+        private_name: "",
+        commerce_effects_json: "",
+        profit_effects_json: "",
+        end_of_turn_effects_json: JSON.stringify([{ op: "bot_pay_resource_then", resource: "progress", count: 1, effects: [
+          { op: "bot_gain_resource", resource: "population", count: 1 }
+        ] }]),
+        implemented: "true",
+        tested: "true",
+        notes: ""
+      }
+    ]);
+
+    expect(imported.trade_table.rows[0].commerceEffects).toEqual([{ op: "bot_gain_resource", resource: "knowledge", count: 1 }]);
+    expect(imported.trade_table.rows[0].profitEffects).toEqual([{ op: "human_gain_resource", resource: "influence", count: 1 }]);
+    expect(imported.trade_table.endOfTurnRows[0].effects).toEqual([{ op: "bot_pay_resource_then", resource: "knowledge", count: 1, effects: [
+      { op: "bot_gain_resource", resource: "influence", count: 1 }
+    ] }]);
+  });
+
+  it("allows rulebook resource names but rejects unknown Bot state table resources", () => {
+    const validReport = validatePrivateBotStateTableRows([{
+      table_id: "test_table",
+      bot_nation_id: "test_bot",
+      table_side: "S",
+      row_id: "row_valid",
+      priority: "1",
+      trigger_kind: "other",
+      trigger_value: "",
+      public_placeholder_label: "Resource row",
+      private_trigger_label: "",
+      private_effect_text: "",
+      effects_json: JSON.stringify([
+        { op: "bot_gain_resource", resource: "progress", count: 1 },
+        { op: "bot_pay_resource_then", resource: "population", count: 1, effects: [
+          { op: "human_gain_resource", resource: "goods", count: 1 }
+        ] }
+      ]),
+      implemented: "true",
+      tested: "true",
+      notes: ""
+    }]);
+
+    const invalidReport = validatePrivateBotStateTableRows([{
+      table_id: "test_table",
+      bot_nation_id: "test_bot",
+      table_side: "S",
+      row_id: "row_invalid",
+      priority: "1",
+      trigger_kind: "other",
+      trigger_value: "",
+      public_placeholder_label: "Resource row",
+      private_trigger_label: "",
+      private_effect_text: "",
+      effects_json: JSON.stringify([{ op: "bot_gain_resource", resource: "stone", count: 1 }]),
+      implemented: "true",
+      tested: "true",
+      notes: ""
+    }]);
+
+    expect(validReport.counts.fatal).toBe(0);
+    expect(invalidReport.counts.fatal).toBeGreaterThan(0);
+    expect(invalidReport.errors.some((e)=>e.field==="effects_json" && e.message.includes("stone"))).toBe(true);
+  });
+
+  it("allows rulebook resource names but rejects unknown Bot Trade Routes resources", () => {
+    const validReport = validatePrivateBotTradeRoutesTableRows([{
+      table_id: "trade_table",
+      row_type: "route",
+      merchant_state: "",
+      priority: "",
+      trade_route_card_id: "route_1",
+      public_placeholder_name: "Route One",
+      private_name: "",
+      commerce_effects_json: JSON.stringify([{ op: "bot_gain_resource", resource: "progress", count: 1 }]),
+      profit_effects_json: JSON.stringify([{ op: "human_gain_resource", resource: "population", count: 1 }]),
+      end_of_turn_effects_json: "",
+      implemented: "true",
+      tested: "true",
+      notes: ""
+    }]);
+
+    const invalidReport = validatePrivateBotTradeRoutesTableRows([{
+      table_id: "trade_table",
+      row_type: "route",
+      merchant_state: "",
+      priority: "",
+      trade_route_card_id: "route_1",
+      public_placeholder_name: "Route One",
+      private_name: "",
+      commerce_effects_json: JSON.stringify([{ op: "bot_gain_resource", resource: "science", count: 1 }]),
+      profit_effects_json: JSON.stringify([{ op: "human_gain_resource", resource: "population", count: 1 }]),
+      end_of_turn_effects_json: "",
+      implemented: "true",
+      tested: "true",
+      notes: ""
+    }]);
+
+    expect(validReport.counts.fatal).toBe(0);
+    expect(invalidReport.counts.fatal).toBeGreaterThan(0);
+    expect(invalidReport.errors.some((e)=>e.field==="commerce_effects_json" && e.message.includes("science"))).toBe(true);
+  });
+
   it("validates and imports private bot state table CSV rows", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "polity-bot-table-"));
     try {

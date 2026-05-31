@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { createInitialState as createInitialStateFromEngine } from "../game/initialState";
 import { createInitialGameStateFromPipeline } from "../setup/setupPipeline";
-import { resolveChoice, resolveDevelopmentChoice, resolveDrawChoice, resolveExileChoice, resolveLookOrderChoice, resolveShortGameDevelopmentExileChoice, resolveSwapChoice, skipDevelopmentChoice } from "../game/moves";
+import { resolveAcquireChoice, resolveBreakThroughChoice, resolveChoice, resolveDevelopmentChoice, resolveDrawChoice, resolveExileChoice, resolveFindChoice, resolveGarrisonChoice, resolveGiveCardChoice, resolveLookOrderChoice, resolveMarketCardChoice, resolvePlaceOnDeckChoice, resolveRegionChoice, resolveReturnUnrestChoice, resolveShortGameDevelopmentExileChoice, resolveSwapChoice, resolveTradeChoice, skipDevelopmentChoice } from "../game/moves";
 import { currentStateMatches } from "../game/stateMatching";
-import { drawCardWithReshuffleLifecycle } from "../game/zones";
+import { continuePendingReshuffleLifecycle, drawCardWithReshuffleLifecycle } from "../game/zones";
 import type { GameOptions } from "../options/gameOptions";
 import { card, cardDb } from "./commonsTestFixtures";
 
@@ -13,6 +13,25 @@ function createInitialState(args?: Parameters<typeof createInitialStateFromEngin
   const G = createInitialStateFromEngine({ ...args, usePrivateData: args?.usePrivateData ?? false });
   for (const player of Object.values(G.players)) player.hand = [];
   return G;
+}
+
+function queueFailingAfterReshuffleContinuation(G: ReturnType<typeof createInitialState>): void {
+  G.pendingReshuffleDraw = { playerId: "0", resumeDrawCount: 1 };
+  G.pendingNationHookContinuation = {
+    playerId: "0",
+    trigger: "after_reshuffle",
+    payload: undefined,
+    nextIndex: 1,
+    resolvedHookIndex: 0
+  };
+  G.activeNationRulesets = {
+    "0": {
+      hookRules: [
+        { trigger: "after_reshuffle", effects: [] },
+        { trigger: "after_reshuffle", effects: [{ trigger: "on_play", op: "unsupported_private_effect" } as any] }
+      ]
+    }
+  } as any;
 }
 
 describe("reshuffle progression", () => {
@@ -48,6 +67,7 @@ describe("reshuffle progression", () => {
       },
       playerNationIds: { "0": "passive_nation", "1": "passive_nation" }
     });
+    G.players["0"].resources.materials = 0;
 
     drawCardWithReshuffleLifecycle(G, "0", () => 0);
 
@@ -152,6 +172,11 @@ describe("reshuffle progression", () => {
       sourceCardId: undefined,
       choices: [[{ trigger: "on_play", op: "gain_resource", resource: "goods", amount: 1 }]]
     });
+    expect(G.scoring).toEqual({
+      reason: "development_area_empty",
+      triggeredBy: "0",
+      phase: "finish_current_round"
+    });
     expect(G.players["0"].hand).toEqual([]);
 
     resolveChoice({ G, ctx, random: { Number: () => 0 } }, 0);
@@ -216,6 +241,65 @@ describe("reshuffle progression", () => {
     expect(p.developmentArea).toEqual(["test_action_scholars_circle"]);
   });
 
+  it("does not start reshuffle hooks when only unpayable Development is available", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = [];
+    p.nationDeck = [];
+    p.developmentArea = ["dev_card"];
+    p.resources = { materials: 0, influence: 0, knowledge: 0, unrest: 0, goods: 0 };
+    G.cardDb.dev_card = { ...G.cardDb.test_action_scholars_circle, id: "dev_card", displayName: "Development", developmentCost: { knowledge: 1 } };
+    G.activeNationRulesets = {
+      "0": {
+        nationId: "unpayable_development_nation",
+        displayName: "Unpayable Development Nation",
+        rulesetTags: [],
+        requiredExpansions: [],
+        setupOverrides: [],
+        zoneOverrides: [],
+        stateOverrides: [],
+        reshuffleOverrides: [],
+        cleanupOverrides: [],
+        solsticeOverrides: [],
+        scoringOverrides: [],
+        collapseOverrides: [],
+        botOverrides: [],
+        shortGameOverrides: [],
+        hookRules: [{ trigger: "before_reshuffle", effects: [{ trigger: "on_play", op: "gain_resource", resource: "goods", amount: 1 } as any] }],
+        implemented: true,
+        tested: true
+      }
+    };
+
+    const drawn = drawCardWithReshuffleLifecycle(G, "0", () => 0);
+
+    expect(drawn).toBeNull();
+    expect(G.pendingDevelopmentChoice).toBeUndefined();
+    expect(p.resources.goods).toBe(0);
+    expect(G.log.some((entry) => entry.message.includes("reshuffle"))).toBe(false);
+  });
+
+  it("terminates safely when no draw, discard, Nation, Accession, or payable Development cards are available", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = [];
+    p.nationDeck = [];
+    p.accessionCardId = undefined;
+    p.developmentArea = [];
+
+    const drawn = drawCardWithReshuffleLifecycle(G, "0", () => 0);
+
+    expect(drawn).toBeNull();
+    expect(p.hand).toEqual([]);
+    expect(p.deck).toEqual([]);
+    expect(p.discard).toEqual([]);
+    expect(G.pendingDevelopmentChoice).toBeUndefined();
+    expect(G.pendingReshuffleResolution).toBeUndefined();
+    expect(G.log.some((entry) => entry.message.startsWith("ReshuffleResolved("))).toBe(false);
+  });
+
   it("flips state when the accession card is added from the nation deck", () => {
     const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
@@ -229,6 +313,49 @@ describe("reshuffle progression", () => {
 
     expect(p.stateArea[0]).toBe("civilized_state");
     expect(G.log.some((entry) => entry.message === "StateFlippedOnAccession(test_action_lineage_record)")).toBe(true);
+  });
+
+  it("uses the active State card token metadata after accession", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = ["test_action_archive_survey"];
+    p.stateArea = ["barbarian_state", "civilized_state"];
+    p.accessionCardId = "test_action_lineage_record";
+    p.nationDeck = ["test_action_lineage_record"];
+    G.cardDb.barbarian_state = {
+      id: "barbarian_state",
+      displayName: "Barbarian State",
+      type: "state",
+      cardType: "state",
+      suit: "uncivilized",
+      cost: 0,
+      tags: ["barbarian"],
+      effects: [],
+      stateActionTokens: 3,
+      stateExhaustTokens: 4,
+      stateHandSize: 5
+    } as any;
+    G.cardDb.civilized_state = {
+      id: "civilized_state",
+      displayName: "Civilized State",
+      type: "state",
+      cardType: "state",
+      suit: "civilized",
+      cost: 0,
+      tags: ["empire"],
+      effects: [],
+      stateActionTokens: 2,
+      stateExhaustTokens: 6,
+      stateHandSize: 6
+    } as any;
+
+    drawCardWithReshuffleLifecycle(G, "0", () => 0);
+
+    expect(p.stateArea[0]).toBe("civilized_state");
+    expect(p.actionTokensBase).toBe(2);
+    expect(p.exhaustTokensBase).toBe(6);
+    expect(p.handSize).toBe(6);
   });
 
   it("flips the active side of a single two-sided State card on accession", () => {
@@ -800,6 +927,124 @@ describe("reshuffle progression", () => {
     expect(G.log.some((entry) => entry.message === "StateFlippedOnAccession(nadir_nation_card)")).toBe(false);
   });
 
+  it("does not flip state when an accession-style Nation card is placed in play on reshuffle", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = ["discard_seed"];
+    p.nationDeck = ["in_play_accession_card"];
+    p.stateArea = ["barbarian_state", "civilized_state"];
+    G.cardDb.discard_seed = {
+      id: "discard_seed",
+      displayName: "Discard Seed",
+      type: "action",
+      cardType: "action",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb.in_play_accession_card = {
+      id: "in_play_accession_card",
+      displayName: "In-Play Accession",
+      type: "nation",
+      cardType: "nation",
+      suit: "none",
+      cost: 0,
+      tags: ["accession"],
+      effects: []
+    };
+    G.activeNationRulesets = {
+      "0": {
+        nationId: "in_play_accession_progression",
+        displayName: "In-Play Accession Progression",
+        rulesetTags: [],
+        requiredExpansions: [],
+        setupOverrides: [],
+        zoneOverrides: [],
+        stateOverrides: [],
+        reshuffleOverrides: [{ op: "place_nation_card_in_play_when_added", cardId: "in_play_accession_card" } as any],
+        cleanupOverrides: [],
+        solsticeOverrides: [],
+        scoringOverrides: [],
+        collapseOverrides: [],
+        botOverrides: [],
+        shortGameOverrides: [],
+        hookRules: [],
+        implemented: true,
+        tested: true
+      }
+    };
+
+    const drawn = drawCardWithReshuffleLifecycle(G, "0", () => 0);
+
+    expect(drawn).toBe("discard_seed");
+    expect(p.playArea).toEqual(["in_play_accession_card"]);
+    expect(p.stateArea).toEqual(["barbarian_state", "civilized_state"]);
+    expect(G.log.some((entry) => entry.message === "NationCardAddedToPlayOnReshuffle(in_play_accession_card)")).toBe(true);
+    expect(G.log.some((entry) => entry.message === "StateFlippedOnAccession(in_play_accession_card)")).toBe(false);
+  });
+
+  it("does not start short-game Development exile when an accession-style Nation card is placed in play", () => {
+    const G = createInitialState({ usePrivateData: false });
+    G.options = { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: ["short_game"] };
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = ["discard_seed"];
+    p.nationDeck = ["in_play_accession_card"];
+    p.developmentArea = ["test_action_scholars_circle"];
+    p.stateArea = ["barbarian_state", "civilized_state"];
+    G.cardDb.discard_seed = {
+      id: "discard_seed",
+      displayName: "Discard Seed",
+      type: "action",
+      cardType: "action",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb.in_play_accession_card = {
+      id: "in_play_accession_card",
+      displayName: "In-Play Accession",
+      type: "nation",
+      cardType: "nation",
+      suit: "none",
+      cost: 0,
+      tags: ["accession"],
+      effects: []
+    };
+    G.activeNationRulesets = {
+      "0": {
+        nationId: "in_play_accession_progression",
+        displayName: "In-Play Accession Progression",
+        rulesetTags: [],
+        requiredExpansions: [],
+        setupOverrides: [],
+        zoneOverrides: [],
+        stateOverrides: [],
+        reshuffleOverrides: [{ op: "place_nation_card_in_play_when_added", cardId: "in_play_accession_card" } as any],
+        cleanupOverrides: [],
+        solsticeOverrides: [],
+        scoringOverrides: [],
+        collapseOverrides: [],
+        botOverrides: [],
+        shortGameOverrides: [],
+        hookRules: [],
+        implemented: true,
+        tested: true
+      }
+    };
+
+    const drawn = drawCardWithReshuffleLifecycle(G, "0", () => 0);
+
+    expect(drawn).toBe("discard_seed");
+    expect(G.pendingShortGameDevelopmentExileChoice).toBeUndefined();
+    expect(p.playArea).toEqual(["in_play_accession_card"]);
+    expect(p.developmentArea).toEqual(["test_action_scholars_circle"]);
+    expect(p.stateArea).toEqual(["barbarian_state", "civilized_state"]);
+  });
+
   it("resolves a paid development choice, shuffles, and resumes the interrupted draw", () => {
     const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
@@ -824,6 +1069,139 @@ describe("reshuffle progression", () => {
     expect(p.exhaustTokensAvailable).toBe(p.exhaustTokensBase - 1);
     expect(p.hand).toHaveLength(1);
     expect(["test_action_archive_survey", "test_action_scholars_circle"]).toContain(p.hand[0]);
+  });
+
+  it("restores a pending Development choice if its after-develop hook fails", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = ["test_action_archive_survey"];
+    p.nationDeck = [];
+    p.developmentArea = ["test_action_scholars_circle"];
+    p.resources.materials = 2;
+    G.cardDb.test_action_scholars_circle.developmentCost = { materials: 2 };
+    G.pendingDevelopmentChoice = {
+      playerId: "0",
+      cardIds: ["test_action_scholars_circle"],
+      resumeDrawCount: 1,
+      allowSkip: true
+    };
+    G.activeNationRulesets = {
+      "0": {
+        nationId: "failing_after_develop",
+        displayName: "Failing After Develop",
+        rulesetTags: [],
+        requiredExpansions: [],
+        setupOverrides: [],
+        zoneOverrides: [],
+        stateOverrides: [],
+        reshuffleOverrides: [],
+        cleanupOverrides: [],
+        solsticeOverrides: [],
+        scoringOverrides: [],
+        collapseOverrides: [],
+        botOverrides: [],
+        shortGameOverrides: [],
+        hookRules: [{
+          trigger: "after_develop",
+          effects: [{ trigger: "on_play", op: "unsupported_private_effect" } as any]
+        } as any],
+        implemented: true,
+        tested: true
+      }
+    };
+
+    resolveDevelopmentChoice({ G, ctx, random: { Number: () => 0 } }, "test_action_scholars_circle");
+
+    const restoredPlayer = G.players["0"];
+    expect(G.pendingDevelopmentChoice).toEqual({
+      playerId: "0",
+      cardIds: ["test_action_scholars_circle"],
+      resumeDrawCount: 1,
+      allowSkip: true
+    });
+    expect(restoredPlayer.resources.materials).toBe(2);
+    expect(restoredPlayer.developmentArea).toEqual(["test_action_scholars_circle"]);
+    expect(restoredPlayer.discard).toEqual(["test_action_archive_survey"]);
+    expect(restoredPlayer.hand).toEqual([]);
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(resolveDevelopmentChoice): development_resolution_failed(test_action_scholars_circle)");
+  });
+
+  it("restores a pending Development choice if a continued after-develop hook fails", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = ["test_action_archive_survey"];
+    p.nationDeck = [];
+    p.developmentArea = ["test_action_scholars_circle"];
+    p.resources.materials = 2;
+    G.cardDb.test_action_scholars_circle.developmentCost = { materials: 2 };
+    G.pendingDevelopmentChoice = {
+      playerId: "0",
+      cardIds: ["test_action_scholars_circle"],
+      resumeDrawCount: 1,
+      allowSkip: true
+    };
+    G.activeNationRulesets = {
+      "0": {
+        nationId: "failing_continued_after_develop",
+        displayName: "Failing Continued After Develop",
+        rulesetTags: [],
+        requiredExpansions: [],
+        setupOverrides: [],
+        zoneOverrides: [],
+        stateOverrides: [],
+        reshuffleOverrides: [],
+        cleanupOverrides: [],
+        solsticeOverrides: [],
+        scoringOverrides: [],
+        collapseOverrides: [],
+        botOverrides: [],
+        shortGameOverrides: [],
+        hookRules: [
+          {
+            trigger: "after_develop",
+            effects: [{
+              trigger: "on_play",
+              op: "choose_one",
+              choices: [[{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }]]
+            } as any]
+          } as any,
+          {
+            trigger: "after_develop",
+            effects: [{ trigger: "on_play", op: "unsupported_private_effect" } as any]
+          } as any
+        ],
+        implemented: true,
+        tested: true
+      }
+    };
+
+    resolveDevelopmentChoice({ G, ctx, random: { Number: () => 0 } }, "test_action_scholars_circle");
+
+    expect(G.pendingChoice).toBeDefined();
+    expect(G.pendingNationHookContinuation).toBeDefined();
+    expect(G.pendingPostDevelopmentResolution).toBeDefined();
+
+    resolveChoice({ G, ctx, random: { Number: () => 0 } }, 0);
+
+    const restoredPlayer = G.players["0"];
+    expect(G.pendingChoice).toBeUndefined();
+    expect(G.pendingNationHookContinuation).toBeUndefined();
+    expect(G.pendingPostDevelopmentResolution).toBeUndefined();
+    expect(G.pendingDevelopmentChoice).toEqual({
+      playerId: "0",
+      cardIds: ["test_action_scholars_circle"],
+      resumeDrawCount: 1,
+      allowSkip: true
+    });
+    expect(restoredPlayer.resources.materials).toBe(2);
+    expect(restoredPlayer.resources.knowledge).toBe(0);
+    expect(restoredPlayer.developmentArea).toEqual(["test_action_scholars_circle"]);
+    expect(restoredPlayer.discard).toEqual(["test_action_archive_survey"]);
+    expect(restoredPlayer.hand).toEqual([]);
+    expect(G.log.some((entry) => entry.message === "Nation hook after_develop #1 failed.")).toBe(true);
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(resolveDevelopmentChoice): development_resolution_failed(test_action_scholars_circle)");
   });
 
   it("resolves a card-driven development choice without using a progression token, shuffling, or drawing", () => {
@@ -955,6 +1333,26 @@ describe("reshuffle progression", () => {
     expect(G.log.some((entry) => entry.message === "Nation hook after_reshuffle #0 resolved.")).toBe(true);
   });
 
+  it("continues a resumed draw through a later ordinary reshuffle", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.deck = ["test_action_archive_survey"];
+    p.discard = ["test_action_foundry_shift"];
+    p.hand = [];
+    p.nationDeck = [];
+    p.accessionCardId = undefined;
+    p.developmentArea = [];
+    G.pendingReshuffleDraw = { playerId: "0", resumeDrawCount: 2 };
+
+    continuePendingReshuffleLifecycle(G, "0", () => 0);
+
+    expect(G.pendingReshuffleDraw).toBeUndefined();
+    expect(p.hand).toEqual(["test_action_archive_survey", "test_action_foundry_shift"]);
+    expect(p.deck).toEqual([]);
+    expect(p.discard).toEqual([]);
+    expect(G.log.some((entry) => entry.message === "ReshuffleResolved(deck=1, deterministic=injected_rng)")).toBe(true);
+  });
+
   it("pauses and resumes later after-reshuffle overrides when an earlier override creates a pending choice", () => {
     const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
@@ -1068,6 +1466,62 @@ describe("reshuffle progression", () => {
     expect(G.players["0"].exile).toContain("market_civilized");
   });
 
+  it("keeps a resolved Exile choice but stops the interrupted draw when a continued after_reshuffle hook fails", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = ["test_action_archive_survey"];
+    p.nationDeck = [];
+    p.developmentArea = [];
+    G.market = ["market_civilized"];
+    G.marketRefillPool = ["market_refill"];
+    G.marketDecks = undefined;
+    G.unrestPile = ["test_unrest_1"];
+    for (const id of ["market_civilized", "market_refill"]) {
+      G.cardDb[id] = {
+        id,
+        displayName: id,
+        type: "action",
+        cardType: "action",
+        suit: "civilized",
+        cost: 0,
+        tags: [],
+        effects: []
+      };
+    }
+    G.activeNationRulesets = {
+      "0": {
+        hookRules: [
+          {
+            trigger: "after_reshuffle",
+            effects: [{ trigger: "on_play", op: "exile_card", source: "market", suit: "civilized" } as any]
+          },
+          {
+            trigger: "after_reshuffle",
+            effects: [{ trigger: "on_play", op: "unsupported_private_effect" } as any]
+          }
+        ]
+      }
+    } as any;
+
+    drawCardWithReshuffleLifecycle(G, "0", () => 0);
+
+    expect(G.pendingExileChoice).toBeDefined();
+    expect(G.pendingNationHookContinuation).toBeDefined();
+    expect(G.pendingReshuffleDraw).toEqual({ playerId: "0", resumeDrawCount: 1 });
+
+    resolveExileChoice({ G, ctx, random: { Number: () => 0 } }, "market_civilized");
+
+    expect(G.pendingExileChoice).toBeUndefined();
+    expect(G.pendingNationHookContinuation).toBeUndefined();
+    expect(G.pendingReshuffleDraw).toBeUndefined();
+    expect(p.hand).toEqual([]);
+    expect(p.deck).toEqual(["test_action_archive_survey"]);
+    expect(G.players["0"].exile).toContain("market_civilized");
+    expect(G.log.some((entry) => entry.message === "Nation hook after_reshuffle #1 failed.")).toBe(true);
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(resolveExileChoice): after_reshuffle_hook_failed");
+  });
+
   it("pauses the interrupted draw when after-reshuffle creates a pending Look order choice", () => {
     const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
@@ -1103,6 +1557,43 @@ describe("reshuffle progression", () => {
     expect(G.pendingReshuffleDraw).toBeUndefined();
     expect(p.hand).toEqual(["test_action_archive_survey"]);
     expect(p.deck).toEqual(["test_action_foundry_shift"]);
+  });
+
+  it("evaluates History hook conditions against a nation replacement zone", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = ["test_action_archive_survey"];
+    p.nationDeck = [];
+    p.developmentArea = [];
+    p.history = [];
+    p.sideAreas = { sunken: ["history_replacement_card"] };
+    p.resources.knowledge = 0;
+    G.cardDb.history_replacement_card = {
+      id: "history_replacement_card",
+      displayName: "History Replacement Card",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.activeNationRulesets = {
+      "0": {
+        zoneOverrides: [{ op: "replace_history_with_zone", zoneId: "sunken", displayName: "Sunken", cardsScore: true }],
+        hookRules: [{
+          trigger: "after_reshuffle",
+          condition: { op: "zone_has_at_least", zoneId: "history", count: 1 },
+          effects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 } as any]
+        }]
+      }
+    } as any;
+
+    drawCardWithReshuffleLifecycle(G, "0", () => 0);
+
+    expect(p.resources.knowledge).toBe(1);
+    expect(G.log.some((entry) => entry.message === "Nation hook after_reshuffle #0 resolved.")).toBe(true);
   });
 
   it("pauses later nation hooks when an earlier hook creates a pending Look order choice", () => {
@@ -1198,6 +1689,152 @@ describe("reshuffle progression", () => {
     expect(p.hand).toEqual(["test_action_foundry_shift", "test_action_archive_survey"]);
   });
 
+  it("does not draw through a failed continued after_reshuffle hook", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = ["test_action_archive_survey", "test_action_foundry_shift"];
+    p.nationDeck = [];
+    p.developmentArea = [];
+    G.activeNationRulesets = {
+      "0": {
+        hookRules: [
+          {
+            trigger: "after_reshuffle",
+            effects: [{ trigger: "on_play", op: "look_cards", source: "deck", count: 2 } as any]
+          },
+          {
+            trigger: "after_reshuffle",
+            effects: [{ trigger: "on_play", op: "unsupported_private_effect" } as any]
+          }
+        ]
+      }
+    } as any;
+
+    drawCardWithReshuffleLifecycle(G, "0", () => 0);
+
+    expect(G.pendingLookOrderChoice).toBeDefined();
+    expect(G.pendingNationHookContinuation).toBeDefined();
+    expect(G.pendingReshuffleDraw).toEqual({ playerId: "0", resumeDrawCount: 1 });
+
+    resolveLookOrderChoice({ G, ctx, random: { Number: () => 0 } }, ["test_action_foundry_shift", "test_action_archive_survey"]);
+
+    expect(G.pendingLookOrderChoice).toBeUndefined();
+    expect(G.pendingNationHookContinuation).toBeUndefined();
+    expect(G.pendingReshuffleDraw).toBeUndefined();
+    expect(p.hand).toEqual([]);
+    expect(p.deck).toEqual(["test_action_foundry_shift", "test_action_archive_survey"]);
+    expect(G.log.some((entry) => entry.message === "Nation hook after_reshuffle #1 failed.")).toBe(true);
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(resolveLookOrderChoice): after_reshuffle_hook_failed");
+  });
+
+  it("keeps a resolved generic choice but stops the interrupted draw when a continued after_reshuffle hook fails", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = ["test_action_archive_survey"];
+    p.nationDeck = [];
+    p.developmentArea = [];
+    p.resources.materials = 0;
+    G.activeNationRulesets = {
+      "0": {
+        hookRules: [
+          {
+            trigger: "after_reshuffle",
+            effects: [{
+              trigger: "on_play",
+              op: "choose_one",
+              choices: [[{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }]]
+            } as any]
+          },
+          {
+            trigger: "after_reshuffle",
+            effects: [{ trigger: "on_play", op: "unsupported_private_effect" } as any]
+          }
+        ]
+      }
+    } as any;
+
+    drawCardWithReshuffleLifecycle(G, "0", () => 0);
+
+    expect(G.pendingChoice).toBeDefined();
+    expect(G.pendingNationHookContinuation).toBeDefined();
+    expect(G.pendingReshuffleDraw).toEqual({ playerId: "0", resumeDrawCount: 1 });
+
+    resolveChoice({ G, ctx, random: { Number: () => 0 } }, 0);
+
+    expect(G.pendingChoice).toBeUndefined();
+    expect(G.pendingNationHookContinuation).toBeUndefined();
+    expect(G.pendingReshuffleDraw).toBeUndefined();
+    expect(p.resources.materials).toBe(1);
+    expect(p.hand).toEqual([]);
+    expect(p.deck).toEqual(["test_action_archive_survey"]);
+    expect(G.log.some((entry) => entry.message === "Nation hook after_reshuffle #1 failed.")).toBe(true);
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(resolveChoice): after_reshuffle_hook_failed");
+  });
+
+  it("keeps a resolved Draw choice but stops the interrupted draw when a continued after_reshuffle hook fails", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = ["test_action_archive_survey"];
+    p.exile = ["test_action_foundry_shift"];
+    p.nationDeck = [];
+    p.developmentArea = [];
+    G.activeNationRulesets = {
+      "0": {
+        hookRules: [
+          {
+            trigger: "after_reshuffle",
+            effects: [{ trigger: "on_play", op: "draw", source: "exile", count: 1 } as any]
+          },
+          {
+            trigger: "after_reshuffle",
+            effects: [{ trigger: "on_play", op: "unsupported_private_effect" } as any]
+          }
+        ]
+      }
+    } as any;
+
+    drawCardWithReshuffleLifecycle(G, "0", () => 0);
+
+    expect(G.pendingDrawChoice).toBeDefined();
+    expect(G.pendingNationHookContinuation).toBeDefined();
+    expect(G.pendingReshuffleDraw).toEqual({ playerId: "0", resumeDrawCount: 1 });
+
+    resolveDrawChoice({ G, ctx, random: { Number: () => 0 } }, "test_action_foundry_shift");
+
+    expect(G.pendingDrawChoice).toBeUndefined();
+    expect(G.pendingNationHookContinuation).toBeUndefined();
+    expect(G.pendingReshuffleDraw).toBeUndefined();
+    expect(p.hand).toEqual(["test_action_foundry_shift"]);
+    expect(p.deck).toEqual(["test_action_archive_survey"]);
+    expect(G.log.some((entry) => entry.message === "Nation hook after_reshuffle #1 failed.")).toBe(true);
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(resolveDrawChoice): after_reshuffle_hook_failed");
+  });
+
+  it("keeps a resolved Find choice but stops the interrupted draw when a continued after_reshuffle hook fails", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.discard = ["test_action_archive_survey"];
+    G.pendingFindChoice = {
+      playerId: "0",
+      cardIds: ["test_action_archive_survey"],
+      destination: "hand"
+    } as any;
+    queueFailingAfterReshuffleContinuation(G);
+
+    resolveFindChoice({ G, ctx, random: { Number: () => 0 } }, "test_action_archive_survey");
+
+    expect(G.pendingFindChoice).toBeUndefined();
+    expect(G.pendingNationHookContinuation).toBeUndefined();
+    expect(G.pendingReshuffleDraw).toBeUndefined();
+    expect(p.hand).toEqual(["test_action_archive_survey"]);
+    expect(p.discard).toEqual([]);
+    expect(G.log.some((entry) => entry.message === "Nation hook after_reshuffle #1 failed.")).toBe(true);
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(resolveFindChoice): after_reshuffle_hook_failed");
+  });
+
   it("pauses the interrupted draw when after-reshuffle creates a pending Swap choice", () => {
     const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
@@ -1247,6 +1884,519 @@ describe("reshuffle progression", () => {
     expect(G.pendingReshuffleDraw).toBeUndefined();
     expect(p.hand).toEqual(["market_civilized", "test_action_archive_survey"]);
     expect(G.market).toEqual(["hand_civilized"]);
+  });
+
+  it("keeps a resolved Swap choice but stops the interrupted draw when a continued after_reshuffle hook fails", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = ["test_action_archive_survey"];
+    p.hand = ["hand_civilized"];
+    p.nationDeck = [];
+    p.developmentArea = [];
+    G.market = ["market_civilized"];
+    G.unrestPile = ["new_unrest"];
+    for (const id of ["hand_civilized", "market_civilized"]) {
+      G.cardDb[id] = {
+        id,
+        displayName: id,
+        type: "action",
+        cardType: "action",
+        suit: "civilized",
+        cost: 0,
+        tags: [],
+        effects: []
+      };
+    }
+    G.activeNationRulesets = {
+      "0": {
+        hookRules: [
+          {
+            trigger: "after_reshuffle",
+            effects: [{ trigger: "on_play", op: "swap_card", sourceZone: "hand" } as any]
+          },
+          {
+            trigger: "after_reshuffle",
+            effects: [{ trigger: "on_play", op: "unsupported_private_effect" } as any]
+          }
+        ]
+      }
+    } as any;
+
+    drawCardWithReshuffleLifecycle(G, "0", () => 0);
+
+    expect(G.pendingSwapChoice).toBeDefined();
+    expect(G.pendingNationHookContinuation).toBeDefined();
+    expect(G.pendingReshuffleDraw).toEqual({ playerId: "0", resumeDrawCount: 1 });
+
+    resolveSwapChoice({ G, ctx, random: { Number: () => 0 } }, "hand_civilized", "market_civilized");
+
+    expect(G.pendingSwapChoice).toBeUndefined();
+    expect(G.pendingNationHookContinuation).toBeUndefined();
+    expect(G.pendingReshuffleDraw).toBeUndefined();
+    expect(p.hand).toEqual(["market_civilized"]);
+    expect(G.market).toEqual(["hand_civilized"]);
+    expect(p.deck).toEqual(["test_action_archive_survey"]);
+    expect(G.log.some((entry) => entry.message === "Nation hook after_reshuffle #1 failed.")).toBe(true);
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(resolveSwapChoice): after_reshuffle_hook_failed");
+  });
+
+  it("keeps a resolved Place-on-deck choice but stops the interrupted draw when a continued after_reshuffle hook fails", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = ["test_action_archive_survey"];
+    p.hand = ["test_action_foundry_shift"];
+    p.nationDeck = [];
+    p.developmentArea = [];
+    G.activeNationRulesets = {
+      "0": {
+        hookRules: [
+          {
+            trigger: "after_reshuffle",
+            effects: [{ trigger: "on_play", op: "place_card_on_deck", sourceZone: "hand" } as any]
+          },
+          {
+            trigger: "after_reshuffle",
+            effects: [{ trigger: "on_play", op: "unsupported_private_effect" } as any]
+          }
+        ]
+      }
+    } as any;
+
+    drawCardWithReshuffleLifecycle(G, "0", () => 0);
+
+    expect(G.pendingPlaceOnDeckChoice).toBeDefined();
+    expect(G.pendingNationHookContinuation).toBeDefined();
+    expect(G.pendingReshuffleDraw).toEqual({ playerId: "0", resumeDrawCount: 1 });
+
+    resolvePlaceOnDeckChoice({ G, ctx, random: { Number: () => 0 } }, "test_action_foundry_shift");
+
+    expect(G.pendingPlaceOnDeckChoice).toBeUndefined();
+    expect(G.pendingNationHookContinuation).toBeUndefined();
+    expect(G.pendingReshuffleDraw).toBeUndefined();
+    expect(p.hand).toEqual([]);
+    expect(p.deck).toEqual(["test_action_foundry_shift", "test_action_archive_survey"]);
+    expect(G.log.some((entry) => entry.message === "Nation hook after_reshuffle #1 failed.")).toBe(true);
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(resolvePlaceOnDeckChoice): after_reshuffle_hook_failed");
+  });
+
+  it("keeps a resolved Give-card choice but stops the interrupted draw when a continued after_reshuffle hook fails", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = ["test_action_archive_survey"];
+    p.hand = ["test_action_foundry_shift"];
+    p.nationDeck = [];
+    p.developmentArea = [];
+    G.players["1"].hand = [];
+    G.activeNationRulesets = {
+      "0": {
+        hookRules: [
+          {
+            trigger: "after_reshuffle",
+            effects: [{ trigger: "on_play", op: "give_card" } as any]
+          },
+          {
+            trigger: "after_reshuffle",
+            effects: [{ trigger: "on_play", op: "unsupported_private_effect" } as any]
+          }
+        ]
+      }
+    } as any;
+
+    drawCardWithReshuffleLifecycle(G, "0", () => 0);
+
+    expect(G.pendingGiveCardChoice).toBeDefined();
+    expect(G.pendingNationHookContinuation).toBeDefined();
+    expect(G.pendingReshuffleDraw).toEqual({ playerId: "0", resumeDrawCount: 1 });
+
+    resolveGiveCardChoice({ G, ctx, random: { Number: () => 0 } }, "test_action_foundry_shift", "1");
+
+    expect(G.pendingGiveCardChoice).toBeUndefined();
+    expect(G.pendingNationHookContinuation).toBeUndefined();
+    expect(G.pendingReshuffleDraw).toBeUndefined();
+    expect(p.hand).toEqual([]);
+    expect(G.players["1"].hand).toEqual(["test_action_foundry_shift"]);
+    expect(p.deck).toEqual(["test_action_archive_survey"]);
+    expect(G.log.some((entry) => entry.message === "Nation hook after_reshuffle #1 failed.")).toBe(true);
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(resolveGiveCardChoice): after_reshuffle_hook_failed");
+  });
+
+  it("keeps a resolved Return Unrest choice but stops the interrupted draw when a continued after_reshuffle hook fails", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = ["test_action_archive_survey"];
+    p.hand = ["hand_unrest"];
+    p.nationDeck = [];
+    p.developmentArea = [];
+    G.unrestPile = [];
+    G.cardDb.hand_unrest = {
+      id: "hand_unrest",
+      displayName: "Hand Unrest",
+      type: "unrest",
+      cardType: "unrest",
+      suit: "unrest",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.activeNationRulesets = {
+      "0": {
+        hookRules: [
+          {
+            trigger: "after_reshuffle",
+            effects: [{ trigger: "on_play", op: "return_unrest" } as any]
+          },
+          {
+            trigger: "after_reshuffle",
+            effects: [{ trigger: "on_play", op: "unsupported_private_effect" } as any]
+          }
+        ]
+      }
+    } as any;
+
+    drawCardWithReshuffleLifecycle(G, "0", () => 0);
+
+    expect(G.pendingReturnUnrestChoice).toBeDefined();
+    expect(G.pendingNationHookContinuation).toBeDefined();
+    expect(G.pendingReshuffleDraw).toEqual({ playerId: "0", resumeDrawCount: 1 });
+
+    resolveReturnUnrestChoice({ G, ctx, random: { Number: () => 0 } }, "hand_unrest");
+
+    expect(G.pendingReturnUnrestChoice).toBeUndefined();
+    expect(G.pendingNationHookContinuation).toBeUndefined();
+    expect(G.pendingReshuffleDraw).toBeUndefined();
+    expect(p.hand).toEqual([]);
+    expect(G.unrestPile).toEqual(["hand_unrest"]);
+    expect(p.deck).toEqual(["test_action_archive_survey"]);
+    expect(G.log.some((entry) => entry.message === "Nation hook after_reshuffle #1 failed.")).toBe(true);
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(resolveReturnUnrestChoice): after_reshuffle_hook_failed");
+  });
+
+  it("keeps a resolved Garrison choice but stops the interrupted draw when a continued after_reshuffle hook fails", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = ["test_action_archive_survey"];
+    p.playArea = ["test_region"];
+    p.hand = ["test_action_foundry_shift"];
+    p.nationDeck = [];
+    p.developmentArea = [];
+    G.cardDb.test_region = {
+      id: "test_region",
+      displayName: "Test Region",
+      type: "region",
+      cardType: "region",
+      suit: "region",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.activeNationRulesets = {
+      "0": {
+        hookRules: [
+          {
+            trigger: "after_reshuffle",
+            effects: [{ trigger: "on_play", op: "garrison_card" } as any]
+          },
+          {
+            trigger: "after_reshuffle",
+            effects: [{ trigger: "on_play", op: "unsupported_private_effect" } as any]
+          }
+        ]
+      }
+    } as any;
+
+    drawCardWithReshuffleLifecycle(G, "0", () => 0);
+
+    expect(G.pendingGarrisonChoice).toBeDefined();
+    expect(G.pendingNationHookContinuation).toBeDefined();
+    expect(G.pendingReshuffleDraw).toEqual({ playerId: "0", resumeDrawCount: 1 });
+
+    resolveGarrisonChoice({ G, ctx, random: { Number: () => 0 } }, "test_region", "test_action_foundry_shift");
+
+    expect(G.pendingGarrisonChoice).toBeUndefined();
+    expect(G.pendingNationHookContinuation).toBeUndefined();
+    expect(G.pendingReshuffleDraw).toBeUndefined();
+    expect(p.hand).toEqual([]);
+    expect(G.cardStates?.test_region?.garrisonedCardIds).toEqual(["test_action_foundry_shift"]);
+    expect(p.deck).toEqual(["test_action_archive_survey"]);
+    expect(G.log.some((entry) => entry.message === "Nation hook after_reshuffle #1 failed.")).toBe(true);
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(resolveGarrisonChoice): after_reshuffle_hook_failed");
+  });
+
+  it("keeps a resolved Region choice but stops the interrupted draw when a continued after_reshuffle hook fails", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = ["test_action_archive_survey"];
+    p.playArea = ["test_region"];
+    p.nationDeck = [];
+    p.developmentArea = [];
+    G.cardDb.test_region = {
+      id: "test_region",
+      displayName: "Test Region",
+      type: "region",
+      cardType: "region",
+      suit: "region",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.activeNationRulesets = {
+      "0": {
+        hookRules: [
+          {
+            trigger: "after_reshuffle",
+            effects: [{ trigger: "on_play", op: "recall_region" } as any]
+          },
+          {
+            trigger: "after_reshuffle",
+            effects: [{ trigger: "on_play", op: "unsupported_private_effect" } as any]
+          }
+        ]
+      }
+    } as any;
+
+    drawCardWithReshuffleLifecycle(G, "0", () => 0);
+
+    expect(G.pendingRegionChoice).toBeDefined();
+    expect(G.pendingNationHookContinuation).toBeDefined();
+    expect(G.pendingReshuffleDraw).toEqual({ playerId: "0", resumeDrawCount: 1 });
+
+    resolveRegionChoice({ G, ctx, random: { Number: () => 0 } }, "test_region");
+
+    expect(G.pendingRegionChoice).toBeUndefined();
+    expect(G.pendingNationHookContinuation).toBeUndefined();
+    expect(G.pendingReshuffleDraw).toBeUndefined();
+    expect(p.playArea).toEqual([]);
+    expect(p.hand).toEqual(["test_region"]);
+    expect(p.deck).toEqual(["test_action_archive_survey"]);
+    expect(G.log.some((entry) => entry.message === "Nation hook after_reshuffle #1 failed.")).toBe(true);
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(resolveRegionChoice): after_reshuffle_hook_failed");
+  });
+
+  it("keeps a resolved Trade choice but stops the interrupted draw when a continued after_reshuffle hook fails", () => {
+    const G = createInitialState({ usePrivateData: false });
+    G.options = { playerCount: 2, mode: "multiplayer", enabledExpansions: ["trade_routes"], enabledVariants: [] };
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = ["test_action_archive_survey"];
+    p.playArea = ["own_route"];
+    p.nationDeck = [];
+    p.developmentArea = [];
+    p.resources.goods = 1;
+    p.resources.knowledge = 0;
+    G.cardDb.own_route = {
+      id: "own_route",
+      displayName: "Own Route",
+      type: "trade_route",
+      cardType: "trade_route",
+      suit: "trade_route",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.activeNationRulesets = {
+      "0": {
+        hookRules: [
+          {
+            trigger: "after_reshuffle",
+            effects: [{ trigger: "on_play", op: "trade" } as any]
+          },
+          {
+            trigger: "after_reshuffle",
+            effects: [{ trigger: "on_play", op: "unsupported_private_effect" } as any]
+          }
+        ]
+      }
+    } as any;
+
+    drawCardWithReshuffleLifecycle(G, "0", () => 0);
+
+    expect(G.pendingTradeChoice).toBeDefined();
+    expect(G.pendingNationHookContinuation).toBeDefined();
+    expect(G.pendingReshuffleDraw).toEqual({ playerId: "0", resumeDrawCount: 1 });
+
+    resolveTradeChoice({ G, ctx, random: { Number: () => 0 } });
+
+    expect(G.pendingTradeChoice).toBeUndefined();
+    expect(G.pendingNationHookContinuation).toBeUndefined();
+    expect(G.pendingReshuffleDraw).toBeUndefined();
+    expect(p.resources.goods).toBe(0);
+    expect(p.resources.knowledge).toBe(1);
+    expect(p.hand).toEqual([]);
+    expect(p.deck).toEqual(["test_action_archive_survey"]);
+    expect(G.log.some((entry) => entry.message === "Nation hook after_reshuffle #1 failed.")).toBe(true);
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(resolveTradeChoice): after_reshuffle_hook_failed");
+  });
+
+  it("keeps a resolved Acquire choice but stops the interrupted draw when a continued after_reshuffle hook fails", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = ["test_action_archive_survey"];
+    p.nationDeck = [];
+    p.developmentArea = [];
+    G.market = ["market_civilized_a", "market_civilized_b", "market_filler_a", "market_filler_b", "market_filler_c"];
+    G.marketRefillPool = ["market_refill_a"];
+    G.unrestPile = ["unrest_refill_a"];
+    for (const id of [...G.market, ...G.marketRefillPool]) {
+      const isCivilized = id.startsWith("market_civilized");
+      G.cardDb[id] = {
+        id,
+        displayName: id,
+        type: "action",
+        cardType: "action",
+        suit: isCivilized ? "civilized" : "uncivilized",
+        cost: 0,
+        tags: [],
+        effects: []
+      };
+    }
+    G.activeNationRulesets = {
+      "0": {
+        hookRules: [
+          {
+            trigger: "after_reshuffle",
+            effects: [{ trigger: "on_play", op: "acquire_card", source: "market", suit: "civilized", count: 1 } as any]
+          },
+          {
+            trigger: "after_reshuffle",
+            effects: [{ trigger: "on_play", op: "unsupported_private_effect" } as any]
+          }
+        ]
+      }
+    } as any;
+
+    drawCardWithReshuffleLifecycle(G, "0", () => 0);
+
+    expect(G.pendingAcquireChoice).toBeDefined();
+    expect(G.pendingNationHookContinuation).toBeDefined();
+    expect(G.pendingReshuffleDraw).toEqual({ playerId: "0", resumeDrawCount: 1 });
+
+    resolveAcquireChoice({ G, ctx, random: { Number: () => 0 } }, "market_civilized_a");
+
+    expect(G.pendingAcquireChoice).toBeUndefined();
+    expect(G.pendingNationHookContinuation).toBeUndefined();
+    expect(G.pendingReshuffleDraw).toBeUndefined();
+    expect(p.hand).toEqual(["market_civilized_a"]);
+    expect(G.market).toEqual(["test_action_market_pull", "market_civilized_b", "market_filler_a", "market_filler_b", "market_filler_c"]);
+    expect(p.deck).toEqual(["test_action_archive_survey"]);
+    expect(G.log.some((entry) => entry.message === "Nation hook after_reshuffle #1 failed.")).toBe(true);
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(resolveAcquireChoice): after_reshuffle_hook_failed");
+  });
+
+  it("keeps a resolved Market-card choice but stops the interrupted draw when a continued after_reshuffle hook fails", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = ["test_action_archive_survey"];
+    p.nationDeck = [];
+    p.developmentArea = [];
+    G.market = ["market_civilized_a", "market_civilized_b", "market_filler_a", "market_filler_b", "market_filler_c"];
+    G.marketRefillPool = ["market_refill_a"];
+    G.unrestPile = ["unrest_refill_a"];
+    for (const id of [...G.market, ...G.marketRefillPool]) {
+      const isCivilized = id.startsWith("market_civilized");
+      G.cardDb[id] = {
+        id,
+        displayName: id,
+        type: "action",
+        cardType: "action",
+        suit: isCivilized ? "civilized" : "uncivilized",
+        cost: 0,
+        tags: [],
+        effects: []
+      };
+    }
+    G.activeNationRulesets = {
+      "0": {
+        hookRules: [
+          {
+            trigger: "after_reshuffle",
+            effects: [{ trigger: "on_play", op: "gain_card", source: "market", suit: "civilized", count: 1 } as any]
+          },
+          {
+            trigger: "after_reshuffle",
+            effects: [{ trigger: "on_play", op: "unsupported_private_effect" } as any]
+          }
+        ]
+      }
+    } as any;
+
+    drawCardWithReshuffleLifecycle(G, "0", () => 0);
+
+    expect(G.pendingMarketCardChoice).toBeDefined();
+    expect(G.pendingNationHookContinuation).toBeDefined();
+    expect(G.pendingReshuffleDraw).toEqual({ playerId: "0", resumeDrawCount: 1 });
+
+    resolveMarketCardChoice({ G, ctx, random: { Number: () => 0 } }, "market_civilized_a");
+
+    expect(G.pendingMarketCardChoice).toBeUndefined();
+    expect(G.pendingNationHookContinuation).toBeUndefined();
+    expect(G.pendingReshuffleDraw).toBeUndefined();
+    expect(p.hand).toEqual(["market_civilized_a"]);
+    expect(G.market).toEqual(["test_action_market_pull", "market_civilized_b", "market_filler_a", "market_filler_b", "market_filler_c"]);
+    expect(p.deck).toEqual(["test_action_archive_survey"]);
+    expect(G.log.some((entry) => entry.message === "Nation hook after_reshuffle #1 failed.")).toBe(true);
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(resolveMarketCardChoice): after_reshuffle_hook_failed");
+  });
+
+  it("keeps a resolved Break Through choice but stops the interrupted draw when a continued after_reshuffle hook fails", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    G.cardDb.test_action_archive_survey.suit = "civilized";
+    p.exile = ["test_action_archive_survey"];
+    G.pendingBreakThroughChoice = {
+      playerId: "0",
+      source: "exile",
+      suit: "civilized",
+      cardIds: ["test_action_archive_survey"]
+    } as any;
+    queueFailingAfterReshuffleContinuation(G);
+
+    resolveBreakThroughChoice({ G, ctx, random: { Number: () => 0 } }, "test_action_archive_survey");
+
+    expect(G.pendingBreakThroughChoice).toBeUndefined();
+    expect(G.pendingNationHookContinuation).toBeUndefined();
+    expect(G.pendingReshuffleDraw).toBeUndefined();
+    expect(p.hand).toEqual(["test_action_archive_survey"]);
+    expect(p.exile).toEqual([]);
+    expect(G.log.some((entry) => entry.message === "Nation hook after_reshuffle #1 failed.")).toBe(true);
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(resolveBreakThroughChoice): after_reshuffle_hook_failed");
+  });
+
+  it("keeps a resolved Development choice but stops the interrupted draw when a continued after_reshuffle hook fails", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = ["test_action_archive_survey"];
+    p.developmentArea = ["test_action_scholars_circle"];
+    p.resources.materials = 2;
+    G.cardDb.test_action_scholars_circle.developmentCost = { materials: 2 };
+    G.pendingDevelopmentChoice = {
+      playerId: "0",
+      cardIds: ["test_action_scholars_circle"],
+      resumeDrawCount: 1,
+      allowSkip: true
+    };
+    queueFailingAfterReshuffleContinuation(G);
+
+    resolveDevelopmentChoice({ G, ctx, random: { Number: () => 0 } }, "test_action_scholars_circle");
+
+    expect(G.pendingDevelopmentChoice).toBeUndefined();
+    expect(G.pendingNationHookContinuation).toBeUndefined();
+    expect(G.pendingReshuffleDraw).toBeUndefined();
+    expect(p.resources.materials).toBe(0);
+    expect(p.developmentArea).toEqual([]);
+    expect(p.discard).toEqual([]);
+    expect(p.deck).toEqual(["test_action_scholars_circle", "test_action_archive_survey"]);
+    expect(p.hand).toEqual([]);
+    expect(G.log.some((entry) => entry.message === "Nation hook after_reshuffle #1 failed.")).toBe(true);
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(resolveDevelopmentChoice): after_reshuffle_hook_failed");
   });
 
   it("triggers normal scoring when the last Development card is developed", () => {
@@ -1472,6 +2622,49 @@ describe("reshuffle progression", () => {
     expect(G.log.some((entry) => entry.message.startsWith("ReshuffleResolved("))).toBe(false);
   });
 
+  it("stops reshuffle progression when a before_reshuffle hook effect fails", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = ["test_action_archive_survey"];
+    p.nationDeck = ["test_action_lineage_record"];
+    G.activeNationRulesets = {
+      "0": {
+        nationId: "failing_reshuffle",
+        displayName: "Failing Reshuffle",
+        rulesetTags: [],
+        requiredExpansions: [],
+        setupOverrides: [],
+        zoneOverrides: [],
+        stateOverrides: [],
+        reshuffleOverrides: [],
+        cleanupOverrides: [],
+        solsticeOverrides: [],
+        scoringOverrides: [],
+        collapseOverrides: [],
+        botOverrides: [],
+        shortGameOverrides: [],
+        hookRules: [{
+          trigger: "before_reshuffle",
+          effects: [{ trigger: "on_play", op: "unsupported_private_effect" } as any]
+        } as any],
+        implemented: true,
+        tested: true
+      }
+    };
+
+    const drawn = drawCardWithReshuffleLifecycle(G, "0", () => 0);
+
+    expect(drawn).toBeNull();
+    expect(p.nationDeck).toEqual(["test_action_lineage_record"]);
+    expect(p.discard).toEqual(["test_action_archive_survey"]);
+    expect(p.hand).toEqual([]);
+    expect(G.log.some((entry) => entry.message === "UnsupportedEffectOp(unsupported_private_effect)")).toBe(true);
+    expect(G.log.some((entry) => entry.message === "Nation hook before_reshuffle #0 failed.")).toBe(true);
+    expect(G.log.some((entry) => entry.message === "NationCardAddedOnReshuffle(test_action_lineage_record)")).toBe(false);
+    expect(G.log.some((entry) => entry.message.startsWith("ReshuffleResolved("))).toBe(false);
+  });
+
   it("pauses reshuffle progression when before_reshuffle creates a pending choice", () => {
     const G = createInitialState({ usePrivateData: false });
     const p = G.players["0"];
@@ -1527,5 +2720,100 @@ describe("reshuffle progression", () => {
     expect(p.hand).toEqual(["test_action_lineage_record"]);
     expect(G.log.some((entry) => entry.message === "Nation hook before_reshuffle #0 resolved.")).toBe(true);
     expect(G.log.some((entry) => entry.message === "NationCardAddedOnReshuffle(test_action_lineage_record)")).toBe(true);
+  });
+
+  it("does not draw through a failed after_reshuffle hook", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = ["test_action_archive_survey"];
+    p.nationDeck = [];
+    p.developmentArea = [];
+    p.accessionCardId = undefined;
+    G.activeNationRulesets = {
+      "0": {
+        nationId: "failing_after_reshuffle",
+        displayName: "Failing After Reshuffle",
+        rulesetTags: [],
+        requiredExpansions: [],
+        setupOverrides: [],
+        zoneOverrides: [],
+        stateOverrides: [],
+        reshuffleOverrides: [],
+        cleanupOverrides: [],
+        solsticeOverrides: [],
+        scoringOverrides: [],
+        collapseOverrides: [],
+        botOverrides: [],
+        shortGameOverrides: [],
+        hookRules: [{
+          trigger: "after_reshuffle",
+          effects: [{ trigger: "on_play", op: "unsupported_private_effect" } as any]
+        } as any],
+        implemented: true,
+        tested: true
+      }
+    };
+
+    const drawn = drawCardWithReshuffleLifecycle(G, "0", () => 0);
+
+    expect(drawn).toBeNull();
+    expect(p.hand).toEqual([]);
+    expect(p.discard).toEqual([]);
+    expect(p.deck).toEqual(["test_action_archive_survey"]);
+    expect(G.log.some((entry) => entry.message === "Nation hook after_reshuffle #0 failed.")).toBe(true);
+  });
+
+  it("continues Nation progression after a before-reshuffle choice places a card on deck", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = ["test_action_archive_survey"];
+    p.hand = ["test_action_foundry_shift"];
+    p.nationDeck = ["test_action_lineage_record"];
+    G.activeNationRulesets = {
+      "0": {
+        nationId: "deck_mutating_reshuffle",
+        displayName: "Deck Mutating Reshuffle",
+        rulesetTags: [],
+        requiredExpansions: [],
+        setupOverrides: [],
+        zoneOverrides: [],
+        stateOverrides: [],
+        reshuffleOverrides: [],
+        cleanupOverrides: [],
+        solsticeOverrides: [],
+        scoringOverrides: [],
+        collapseOverrides: [],
+        botOverrides: [],
+        shortGameOverrides: [],
+        hookRules: [{
+          trigger: "before_reshuffle",
+          effects: [{
+            trigger: "on_play",
+            op: "choose_one",
+            choices: [[{ trigger: "on_play", op: "place_card_on_deck", cardId: "test_action_foundry_shift", sourceZone: "hand" }]]
+          } as any]
+        } as any],
+        implemented: true,
+        tested: true
+      }
+    };
+
+    const drawn = drawCardWithReshuffleLifecycle(G, "0", () => 0);
+
+    expect(drawn).toBeNull();
+    expect(G.pendingChoice).toBeDefined();
+    expect(p.nationDeck).toEqual(["test_action_lineage_record"]);
+
+    resolveChoice({ G, ctx, random: { Number: () => 0 } }, 0);
+
+    expect(G.pendingChoice).toBeUndefined();
+    expect(p.hand).toEqual(["test_action_foundry_shift"]);
+    expect(p.nationDeck).toEqual([]);
+    expect(p.discard).toEqual([]);
+    expect(p.deck).toEqual(["test_action_lineage_record", "test_action_archive_survey"]);
+    expect(G.log.some((entry) => entry.message === "NationCardAddedOnReshuffle(test_action_lineage_record)")).toBe(true);
+    expect(G.log.some((entry) => entry.message.startsWith("ReshuffleResolved("))).toBe(true);
   });
 });

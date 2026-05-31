@@ -9,7 +9,7 @@
 ## Milestone 2
 - Better effect DSL
 - Choice resolution (`choose_one`)
-- Reshuffle progression: deterministic Nation cards, payable Development choice, and state/accession hooks
+- Reshuffle progression: ordered Nation deck top-card progression, payable Development choice, and state/accession hooks
 - Hidden-info selectors for Nation, Development, decks, bot decks, and public piles
 - Undo support
 - Validation/legal move checks

@@ -1,6 +1,7 @@
 import type { BotStateTable, BotRowTrigger } from "../../engine/src/solo/botStateTableTypes";
 import type { BotEffectOp } from "../../engine/src/solo/botEffectOps";
 import type { PrivateBotStateTableCsvRow } from "./botStateTableCsvTypes";
+import { normalizeResourceNames } from "./normalizeResources";
 
 const bool = (value: string) => value.trim().toLowerCase() === "true";
 
@@ -41,7 +42,7 @@ export function normalizeBotStateTables(rows: PrivateBotStateTableCsvRow[]): Rec
       id: row.row_id.trim(),
       priority: Number(row.priority.trim()),
       trigger: triggerFromRow(row),
-      effects: JSON.parse(row.effects_json || "[]") as BotEffectOp[],
+      effects: normalizeResourceNames(JSON.parse(row.effects_json || "[]") as BotEffectOp[]),
       privateTriggerLabel: row.private_trigger_label.trim() || undefined,
       privateEffectText: row.private_effect_text.trim() || undefined,
       publicPlaceholderLabel: row.public_placeholder_label.trim() || undefined,

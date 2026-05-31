@@ -1,4 +1,5 @@
 import type { BotStateTableImportError, BotStateTableImportReport, PrivateBotStateTableCsvRow } from "./botStateTableCsvTypes";
+import { collectInvalidResourceNames } from "./normalizeResources";
 
 const triggerKinds = new Set(["card_id", "card_name_private", "suit", "card_type", "tag", "unrest", "other"]);
 const triggerKindsRequiringValue = new Set(["card_id", "card_name_private", "suit", "card_type", "tag"]);
@@ -49,6 +50,10 @@ function validateEffects(errors: BotStateTableImportError[], row: number, effect
     return true;
   }
   let fatal = false;
+  collectInvalidResourceNames(effects, "effects_json").forEach((invalid) => {
+    errors.push({ level: "fatal", row, field: "effects_json", message: `Invalid resource '${invalid.resource}' at ${invalid.path}` });
+    fatal = true;
+  });
   effects.forEach((effect, index) => {
     if (!effect || typeof effect !== "object" || Array.isArray(effect)) {
       errors.push({ level: "fatal", row, field: "effects_json", message: `effects_json[${index}] must be an object` });

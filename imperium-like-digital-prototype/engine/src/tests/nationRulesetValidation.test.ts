@@ -44,6 +44,46 @@ describe("nation ruleset validation", () => {
     expect(issues).toEqual([]);
   });
 
+  it("normalizes rulebook resource names in imported ruleset override JSON", () => {
+    const normalized = normalizeNationRuleset({
+      nation_id: "resource_nation",
+      public_placeholder_name: "Resource Nation",
+      nation_name_private: "",
+      ruleset_tags: "",
+      required_expansions: "",
+      excluded_expansions: "",
+      allowed_modes: "",
+      disallowed_modes: "",
+      required_variants: "",
+      excluded_variants: "",
+      setup_overrides_json: JSON.stringify([{ op: "gain_resource", resource: "population", count: 1 }]),
+      zone_overrides_json: "",
+      state_overrides_json: JSON.stringify([{ op: "take_unrest_when_spending_resource", resource: "progress" }]),
+      reshuffle_overrides_json: JSON.stringify([{ op: "custom_reshuffle_effect", effect: [{ trigger: "on_play", op: "gain_resource", resource: "progress", amount: 1 }] }]),
+      cleanup_overrides_json: JSON.stringify([{ op: "market_resource_added", resource: "progress", count: 1 }]),
+      solstice_overrides_json: JSON.stringify([{ op: "remove_play_card_and_nation_deck_if_resource_empty", cardId: "nadir", resource: "progress" }]),
+      scoring_overrides_json: JSON.stringify([{ op: "score_resource_ratio", resource: "progress", denominator: 3 }]),
+      collapse_overrides_json: "",
+      bot_overrides_json: JSON.stringify([{ op: "bot_custom_cleanup", effect: [{ op: "bot_gain_resource", resource: "progress", count: 1 }] }]),
+      short_game_overrides_json: JSON.stringify([{ op: "remove_starting_resource", resource: "population", count: 1 }, { op: "remove_starting_resources", resources: ["population", "progress"] }]),
+      hook_rules_json: JSON.stringify([{ trigger: "after_reshuffle", effects: [{ trigger: "on_play", op: "gain_resource", resource: "progress", amount: 1 }] }]),
+      public_summary: "",
+      private_notes: "",
+      implemented: "true",
+      tested: "true"
+    });
+
+    expect(normalized.setupOverrides).toEqual([{ op: "gain_resource", resource: "influence", count: 1 }]);
+    expect(normalized.stateOverrides).toEqual([{ op: "take_unrest_when_spending_resource", resource: "knowledge" }]);
+    expect(normalized.reshuffleOverrides).toEqual([{ op: "custom_reshuffle_effect", effect: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }] }]);
+    expect(normalized.cleanupOverrides).toEqual([{ op: "market_resource_added", resource: "knowledge", count: 1 }]);
+    expect(normalized.solsticeOverrides).toEqual([{ op: "remove_play_card_and_nation_deck_if_resource_empty", cardId: "nadir", resource: "knowledge" }]);
+    expect(normalized.scoringOverrides).toEqual([{ op: "score_resource_ratio", resource: "knowledge", denominator: 3 }]);
+    expect(normalized.botOverrides).toEqual([{ op: "bot_custom_cleanup", effect: [{ op: "bot_gain_resource", resource: "knowledge", count: 1 }] }]);
+    expect(normalized.shortGameOverrides).toEqual([{ op: "remove_starting_resource", resource: "influence", count: 1 }, { op: "remove_starting_resources", resources: ["influence", "knowledge"] }]);
+    expect(normalized.hookRules).toEqual([{ trigger: "after_reshuffle", effects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }] }]);
+  });
+
   it("rejects unsupported hook conditions", () => {
     const issues = validateNationRuleset(ruleset({
       hookRules: [{
@@ -54,6 +94,69 @@ describe("nation ruleset validation", () => {
     }));
 
     expect(issues.some((issue) => issue.field === "hookRules[0].condition.op")).toBe(true);
+  });
+
+  it("rejects invalid resources inside hook effect payloads", () => {
+    const issues = validateNationRuleset(ruleset({
+      hookRules: [{
+        trigger: "after_reshuffle",
+        effects: [{ op: "gain_resource", resource: "stone", amount: 1 } as any],
+      }],
+    }));
+
+    expect(issues).toContainEqual({
+      nationId: "test_nation",
+      field: "hookRules[0].effects[0].resource",
+      reason: "invalid resource 'stone'",
+    });
+  });
+
+  it("rejects invalid resources inside top-level ruleset overrides", () => {
+    const issues = validateNationRuleset(ruleset({
+      setupOverrides: [{ op: "set_initial_resources", resources: { stone: 1 } } as any],
+      stateOverrides: [{ op: "take_unrest_when_spending_resource", resource: "science" } as any],
+      cleanupOverrides: [{ op: "market_resource_added", resource: "stone", count: 1 } as any],
+    }));
+
+    expect(issues).toContainEqual({
+      nationId: "test_nation",
+      field: "setupOverrides[0].resources.stone",
+      reason: "invalid resource 'stone'",
+    });
+    expect(issues).toContainEqual({
+      nationId: "test_nation",
+      field: "stateOverrides[0].resource",
+      reason: "invalid resource 'science'",
+    });
+    expect(issues).toContainEqual({
+      nationId: "test_nation",
+      field: "cleanupOverrides[0].resource",
+      reason: "invalid resource 'stone'",
+    });
+  });
+
+  it("rejects invalid resources inside custom override effects", () => {
+    const issues = validateNationRuleset(ruleset({
+      reshuffleOverrides: [{
+        op: "custom_reshuffle_effect",
+        effect: [{ op: "gain_resource", resource: "science", amount: 1 } as any],
+      }],
+      botOverrides: [{
+        op: "bot_custom_cleanup",
+        effect: [{ op: "bot_gain_resource", resource: "stone", count: 1 } as any],
+      }],
+    }));
+
+    expect(issues).toContainEqual({
+      nationId: "test_nation",
+      field: "reshuffleOverrides[0].effect[0].resource",
+      reason: "invalid resource 'science'",
+    });
+    expect(issues).toContainEqual({
+      nationId: "test_nation",
+      field: "botOverrides[0].effect[0].resource",
+      reason: "invalid resource 'stone'",
+    });
   });
 
   it("imports the Inuit short-game exception that skips default Nation-card advancement", () => {
@@ -80,6 +183,41 @@ describe("nation ruleset validation", () => {
     expect(normalized.rulesetTags).toContain("short_game_excluded");
     expect(normalized.shortGameOverrides).toContainEqual({ op: "excluded_from_short_game" });
     expect(validateNationRulesetCompatibility({ id: "utopians", displayName: "Utopians", powerCardIds: [], stateCardIds: [], startingDeckCardIds: [], nationDeckCardIds: [], developmentCardIds: [], setupRules: [], passiveRules: [], actionTokensBase: 3, exhaustTokensBase: 5, requiredExpansions: [], implemented: false, tested: false } as any, normalized, { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: ["short_game"] })).toContain("Ruleset excluded by enabled variant short_game");
+  });
+
+  it("imports and validates the Cultists no-Nation custom-state ruleset", () => {
+    const rows = parseCsvFile(privateRulesetCsvPath);
+    const cultists = rows.find((row) => row.nation_id === "cultists");
+
+    expect(cultists).toBeDefined();
+    const normalized = normalizeNationRuleset(cultists as any);
+
+    expect(normalized.rulesetTags).toEqual(expect.arrayContaining([
+      "no_nation_deck",
+      "no_accession",
+      "no_development_area",
+      "chaos_pile",
+      "short_game_excluded",
+      "solo_bot_exception"
+    ]));
+    expect(normalized.setupOverrides).toContainEqual({
+      op: "create_side_area",
+      areaId: "ceremony_track",
+      displayName: "Ceremony Track",
+      public: true
+    });
+    expect(normalized.zoneOverrides).toContainEqual({
+      op: "create_zone",
+      zoneId: "chaos_pile",
+      displayName: "Chaos Pile",
+      visibility: "public"
+    });
+    expect(normalized.collapseOverrides).toContainEqual({ op: "auto_win_if_zone_empty", zoneId: "chaos_pile" });
+    expect(normalized.botOverrides).toContainEqual({ op: "bot_custom_cleanup", effect: [{ op: "bot_resolve_cultists_state_cleanup" }] });
+    expect(normalized.shortGameOverrides).toContainEqual({ op: "excluded_from_short_game" });
+    expect(validateNationRuleset(normalized)).toEqual([]);
+    expect(normalized.implemented).toBe(true);
+    expect(normalized.tested).toBe(true);
   });
 
   it("imports the Martians Alien-state scoring, payment, and nadir reshuffle exceptions", () => {

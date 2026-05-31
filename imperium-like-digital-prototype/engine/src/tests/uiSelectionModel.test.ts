@@ -471,12 +471,24 @@ describe("selection model", () => {
   it("offers Profit for a completed Trade Route in play when an Action token is available",()=> {
     const withRoute = {
       ...G,
+      options: { enabledExpansions: ["trade_routes"] },
       cardDb: {...G.cardDb, tr1:{id:"tr1",displayName:"Route",type:"trade_route",cardType:"trade_route",suit:"trade_route",effects:[{trigger:"on_play",op:"profit",effects:[]}]}},
       cardStates: { tr1: { resources: { goods: 3 } } },
       players:{"0":{...G.players["0"],playArea:["tr1"],actionsRemaining:1}}
     };
     const profit=getAvailableActionsForSelection({kind:"play_area_card",id:"tr1"},withRoute,ctx).find(a=>a.action==="profit");
     expect(profit).toMatchObject({ label:"Profit", enabled:true, cardId:"tr1" });
+  });
+  it("does not offer Profit when Trade Routes is disabled",()=> {
+    const withRoute = {
+      ...G,
+      options: { enabledExpansions: [] },
+      cardDb: {...G.cardDb, tr1:{id:"tr1",displayName:"Route",type:"trade_route",cardType:"trade_route",suit:"trade_route",effects:[{trigger:"on_play",op:"profit",effects:[]}]}},
+      cardStates: { tr1: { resources: { goods: 3 } } },
+      players:{"0":{...G.players["0"],playArea:["tr1"],actionsRemaining:1}}
+    };
+    const profit=getAvailableActionsForSelection({kind:"play_area_card",id:"tr1"},withRoute,ctx).find(a=>a.action==="profit");
+    expect(profit).toBeUndefined();
   });
   it("disables exhaust abilities without an Exhaust token",()=> {
     const withoutToken = {

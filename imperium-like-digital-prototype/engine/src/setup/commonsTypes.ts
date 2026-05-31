@@ -44,6 +44,7 @@ export type CommonsSetupResult = {
   civilizedDeck: string[];
   tributaryDeck?: string[];
   mainDeck: string[];
+  smallDeckBottomCards?: Partial<Record<"regionDeck" | "uncivilizedDeck" | "civilizedDeck" | "tributaryDeck", string>>;
 
   delayedCards: string[];
   initialMarket: MarketSlot[];
@@ -81,6 +82,7 @@ export type CommonsDeckConstructionResult = Pick<CommonsSetupResult,
   | "civilizedDeck"
   | "tributaryDeck"
   | "mainDeck"
+  | "smallDeckBottomCards"
   | "delayedCards"
   | "initialMarket"
   | "setupWarnings"

@@ -12,9 +12,12 @@ import { runBotTurn } from "../solo/botTurn";
 import { createInitialGameStateFromPipeline } from "../setup/setupPipeline";
 import { applyBotEffect, resolveBotCard } from "../solo/botStateTableResolver";
 import { resolveBotProfitsWhereAble, resolveBotTrade, resolveBotTradeRoutesEndOfTurn, resolveBotTriggerTradeRoute } from "../solo/botTradeRoutesResolver";
+import { parseCsvFile } from "../../../tools/card-import/csvParser";
+import { normalizeBotStateTables } from "../../../tools/card-import/normalizeBotStateTable";
 
 const baseCost = { materials: 0, population: 0, progress: 0, goods: 0 };
 const options: GameOptions = { playerCount: 1, mode: "solo", enabledExpansions: [], enabledVariants: [], soloDifficulty: "chieftain" };
+const privateBotStateTablesCsvPath = path.resolve(import.meta.dirname, "../../../private-card-data/imperium_bot_state_tables_private.csv");
 const nation: any = {
   id: "test_nation_sun_coast",
   displayName: "N",
@@ -360,6 +363,40 @@ describe("solo bot setup from imported cards", () => {
     expect(bot.botDiscard).toContain("bot_region");
   });
 
+  it("does not trigger Scoring when a Bot discard-Dynasty effect finds the Dynasty deck already empty", () => {
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    bot.botDynastyDeck = [];
+
+    const result = resolveBotCard({
+      G,
+      bot,
+      revealedCardId: "bot_region",
+      source: "slot",
+      table: {
+        id: "test_table",
+        botNationId: "test_nation_sun_coast",
+        displayName: "Test Table",
+        side: "S",
+        rows: [
+          { id: "discard_dynasty", priority: 1, trigger: { kind: "suit", suit: "region" }, effects: [{ op: "bot_discard_top_dynasty_deck" }], implemented: true, tested: true }
+        ]
+      }
+    });
+
+    expect(result.warnings).toEqual([]);
+    expect(bot.botDynastyDeck).toEqual([]);
+    expect(G.scoring).toBeUndefined();
+  });
+
   it("returns the most recent matching Bot discard card to the Unrest pile", () => {
     const G = createInitialGameStateFromPipeline({
       options,
@@ -591,6 +628,7 @@ describe("solo bot setup from imported cards", () => {
       playerNationIds: { "0": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
+    G.players["0"].resources.knowledge = 0;
 
     const result = resolveBotCard({
       G,
@@ -672,6 +710,340 @@ describe("solo bot setup from imported cards", () => {
     expect(applyBotEffect(G, bot, table, "state", { op: "bot_move_resource_to_state_card", resource: "influence", count: 1, ifUnable: [{ op: "bot_gain_resource", resource: "influence", count: 1 }] })).toEqual([]);
     expect(bot.resources.influence).toBe(1);
     expect(bot.stateTokens?.cultists_ceremonial_gathering_F?.influence).toBe(1);
+  });
+
+  it("covers the private Cultists ceremonial Unrest row through the Bot table resolver", () => {
+    const tables = normalizeBotStateTables(parseCsvFile(privateBotStateTablesCsvPath) as any);
+    const table = tables.cultists_ceremonial_gathering_F;
+    const row = table.rows.find((candidate) => candidate.id === "unrest");
+    expect(row?.implemented).toBe(true);
+    expect(row?.tested).toBe(true);
+
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        cultist_unrest: card({ id: "cultist_unrest", displayName: "Unrest", suit: "unrest", cardType: "unrest", tags: ["unrest"] })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    bot.resources.influence = 1;
+
+    const result = resolveBotCard({ G, bot, revealedCardId: "cultist_unrest", source: "slot", table });
+
+    expect(result).toMatchObject({ resolvedRowId: "unrest", cardDestination: "unrest", resolvedAny: true, warnings: [] });
+    expect(G.unrestPile).toContain("cultist_unrest");
+    expect(bot.botDiscard).not.toContain("cultist_unrest");
+    expect(bot.resources.influence).toBe(0);
+    expect(bot.stateTokens?.cultists_ceremonial_gathering_F?.influence).toBe(1);
+  });
+
+  it("covers the private Cultists ceremonial Trade Route row through the Bot table resolver", () => {
+    const tables = normalizeBotStateTables(parseCsvFile(privateBotStateTablesCsvPath) as any);
+    const table = tables.cultists_ceremonial_gathering_F;
+    const row = table.rows.find((candidate) => candidate.id === "trade_route");
+    expect(row?.implemented).toBe(true);
+    expect(row?.tested).toBe(true);
+
+    const G = createInitialGameStateFromPipeline({
+      options: { ...options, enabledExpansions: ["trade_routes"] },
+      cardDb: {
+        starter: card({}),
+        cultist_route: card({ id: "cultist_route", displayName: "Route", suit: "trade_route", cardType: "trade_route" })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    G.solo!.botTradeRoutesTables = {
+      cultists_routes: {
+        id: "cultists_routes",
+        rows: [
+          { tradeRouteId: "cultist_route", publicPlaceholderName: "Route", commerceEffects: [{ op: "bot_gain_resource", resource: "goods", count: 2 }], profitEffects: [] }
+        ],
+        endOfTurnRows: []
+      }
+    };
+
+    const result = resolveBotCard({ G, bot, revealedCardId: "cultist_route", source: "slot", table });
+
+    expect(result).toMatchObject({ resolvedRowId: "trade_route", cardDestination: "play", resolvedAny: true, warnings: [] });
+    expect(bot.botPlayArea).toContain("cultist_route");
+    expect(bot.resources.goods).toBe(2);
+    expect(bot.botDiscard).not.toContain("cultist_route");
+  });
+
+  it("covers the private Cultists ceremonial Progress/history row through the Bot table resolver", () => {
+    const tables = normalizeBotStateTables(parseCsvFile(privateBotStateTablesCsvPath) as any);
+    const table = tables.cultists_ceremonial_gathering_F;
+    const row = table.rows.find((candidate) => candidate.id === "progress_history");
+    expect(row?.implemented).toBe(true);
+    expect(row?.tested).toBe(true);
+
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        cultist_progress: card({ id: "cultist_progress", displayName: "Progress", suit: "none", cardType: "action", tags: ["progress_history"] })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    bot.resources.knowledge = 0;
+
+    const result = resolveBotCard({ G, bot, revealedCardId: "cultist_progress", source: "slot", table });
+
+    expect(result).toMatchObject({ resolvedRowId: "progress_history", cardDestination: "history", resolvedAny: true, warnings: [] });
+    expect(bot.resources.knowledge).toBe(1);
+    expect(bot.botHistory).toContain("cultist_progress");
+    expect(bot.botDiscard).not.toContain("cultist_progress");
+  });
+
+  it("covers the private Cultists ceremonial fallback row through the Bot table resolver", () => {
+    const tables = normalizeBotStateTables(parseCsvFile(privateBotStateTablesCsvPath) as any);
+    const table = tables.cultists_ceremonial_gathering_F;
+    const row = table.rows.find((candidate) => candidate.id === "other");
+    expect(row?.implemented).toBe(true);
+    expect(row?.tested).toBe(true);
+
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        cultist_other: card({ id: "cultist_other", displayName: "Other", suit: "civilized", cardType: "action" }),
+        deck_card: card({ id: "deck_card", displayName: "Deck Card", suit: "uncivilized", cardType: "action" }),
+        discarded_unrest: card({ id: "discarded_unrest", displayName: "Unrest", suit: "unrest", cardType: "unrest", tags: ["unrest"] })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    bot.botDeck = ["deck_card"];
+    bot.botDiscard = ["discarded_unrest"];
+    bot.resources.influence = 0;
+
+    const result = resolveBotCard({ G, bot, revealedCardId: "cultist_other", source: "slot", table });
+
+    expect(result).toMatchObject({ resolvedRowId: "other", cardDestination: "history", resolvedAny: true, warnings: [] });
+    expect(bot.botDeck).toEqual([]);
+    expect(bot.botDiscard).toEqual(["deck_card"]);
+    expect(G.unrestPile).toContain("discarded_unrest");
+    expect(bot.resources.influence).toBe(1);
+    expect(bot.botHistory).toContain("cultist_other");
+  });
+
+  it("covers the private Cultists research Unrest row through the Bot table resolver", () => {
+    const tables = normalizeBotStateTables(parseCsvFile(privateBotStateTablesCsvPath) as any);
+    const table = tables.cultists_research_ceremony_S;
+    const row = table.rows.find((candidate) => candidate.id === "unrest");
+    expect(row?.implemented).toBe(true);
+    expect(row?.tested).toBe(true);
+
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        cultist_unrest: card({ id: "cultist_unrest", displayName: "Unrest", suit: "unrest", cardType: "unrest", tags: ["unrest"] })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    bot.resources.influence = 0;
+
+    const result = resolveBotCard({ G, bot, revealedCardId: "cultist_unrest", source: "slot", table });
+
+    expect(result).toMatchObject({ resolvedRowId: "unrest", cardDestination: "unrest", resolvedAny: true, warnings: [] });
+    expect(G.unrestPile).toContain("cultist_unrest");
+    expect(bot.resources.influence).toBe(1);
+    expect(bot.botDiscard).not.toContain("cultist_unrest");
+  });
+
+  it("covers the private Cultists research Trade Route row through the Bot table resolver", () => {
+    const tables = normalizeBotStateTables(parseCsvFile(privateBotStateTablesCsvPath) as any);
+    const table = tables.cultists_research_ceremony_S;
+    const row = table.rows.find((candidate) => candidate.id === "trade_route");
+    expect(row?.implemented).toBe(true);
+    expect(row?.tested).toBe(true);
+
+    const G = createInitialGameStateFromPipeline({
+      options: { ...options, enabledExpansions: ["trade_routes"] },
+      cardDb: {
+        starter: card({}),
+        cultist_route: card({ id: "cultist_route", displayName: "Route", suit: "trade_route", cardType: "trade_route" })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    G.solo!.botTradeRoutesTables = {
+      cultists_routes: {
+        id: "cultists_routes",
+        rows: [
+          { tradeRouteId: "cultist_route", publicPlaceholderName: "Route", commerceEffects: [{ op: "bot_gain_resource", resource: "materials", count: 2 }], profitEffects: [] }
+        ],
+        endOfTurnRows: []
+      }
+    };
+
+    const result = resolveBotCard({ G, bot, revealedCardId: "cultist_route", source: "slot", table });
+
+    expect(result).toMatchObject({ resolvedRowId: "trade_route", cardDestination: "play", resolvedAny: true, warnings: [] });
+    expect(bot.botPlayArea).toContain("cultist_route");
+    expect(bot.resources.materials).toBe(2);
+    expect(bot.botDiscard).not.toContain("cultist_route");
+  });
+
+  it("covers the private Cultists research Progress/history row through the Bot table resolver", () => {
+    const tables = normalizeBotStateTables(parseCsvFile(privateBotStateTablesCsvPath) as any);
+    const table = tables.cultists_research_ceremony_S;
+    const row = table.rows.find((candidate) => candidate.id === "progress_history");
+    expect(row?.implemented).toBe(true);
+    expect(row?.tested).toBe(true);
+
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        cultist_progress: card({ id: "cultist_progress", displayName: "Progress", suit: "none", cardType: "action", tags: ["progress_history"] })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    bot.resources.knowledge = 0;
+
+    const result = resolveBotCard({ G, bot, revealedCardId: "cultist_progress", source: "slot", table });
+
+    expect(result).toMatchObject({ resolvedRowId: "progress_history", cardDestination: "history", resolvedAny: true, warnings: [] });
+    expect(bot.resources.knowledge).toBe(1);
+    expect(bot.botHistory).toContain("cultist_progress");
+    expect(bot.botDiscard).not.toContain("cultist_progress");
+  });
+
+  it("covers the private Cultists research fallback row through the Bot table resolver", () => {
+    const tables = normalizeBotStateTables(parseCsvFile(privateBotStateTablesCsvPath) as any);
+    const table = tables.cultists_research_ceremony_S;
+    const row = table.rows.find((candidate) => candidate.id === "other");
+    expect(row?.implemented).toBe(true);
+    expect(row?.tested).toBe(true);
+
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        cultist_other: card({ id: "cultist_other", displayName: "Other", suit: "civilized", cardType: "action" }),
+        deck_one: card({ id: "deck_one", displayName: "Deck One", suit: "uncivilized", cardType: "action" }),
+        deck_two: card({ id: "deck_two", displayName: "Deck Two", suit: "civilized", cardType: "action" }),
+        discarded_unrest: card({ id: "discarded_unrest", displayName: "Unrest", suit: "unrest", cardType: "unrest", tags: ["unrest"] })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    bot.botDeck = ["deck_one", "deck_two"];
+    bot.botDiscard = ["discarded_unrest"];
+    bot.resources.influence = 0;
+
+    const result = resolveBotCard({ G, bot, revealedCardId: "cultist_other", source: "slot", table });
+
+    expect(result).toMatchObject({ resolvedRowId: "other", cardDestination: "history", resolvedAny: true, warnings: [] });
+    expect(G.unrestPile).toContain("discarded_unrest");
+    expect(bot.botDeck).toEqual([]);
+    expect(bot.botDiscard).toEqual(["deck_one", "deck_two"]);
+    expect(bot.resources.influence).toBe(1);
+    expect(bot.botHistory).toContain("cultist_other");
+  });
+
+  it("covers the private Cultists ceremonial hammer state-token row through the Bot table resolver", () => {
+    const tables = normalizeBotStateTables(parseCsvFile(privateBotStateTablesCsvPath) as any);
+    const table = tables.cultists_ceremonial_gathering_F;
+    const row = table.rows.find((candidate) => candidate.id === "hammer_state_token");
+    expect(row?.implemented).toBe(true);
+    expect(row?.tested).toBe(true);
+
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        cultist_power: card({ id: "cultist_power", displayName: "Power", suit: "civilized", cardType: "power", type: "power" }),
+        chaos_one: card({ id: "chaos_one", displayName: "Chaos", suit: "unrest", cardType: "unrest" })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    bot.resources.influence = 1;
+    G.players["0"].resources.goods = 0;
+    G.specialZones = { "0": { chaos_pile: { id: "chaos_pile", displayName: "Chaos Pile", cardIds: ["chaos_one"], visibility: "public", scoresAsOwned: false } } };
+
+    const result = resolveBotCard({ G, bot, revealedCardId: "cultist_power", source: "slot", table });
+
+    expect(result).toMatchObject({ resolvedRowId: "hammer_state_token", cardDestination: "discard", resolvedAny: true, warnings: [] });
+    expect(bot.resources.influence).toBe(0);
+    expect(bot.stateTokens?.cultists_ceremonial_gathering_F?.influence).toBe(1);
+    expect(G.players["0"].resources.goods).toBe(2);
+    expect(G.specialZones["0"].chaos_pile.cardIds).toEqual([]);
+    expect(G.players["0"].discard).toContain("chaos_one");
+    expect(bot.botDiscard).toContain("cultist_power");
+  });
+
+  it("covers the private Cultists ceremonial Region state-token row through the Bot table resolver", () => {
+    const tables = normalizeBotStateTables(parseCsvFile(privateBotStateTablesCsvPath) as any);
+    const table = tables.cultists_ceremonial_gathering_F;
+    const row = table.rows.find((candidate) => candidate.id === "region_state_token");
+    expect(row?.implemented).toBe(true);
+    expect(row?.tested).toBe(true);
+
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        cultist_region: card({ id: "cultist_region", displayName: "Region", suit: "region", cardType: "region", tags: ["region"] })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    bot.resources.influence = 1;
+
+    const result = resolveBotCard({ G, bot, revealedCardId: "cultist_region", source: "slot", table });
+
+    expect(result).toMatchObject({ resolvedRowId: "region_state_token", cardDestination: "play", resolvedAny: true, warnings: [] });
+    expect(bot.botPlayArea).toContain("cultist_region");
+    expect(bot.resources.influence).toBe(0);
+    expect(bot.stateTokens?.cultists_ceremonial_gathering_F?.influence).toBe(1);
+    expect(bot.botDiscard).not.toContain("cultist_region");
+  });
+
+  it("covers the private Cultists research state-progress row through the Bot table resolver", () => {
+    const tables = normalizeBotStateTables(parseCsvFile(privateBotStateTablesCsvPath) as any);
+    const table = tables.cultists_research_ceremony_S;
+    const row = table.rows.find((candidate) => candidate.id === "cultist_state_progress");
+    expect(row?.implemented).toBe(true);
+    expect(row?.tested).toBe(true);
+
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        cultist_state_card: card({ id: "cultist_state_card", displayName: "Cultist", suit: "civilized", cardType: "state" })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    bot.resources.influence = 2;
+
+    const result = resolveBotCard({ G, bot, revealedCardId: "cultist_state_card", source: "slot", table });
+
+    expect(result).toMatchObject({ resolvedRowId: "cultist_state_progress", cardDestination: "discard", resolvedAny: true, warnings: [] });
+    expect(bot.resources.influence).toBe(0);
+    expect(bot.stateTokens?.cultists_research_ceremony_S?.knowledge).toBe(1);
+    expect(bot.botDiscard).toContain("cultist_state_card");
   });
 
   it("human_take_chaos moves Chaos from the Cultists pile to the human discard", () => {
@@ -999,7 +1371,40 @@ describe("solo bot setup from imported cards", () => {
 
     expect(G.cardStates.human_route.resources?.goods).toBe(2);
     expect(bot.resources.knowledge).toBe(1);
-    expect(G.players["0"].resources.goods).toBe(1);
+    expect(G.players["0"].resources.goods).toBe(2);
+  });
+
+  it("Bot Trade adds supply Goods to its own route without spending Bot Goods", () => {
+    const G = createInitialGameStateFromPipeline({
+      options: { ...options, enabledExpansions: ["trade_routes"] },
+      cardDb: {
+        starter: card({}),
+        bot_route: card({ id: "bot_route", displayName: "Bot Route", suit: "trade_route", cardType: "trade_route" })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    bot.botPlayArea = ["bot_route"];
+    bot.resources.goods = 0;
+    bot.resources.materials = 0;
+    G.cardStates = { bot_route: { resources: { goods: 1 } } };
+    G.solo!.botTradeRoutesTables = {
+      test_routes: {
+        id: "test_routes",
+        rows: [
+          { tradeRouteId: "bot_route", publicPlaceholderName: "Bot Route", commerceEffects: [{ op: "bot_gain_resource", resource: "materials", count: 2 }], profitEffects: [] }
+        ],
+        endOfTurnRows: []
+      }
+    };
+
+    const resolved = resolveBotTrade(G, bot);
+
+    expect(resolved).toBe(true);
+    expect(G.cardStates.bot_route.resources?.goods).toBe(2);
+    expect(bot.resources.goods).toBe(0);
+    expect(bot.resources.materials).toBe(2);
   });
 
   it("Bot Trade Route commerce stops remaining effects when human_take_unrest triggers Collapse", () => {
@@ -1358,7 +1763,7 @@ describe("solo bot setup from imported cards", () => {
     expect(result.warnings).toEqual([]);
     expect(G.cardStates.human_route.resources?.goods).toBe(2);
     expect(bot.resources.knowledge).toBe(1);
-    expect(G.players["0"].resources.goods).toBe(1);
+    expect(G.players["0"].resources.goods).toBe(2);
     expect(bot.botDiscard).toContain("bot_prompt");
   });
 
@@ -1396,6 +1801,56 @@ describe("solo bot setup from imported cards", () => {
     expect(result.resolvedRowId).toBe("fallback");
     expect(bot.resources.materials).toBe(1);
     expect(bot.botDiscard).toContain("bot_prompt");
+  });
+
+  it("falls through from bot_trade when Trade Routes is disabled", () => {
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        bot_prompt: card({ id: "bot_prompt", displayName: "Bot Prompt", suit: "region", cardType: "attack", startingLocation: "bot_deck" }),
+        human_route: card({ id: "human_route", displayName: "Human Route", suit: "trade_route", cardType: "trade_route" })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    bot.resources.goods = 1;
+    G.players["0"].playArea = ["human_route"];
+    G.cardStates = { human_route: { resources: { goods: 1 } } };
+    G.solo!.botTradeRoutesTables = {
+      test_routes: {
+        id: "test_routes",
+        rows: [
+          { tradeRouteId: "human_route", publicPlaceholderName: "Human Route", commerceEffects: [{ op: "human_gain_resource", resource: "goods", count: 1 }], profitEffects: [] }
+        ],
+        endOfTurnRows: []
+      }
+    };
+
+    const result = resolveBotCard({
+      G,
+      bot,
+      revealedCardId: "bot_prompt",
+      source: "slot",
+      table: {
+        id: "test_table",
+        botNationId: "test_nation_sun_coast",
+        displayName: "Test Table",
+        side: "S",
+        rows: [
+          { id: "trade", priority: 1, trigger: { kind: "card_id", cardId: "bot_prompt" }, effects: [{ op: "bot_trade" }], implemented: true, tested: true },
+          { id: "fallback", priority: 2, trigger: { kind: "card_id", cardId: "bot_prompt" }, effects: [{ op: "bot_gain_resource", resource: "materials", count: 1 }], implemented: true, tested: true }
+        ]
+      }
+    });
+
+    expect(result.resolvedRowId).toBe("fallback");
+    expect(G.cardStates.human_route.resources?.goods).toBe(1);
+    expect(bot.resources.goods).toBe(1);
+    expect(bot.resources.knowledge ?? 0).toBe(0);
+    expect(G.players["0"].resources.goods ?? 0).toBe(0);
+    expect(bot.resources.materials).toBe(1);
   });
 
   it("can put a resolved Bot table card on the bottom of the Bot deck", () => {
@@ -1480,6 +1935,55 @@ describe("solo bot setup from imported cards", () => {
     expect(bot.botPlayArea).toEqual([]);
     expect(bot.botHistory).toEqual(["bot_route"]);
     expect(bot.botDiscard).toContain("bot_prompt");
+  });
+
+  it("falls through from bot_resolve_profits_where_able when Trade Routes is disabled", () => {
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        bot_prompt: card({ id: "bot_prompt", displayName: "Bot Prompt", suit: "region", cardType: "attack", startingLocation: "bot_deck" }),
+        bot_route: card({ id: "bot_route", displayName: "Bot Route", suit: "trade_route", cardType: "trade_route" })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    bot.botPlayArea = ["bot_route"];
+    G.cardStates = { bot_route: { resources: { goods: 3 } } };
+    G.solo!.botTradeRoutesTables = {
+      test_routes: {
+        id: "test_routes",
+        rows: [
+          { tradeRouteId: "bot_route", publicPlaceholderName: "Bot Route", commerceEffects: [], profitEffects: [{ op: "bot_gain_resource", resource: "materials", count: 2 }] }
+        ],
+        endOfTurnRows: []
+      }
+    };
+
+    const result = resolveBotCard({
+      G,
+      bot,
+      revealedCardId: "bot_prompt",
+      source: "slot",
+      table: {
+        id: "test_table",
+        botNationId: "test_nation_sun_coast",
+        displayName: "Test Table",
+        side: "S",
+        rows: [
+          { id: "profit", priority: 1, trigger: { kind: "card_id", cardId: "bot_prompt" }, effects: [{ op: "bot_resolve_profits_where_able" }], implemented: true, tested: true },
+          { id: "fallback", priority: 2, trigger: { kind: "card_id", cardId: "bot_prompt" }, effects: [{ op: "bot_gain_resource", resource: "materials", count: 1 }], implemented: true, tested: true }
+        ]
+      }
+    });
+
+    expect(result.resolvedRowId).toBe("fallback");
+    expect(bot.resources.goods ?? 0).toBe(0);
+    expect(bot.resources.materials).toBe(1);
+    expect(bot.botPlayArea).toEqual(["bot_route"]);
+    expect(bot.botHistory).toEqual([]);
+    expect(G.cardStates.bot_route.resources?.goods).toBe(3);
   });
 
   it("Bot Trade Route Profit can move the top Bot discard card to the top of the Bot deck", () => {
@@ -2002,6 +2506,56 @@ describe("solo bot setup from imported cards", () => {
     expect(G.market).toEqual(["market_card"]);
   });
 
+  it("bot Acquire with Exile enabled can choose a public setup Exile card", () => {
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" }),
+        market_card: card({ id: "market_card", displayName: "Market", suit: "civilized", cardType: "action", vp: { mode: "fixed", value: 1 } }),
+        setup_exile_card: card({ id: "setup_exile_card", displayName: "Setup Exile", suit: "civilized", cardType: "action", vp: { mode: "fixed", value: 4 } }),
+        unrest_from_pile: card({ id: "unrest_from_pile", displayName: "Unrest", suit: "unrest", cardType: "unrest", vp: { mode: "fixed", value: -2 } })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    bot.botDeck = ["existing_top"];
+    G.market = ["market_card"];
+    G.globalSpecialZones = {
+      exile: {
+        id: "exile",
+        displayName: "Exile",
+        cardIds: ["setup_exile_card"],
+        visibility: "public",
+        scoresAsOwned: false
+      }
+    };
+    G.unrestPile = ["unrest_from_pile"];
+
+    const result = resolveBotCard({
+      G,
+      bot,
+      revealedCardId: "bot_region",
+      source: "slot",
+      table: {
+        id: "test_table",
+        botNationId: "test_nation_sun_coast",
+        displayName: "Test Table",
+        side: "S",
+        rows: [
+          { id: "bot_acquire", priority: 1, trigger: { kind: "suit", suit: "region" }, effects: [{ op: "bot_acquire", filter: { suits: ["civilized"] }, fromExile: true }], implemented: true, tested: true }
+        ]
+      }
+    });
+
+    expect(result.warnings).toEqual([]);
+    expect(bot.botDeck).toEqual(["unrest_from_pile", "setup_exile_card", "existing_top"]);
+    expect(G.globalSpecialZones.exile.cardIds).toEqual([]);
+    expect(G.unrestPile).toEqual([]);
+    expect(G.market).toEqual(["market_card"]);
+  });
+
   it("bot Acquire from Exile does not finish when required Unrest causes Collapse", () => {
     const G = createInitialGameStateFromPipeline({
       options,
@@ -2086,6 +2640,42 @@ describe("solo bot setup from imported cards", () => {
     expect(result.warnings).toEqual([]);
     expect(bot.botDeck[0]).toBe("market_b");
     expect(G.market).toEqual(["market_a", "market_c"]);
+  });
+
+  it("bot Acquire values conditional VP by the best branch when choosing market cards", () => {
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" }),
+        fixed_vp: card({ id: "fixed_vp", displayName: "Fixed VP", suit: "civilized", cardType: "action", vp: { mode: "fixed", value: 7 } }),
+        conditional_vp: card({ id: "conditional_vp", displayName: "Conditional VP", suit: "civilized", cardType: "action", vp: { mode: "conditional", value: 2, trueValue: 9, falseValue: 1 } })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    G.market = ["fixed_vp", "conditional_vp"];
+
+    const result = resolveBotCard({
+      G,
+      bot,
+      revealedCardId: "bot_region",
+      source: "slot",
+      table: {
+        id: "test_table",
+        botNationId: "test_nation_sun_coast",
+        displayName: "Test Table",
+        side: "S",
+        rows: [
+          { id: "bot_acquire", priority: 1, trigger: { kind: "suit", suit: "region" }, effects: [{ op: "bot_acquire", filter: { suits: ["civilized"] } }], implemented: true, tested: true }
+        ]
+      }
+    });
+
+    expect(result.warnings).toEqual([]);
+    expect(bot.botDeck[0]).toBe("conditional_vp");
+    expect(G.market).toEqual(["fixed_vp"]);
   });
 
   it("bot Break through chooses the best eligible market card using the same VP/token/slot tie-break", () => {
@@ -2970,6 +3560,21 @@ describe("solo bot setup from imported cards", () => {
     });
 
     expect(G.solo?.bot.botDynastyDeck).toEqual(["dynasty_high", "dynasty_variable", "dynasty_mid", "dynasty_low"]);
+  });
+
+  it("uses the best conditional VP branch when sorting default solo Bot Dynasty cards", () => {
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        dynasty_fixed: card({ id: "dynasty_fixed", displayName: "Dynasty Fixed", tags: ["bot_dynasty"], vp: { mode: "fixed", value: 7 } }),
+        dynasty_conditional: card({ id: "dynasty_conditional", displayName: "Dynasty Conditional", tags: ["bot_dynasty"], vp: { mode: "conditional", value: 2, trueValue: 9, falseValue: 1 } })
+      } as any,
+      nationDb: { test_nation_sun_coast: { ...nation, nationDeckCardIds: [], developmentCardIds: [], startingDeckCardIds: ["starter"] } },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+
+    expect(G.solo?.bot.botDynastyDeck).toEqual(["dynasty_conditional", "dynasty_fixed"]);
   });
 
   it("builds the default solo Bot Dynasty deck from nation, accession, and development cards", () => {

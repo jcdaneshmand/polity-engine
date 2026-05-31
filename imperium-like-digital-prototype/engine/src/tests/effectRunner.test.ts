@@ -3,6 +3,7 @@ import { runEffects } from "../cards/effectRunner";
 import { createInitialState } from "../game/initialState";
 import * as moves from "../game/moves";
 import { resolveChoice, resolveExileChoice, resolveLookOrderChoice } from "../game/moves";
+import type { GameState } from "../game/state";
 import { resolvePendingUnrestAllocationChoice } from "../game/unrest";
 import type { GameOptions } from "../options/gameOptions";
 import { createInitialGameStateFromPipeline } from "../setup/setupPipeline";
@@ -58,6 +59,42 @@ describe("effectRunner", () => {
     expect(G.players["0"].discard).toEqual(["test_action_foundry_shift"]);
     expect(G.players["0"].nationDeck).toEqual(["test_action_lineage_record"]);
     expect(G.log.at(-1)?.message).toBe("Draw-if-able stopped (deck empty).");
+  });
+
+  it("flips a one-card State in place when accession is added during reshuffle", () => {
+    const G = createInitialState();
+    G.players["0"].deck = [];
+    G.players["0"].discard = [];
+    G.players["0"].nationDeck = ["accession_card"];
+    G.players["0"].accessionCardId = "accession_card";
+    G.players["0"].stateArea = ["two_sided_state"];
+    G.cardDb.two_sided_state = {
+      id: "two_sided_state",
+      displayName: "State",
+      type: "state",
+      cardType: "state",
+      suit: "uncivilized",
+      cost: 0,
+      tags: ["barbarian"],
+      effects: []
+    };
+    G.cardDb.accession_card = {
+      id: "accession_card",
+      displayName: "Accession",
+      type: "accession",
+      cardType: "accession",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+
+    runEffects({ G, playerId: "0" }, [{ trigger: "on_play", op: "draw", count: 1 }]);
+
+    expect(G.players["0"].stateArea).toEqual(["two_sided_state"]);
+    expect(G.cardStates?.two_sided_state?.activeState).toBe("civilized");
+    expect(G.players["0"].discard).toEqual([]);
+    expect(G.players["0"].hand).toEqual(["accession_card"]);
   });
 
   it("draw from a face-up discard pile creates a card choice instead of drawing from deck", () => {
@@ -139,6 +176,43 @@ describe("effectRunner", () => {
     expect(G.players["0"].hand).toEqual(["discard_b", "discard_a"]);
     expect(G.players["0"].discard).toEqual([]);
     expect(G.players["0"].resources.materials).toBe(1);
+  });
+
+  it("draws from public setup Exile cards when drawing from Exile", () => {
+    const G = createInitialState();
+    G.players["0"].exile = [];
+    G.players["0"].hand = [];
+    G.globalSpecialZones = {
+      exile: {
+        id: "exile",
+        displayName: "Exile",
+        visibility: "public",
+        scoresAsOwned: false,
+        cardIds: ["setup_exiled_card"]
+      }
+    };
+    G.cardDb.setup_exiled_card = {
+      id: "setup_exiled_card",
+      displayName: "Setup Exiled Card",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+
+    runEffects({ G, playerId: "0", selfCardId: "exile_drawer" }, [
+      { trigger: "on_play", op: "draw", count: 1, source: "exile" } as any
+    ]);
+
+    expect(G.pendingDrawChoice?.cardIds).toEqual(["setup_exiled_card"]);
+
+    (moves as any).resolveDrawChoice({ G, ctx: { currentPlayer: "0" } as any }, "setup_exiled_card");
+
+    expect(G.pendingDrawChoice).toBeUndefined();
+    expect(G.players["0"].hand).toEqual(["setup_exiled_card"]);
+    expect(G.globalSpecialZones.exile.cardIds).toEqual([]);
   });
 
   it("gain resource", () => {
@@ -235,6 +309,68 @@ describe("effectRunner", () => {
     expect(G.log.map((entry) => entry.message)).toContain("FameGained(fame_source/count=1/gained=king_of_kings)");
   });
 
+  it("draw from Fame puts ordinary Fame in hand and preserves the bottom-card rule", () => {
+    const G = createInitialState();
+    G.players["0"].hand = [];
+    G.fameDeck = {
+      available: ["ordinary_fame"],
+      specialBottomCardId: "king_of_kings",
+      specialBottomSide: "A",
+      resolvedSpecialByPlayer: {}
+    };
+
+    const result = runEffects({ G, playerId: "0", selfCardId: "fame_drawer" }, [
+      { trigger: "on_play", op: "draw", source: "fameDeck", count: 1 } as any
+    ]);
+
+    expect(result).toBe(true);
+    expect(G.players["0"].hand).toEqual(["ordinary_fame"]);
+    expect(G.players["0"].discard).not.toContain("ordinary_fame");
+    expect(G.fameDeck.available).toEqual([]);
+    expect(G.fameDeck.specialBottomCardId).toBe("king_of_kings");
+    expect(G.pendingDrawChoice).toBeUndefined();
+    expect(G.log.at(-1)?.message).toBe("FameDrawn(fame_drawer/count=1/drawn=ordinary_fame)");
+  });
+
+  it("draw from Fame resolves King of Kings instead of moving the special card", () => {
+    const G = createInitialState();
+    G.cardDb.uncivilized_state = {
+      id: "uncivilized_state",
+      displayName: "Barbarian",
+      type: "state",
+      cardType: "state",
+      suit: "uncivilized",
+      cost: 0,
+      tags: ["barbarian"],
+      effects: []
+    };
+    G.players["0"].hand = [];
+    G.players["0"].stateArea = ["uncivilized_state"];
+    G.fameDeck = {
+      available: [],
+      specialBottomCardId: "king_of_kings",
+      specialBottomSide: "A",
+      resolvedSpecialByPlayer: {}
+    };
+
+    const result = runEffects({ G, playerId: "0", selfCardId: "fame_drawer" }, [
+      { trigger: "on_play", op: "draw", source: "fameDeck", count: 1 } as any
+    ]);
+
+    expect(result).toBe(true);
+    expect(G.players["0"].resources.knowledge).toBe(6);
+    expect(G.players["0"].hand).not.toContain("king_of_kings");
+    expect(G.players["0"].discard).not.toContain("king_of_kings");
+    expect(G.fameDeck).toEqual({
+      available: [],
+      specialBottomCardId: "king_of_kings",
+      specialBottomSide: "B",
+      resolvedSpecialByPlayer: { "0": true }
+    });
+    expect(G.pendingDrawChoice).toBeUndefined();
+    expect(G.log.map((entry) => entry.message)).toContain("FameDrawn(fame_drawer/count=1/drawn=king_of_kings)");
+  });
+
   it("takes Unrest for multiple players in the specified allocation order", () => {
     const G = createInitialState();
     G.unrestPile = ["unrest_a", "unrest_b", "unrest_c"];
@@ -286,6 +422,7 @@ describe("effectRunner", () => {
       playerNationIds: { "0": "unrest_passive_nation", "1": "unrest_passive_nation" }
     });
     G.unrestPile = ["unrest_a"];
+    G.players["0"].resources.materials = 0;
 
     const result = runEffects({ G, playerId: "0" }, [{ trigger: "on_play", op: "take_unrest", count: 1 } as any]);
 
@@ -1582,6 +1719,50 @@ describe("effectRunner", () => {
     expect(G.log.at(-1)?.message).toBe("AcquireChoicePending(exile_picker/source=exile/options=1)");
   });
 
+  it("acquire_card from Exile includes public setup Exile cards", () => {
+    const G = createInitialState();
+    G.players["0"].exile = ["personal_uncivilized"];
+    G.globalSpecialZones = {
+      exile: {
+        id: "exile",
+        displayName: "Exile",
+        visibility: "public",
+        scoresAsOwned: false,
+        cardIds: ["setup_civilized"]
+      }
+    };
+    G.cardDb.personal_uncivilized = {
+      id: "personal_uncivilized",
+      displayName: "Personal Uncivilized",
+      type: "action",
+      cardType: "action",
+      suit: "uncivilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb.setup_civilized = {
+      id: "setup_civilized",
+      displayName: "Setup Civilized",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+
+    runEffects({ G, playerId: "0", selfCardId: "exile_picker" }, [{
+      trigger: "on_play",
+      op: "acquire_card",
+      source: "exile",
+      suit: "civilized",
+      count: 1
+    } as any]);
+
+    expect(G.pendingAcquireChoice?.cardIds).toEqual(["setup_civilized"]);
+  });
+
   it("acquire_card from Market without a specified card records matching pending choices", () => {
     const G = createInitialState();
     G.market = ["market_region", "market_civilized", "market_uncivilized"];
@@ -1796,6 +1977,64 @@ describe("effectRunner", () => {
     expect(G.log.some((entry) => entry.message === "MarketCardChoiceResolved(take_source/take_card/market_take_b)")).toBe(true);
   });
 
+  it("continues multi-card take choices so newly refilled matching cards can be taken", () => {
+    const G = createInitialState();
+    G.market = ["market_take_a", "market_region", "market_take_b"];
+    G.marketDecks = {
+      mainDeck: ["main_fallback"],
+      regionDeck: [],
+      uncivilizedDeck: [],
+      civilizedDeck: ["market_take_refill"],
+      tributaryDeck: []
+    };
+    G.unrestPile = ["test_unrest_1"];
+    for (const id of ["market_take_a", "market_take_b", "market_take_refill", "main_fallback"]) {
+      G.cardDb[id] = {
+        id,
+        displayName: id,
+        type: "action",
+        cardType: "action",
+        suit: "civilized",
+        cost: 0,
+        tags: [],
+        effects: []
+      };
+    }
+    G.cardDb.market_region = {
+      id: "market_region",
+      displayName: "Market Region",
+      type: "region",
+      cardType: "region",
+      suit: "region",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+
+    runEffects({ G, playerId: "0", selfCardId: "multi_taker" }, [{
+      trigger: "on_play",
+      op: "take_card",
+      source: "market",
+      suit: "civilized",
+      count: 2
+    } as any]);
+
+    expect(G.pendingMarketCardChoice?.cardIds).toEqual(["market_take_a", "market_take_b"]);
+
+    (moves as any).resolveMarketCardChoice({ G, ctx: { currentPlayer: "0" } as any }, "market_take_b");
+
+    expect(G.players["0"].hand).toContain("market_take_b");
+    expect(G.market).toEqual(["market_take_a", "market_region", "market_take_refill"]);
+    expect(G.pendingMarketCardChoice?.cardIds).toEqual(["market_take_a", "market_take_refill"]);
+
+    (moves as any).resolveMarketCardChoice({ G, ctx: { currentPlayer: "0" } as any }, "market_take_refill");
+
+    expect(G.pendingMarketCardChoice).toBeUndefined();
+    expect(G.players["0"].hand).toEqual(expect.arrayContaining(["market_take_b", "market_take_refill"]));
+    expect(G.players["0"].hand).not.toContain("market_take_a");
+    expect(G.market).toEqual(["market_take_a", "market_region", "main_fallback"]);
+  });
+
   it("break_through from market returns tucked unrest instead of taking it", () => {
     const G = createInitialState();
     G.market = ["test_action_foundry_shift"];
@@ -1900,6 +2139,46 @@ describe("effectRunner", () => {
     expect(G.market).toEqual(["market_uncivilized_a", "market_region", "market_uncivilized_b"]);
     expect(G.players["0"].hand).toEqual([]);
     expect(G.log.at(-1)?.message).toBe("BreakThroughChoicePending(market_breaker/source=market/options=2)");
+  });
+
+  it("break_through from deck skips a face-up small-deck bottom card and searches Main", () => {
+    const G = createInitialState();
+    G.marketDecks = {
+      mainDeck: ["main_uncivilized"],
+      regionDeck: [],
+      uncivilizedDeck: ["visible_tributary_bottom"],
+      civilizedDeck: [],
+      tributaryDeck: []
+    };
+    G.marketDeckBottomCards = { uncivilizedDeck: "visible_tributary_bottom" };
+    G.cardDb.visible_tributary_bottom = {
+      id: "visible_tributary_bottom",
+      displayName: "Visible Tributary Bottom",
+      type: "action",
+      cardType: "action",
+      suit: "tributary",
+      setupBannerSuit: "tributary",
+      cost: 0,
+      tags: [],
+      effects: []
+    } as any;
+    G.cardDb.main_uncivilized = {
+      id: "main_uncivilized",
+      displayName: "Main Uncivilized",
+      type: "action",
+      cardType: "action",
+      suit: "uncivilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+
+    runEffects({ G, playerId: "0" }, [{ trigger: "on_play", op: "break_through", suit: "uncivilized", source: "deck", count: 1 } as any]);
+
+    expect(G.players["0"].hand).toEqual(["main_uncivilized"]);
+    expect(G.marketDecks.uncivilizedDeck).toEqual(["visible_tributary_bottom"]);
+    expect(G.marketDeckBottomCards.uncivilizedDeck).toBe("visible_tributary_bottom");
+    expect(G.marketDecks.mainDeck).toEqual([]);
   });
 
   it("break_through from Market pauses for a new choice when refill creates multiple matches mid-effect", () => {
@@ -2072,6 +2351,40 @@ describe("effectRunner", () => {
     });
     expect(G.players["0"].exile).toEqual(["exiled_civilized", "exiled_uncivilized"]);
     expect(G.log.at(-1)?.message).toBe("BreakThroughChoicePending(exile_breaker/source=exile/options=1)");
+  });
+
+  it("break_through from Exile includes public setup Exile cards in pending choices", () => {
+    const G = createInitialState();
+    G.cardDb.setup_exiled_civilized = {
+      id: "setup_exiled_civilized",
+      displayName: "Setup Exiled Civilized",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.globalSpecialZones = {
+      exile: {
+        id: "exile",
+        displayName: "Exile",
+        cardIds: ["setup_exiled_civilized"],
+        visibility: "public",
+        scoresAsOwned: false
+      }
+    };
+
+    runEffects({ G, playerId: "0", selfCardId: "exile_breaker" }, [{
+      trigger: "on_play",
+      op: "break_through",
+      source: "exile",
+      suit: "civilized",
+      count: 1
+    } as any]);
+
+    expect(G.pendingBreakThroughChoice?.cardIds).toEqual(["setup_exiled_civilized"]);
+    expect(G.globalSpecialZones.exile.cardIds).toEqual(["setup_exiled_civilized"]);
   });
 
   it("break_through from deck takes from the matching small deck", () => {
@@ -2430,7 +2743,7 @@ describe("effectRunner", () => {
     expect(G.log.at(-1)?.message).toBe("FindMissed(accession_card)");
   });
 
-  it("find_card by criteria records an explicit choice after searching all eligible areas", () => {
+  it("find_card by criteria stops at the first searched zone with eligible cards", () => {
     const G = createInitialState();
     G.players["0"].hand = ["test_action_foundry_shift"];
     G.players["0"].discard = ["test_action_archive_survey"];
@@ -2451,12 +2764,12 @@ describe("effectRunner", () => {
     expect(G.pendingFindChoice).toEqual({
       playerId: "0",
       sourceCardId: "finder",
-      cardIds: ["test_action_foundry_shift", "test_action_archive_survey", "test_action_lineage_record"],
+      cardIds: ["test_action_foundry_shift"],
       destination: "discard"
     });
     expect(G.players["0"].deck).toEqual(["test_action_scholars_circle"]);
     expect(G.players["0"].nationDeck).toEqual(["test_action_lineage_record"]);
-    expect(G.log.at(-1)?.message).toBe("FindChoicePending(finder/options=3)");
+    expect(G.log.at(-1)?.message).toBe("FindChoicePending(finder/options=1)");
   });
 
   it("find_card can explicitly search only History for an exact card", () => {
@@ -2787,6 +3100,47 @@ describe("effectRunner", () => {
       cardIds: ["test_region"]
     });
     expect(G.log.at(-1)?.message).toBe("RegionChoicePending(abandon_source/abandon_region/options=1)");
+  });
+
+  it("offers garrisoned Regions in unspecified recall or abandon choices", () => {
+    const G = createInitialState();
+    G.cardDb.host_region = {
+      id: "host_region",
+      displayName: "Host Region",
+      type: "region",
+      cardType: "region",
+      suit: "region",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb.garrisoned_region = {
+      id: "garrisoned_region",
+      displayName: "Garrisoned Region",
+      type: "region",
+      cardType: "region",
+      suit: "region",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.players["0"].playArea = ["host_region"];
+    G.cardStates = {
+      host_region: { garrisonedCardIds: ["garrisoned_region"] }
+    };
+
+    expect(runEffects({ G, playerId: "0", selfCardId: "recall_source" }, [
+      { trigger: "on_play", op: "recall_region" }
+    ] as any)).toBe(true);
+
+    expect((G.pendingRegionChoice as unknown as NonNullable<GameState["pendingRegionChoice"]>).cardIds).toEqual(["host_region", "garrisoned_region"]);
+
+    G.pendingRegionChoice = undefined;
+    expect(runEffects({ G, playerId: "0", selfCardId: "abandon_source" }, [
+      { trigger: "on_play", op: "abandon_region" }
+    ] as any)).toBe(true);
+
+    expect((G.pendingRegionChoice as unknown as NonNullable<GameState["pendingRegionChoice"]>).cardIds).toEqual(["host_region", "garrisoned_region"]);
   });
 
   it("moves History-bound cards to a named replacement zone", () => {

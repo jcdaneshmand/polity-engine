@@ -19,14 +19,15 @@ function isUnrestCard(G: GameState, cardId: string): boolean {
 
 export function acquireFromExile(G: GameState, args: { playerId: string; cardId: string; destination?: "hand" | "discard" }): boolean {
   const player = G.players[args.playerId];
-  if (!player || !player.exile.includes(args.cardId)) return false;
+  const globalExile = G.globalSpecialZones?.exile?.cardIds;
+  if (!player || (!player.exile.includes(args.cardId) && !(globalExile ?? []).includes(args.cardId))) return false;
   const requiresUnrest = !isUnrestCard(G, args.cardId);
   if (requiresUnrest && (G.unrestPile?.length ?? 0) === 0) {
     triggerCollapse(G, "unrest_pile_empty", args.playerId);
     return false;
   }
 
-  if (!removeOne(player.exile, args.cardId)) return false;
+  if (!removeOne(player.exile, args.cardId) && !removeOne(globalExile ?? [], args.cardId)) return false;
 
   const destination = args.destination ?? "hand";
   player[destination].push(args.cardId);
@@ -38,6 +39,13 @@ export function acquireFromExile(G: GameState, args: { playerId: string; cardId:
 
   G.log.push({ round: G.round, playerId: args.playerId, message: `AcquiredFromExile(${args.cardId}/destination=${destination})` });
   return true;
+}
+
+export function availableExileCards(G: GameState, playerId: string): string[] {
+  return [
+    ...(G.players[playerId]?.exile ?? []),
+    ...(G.globalSpecialZones?.exile?.cardIds ?? [])
+  ];
 }
 
 function marketCardHasTokens(G: GameState, cardId: string): boolean {

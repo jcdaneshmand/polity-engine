@@ -40,6 +40,18 @@ This pass is enough to unlock card-reference validation for private nations and 
 
 Use `raw_effect_text_private` for the exact local-only text. Encode `effect_ops_json` only when the engine already supports the operation or the required hook is clear.
 
+For conditional victory points, keep `vp_mode=conditional`. Use `vp_value` for a single imported resolved value, or `vp_details_json` for structured branches. Zone-sensitive cards such as higher VP in History can use:
+
+```json
+{"condition":{"op":"self_in_zone","zoneId":"history"},"trueValue":8,"falseValue":3}
+```
+
+For variable victory points that count cards in known zones, keep `vp_mode=variable` and put the count formula in `vp_details_json`. Example: 2 VP per Region-tagged card in play or History, capped at 6:
+
+```json
+{"formula":{"op":"count_cards","tag":"region","zones":["playArea","history"],"amountEach":2,"cap":6}}
+```
+
 Prefer these generic tags while triaging effects:
 
 - `market_acquisition`

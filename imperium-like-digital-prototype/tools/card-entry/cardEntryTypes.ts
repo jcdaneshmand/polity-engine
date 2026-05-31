@@ -33,6 +33,9 @@ export interface CardEntryDraft {
   publicPlaceholderName: string;
   suit: Suit | "";
   suitIcons: string;
+  stateActionTokens: string;
+  stateExhaustTokens: string;
+  stateHandSize: string;
   cardType: CardType | "";
   stateRequirement: string;
   costMaterials: string;
@@ -45,6 +48,7 @@ export interface CardEntryDraft {
   developmentCostGoods: string;
   vpMode: VpMode;
   vpValue: string;
+  vpDetailsJson: string;
   startingLocation: StartingLocation;
   playerCountRequirement: CommonsPlayerCountRequirement | "";
   ownership: CommonsOwnership;

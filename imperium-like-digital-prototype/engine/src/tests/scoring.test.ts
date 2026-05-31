@@ -100,7 +100,93 @@ describe("scoring", () => {
     };
     G.players["0"].discard = ["fixed_vp", "variable_vp", "negative_vp", "none_vp", "conditional_vp"];
 
+    expect(scorePlayer(G, "0")).toBe(20);
+  });
+
+  it("scores imported numeric conditional victory points and ignores unresolved conditionals", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      conditional_met: vpCard("conditional_met", { mode: "conditional", value: 6 }),
+      conditional_unresolved: vpCard("conditional_unresolved", { mode: "conditional", value: null })
+    };
+    G.players["0"].discard = ["conditional_met", "conditional_unresolved"];
+
+    expect(scorePlayer(G, "0")).toBe(6);
+  });
+
+  it("scores structured conditional victory points based on the card scoring zone", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      conditional_history: vpCard("conditional_history", {
+        mode: "conditional",
+        condition: { op: "self_in_zone", zoneId: "history" },
+        trueValue: 8,
+        falseValue: 3
+      }),
+      conditional_discard: vpCard("conditional_discard", {
+        mode: "conditional",
+        condition: { op: "self_in_zone", zoneId: "history" },
+        trueValue: 8,
+        falseValue: 3
+      })
+    };
+    G.players["0"].history = ["conditional_history"];
+    G.players["0"].discard = ["conditional_discard"];
+
     expect(scorePlayer(G, "0")).toBe(11);
+  });
+
+  it("scores structured variable victory points by counting matching cards in scored zones with a cap", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      variable_counter: vpCard("variable_counter", {
+        mode: "variable",
+        formula: { op: "count_cards", tag: "region", zones: ["playArea", "history"], amountEach: 2, cap: 6 }
+      }),
+      play_region_a: { ...vpCard("play_region_a", 0), tags: ["region"] },
+      play_region_b: { ...vpCard("play_region_b", 0), tags: ["region"] },
+      history_region: { ...vpCard("history_region", 0), tags: ["region"] },
+      deck_region_not_counted: { ...vpCard("deck_region_not_counted", 0), tags: ["region"] }
+    };
+    G.players["0"].discard = ["variable_counter"];
+    G.players["0"].playArea = ["play_region_a", "play_region_b"];
+    G.players["0"].history = ["history_region"];
+    G.players["0"].deck = ["deck_region_not_counted"];
+
+    expect(scorePlayer(G, "0")).toBe(6);
+  });
+
+  it("treats scored History replacement zones as History for structured VP rules", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      conditional_history: vpCard("conditional_history", {
+        mode: "conditional",
+        condition: { op: "self_in_zone", zoneId: "history" },
+        trueValue: 8,
+        falseValue: 3
+      }),
+      variable_counter: vpCard("variable_counter", {
+        mode: "variable",
+        formula: { op: "count_cards", tag: "region", zones: ["history"], amountEach: 2, cap: 10 }
+      }),
+      sunken_region: { ...vpCard("sunken_region", 0), tags: ["region"] }
+    };
+    G.players["0"].discard = ["variable_counter"];
+    G.players["0"].history = [];
+    G.players["0"].sideAreas = { sunken: ["conditional_history", "sunken_region"] };
+    G.activeNationRulesets = {
+      ...G.activeNationRulesets,
+      "0": {
+        ...G.activeNationRulesets!["0"],
+        zoneOverrides: [{ op: "replace_history_with_zone", zoneId: "sunken", displayName: "Sunken", cardsScore: true } as any]
+      }
+    };
+
+    expect(scorePlayer(G, "0")).toBe(10);
   });
 
   it("honors scoring zone exclusions", () => {
@@ -115,6 +201,30 @@ describe("scoring", () => {
     G.activeNationRulesets!["0"].scoringOverrides = [{ op: "exclude_zone_from_scoring", zoneId: "discard" }];
 
     expect(scorePlayer(G, "0")).toBe(6);
+  });
+
+  it("applies History scoring exclusions to scored History replacement zones", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      sunken_vp: vpCard("sunken_vp", 6),
+      garrison_vp: vpCard("garrison_vp", 4),
+      discard_vp: vpCard("discard_vp", 2)
+    };
+    G.players["0"].discard = ["discard_vp"];
+    G.players["0"].history = [];
+    G.players["0"].sideAreas = { sunken: ["sunken_vp"] };
+    G.cardStates = { sunken_vp: { garrisonedCardIds: ["garrison_vp"] } };
+    G.activeNationRulesets = {
+      ...G.activeNationRulesets,
+      "0": {
+        ...G.activeNationRulesets!["0"],
+        zoneOverrides: [{ op: "replace_history_with_zone", zoneId: "sunken", displayName: "Sunken", cardsScore: true } as any],
+        scoringOverrides: [{ op: "exclude_zone_from_scoring", zoneId: "history" } as any]
+      }
+    };
+
+    expect(scorePlayer(G, "0")).toBe(2);
   });
 
   it("normal scoring waits for the current round, one final round, and final solstice", () => {
@@ -279,6 +389,25 @@ describe("scoring", () => {
     G.solo!.bot.resources = {};
 
     expect(scoreBot(G)).toBe(13);
+  });
+
+  it("scores Bot structured conditional victory points at the best imported value", () => {
+    const G = createInitialState({
+      options: { playerCount: 1, mode: "solo", enabledExpansions: [], enabledVariants: [], soloDifficulty: "imperator" }
+    });
+    G.cardDb = {
+      ...G.cardDb,
+      bot_conditional_zone: vpCard("bot_conditional_zone", {
+        mode: "conditional",
+        condition: { op: "self_in_zone", zoneId: "history" },
+        trueValue: 8,
+        falseValue: 3
+      })
+    };
+    G.solo!.bot.botDeck = ["bot_conditional_zone"];
+    G.solo!.bot.resources = {};
+
+    expect(scoreBot(G)).toBe(8);
   });
 
   it("collapse scoring ends immediately and uses lowest Unrest instead of VP", () => {
@@ -621,6 +750,50 @@ describe("scoring", () => {
     expect(G.players["0"].resources.knowledge).toBe(0);
     expect(G.log.some((entry) => entry.message.includes("after_scoring"))).toBe(false);
     expect(G.log.some((entry) => entry.message === "NationRulesetApplied(test/scoring/custom_scoring_effect)")).toBe(false);
+  });
+
+  it("stops scoring lifecycle when a before_scoring hook fails", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      p0_vp: vpCard("p0_vp", 5)
+    };
+    G.players["0"].hand = ["p0_vp"];
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      hookRules: [{
+        trigger: "before_scoring",
+        effects: [{ trigger: "on_play", op: "unsupported_private_effect" } as any]
+      } as any]
+    };
+
+    const score = scorePlayer(G, "0");
+
+    expect(score).toBe(0);
+    expect(G.log.some((entry) => entry.message === "Nation hook before_scoring #0 failed.")).toBe(true);
+    expect(G.log.some((entry) => entry.message === "Scored(0=5)")).toBe(false);
+  });
+
+  it("stops scoring lifecycle when an after_scoring hook fails", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      p0_vp: vpCard("p0_vp", 5)
+    };
+    G.players["0"].hand = ["p0_vp"];
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      hookRules: [{
+        trigger: "after_scoring",
+        effects: [{ trigger: "on_play", op: "unsupported_private_effect" } as any]
+      } as any]
+    };
+
+    const score = scorePlayer(G, "0");
+
+    expect(score).toBe(0);
+    expect(G.log.some((entry) => entry.message === "Nation hook after_scoring #0 failed.")).toBe(true);
+    expect(G.log.some((entry) => entry.message === "Scored(0=5)")).toBe(false);
   });
 
   it("pauses normal scoring finalization when before_scoring creates a pending choice", () => {

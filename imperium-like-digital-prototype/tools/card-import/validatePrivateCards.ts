@@ -1,5 +1,6 @@
 import { parseCsvFile } from "./csvParser";
 import type { CardImportError, CardImportReport, PrivateCardCsvRow } from "./cardCsvTypes";
+import { collectInvalidResourceNames } from "./normalizeResources";
 
 const suits = new Set(["region","uncivilized","civilized","tributary","fame","unrest","power","trade_route","none","multi"]);
 const types = new Set(["action","in_play","attack","power","state","development","accession","nation","region","unrest","fame","trade_route","bot_state","other"]);
@@ -46,6 +47,7 @@ const effectOps = new Set([
 
 const isBool=(v:string)=>["true","false"].includes((v||"").trim().toLowerCase());
 const isNonNeg=(v:string)=>v.trim()==="" || (/^\d+$/.test(v.trim()));
+const isNumber=(v:unknown): v is number=>typeof v==="number" && Number.isFinite(v);
 const pipeValues=(v:string)=>v.split("|").map((x)=>x.trim()).filter(Boolean);
 
 function validateOptionalEnum(args: { errors: CardImportError[]; row: number; field: string; value: string | undefined; allowed: Set<string>; message: string }) {
@@ -77,12 +79,18 @@ function validateOptionalBool(errors: CardImportError[], row: number, field: str
   return false;
 }
 
-function validateEffectOps(errors: CardImportError[], row: number, effects: unknown, path = "effect_ops_json"): boolean {
+function validateEffectOps(errors: CardImportError[], row: number, effects: unknown, path = "effect_ops_json", validateResources = true): boolean {
   if (!Array.isArray(effects)) {
     errors.push({ level: "fatal", row, field: "effect_ops_json", message: `${path} must parse to array` });
     return true;
   }
   let fatal = false;
+  if (validateResources) {
+    collectInvalidResourceNames(effects, path).forEach((invalid) => {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid resource '${invalid.resource}' at ${invalid.path}` });
+      fatal = true;
+    });
+  }
   effects.forEach((effect, index) => {
     if (!effect || typeof effect !== "object" || Array.isArray(effect)) {
       errors.push({ level: "fatal", row, field: "effect_ops_json", message: `${path}[${index}] must be an effect object` });
@@ -96,7 +104,7 @@ function validateEffectOps(errors: CardImportError[], row: number, effects: unkn
       return;
     }
     if (op === "optional" || op === "commerce" || op === "profit") {
-      fatal = validateEffectOps(errors, row, (effect as { effects?: unknown }).effects, `${path}[${index}].effects`) || fatal;
+      fatal = validateEffectOps(errors, row, (effect as { effects?: unknown }).effects, `${path}[${index}].effects`, false) || fatal;
     }
     if (op === "choose_one") {
       const choices = (effect as { choices?: unknown }).choices;
@@ -105,17 +113,95 @@ function validateEffectOps(errors: CardImportError[], row: number, effects: unkn
         fatal = true;
       } else {
         choices.forEach((choice, choiceIndex) => {
-          fatal = validateEffectOps(errors, row, choice, `${path}[${index}].choices[${choiceIndex}]`) || fatal;
+          fatal = validateEffectOps(errors, row, choice, `${path}[${index}].choices[${choiceIndex}]`, false) || fatal;
         });
       }
     }
     if (op === "conditional_resource_at_least" || op === "conditional_state_is") {
-      fatal = validateEffectOps(errors, row, (effect as { then?: unknown }).then, `${path}[${index}].then`) || fatal;
+      fatal = validateEffectOps(errors, row, (effect as { then?: unknown }).then, `${path}[${index}].then`, false) || fatal;
       const elseEffects = (effect as { else?: unknown }).else;
-      if (elseEffects !== undefined) fatal = validateEffectOps(errors, row, elseEffects, `${path}[${index}].else`) || fatal;
+      if (elseEffects !== undefined) fatal = validateEffectOps(errors, row, elseEffects, `${path}[${index}].else`, false) || fatal;
     }
   });
   return fatal;
+}
+
+function parseVpDetails(errors: CardImportError[], row: number, value: string | undefined): { fatal: boolean; details?: { condition?: unknown; formula?: unknown; trueValue?: unknown; falseValue?: unknown } } {
+  const trimmed = (value || "").trim();
+  if (!trimmed) return { fatal: false };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    errors.push({ level: "fatal", row, field: "vp_details_json", message: "Invalid JSON" });
+    return { fatal: true };
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    errors.push({ level: "fatal", row, field: "vp_details_json", message: "vp_details_json must parse to object" });
+    return { fatal: true };
+  }
+  return { fatal: false, details: parsed as { condition?: unknown; formula?: unknown; trueValue?: unknown; falseValue?: unknown } };
+}
+
+function validateVpDetails(errors: CardImportError[], row: number, value: string | undefined): { fatal: boolean; details?: { condition?: unknown; formula?: unknown; trueValue?: unknown; falseValue?: unknown } } {
+  const parsed = parseVpDetails(errors, row, value);
+  if (parsed.fatal || !parsed.details) return parsed;
+  const details = parsed.details;
+  if (details.condition !== undefined) {
+    const condition = details.condition as { op?: unknown; zoneId?: unknown };
+    if (!condition || typeof condition !== "object" || Array.isArray(condition)) {
+      errors.push({ level: "fatal", row, field: "vp_details_json", message: "VP condition must be an object" });
+      return { fatal: true };
+    }
+    if (condition.op !== "self_in_zone") {
+      errors.push({ level: "fatal", row, field: "vp_details_json", message: `Unsupported VP condition: ${String(condition.op ?? "missing")}` });
+      return { fatal: true };
+    }
+    if (typeof condition.zoneId !== "string" || !condition.zoneId.trim()) {
+      errors.push({ level: "fatal", row, field: "vp_details_json", message: "VP self_in_zone condition requires zoneId" });
+      return { fatal: true };
+    }
+  }
+  if (details.formula !== undefined) {
+    const formula = details.formula as { op?: unknown; tag?: unknown; suit?: unknown; zones?: unknown; amountEach?: unknown; cap?: unknown };
+    if (!formula || typeof formula !== "object" || Array.isArray(formula)) {
+      errors.push({ level: "fatal", row, field: "vp_details_json", message: "VP formula must be an object" });
+      return { fatal: true };
+    }
+    if (formula.op !== "count_cards") {
+      errors.push({ level: "fatal", row, field: "vp_details_json", message: `Unsupported VP formula: ${String(formula.op ?? "missing")}` });
+      return { fatal: true };
+    }
+    if (!isNumber(formula.amountEach)) {
+      errors.push({ level: "fatal", row, field: "vp_details_json", message: "VP count_cards formula requires numeric amountEach" });
+      return { fatal: true };
+    }
+    if (formula.tag !== undefined && typeof formula.tag !== "string") {
+      errors.push({ level: "fatal", row, field: "vp_details_json", message: "VP count_cards formula tag must be a string" });
+      return { fatal: true };
+    }
+    if (formula.suit !== undefined && (typeof formula.suit !== "string" || !suits.has(formula.suit))) {
+      errors.push({ level: "fatal", row, field: "vp_details_json", message: `Invalid VP count_cards formula suit: ${String(formula.suit)}` });
+      return { fatal: true };
+    }
+    if (formula.zones !== undefined && (!Array.isArray(formula.zones) || formula.zones.some((zone) => typeof zone !== "string" || !zone.trim()))) {
+      errors.push({ level: "fatal", row, field: "vp_details_json", message: "VP count_cards formula zones must be a string array" });
+      return { fatal: true };
+    }
+    if (formula.cap !== undefined && !isNumber(formula.cap)) {
+      errors.push({ level: "fatal", row, field: "vp_details_json", message: "VP count_cards formula cap must be numeric when present" });
+      return { fatal: true };
+    }
+  }
+  if (details.trueValue !== undefined && !isNumber(details.trueValue)) {
+    errors.push({ level: "fatal", row, field: "vp_details_json", message: "trueValue must be numeric when present" });
+    return { fatal: true };
+  }
+  if (details.falseValue !== undefined && !isNumber(details.falseValue)) {
+    errors.push({ level: "fatal", row, field: "vp_details_json", message: "falseValue must be numeric when present" });
+    return { fatal: true };
+  }
+  return { fatal: false, details };
 }
 
 export function validatePrivateCardsRows(rows: PrivateCardCsvRow[]): CardImportReport {
@@ -137,9 +223,13 @@ export function validatePrivateCardsRows(rows: PrivateCardCsvRow[]): CardImportR
     fatal = validatePipeEnums({ errors, row, field: "excluded_expansions", value: r.excluded_expansions, allowed: expansions, message: "Invalid excluded_expansions" }) || fatal;
     fatal = validatePipeEnums({ errors, row, field: "allowed_modes", value: r.allowed_modes, allowed: modes, message: "Invalid allowed_modes" }) || fatal;
     fatal = validatePipeEnums({ errors, row, field: "disallowed_modes", value: r.disallowed_modes, allowed: modes, message: "Invalid disallowed_modes" }) || fatal;
-    for(const f of ["cost_materials","cost_population","cost_progress","cost_goods","development_cost_materials","development_cost_population","development_cost_progress","development_cost_goods"]) if(!isNonNeg(r[f]||"")){errors.push({level:"fatal",row,field:f,message:"Must be non-negative integer or blank"}); fatal=true;}
+    for(const f of ["cost_materials","cost_population","cost_progress","cost_goods","development_cost_materials","development_cost_population","development_cost_progress","development_cost_goods","state_action_tokens","state_exhaust_tokens","state_hand_size"]) if(!isNonNeg(r[f]||"")){errors.push({level:"fatal",row,field:f,message:"Must be non-negative integer or blank"}); fatal=true;}
     for(const f of ["delayable_in_lowered_aggression","market_eligible","small_deck_eligible","main_deck_eligible","unrest_pile_eligible","fame_deck_eligible"]) fatal = validateOptionalBool(errors, row, f, r[f]) || fatal;
-    if(["fixed","variable","negative"].includes((r.vp_mode||"").trim()) && !(r.vp_value||"").trim().match(/^-?\d+(\.\d+)?$/)){errors.push({level:"fatal",row,field:"vp_value",message:"vp_value required numeric for vp_mode"}); fatal=true;}
+    const vpDetails = validateVpDetails(errors, row, r.vp_details_json);
+    fatal = vpDetails.fatal || fatal;
+    const hasStructuredVariableFormula = Boolean(vpDetails.details?.formula);
+    if(["fixed","negative"].includes((r.vp_mode||"").trim()) && !(r.vp_value||"").trim().match(/^-?\d+(\.\d+)?$/)){errors.push({level:"fatal",row,field:"vp_value",message:"vp_value required numeric for vp_mode"}); fatal=true;}
+    if((r.vp_mode||"").trim()==="variable" && !hasStructuredVariableFormula && !(r.vp_value||"").trim().match(/^-?\d+(\.\d+)?$/)){errors.push({level:"fatal",row,field:"vp_value",message:"vp_value required numeric for vp_mode unless vp_details_json supplies a formula"}); fatal=true;}
     if(!isBool(r.implemented||"")){errors.push({level:"fatal",row,field:"implemented",message:"implemented must be true/false"}); fatal=true;}
     if(!isBool(r.tested||"")){errors.push({level:"fatal",row,field:"tested",message:"tested must be true/false"}); fatal=true;}
     if((r.effect_ops_json||"").trim()){ try { const p=JSON.parse(r.effect_ops_json); fatal = validateEffectOps(errors, row, p) || fatal; } catch { errors.push({level:"fatal",row,field:"effect_ops_json",message:"Invalid JSON"}); fatal=true; } }

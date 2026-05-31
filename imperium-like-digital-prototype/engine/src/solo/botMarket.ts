@@ -1,5 +1,5 @@
 import type { Card, GameState, ResourceName } from "../game/state";
-import { deckForSuit, refillMarketSlot } from "../game/marketRefill";
+import { deckForSuit, drawMarketDeckCard, refillMarketSlot } from "../game/marketRefill";
 import { triggerCollapse } from "../game/scoring";
 import { triggerScoringIfMainDeckEmpty } from "../game/scoringTriggers";
 import { takeResourceFromSupply } from "../game/resources";
@@ -9,16 +9,23 @@ import type { BotState } from "./botTypes";
 
 type BotAcquireCandidate =
   | { source: "market"; cardId: string; slotIndex: number }
-  | { source: "exile"; cardId: string; ownerId: string; exileIndex: number; optionIndex: number };
+  | { source: "exile"; cardId: string; ownerId: string; exileIndex: number; optionIndex: number }
+  | { source: "global_exile"; cardId: string; exileIndex: number; optionIndex: number };
 type BotBreakThroughOptions = { discardGained?: boolean; resolveGained?: (cardId: string) => void };
 
 function cardVpForBot(card: Card | undefined): number {
   const vp = card?.vp as unknown;
   if (typeof vp === "number") return vp;
   if (typeof vp === "object" && vp !== null) {
-    const { mode, value } = vp as { mode?: string; value?: unknown };
+    const { mode, value, trueValue, falseValue } = vp as { mode?: string; value?: unknown; trueValue?: unknown; falseValue?: unknown };
     const numericValue = typeof value === "number" ? value : 0;
     if (mode === "none") return 0;
+    if (mode === "conditional" && (typeof trueValue === "number" || typeof falseValue === "number")) {
+      return Math.max(
+        typeof trueValue === "number" ? trueValue : numericValue,
+        typeof falseValue === "number" ? falseValue : numericValue
+      );
+    }
     if (mode === "conditional") return numericValue || 5;
     if (mode === "variable") return numericValue || 5;
     if (mode === "negative") return -Math.abs(numericValue);
@@ -74,6 +81,12 @@ function chooseBotAcquireCard(G: GameState, filter: BotAcquireFilter | undefined
         if (matchesFilter(G, cardId, filter)) candidates.push({ source: "exile", cardId, ownerId, exileIndex, optionIndex });
         optionIndex += 1;
       }
+    }
+    const globalExile = G.globalSpecialZones?.exile?.cardIds ?? [];
+    for (let exileIndex = 0; exileIndex < globalExile.length; exileIndex += 1) {
+      const cardId = globalExile[exileIndex];
+      if (matchesFilter(G, cardId, filter)) candidates.push({ source: "global_exile", cardId, exileIndex, optionIndex });
+      optionIndex += 1;
     }
   }
 
@@ -181,7 +194,8 @@ export function botAcquireFromMarket(G: GameState, bot: BotState, filter?: BotAc
     triggerCollapse(G, "unrest_pile_empty", bot.botId);
     return true;
   }
-  const [gainedCardId] = G.players[chosen.ownerId].exile.splice(chosen.exileIndex, 1);
+  const exileSource = chosen.source === "global_exile" ? G.globalSpecialZones?.exile?.cardIds : G.players[chosen.ownerId].exile;
+  const [gainedCardId] = exileSource?.splice(chosen.exileIndex, 1) ?? [];
   if (!gainedCardId) return false;
   const unrestCards = takeUnrestForBotExileAcquire(G, bot, gainedCardId);
   if (G.gameover) return true;
@@ -199,7 +213,7 @@ export function botBreakThrough(G: GameState, bot: BotState, filter?: BotAcquire
 
   const suit = primarySuit(filter);
   const sourceDeck = deckForSuit(suit as any);
-  const smallDeckCard = sourceDeck ? G.marketDecks?.[sourceDeck].shift() : undefined;
+  const smallDeckCard = sourceDeck ? drawMarketDeckCard(G, sourceDeck) : undefined;
   if (smallDeckCard) {
     placeBotGainedCards(bot, [smallDeckCard], options);
     G.log.push({ round: G.round, playerId: bot.botId, message: `BotBreakThroughDeck(${smallDeckCard}/${sourceDeck})` });

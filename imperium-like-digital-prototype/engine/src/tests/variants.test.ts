@@ -122,8 +122,8 @@ describe("variants",()=>{
         privateRulesetPath:rulesetPath
       });
 
-      expect(G.players["0"].resources.knowledge).toBe(2);
-      expect(G.players["1"].resources.knowledge).toBe(2);
+      expect(G.players["0"].resources.knowledge).toBe(3);
+      expect(G.players["1"].resources.knowledge).toBe(3);
     } finally {
       fs.rmSync(rulesetPath, { force:true });
     }
@@ -372,10 +372,17 @@ describe("variants",()=>{
         randomSeed:"a"
       });
 
-      expect(G.players["0"].discard).toEqual(["n1"]);
-      expect(G.players["0"].sideAreas?.mana_track).toEqual(["n2"]);
-      expect(G.players["1"].discard).toEqual(["n1"]);
-      expect(G.players["1"].sideAreas?.mana_track).toEqual(["n2"]);
+      for (const playerId of ["0","1"]) {
+        const p = G.players[playerId];
+        const sideCards = p.sideAreas?.mana_track ?? [];
+        const advancedCards = [...p.discard, ...sideCards];
+        expect(sideCards).toHaveLength(1);
+        expect(advancedCards).toHaveLength(2);
+        expect(new Set(advancedCards).size).toBe(2);
+        expect(["n1","n2","n3"]).toEqual(expect.arrayContaining(advancedCards));
+        expect(p.nationDeck).toHaveLength(1);
+        expect(["n1","n2","n3"]).toContain(p.nationDeck[0]);
+      }
     } finally {
       fs.rmSync(rulesetPath, { force:true });
     }

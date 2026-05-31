@@ -132,6 +132,59 @@ describe("private data completeness report", () => {
     expect(text).toContain("missing_strategy, missing_bot_state_side:F");
   });
 
+  it("does not require nation-specific short game overrides for nations with the default short game setup", () => {
+    const report = buildPrivateDataCompletenessReport({
+      nations: [
+        { id: "romans", displayName: "Romans", implemented: true, tested: true } as any
+      ],
+      rulesets: [
+        {
+          nationId: "romans",
+          displayName: "Romans Rules",
+          rulesetTags: [],
+          shortGameOverrides: [],
+          implemented: true,
+          tested: true
+        } as any
+      ],
+      strategies: [
+        { nationId: "romans", displayName: "Romans Strategy", implemented: true, tested: true } as any
+      ],
+      botStateTables: {
+        romans_f: {
+          id: "romans_table",
+          botNationId: "romans",
+          displayName: "Romans F",
+          side: "F",
+          rows: [{ id: "f", priority: 1, effects: [], implemented: true, tested: true }]
+        } as any,
+        romans_s: {
+          id: "romans_table",
+          botNationId: "romans",
+          displayName: "Romans S",
+          side: "S",
+          rows: [{ id: "s", priority: 1, effects: [], implemented: true, tested: true }]
+        } as any
+      },
+      botTradeRoutesTables: {
+        trade_routes: {
+          id: "trade_routes",
+          rows: [],
+          endOfTurnRows: [{ merchantState: "empire", priority: 1, effects: [] }]
+        }
+      }
+    });
+
+    expect(report.nations[0]).toMatchObject({
+      nationId: "romans",
+      checks: {
+        shortGame: "complete"
+      }
+    });
+    expect(report.nations[0].issues).not.toContain("missing_short_game_rule");
+    expect(report.summary).toEqual({ nations: 1, complete: 1, incomplete: 0 });
+  });
+
   it("prints a checklist from private CSV inputs", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "polity-completeness-"));
     try {

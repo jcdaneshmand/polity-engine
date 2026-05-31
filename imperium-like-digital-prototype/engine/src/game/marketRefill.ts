@@ -10,14 +10,25 @@ export function deckForSuit(suit?: Suit): MarketDeckName | undefined {
   return undefined;
 }
 
+export function drawMarketDeckCard(G: GameState, deckName: MarketDeckName): string | undefined {
+  const deck = G.marketDecks?.[deckName];
+  if (!deck || deck.length === 0) return undefined;
+  if (deck.length === 1 && G.marketDeckBottomCards?.[deckName] === deck[0]) return undefined;
+  const cardId = deck.shift();
+  if (cardId && G.marketDeckBottomCards?.[deckName] === cardId) delete G.marketDeckBottomCards[deckName];
+  return cardId;
+}
+
 function drawReplacementFromMarketDecks(G: GameState, args: { playerId: string; slotIndex: number; acquiredCardId: string; preferSuitDeck?: boolean }): string | undefined {
   const decks = G.marketDecks;
   if (!decks) return undefined;
-  const sourceDeck = args.preferSuitDeck ? deckForSuit(G.cardDb[args.acquiredCardId]?.suit) : args.slotIndex < 2 ? "mainDeck" : deckForSuit(G.cardDb[args.acquiredCardId]?.suit);
-  const suitedCard = sourceDeck && sourceDeck !== "mainDeck" ? decks[sourceDeck].shift() : undefined;
+  const acquiredCard = G.cardDb[args.acquiredCardId];
+  const bannerSuit = acquiredCard?.setupBannerSuit ?? acquiredCard?.suit;
+  const sourceDeck = args.preferSuitDeck ? deckForSuit(bannerSuit) : args.slotIndex < 2 ? "mainDeck" : deckForSuit(bannerSuit);
+  const suitedCard = sourceDeck && sourceDeck !== "mainDeck" ? drawMarketDeckCard(G, sourceDeck) : undefined;
   if (suitedCard) return suitedCard;
 
-  const card = decks.mainDeck.shift();
+  const card = drawMarketDeckCard(G, "mainDeck");
   if (card) triggerScoringIfMainDeckEmpty(G, args.playerId);
   return card;
 }

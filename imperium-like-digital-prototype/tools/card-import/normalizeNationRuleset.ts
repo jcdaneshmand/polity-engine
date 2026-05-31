@@ -1,7 +1,8 @@
 import type { PrivateNationRulesetCsvRow, NationRuleset } from "./nationRulesetCsvTypes";
+import { normalizeResourceNames } from "./normalizeResources";
 const arr=(v:string)=>v.split("|").map(x=>x.trim()).filter(Boolean);
 const bool=(v:string)=>v.trim().toLowerCase()==="true";
-const jarr=(v:string)=>v.trim()?JSON.parse(v):[];
+const jarr=(v:string)=>v.trim()?normalizeResourceNames(JSON.parse(v)):[];
 export function normalizeNationRuleset(r: PrivateNationRulesetCsvRow): NationRuleset { return {
   nationId:r.nation_id.trim(), displayName:r.public_placeholder_name.trim(), privateName:r.nation_name_private.trim()||undefined,
   rulesetTags:arr(r.ruleset_tags||"") as any, requiredExpansions:arr(r.required_expansions||"") as any, excludedExpansions:arr(r.excluded_expansions||"") as any,

@@ -84,7 +84,7 @@ function discardTopBotCards(G: GameState, bot: BotState, deck: "botDeck" | "botD
     bot.botDiscard.push(cardId);
     moved += 1;
   }
-  if (deck === "botDynastyDeck" && bot.botDynastyDeck.length === 0) triggerScoring(G, "bot_dynasty_deck_empty", bot.botId);
+  if (deck === "botDynastyDeck" && moved > 0 && bot.botDynastyDeck.length === 0) triggerScoring(G, "bot_dynasty_deck_empty", bot.botId);
   return moved;
 }
 

@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { commonsBatchProfiles } from "../../../tools/card-entry/batchProfiles";
-import { applyVariableVpDraftDetails, createBlankCardDraft, getCardEntryShortcutAction, toggleDraftSuitIcon } from "../../../tools/card-entry/cardDraft";
+import { applyVariableVpDraftDetails, createBlankCardDraft, csvRowToDraft, draftToCsvRow, getCardEntryShortcutAction, toggleDraftSuitIcon } from "../../../tools/card-entry/cardDraft";
 import { createCardEntryService } from "../../../tools/card-entry/cardEntryService";
 
 const fixtureRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -85,6 +85,18 @@ describe("card entry service", () => {
     expect(updated.vpValue).toBe("1");
     expect(updated.tags).toBe("vp_variable|vp_per_resource");
     expect(updated.notes).toContain("[Variable VP] 1 VP per_resource goods; cap 5. Score goods in history.");
+  });
+
+  it("round-trips structured VP details through card draft CSV mapping", () => {
+    const draft = {
+      ...createBlankCardDraft(commonsBatchProfiles[0]),
+      vpMode: "conditional" as const,
+      vpDetailsJson: "{\"condition\":{\"op\":\"self_in_zone\",\"zoneId\":\"history\"},\"trueValue\":8,\"falseValue\":3}"
+    };
+
+    const row = draftToCsvRow(draft);
+    expect(row.vp_details_json).toBe(draft.vpDetailsJson);
+    expect(csvRowToDraft(row).vpDetailsJson).toBe(draft.vpDetailsJson);
   });
 
   it("maps card entry keyboard shortcuts to actions", () => {

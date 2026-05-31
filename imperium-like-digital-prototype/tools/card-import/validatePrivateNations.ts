@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { parseCsvFile } from "./csvParser";
+import { collectInvalidResourceNames } from "./normalizeResources";
 
 type Msg={level:"fatal"|"warning";row:number;field:string;message:string};
 const bool=(v:string)=>["true","false"].includes((v||"").trim().toLowerCase());
@@ -16,7 +17,7 @@ export function validatePrivateNationsRows(rows: Record<string,string>[], knownC
     if(!bool(r.implemented||"")) errors.push({level:"fatal",row,field:"implemented",message:"Must be bool"});
     if(!bool(r.tested||"")) errors.push({level:"fatal",row,field:"tested",message:"Must be bool"});
     let parsedSetup: any[] = [];
-    for(const f of ["special_setup_json","passive_rules_json"]) if((r[f]||"").trim()){ try{const p=JSON.parse(r[f]); if(!Array.isArray(p)) errors.push({level:"fatal",row,field:f,message:"Must parse to array"}); if (f === "special_setup_json" && Array.isArray(p)) parsedSetup = p;} catch{errors.push({level:"fatal",row,field:f,message:"Invalid JSON"});}}
+    for(const f of ["special_setup_json","passive_rules_json"]) if((r[f]||"").trim()){ try{const p=JSON.parse(r[f]); if(!Array.isArray(p)) errors.push({level:"fatal",row,field:f,message:"Must parse to array"}); else collectInvalidResourceNames(p, f).forEach((invalid)=>errors.push({level:"fatal",row,field:f,message:`Invalid resource '${invalid.resource}' at ${invalid.path}`})); if (f === "special_setup_json" && Array.isArray(p)) parsedSetup = p;} catch{errors.push({level:"fatal",row,field:f,message:"Invalid JSON"});}}
     if((r.nation_name_private||"").trim() && (r.nation_name_private||"").trim()===(r.public_placeholder_name||"").trim()) errors.push({level:"warning",row,field:"public_placeholder_name",message:"Matches private name"});
     if((r.implemented||"").trim().toLowerCase()==="true" && (r.tested||"").trim().toLowerCase()==="false") errors.push({level:"warning",row,field:"tested",message:"implemented=true but tested=false"});
     if(arr(r.starting_deck_card_ids||"").length===0 && !(r.special_setup_json||"").trim()) errors.push({level:"warning",row,field:"starting_deck_card_ids",message:"No starting deck and no special setup"});

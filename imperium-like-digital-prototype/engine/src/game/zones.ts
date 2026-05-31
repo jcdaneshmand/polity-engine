@@ -4,7 +4,7 @@ import { runEffects } from "../cards/effectRunner";
 import { runNationHooks } from "../nations/nationRulesetHooks";
 import { canPayResourceCosts, payResourceCosts, type ResourceCost } from "./payments";
 import { triggerScoring } from "./scoring";
-import { activateState } from "./stateMatching";
+import { activateState, syncPlayerStateCardStats } from "./stateMatching";
 import { isAccessionCard } from "./nationDeck";
 
 function logOverride(G: GameState, playerId: string, nationId: string, category: string, op: string): void {
@@ -19,6 +19,17 @@ function shuffleWithRandom<T>(items: T[], randomNumber?: () => number): T[] {
     [out[i], out[j]] = [out[j], out[i]];
   }
   return out;
+}
+
+function cloneGameState(G: GameState): GameState {
+  return JSON.parse(JSON.stringify(G)) as GameState;
+}
+
+function shuffleDiscardBehindExistingDeck(player: PlayerState, randomNumber?: () => number): void {
+  const existingDeck = [...player.deck];
+  const shuffledDiscard = shuffleWithRandom(player.discard, randomNumber);
+  player.deck = [...existingDeck, ...shuffledDiscard];
+  player.discard = [];
 }
 
 function ensureProgressionTokens(player: PlayerState): { nationDeck: number; developmentArea: number } {
@@ -95,8 +106,17 @@ function flipStateForAccession(G: GameState, playerId: string, accessionCardId: 
     G.log.push({ round: G.round, playerId, message: `StateFlipSkippedOnAccession(${accessionCardId}/never_empire)` });
     return;
   }
-  if (p.stateArea.length >= 2) [p.stateArea[0], p.stateArea[1]] = [p.stateArea[1], p.stateArea[0]];
-  else activateState(G, playerId, "empire");
+  if (p.stateArea.length >= 2) {
+    [p.stateArea[0], p.stateArea[1]] = [p.stateArea[1], p.stateArea[0]];
+  } else if (p.stateArea.length === 1) {
+    const stateCardId = p.stateArea[0];
+    G.cardStates ??= {};
+    G.cardStates[stateCardId] ??= {};
+    G.cardStates[stateCardId].activeState = "civilized";
+  } else {
+    activateState(G, playerId, "empire");
+  }
+  syncPlayerStateCardStats(G, playerId);
   G.log.push({ round: G.round, playerId, message: `StateFlippedOnAccession(${accessionCardId})` });
 }
 
@@ -136,7 +156,7 @@ function runAfterReshuffleEffects(G: GameState, playerId: string, randomNumber: 
       }
     }
   }
-  runNationHooks({ G, playerId, trigger: "after_reshuffle", randomNumber });
+  if (!runNationHooks({ G, playerId, trigger: "after_reshuffle", randomNumber })) return false;
   if (G.gameover) return false;
   if (hasPendingInterruption(G)) {
     G.pendingReshuffleDraw = { playerId, resumeDrawCount };
@@ -146,17 +166,15 @@ function runAfterReshuffleEffects(G: GameState, playerId: string, randomNumber: 
 }
 
 function drawReshuffleResumeCards(G: GameState, playerId: string, randomNumber: (() => number) | undefined, resumeDrawCount: number): void {
-  const p = G.players[playerId];
   for (let i = 0; i < resumeDrawCount; i += 1) {
-    const drawn = drawCard(p, randomNumber, false);
-    if (!drawn) break;
+    const drawn = drawCardWithReshuffleLifecycle(G, playerId, randomNumber, resumeDrawCount - i);
+    if (!drawn || G.gameover || hasPendingInterruption(G)) break;
   }
 }
 
 function finishReshuffleAfterDevelopmentDecision(G: GameState, playerId: string, randomNumber: (() => number) | undefined, resumeDrawCount: number): void {
   const p = G.players[playerId];
-  p.deck = shuffleWithRandom(p.discard, randomNumber);
-  p.discard = [];
+  shuffleDiscardBehindExistingDeck(p, randomNumber);
   G.log.push({ round: G.round, playerId, message: `ReshuffleResolved(deck=${p.deck.length}, deterministic=${randomNumber ? "injected_rng" : "fallback_zero"})` });
   if (!runAfterReshuffleEffects(G, playerId, randomNumber, resumeDrawCount)) return;
 
@@ -216,9 +234,9 @@ function canAttemptReshuffleLifecycle(G: GameState, playerId: string): boolean {
   if (p.deck.length > 0) return false;
   if (p.discard.length > 0) return true;
   if (shouldSkipDefaultNationProgression(G, playerId)) {
-    return canSpendProgressionToken(p) && canDevelopBeforeNationDeckEmpty(G, playerId) && p.developmentArea.length > 0;
+    return canSpendProgressionToken(p) && canDevelopBeforeNationDeckEmpty(G, playerId) && payableDevelopmentCards(G, playerId).length > 0;
   }
-  return canSpendProgressionToken(p) && (hasNationProgressionCards(p) || (canUseDevelopmentArea(G, playerId) && p.developmentArea.length > 0));
+  return canSpendProgressionToken(p) && (hasNationProgressionCards(p) || payableDevelopmentCards(G, playerId).length > 0);
 }
 
 export function drawCard(player: PlayerState, randomNumber?: () => number, allowAutoReshuffle = true): string | null {
@@ -232,9 +250,9 @@ export function drawCard(player: PlayerState, randomNumber?: () => number, allow
   return cardId;
 }
 
-export function maybeReshuffleDeck(G: GameState, playerId: string, randomNumber?: () => number, resumeDrawCount = 1): { attempted: boolean; shuffled: boolean } {
+export function maybeReshuffleDeck(G: GameState, playerId: string, randomNumber?: () => number, resumeDrawCount = 1, force = false): { attempted: boolean; shuffled: boolean } {
   const p = G.players[playerId];
-  if (!canAttemptReshuffleLifecycle(G, playerId)) return { attempted: false, shuffled: false };
+  if (!force && !canAttemptReshuffleLifecycle(G, playerId)) return { attempted: false, shuffled: false };
   if (G.pendingDevelopmentChoice) return { attempted: false, shuffled: false };
   const ruleset = G.activeNationRulesets?.[playerId];
   const skipDefaultNationCard = shouldSkipDefaultNationProgression(G, playerId);
@@ -254,9 +272,8 @@ export function maybeReshuffleDeck(G: GameState, playerId: string, randomNumber?
       }
     }
     if (skipDefaultNationCard) {
-      p.deck = shuffleWithRandom(p.discard, randomNumber);
+      shuffleDiscardBehindExistingDeck(p, randomNumber);
       G.log.push({ round: G.round, playerId, message: `ReshuffleResolved(deck=${p.deck.length}, deterministic=${randomNumber ? "injected_rng" : "fallback_zero"})` });
-      p.discard = [];
       return { attempted: true, shuffled: true };
     }
     const nationCard = takeNextNationProgressionCard(G, p);
@@ -266,9 +283,9 @@ export function maybeReshuffleDeck(G: GameState, playerId: string, randomNumber?
       else p.discard.push(nationCard.cardId);
       spendProgressionToken(p, hasNationProgressionCards(p) ? "nationDeck" : "developmentArea");
       G.log.push({ round: G.round, playerId, message: inPlayOverride ? `NationCardAddedToPlayOnReshuffle(${nationCard.cardId})` : `NationCardAddedOnReshuffle(${nationCard.cardId})` });
-      if (nationCard.isAccession && !inPlayOverride?.suppressStateFlip && !isTerminalNationCard(G, playerId, nationCard.cardId)) flipStateForAccession(G, playerId, nationCard.cardId);
+      if (nationCard.isAccession && !inPlayOverride && !isTerminalNationCard(G, playerId, nationCard.cardId)) flipStateForAccession(G, playerId, nationCard.cardId);
       triggerScoringForTerminalNationCard(G, playerId, nationCard.cardId);
-      if (nationCard.isAccession && startShortGameDevelopmentExileChoice(G, playerId, resumeDrawCount)) {
+      if (nationCard.isAccession && !inPlayOverride && startShortGameDevelopmentExileChoice(G, playerId, resumeDrawCount)) {
         return { attempted: true, shuffled: false };
       }
     } else if (canUseDevelopmentArea(G, playerId) && p.developmentArea.length > 0) {
@@ -282,9 +299,8 @@ export function maybeReshuffleDeck(G: GameState, playerId: string, randomNumber?
     }
   }
 
-  p.deck = shuffleWithRandom(p.discard, randomNumber);
+  shuffleDiscardBehindExistingDeck(p, randomNumber);
   G.log.push({ round: G.round, playerId, message: `ReshuffleResolved(deck=${p.deck.length}, deterministic=${randomNumber ? "injected_rng" : "fallback_zero"})` });
-  p.discard = [];
   return { attempted: true, shuffled: true };
 }
 
@@ -299,6 +315,7 @@ export function resolvePendingDevelopmentChoice(G: GameState, playerId: string, 
   const p = G.players[playerId];
   const index = p.developmentArea.indexOf(cardId);
   if (index < 0) return false;
+  const snapshot = cloneGameState(G);
   const resumeDrawCount = pending.resumeDrawCount;
 
   if (paysDevelopmentCost && !payDevelopmentCost(G, playerId, cardId, payment)) return false;
@@ -307,10 +324,11 @@ export function resolvePendingDevelopmentChoice(G: GameState, playerId: string, 
   p.discard.push(cardId);
   if (usesProgressionToken) spendProgressionToken(p, "developmentArea");
   G.log.push({ round: G.round, playerId, message: `DevelopmentResolved(${cardId})` });
-  runNationHooks({ G, playerId, trigger: "after_develop", payload: { cardId } });
+  if (p.developmentArea.length === 0) triggerScoring(G, "development_area_empty", playerId);
+  if (!runNationHooks({ G, playerId, trigger: "after_develop", payload: { cardId } })) return false;
   if (G.gameover) return true;
   if (hasPendingInterruption(G)) {
-    G.pendingPostDevelopmentResolution = { playerId, resumeDrawCount, resumeBehavior: pending.resumeBehavior };
+    G.pendingPostDevelopmentResolution = { playerId, cardId, resumeDrawCount, resumeBehavior: pending.resumeBehavior, rollbackSnapshot: snapshot };
     return true;
   }
 
@@ -378,13 +396,14 @@ export function drawCardWithReshuffleLifecycle(G: GameState, playerId: string, r
   if (shouldReshuffle && !(G as any)._reshuffleInProgressByPlayer[playerId]) {
     (G as any)._reshuffleInProgressByPlayer[playerId] = true;
     try {
-      runNationHooks({ G, playerId, trigger: "before_reshuffle", randomNumber });
+      if (!runNationHooks({ G, playerId, trigger: "before_reshuffle", randomNumber })) return null;
       if (G.gameover) return null;
       if (hasPendingInterruption(G)) {
         G.pendingReshuffleResolution = { playerId, resumeDrawCount };
         return null;
       }
       const result = maybeReshuffleDeck(G, playerId, randomNumber, resumeDrawCount);
+      if (hasPendingInterruption(G)) return null;
       if (result.shuffled && !runAfterReshuffleEffects(G, playerId, randomNumber, resumeDrawCount)) return null;
     } finally {
       (G as any)._reshuffleInProgressByPlayer[playerId] = false;
@@ -424,7 +443,8 @@ export function continuePendingReshuffleLifecycle(G: GameState, playerId: string
   (G as any)._reshuffleInProgressByPlayer ??= {};
   (G as any)._reshuffleInProgressByPlayer[playerId] = true;
   try {
-    const result = maybeReshuffleDeck(G, playerId, randomNumber, pending.resumeDrawCount);
+    const result = maybeReshuffleDeck(G, playerId, randomNumber, pending.resumeDrawCount, true);
+    if (hasPendingInterruption(G)) return true;
     if (result.shuffled && !runAfterReshuffleEffects(G, playerId, randomNumber, pending.resumeDrawCount)) return true;
     drawReshuffleResumeCards(G, playerId, randomNumber, pending.resumeDrawCount);
     return true;

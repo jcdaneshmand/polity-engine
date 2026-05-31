@@ -2,9 +2,9 @@ import type { DrawSourceZone, Effect, EffectTrigger, FindSourceZone, GameState, 
 import { createCardDrivenDevelopmentChoice, drawCard, drawCardWithReshuffleLifecycle } from "../game/zones";
 import { breakThrough } from "../game/breakThrough";
 import { canPayResourceCosts, canPayResourceCost, payResourceCost } from "../game/payments";
-import { acquireFromExile, exileMarketCard, exilePlayerCard, playerExileSourceCards } from "../game/exile";
+import { acquireFromExile, availableExileCards, exileMarketCard, exilePlayerCard, playerExileSourceCards } from "../game/exile";
 import { acquireMarketCard, gainMarketCard, takeMarketCard } from "../game/marketAcquire";
-import { peekFameCards, takeFameCard } from "../game/fame";
+import { drawFameCard, peekFameCards, takeFameCard } from "../game/fame";
 import { isUnrestCard, returnUnrestCard, takeUnrest, zoneCardsForReturnUnrest } from "../game/unrest";
 import { placeCardOnDeck } from "../game/deckPlacement";
 import { giveCardToPlayer } from "../game/giveCard";
@@ -292,12 +292,13 @@ function lookableCards(G: GameState, player: PlayerState, source: LookSourceZone
   return peekFameCards(G, Number.MAX_SAFE_INTEGER);
 }
 
-function drawSourceCards(player: PlayerState, source: DrawSourceZone): string[] {
-  return source === "deck" ? player.deck : player[source];
+function drawSourceCards(G: GameState, playerId: string, player: PlayerState, source: Exclude<DrawSourceZone, "deck" | "fameDeck">): string[] {
+  if (source === "exile") return availableExileCards(G, playerId);
+  return player[source];
 }
 
-function startFaceUpDrawChoice(ctx: Ctx, source: Exclude<DrawSourceZone, "deck">, count: number): void {
-  const cardIds = [...drawSourceCards(ctx.G.players[ctx.playerId], source)];
+function startFaceUpDrawChoice(ctx: Ctx, source: Exclude<DrawSourceZone, "deck" | "fameDeck">, count: number): void {
+  const cardIds = [...drawSourceCards(ctx.G, ctx.playerId, ctx.G.players[ctx.playerId], source)];
   if (cardIds.length === 0 || count <= 0) {
     ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `DrawSkipped(source=${source}/empty)` });
     return;
@@ -336,26 +337,43 @@ function runFindCard(ctx: Ctx, effect: Extract<Effect, { op: "find_card" }>): vo
     return;
   }
 
-  const cardIds: string[] = [];
   for (const zone of zones) {
+    const cardIds: string[] = [];
     for (const resolvedZone of resolvedFindZones(ctx.G, ctx.playerId, zone)) {
       for (const cardId of searchableFindCards(ctx.G, ctx.playerId, player, resolvedZone)) {
         if (cardMatchesFindCriteria(ctx.G, cardId, effect) && !cardIds.includes(cardId)) cardIds.push(cardId);
       }
       if (resolvedZone === "deck" || resolvedZone === "nationDeck") shuffleFindDeckIfNeeded(ctx.G, ctx.playerId, resolvedZone, ctx.randomNumber);
     }
-  }
-  if (cardIds.length === 0) {
-    ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: "FindMissed(criteria)" });
+    if (cardIds.length === 0) continue;
+    ctx.G.pendingFindChoice = { playerId: ctx.playerId, sourceCardId: ctx.selfCardId, cardIds, destination: effect.destination };
+    ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `FindChoicePending(${ctx.selfCardId ?? "unknown"}/options=${cardIds.length})` });
     return;
   }
-  ctx.G.pendingFindChoice = { playerId: ctx.playerId, sourceCardId: ctx.selfCardId, cardIds, destination: effect.destination };
-  ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `FindChoicePending(${ctx.selfCardId ?? "unknown"}/options=${cardIds.length})` });
+  ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: "FindMissed(criteria)" });
+}
+
+function drawFameCards(ctx: Ctx, count: number): void {
+  const drawn: string[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const cardId = drawFameCard(ctx.G, ctx.playerId);
+    if (!cardId) break;
+    drawn.push(cardId);
+    if (ctx.G.gameover || pendingEffectInterruption(ctx.G)) break;
+  }
+  ctx.G.log.push({
+    round: ctx.G.round,
+    playerId: ctx.playerId,
+    message: `FameDrawn(${ctx.selfCardId ?? "unknown"}/count=${count}/drawn=${drawn.length > 0 ? drawn.join(",") : "none"})`
+  });
 }
 
 function createPendingRegionChoice(ctx: Ctx, op: "recall_region" | "abandon_region"): void {
   const p = ctx.G.players[ctx.playerId];
-  const cardIds = p.playArea.filter((cardId) => isRegionCard(ctx.G, cardId));
+  const cardIds = [
+    ...p.playArea,
+    ...garrisonedCardsInPlay(ctx.G, ctx.playerId)
+  ].filter((cardId) => isRegionCard(ctx.G, cardId));
   if (cardIds.length === 0) {
     ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `RegionChoiceSkipped(${op}/no_eligible_regions)` });
     return;
@@ -430,6 +448,10 @@ function runEffect(ctx: Ctx, effect: Effect): boolean {
   switch (effect.op) {
     case "draw": {
       const source = effect.source ?? "deck";
+      if (source === "fameDeck") {
+        drawFameCards(ctx, effect.count);
+        break;
+      }
       if (source !== "deck") {
         startFaceUpDrawChoice(ctx, source, effect.count);
         break;
@@ -741,7 +763,7 @@ function runEffect(ctx: Ctx, effect: Effect): boolean {
         if (effect.source === "exile") {
           const cardId = effect.cardId;
             if (!cardId) {
-              const cardIds = p.exile.filter((exiledCardId) => cardMatchesAcquireCriteria(ctx.G, exiledCardId, effect));
+              const cardIds = availableExileCards(ctx.G, ctx.playerId).filter((exiledCardId) => cardMatchesAcquireCriteria(ctx.G, exiledCardId, effect));
               if (cardIds.length === 0) break;
               const resumeEffects = remainingAcquireEffect(effect, i + 1);
               ctx.G.pendingAcquireChoice = {
@@ -851,7 +873,7 @@ function runEffect(ctx: Ctx, effect: Effect): boolean {
         break;
       }
       if (effect.source === "exile" && !effect.cardId) {
-        const cardIds = p.exile.filter((exiledCardId) => cardMatchesBreakThroughCriteria(ctx.G, exiledCardId, effect));
+        const cardIds = availableExileCards(ctx.G, ctx.playerId).filter((exiledCardId) => cardMatchesBreakThroughCriteria(ctx.G, exiledCardId, effect));
         if (cardIds.length === 0) break;
         const resumeEffects = remainingBreakThroughEffect(effect, 1);
         ctx.G.pendingBreakThroughChoice = {

@@ -10,7 +10,8 @@ export function getCurrentPlayer(G: GameState, ctx: any) {
 export function getMarketCards(G: GameState): string[] { return Array.isArray(G.market) ? G.market : []; }
 export function getSharedPiles(G: GameState) {
   const fameCount = (G.fameDeck?.available?.length ?? 0) + (G.fameDeck?.specialBottomCardId ? 1 : 0);
-  const exileCount = Object.values(G.players ?? {}).reduce((sum, player) => sum + (player.exile?.length ?? 0), 0);
+  const publicGlobalExileCount = G.globalSpecialZones?.exile?.visibility === "public" ? G.globalSpecialZones.exile.cardIds.length : 0;
+  const exileCount = publicGlobalExileCount + Object.values(G.players ?? {}).reduce((sum, player) => sum + (player.exile?.length ?? 0), 0);
   return [
     { id: "region", label: "Region", count: G.marketDecks?.regionDeck?.length ?? 0 },
     { id: "uncivilized", label: "Uncivilized", count: G.marketDecks?.uncivilizedDeck?.length ?? 0 },
@@ -37,6 +38,50 @@ export function getZoneCards(player: any, zoneId: string): string[] {
   if (Array.isArray(sideArea)) return sideArea;
   return [];
 }
+export function getInspectableSharedPile(G: GameState, pileId: string): { hidden: boolean; cardIds: string[]; count: number } {
+  if (pileId === "fame") {
+    const ordinaryCount = G.fameDeck?.available?.length ?? 0;
+    const specialId = G.fameDeck?.specialBottomCardId;
+    const specialCount = specialId ? 1 : 0;
+    const count = ordinaryCount + specialCount;
+    if (ordinaryCount === 0 && specialId && G.fameDeck?.specialBottomSide !== "face_down") {
+      return { hidden: false, cardIds: [specialId], count };
+    }
+    return { hidden: true, cardIds: [], count };
+  }
+  const hiddenMarketDecks: Record<string, string[] | undefined> = {
+    region: G.marketDecks?.regionDeck,
+    uncivilized: G.marketDecks?.uncivilizedDeck,
+    civilized: G.marketDecks?.civilizedDeck,
+    main: G.marketDecks?.mainDeck ?? G.marketRefillPool,
+    unrest: G.unrestPile
+  };
+  const marketDeckNameByPile: Record<string, keyof NonNullable<GameState["marketDecks"]>> = {
+    region: "regionDeck",
+    uncivilized: "uncivilizedDeck",
+    civilized: "civilizedDeck"
+  };
+  const marketDeckName = marketDeckNameByPile[pileId];
+  if (marketDeckName) {
+    const deck = G.marketDecks?.[marketDeckName] ?? [];
+    const bottomCardId = G.marketDeckBottomCards?.[marketDeckName];
+    if (bottomCardId && deck[deck.length - 1] === bottomCardId) return { hidden: false, cardIds: [bottomCardId], count: deck.length };
+    return { hidden: true, cardIds: [], count: deck.length };
+  }
+  if (pileId === "exile") {
+    const globalExile = G.globalSpecialZones?.exile?.visibility === "public" ? G.globalSpecialZones.exile.cardIds : [];
+    const playerExile = Object.values(G.players ?? {}).flatMap((player) => player.exile ?? []);
+    const cardIds = [...globalExile, ...playerExile];
+    return { hidden: false, cardIds, count: cardIds.length };
+  }
+  if (hiddenMarketDecks[pileId]) return { hidden: true, cardIds: [], count: hiddenMarketDecks[pileId]?.length ?? 0 };
+  const specialZone = G.globalSpecialZones?.[pileId];
+  if (specialZone) {
+    const cardIds = specialZone.visibility === "public" ? specialZone.cardIds : [];
+    return { hidden: specialZone.visibility !== "public", cardIds, count: specialZone.cardIds.length };
+  }
+  return { hidden: true, cardIds: [], count: 0 };
+}
 export function getInspectableZone(
   owner: any,
   zoneId: string,
@@ -54,7 +99,7 @@ export function getInspectableZone(
   const cardIds = getZoneCards(owner, zoneId);
   const hiddenZones = new Set(["deck", "nationDeck", "botDeck", "botDynastyDeck"]);
   if (hiddenZones.has(zoneId)) return { hidden: true, cardIds: [], count: cardIds.length };
-  const ownerVisibleZones = new Set(["hand", "history"]);
+  const ownerVisibleZones = new Set(["hand"]);
   if (
     ownerVisibleZones.has(zoneId) &&
     viewer?.ownerPlayerId !== undefined &&

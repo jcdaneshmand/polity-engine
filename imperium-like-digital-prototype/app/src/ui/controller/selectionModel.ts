@@ -94,6 +94,10 @@ function isTradeRouteCard(G: any, cardId: string): boolean {
   return (card?.cardType ?? card?.type) === "trade_route" || card?.suit === "trade_route";
 }
 
+function tradeRoutesEnabled(G: any): boolean {
+  return (G.options?.enabledExpansions ?? []).includes("trade_routes");
+}
+
 function hasProfitAbility(G: any, cardId: string): boolean {
   return (getCardById(G, cardId)?.effects ?? []).some((effect: any) => effect?.op === "profit");
 }
@@ -736,7 +740,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
     actions.push({ label:"Recall Region", action:"recallRegion", enabled:true, cardId: s.id });
     actions.push({ label:"Abandon Region", action:"abandonRegion", enabled:true, cardId: s.id });
   }
-  if (s.kind === "play_area_card" && isTradeRouteCard(G, s.id) && hasProfitAbility(G, s.id)) {
+  if (s.kind === "play_area_card" && tradeRoutesEnabled(G) && isTradeRouteCard(G, s.id) && hasProfitAbility(G, s.id)) {
     const p = G.players?.[ctx.currentPlayer];
     const hasAction = (p?.actionsRemaining ?? 0) > 0;
     const complete = cardGoods(G, s.id) >= 3;

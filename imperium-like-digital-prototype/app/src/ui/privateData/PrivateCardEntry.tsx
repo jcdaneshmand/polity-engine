@@ -92,6 +92,9 @@ const csvColumns = [
   "public_placeholder_name",
   "suit",
   "suit_icons",
+  "state_action_tokens",
+  "state_exhaust_tokens",
+  "state_hand_size",
   "card_type",
   "state_requirement",
   "cost_materials",
@@ -1225,6 +1228,9 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
           </fieldset>
           <label>Type <select value={draft.cardType} onChange={draftChange("cardType")}>{cardTypeOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
           <label>State <input list="private-card-id-options" value={draft.stateRequirement} onChange={draftChange("stateRequirement")} /></label>
+          <label>State Actions <input value={draft.stateActionTokens} onChange={draftChange("stateActionTokens")} /></label>
+          <label>State Exhaust <input value={draft.stateExhaustTokens} onChange={draftChange("stateExhaustTokens")} /></label>
+          <label>State Hand <input value={draft.stateHandSize} onChange={draftChange("stateHandSize")} /></label>
           <label>Start <select value={draft.startingLocation} onChange={draftChange("startingLocation")}>{startOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
           <label>Players <select value={draft.playerCountRequirement} onChange={(event: { target: HTMLSelectElement }) => updateDraft("playerCountRequirement", event.target.value)}>{playerCountOptions.map((option) => <option key={option.label} value={option.value}>{option.label}</option>)}</select></label>
           <label>Required Expansion <select value={draft.requiredExpansions} onChange={draftChange("requiredExpansions")}>{expansionRequirementOptions.map((option) => <option key={option.label} value={option.value}>{option.label}</option>)}</select></label>

@@ -21,7 +21,7 @@
 
 - `Suit`: `region | uncivilised | civilised | tributary | fame | unrest | trade_route | merchant | power | gadget | nation_specific`.
 - `CivState`: support at least the two base state symbols plus nation-specific aliases. Prefer data labels such as `barbarian | empire | custom_1 | custom_2` in code, with display text supplied by private nation data.
-- `ZoneName`: `hand | drawDeck | discard | playArea | history | nationDeck | developmentArea | garrison | exile | market | unrestPile | fameDeck | mainDeck | regionDeck | uncivilisedDeck | civilisedDeck | tributaryDeck | tradeRouteDeck | botDeck | botDiscard | botSlots | removedFromGame`.
+- `ZoneName`: `hand | drawDeck | discard | playArea | history | nationDeck | developmentArea | garrison | exile | market | unrestPile | fameDeck | mainDeck | regionDeck | uncivilisedDeck | civilisedDeck | tradeRouteDeck | botDeck | botDiscard | botSlots | removedFromGame`.
 - `Resource`: `materials | population | progress | goods`.
 - `TurnType`: `activate | innovate | revolt`.
 - `CardVisibility`: `face_up | face_down | hidden_count_only | owner_visible`.
@@ -32,6 +32,7 @@
 - Runtime card-instance data stores resources, Action/Exhaust token markers, garrisoned child card IDs, side/state, and other counters.
 - Imported runtime card definitions must preserve state requirements and all suit icons, because play legality and multi-suit targeting depend on those metadata fields.
 - Track `actionTokens`, `exhaustTokens`, `handSize`, `state`, current turn type, and per-turn constraints.
+- State cards can define the active state's Action token count, Exhaust token count, and hand size. When a state changes, including accession flips, the player's token bases and hand size refresh from the newly active State card where metadata is present.
 - Track market slots as structured objects: visible card ID, suit/source deck, resources on the slot card, unrest tucked under the card, and refill metadata.
 - Track source decks separately from market slots. Cards visible above the market board are not in the market until moved into a market slot.
 - Track `pendingChoice` style interruptions for choices created by effects, Develop during reshuffle, optional cleanup discards, and rare order-dependent simultaneous effects. Effect-created interruptions carry the remaining effect list so resolution resumes in printed/data order after the player choice.
@@ -39,28 +40,31 @@
 
 ## Hidden Information Policy
 
-- Draw decks, nation decks, main/small decks, fame deck, bot decks, and face-down bot cards expose counts only to the UI.
+- Draw decks, nation decks, main deck, fame deck, bot decks, and face-down bot cards expose counts only to the UI. Small source decks expose counts plus their setup-defined face-up bottom card while it remains at the bottom of that deck.
 - A player's hand is owner-visible; in local hotseat/debug mode it may be rendered, but the selector layer should still label it as private.
 - Development area cards are face up and inspectable.
 - Market slot cards and resources are public. Tucked Unrest under market cards is public by count/type, but the implementation can store the exact card ID if all Unrest cards are equivalent for prototype purposes.
 - Region cards in the market do not receive tucked Unrest during setup or refill.
-- History is owner-visible: its owner may inspect the cards, while other players see only the count. Discard, play area, exile, and garrison contents are public unless a nation-specific rule says otherwise.
-- Nation deck order is deterministic but hidden; Development choice is face-up and player-selected.
+- History is public: cards placed into History remain visible and score normally, but generally cannot be used again. Discard, play area, exile, and garrison contents are public unless a nation-specific rule says otherwise.
+- Nation deck order is fixed by setup data and then hidden; Development choice is face-up and player-selected.
 
 ## Setup Pipeline
 
 `setupGame(config)` should be deterministic from seed/config and flow through:
 
 1. Select player nations and initialize player count, first player, and enabled modules.
-2. For each player, configure Power card, State card, starting deck, starting resources, Nation deck, Development area, hand size, action/exhaust tokens, and any nation-specific setup rules.
+2. For each player, configure Power card, State card, starting deck, starting resources, Nation deck, Development area, hand size, action/exhaust tokens, and any nation-specific setup rules. The default starting resource pool is 3 Materials, 2 Population, and 1 Progress; with Trade Routes enabled, the 1 Progress is replaced by 1 Goods.
    - A single physical two-sided State card must still have an active side in runtime state. Default nations start on the Barbarian/uncivilized side unless a nation ruleset explicitly starts on another side.
-3. Nation deck order is fixed by nation setup data. The top card is the next progression card that will be added during reshuffle.
+3. Nation deck cards keep their listed setup order, with Accession tracked separately underneath them. The current top card of the ordered Nation deck is the next progression card that will be added during reshuffle.
 4. Development cards start face up in the Development area. They are not in the player's deck and do not score until developed into the deck/discard lifecycle.
 5. Build Commons from enabled card sets and player-count/variant filters.
-6. Build Region, Uncivilised, Civilised, Tributary, Fame, Unrest, Main, and optional expansion decks/piles.
+6. Build Region, Uncivilised, Civilised, Fame, Unrest, Main, and optional expansion decks/piles.
    - The Fame deck is built with the special bottom Fame card excluded from the ordinary face-down stack. After shuffling ordinary Fame cards, keep 6 cards for two players, 7 for three players, or 8 for four players; when Trade Routes is enabled, keep one additional ordinary Fame card.
+   - The Region, Uncivilised, and Civilised small decks each start with 6 face-down cards for two players, 7 for three players, or 8 for four players before market seeding. Excess same-suit cards are set aside for the Main deck.
+   - Each of those small decks gets one face-up Tributary card placed on the bottom during setup. That Tributary remains public while it remains at the bottom, and the rest of each small deck remains hidden. After assigning those bottom cards, remove two remaining Tributary cards in a two-player game, one in a three-player game, and none in a four-player game; any remaining Tributary cards join the Main deck unless a module explicitly defines another deck.
 7. Seed the Market to its required slot count, using the correct source deck/refill rules for each slot.
 8. Place the required Unrest under eligible market cards during setup/refill.
+   - During initial Market setup, each visible card with the white/Tributary setup banner receives one Progress token.
 9. Initialize Solstice marker/order and round tracking.
 10. For solo, initialize bot state card, bot deck/discard, bot slots, difficulty options, and any practice-mode overrides.
 
@@ -108,7 +112,7 @@ Use one central draw service.
 
 - Normal draw draws from the top of the draw deck.
 - If a normal draw needs a card and the draw deck is empty, run reshuffle progression.
-- Draw text is only a resolvable card effect if it can actually draw now or start a reshuffle that can make at least one card available, including a deterministic Nation/Accession addition or a payable Development choice. An unpayable Development area by itself does not make draw text playable.
+- Draw text is only a resolvable card effect if it can actually draw now or start a reshuffle that can make at least one card available, including the top Nation/Accession addition or a payable Development choice. An unpayable Development area by itself does not make draw text playable.
 - Draw-if-able effects never trigger reshuffle. They stop when the draw deck is empty.
 - If a Draw effect specifies a non-draw-deck location, all drawn cards come from that location instead. Drawing from face-up piles such as Discard or Exile creates an explicit player choice of which card to draw, and multi-card draws repeat that choice from the same source before later effects resume.
 - Reshuffle progression can still add a Nation or Development card when discard starts empty; after that card is added, shuffle and continue the draw.
@@ -124,8 +128,8 @@ When reshuffle is triggered:
 
 Important implementation consequences:
 
-- Nation progression is deterministic and order-based.
-- Development availability does not preempt a non-empty Nation deck; use the deterministic Nation/Accession step first unless a nation-specific rule explicitly replaces default Nation progression.
+- Nation progression takes the current top hidden card from the ordered Nation deck.
+- Development availability does not preempt a non-empty Nation deck; use the top-card Nation/Accession step first unless a nation-specific rule explicitly replaces default Nation progression.
 - Development progression is a player choice among visible, payable Development cards.
 - Development choice can interrupt cleanup/draw-up and therefore needs pending-choice state.
 - Development choices created by card effects are not reshuffle completions; resolving one should develop the selected card without requiring or placing the reshuffle tracking token, shuffling discard, drawing, or running reshuffle hooks.
@@ -201,7 +205,7 @@ Important implementation consequences:
 - Abandoning a region moves it to discard unless an effect says otherwise, carries its garrisoned cards with it, and moves resources on it to the player's pool; only legal card types can be recalled/abandoned.
 - When a card is removed from play to History, Exile, discard, or a nation-specific replacement zone, resources on that card move to the owning player's resource pool unless the effect explicitly says otherwise.
 - Garrisoned cards are attached to a host card and move according to the host's movement rule.
-- History is an owner-visible scored zone. Cards in History are normally out of future play but still count for scoring unless a specific rule says otherwise.
+- History is a public scored zone. Cards in History are normally out of future play but still count for scoring unless a specific rule says otherwise.
 - When a nation has no History or uses a History replacement zone, all History-bound movement and History-source references must use that replacement, including direct History keywords, pending-choice destinations such as Find-to-History, Trade Route Profit destinations, setup placements, and Return Unrest effects that name History as their source.
 - Exile is public and can be targeted by effects. Acquiring from Exile has special Unrest implications.
 - Exile can target any zone specified by the effect. Exiling a Market card moves that card to Exile only if it has no resource tokens, returns any tucked Unrest to the Unrest pile, then refills the market slot from the matching small deck, falling back to Main only when that deck is depleted, and tucks Unrest under the replacement when eligible. The Acquire/Break-through first-two-slot Main-deck exception does not apply to Exile. Exiling from a player-owned zone such as hand, discard, draw deck, play area, or History moves the chosen card into Exile without market refill or Unrest side effects; History source targeting must use any nation-specific History replacement zone. When exiling a play-area host, move its resources to the owner and move garrisoned cards with it. When an Exile effect names criteria instead of a specific card, the active player must choose one eligible card from the specified source before the effect list resumes.
@@ -238,6 +242,8 @@ At normal scoring:
 - Score Progress tokens in the player's resource pool at 1 victory point each. Materials, Population, Goods, and Unrest do not inherently score as resource-pool tokens. Tokens on cards do not score as resource-pool tokens unless a card or nation rule explicitly says otherwise.
 - Nation rules may replace resource-pool scoring with a state-gated ratio, such as Alien Martians scoring Progress at 1 victory point per 3 Progress.
 - Variable VP cards have the rulebook's cap unless a card/rule overrides it.
+- Structured variable VP formulas currently support counting cards by tag or suit in selected scoring zones, with an optional per-card amount and cap. This covers common "per matching card in play/History" scoring while keeping imported private card text out of public data.
+- Conditional VP cards can encode both ordinary numeric fallback values and structured branch values. For zone-sensitive examples such as higher VP while in History, use a self-zone condition with explicit true/false values so human scoring evaluates the card's actual scoring zone while Bot scoring uses the best imported branch.
 - Ties share victory unless a specific end condition provides a different tie-break.
 
 Collapse:
@@ -311,7 +317,7 @@ Collapse:
 ## Implementation Milestones
 
 - **M1:** minimal playable shell: placeholder cards, draw/play/acquire/cleanup, deterministic market refill, legal move reporting, tests.
-- **M2:** full progression: Nation deck deterministic reshuffle additions, Development choice/payment during reshuffle, state/accession hooks, draw-if-able behavior, scoring triggers.
+- **M2:** full progression: ordered Nation deck setup with top-card reshuffle additions, Development choice/payment during reshuffle, state/accession hooks, draw-if-able behavior, scoring triggers.
 - **M3:** keyword coverage: Break through, garrison, recall, abandon, history, exile, payment substitution, passive hooks.
 - **M4:** Solstice, endgame, collapse, Fame deck edge cases, broader scoring.
 - **M5:** civilization hooks, expansion modules, full solo bot, save/replay determinism.

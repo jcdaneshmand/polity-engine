@@ -8,10 +8,11 @@ export function setupPlayerFromNation(args: { nation: NationDefinition; cardDb: 
   if (missing.length) throw new Error(`Nation ${args.nation.id} references missing cards: ${missing.join(",")}`);
   const enabled = args.enabledExpansions ?? [];
   if (args.nation.requiredExpansions.some((e) => !enabled.includes(e))) throw new Error(`Nation ${args.nation.id} requires disabled expansion.`);
+  const tradeRoutesEnabled = enabled.includes("trade_routes");
   const p: PlayerState = {
     deck: args.shuffle([...args.nation.startingDeckCardIds]), hand: [], discard: [], playArea: [], history: [], exile: [],
     powerArea: [...args.nation.powerCardIds], stateArea: [...args.nation.stateCardIds], developmentArea: [...args.nation.developmentCardIds], nationDeck: [...args.nation.nationDeckCardIds], accessionCardId: args.nation.accessionCardId,
-    sideAreas: {}, resources: { materials: 0, knowledge: 0, influence: 0, unrest: 0, goods: 0 }, actionsRemaining: args.nation.actionTokensBase, handSize: 5,
+    sideAreas: {}, resources: { materials: 3, knowledge: tradeRoutesEnabled ? 0 : 1, influence: 2, unrest: 0, goods: tradeRoutesEnabled ? 1 : 0 }, actionsRemaining: args.nation.actionTokensBase, handSize: 5,
     actionTokensBase: args.nation.actionTokensBase, exhaustTokensBase: args.nation.exhaustTokensBase, actionTokensAvailable: args.nation.actionTokensBase, exhaustTokensAvailable: args.nation.exhaustTokensBase,
     progressionTokens: { nationDeck: 0, developmentArea: 0 }
   };

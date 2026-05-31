@@ -3,7 +3,8 @@ import type { CommonsDeckConstructionInput, CommonsDeckConstructionResult, Commo
 import { getSetupSuit } from "./commonsTypes";
 
 const MARKET_SIZE = 5;
-const SMALL_DECK_SUITS = ["region", "uncivilized", "civilized", "tributary"];
+const DEFAULT_SMALL_DECK_SUITS = ["region", "uncivilized", "civilized"];
+type SmallDeckBottomCards = Partial<Record<"regionDeck" | "uncivilizedDeck" | "civilizedDeck" | "tributaryDeck", string>>;
 
 function shuffleWithRng<T>(items: T[], rng?: CommonsRng): T[] {
   if (rng && typeof rng !== "function" && rng.shuffle) return rng.shuffle([...items]);
@@ -55,8 +56,10 @@ function canAttachUnrest(card: NormalizedCardRecord | undefined): boolean {
 function markerRecord(card: NormalizedCardRecord | undefined): Record<string, number> {
   if (!card) return {};
   const markers = (card as any).startingMarketResourceMarkers;
-  if (!markers || typeof markers !== "object") return {};
-  return { ...markers };
+  const setupMarkers: Record<string, number> = {};
+  if (getSetupSuit(card) === "tributary") setupMarkers.knowledge = 1;
+  if (!markers || typeof markers !== "object") return setupMarkers;
+  return { ...setupMarkers, ...markers };
 }
 
 function drawFromDeck(deck: string[], cardById: Map<string, NormalizedCardRecord>): NormalizedCardRecord | undefined {
@@ -78,8 +81,39 @@ function createInitialMarket(args: { sourceDeck: string[]; unrestPile: string[];
   return slots;
 }
 
-function removeDrawnCards(deck: string[], drawnIds: Set<string>): string[] {
-  return deck.filter((id) => !drawnIds.has(id));
+function createInitialMarketFromDeckSequence(args: { sourceDecks: string[][]; fallbackDeck?: string[]; unrestPile: string[]; cardById: Map<string, NormalizedCardRecord> }): MarketSlot[] {
+  const slots: MarketSlot[] = [];
+  for (let index = 0; index < MARKET_SIZE; index += 1) {
+    const sourceDeck = args.sourceDecks[index] ?? [];
+    const card = drawFromDeck(sourceDeck, args.cardById) ?? (sourceDeck === args.fallbackDeck ? undefined : drawFromDeck(args.fallbackDeck ?? [], args.cardById));
+    const attachedUnrestCardIds: string[] = [];
+    if (canAttachUnrest(card) && args.unrestPile.length > 0) {
+      const unrest = args.unrestPile.shift();
+      if (unrest) attachedUnrestCardIds.push(unrest);
+    }
+    slots.push({ index, cardId: card?.id, attachedUnrestCardIds, resourceMarkers: markerRecord(card) });
+  }
+  return slots;
+}
+
+function smallDeckFaceDownSize(playerCount: number): number {
+  if (playerCount <= 2) return 6;
+  if (playerCount === 3) return 7;
+  return 8;
+}
+
+function splitSmallDeckForPlayerCount(cardIds: string[], playerCount: number): { deck: string[]; setAside: string[] } {
+  const faceDownSize = smallDeckFaceDownSize(playerCount);
+  return {
+    deck: cardIds.slice(0, faceDownSize),
+    setAside: cardIds.slice(faceDownSize)
+  };
+}
+
+function tributaryRemovalCount(playerCount: number): number {
+  if (playerCount <= 2) return 2;
+  if (playerCount === 3) return 1;
+  return 0;
 }
 
 export function buildCommonsDecks(input: CommonsDeckConstructionInput): CommonsDeckConstructionResult {
@@ -101,6 +135,7 @@ export function buildCommonsDecks(input: CommonsDeckConstructionInput): CommonsD
   let tributaryDeck: string[] | undefined;
   let mainDeck: string[] = [];
   let initialMarket: MarketSlot[];
+  let smallDeckBottomCards: SmallDeckBottomCards = {};
 
   if (quickSetup) {
     const quickSetupDeck = shuffleWithRng(activeCards.filter((card) => isMainDeckEligible(card)).map((card) => card.id), input.rng);
@@ -108,21 +143,42 @@ export function buildCommonsDecks(input: CommonsDeckConstructionInput): CommonsD
     mainDeck = quickSetupDeck;
   } else {
     const marketCards = activeCards.filter((card) => isMainDeckEligible(card));
-    const smallDeckCards = marketCards.filter((card) => isSmallDeckEligible(card) && SMALL_DECK_SUITS.includes(getSetupSuit(card)));
-    regionDeck = shuffleWithRng(smallDeckCards.filter((card) => getSetupSuit(card) === "region").map((card) => card.id), input.rng);
-    uncivilizedDeck = shuffleWithRng(smallDeckCards.filter((card) => getSetupSuit(card) === "uncivilized").map((card) => card.id), input.rng);
-    civilizedDeck = shuffleWithRng(smallDeckCards.filter((card) => getSetupSuit(card) === "civilized").map((card) => card.id), input.rng);
-    tributaryDeck = shuffleWithRng(smallDeckCards.filter((card) => getSetupSuit(card) === "tributary").map((card) => card.id), input.rng);
-    mainDeck = shuffleWithRng(marketCards.filter((card) => !isSmallDeckEligible(card) || !SMALL_DECK_SUITS.includes(getSetupSuit(card))).map((card) => card.id), input.rng);
+    const smallDeckCards = marketCards.filter((card) => isSmallDeckEligible(card) && DEFAULT_SMALL_DECK_SUITS.includes(getSetupSuit(card)));
+    const tributaryCards = shuffleWithRng(marketCards.filter((card) => isSmallDeckEligible(card) && getSetupSuit(card) === "tributary").map((card) => card.id), input.rng);
+    const regionSplit = splitSmallDeckForPlayerCount(shuffleWithRng(smallDeckCards.filter((card) => getSetupSuit(card) === "region").map((card) => card.id), input.rng), input.options.effectiveCommonsPlayerCount);
+    const uncivilizedSplit = splitSmallDeckForPlayerCount(shuffleWithRng(smallDeckCards.filter((card) => getSetupSuit(card) === "uncivilized").map((card) => card.id), input.rng), input.options.effectiveCommonsPlayerCount);
+    const civilizedSplit = splitSmallDeckForPlayerCount(shuffleWithRng(smallDeckCards.filter((card) => getSetupSuit(card) === "civilized").map((card) => card.id), input.rng), input.options.effectiveCommonsPlayerCount);
+    regionDeck = regionSplit.deck;
+    uncivilizedDeck = uncivilizedSplit.deck;
+    civilizedDeck = civilizedSplit.deck;
+    const [regionBottomCard, uncivilizedBottomCard, civilizedBottomCard, ...extraTributaryCards] = tributaryCards;
+    const remainingTributaryCards = extraTributaryCards.slice(tributaryRemovalCount(input.options.effectiveCommonsPlayerCount));
+    if (regionBottomCard) regionDeck.push(regionBottomCard);
+    if (uncivilizedBottomCard) uncivilizedDeck.push(uncivilizedBottomCard);
+    if (civilizedBottomCard) civilizedDeck.push(civilizedBottomCard);
+    tributaryDeck = [];
+    mainDeck = shuffleWithRng([
+      ...marketCards
+        .filter((card) => !isSmallDeckEligible(card) || ![...DEFAULT_SMALL_DECK_SUITS, "tributary"].includes(getSetupSuit(card)))
+        .map((card) => card.id),
+      ...regionSplit.setAside,
+      ...uncivilizedSplit.setAside,
+      ...civilizedSplit.setAside,
+      ...remainingTributaryCards
+    ], input.rng);
 
-    const initialMarketSource = [...regionDeck, ...uncivilizedDeck, ...civilizedDeck, ...tributaryDeck, ...mainDeck];
-    initialMarket = createInitialMarket({ sourceDeck: initialMarketSource, unrestPile, cardById });
-    const drawnIds = new Set(initialMarket.map((slot) => slot.cardId).filter(Boolean) as string[]);
-    regionDeck = removeDrawnCards(regionDeck, drawnIds);
-    uncivilizedDeck = removeDrawnCards(uncivilizedDeck, drawnIds);
-    civilizedDeck = removeDrawnCards(civilizedDeck, drawnIds);
-    tributaryDeck = removeDrawnCards(tributaryDeck, drawnIds);
-    mainDeck = removeDrawnCards(mainDeck, drawnIds);
+    initialMarket = createInitialMarketFromDeckSequence({
+      sourceDecks: [regionDeck, uncivilizedDeck, civilizedDeck, mainDeck, mainDeck],
+      fallbackDeck: mainDeck,
+      unrestPile,
+      cardById
+    });
+    smallDeckBottomCards = {
+      ...(regionBottomCard && regionDeck.at(-1) === regionBottomCard ? { regionDeck: regionBottomCard } : {}),
+      ...(uncivilizedBottomCard && uncivilizedDeck.at(-1) === uncivilizedBottomCard ? { uncivilizedDeck: uncivilizedBottomCard } : {}),
+      ...(civilizedBottomCard && civilizedDeck.at(-1) === civilizedBottomCard ? { civilizedDeck: civilizedBottomCard } : {}),
+      ...(tributaryDeck.length > 0 ? { tributaryDeck: tributaryDeck[tributaryDeck.length - 1] } : {})
+    };
   }
 
   if (delayedCards.length > 0) {
@@ -139,6 +195,7 @@ export function buildCommonsDecks(input: CommonsDeckConstructionInput): CommonsD
     civilizedDeck,
     tributaryDeck,
     mainDeck,
+    smallDeckBottomCards,
     delayedCards,
     initialMarket,
     setupWarnings,

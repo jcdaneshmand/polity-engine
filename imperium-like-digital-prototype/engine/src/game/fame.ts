@@ -25,6 +25,31 @@ function resolveSpecialBottomFameRewards(G: GameState, playerId: string, cardId:
   }
 }
 
+function resolveSpecialBottomFameCard(G: GameState, playerId: string): string | undefined {
+  const fameDeck = ensureFameDeck(G);
+  const specialBottomCardId = fameDeck.specialBottomCardId;
+  if (!specialBottomCardId) return undefined;
+  if (fameDeck.specialBottomSide === "face_down") return undefined;
+  if (fameDeck.resolvedSpecialByPlayer[playerId]) {
+    G.log.push({ round: G.round, playerId, message: `FameSpecialSkipped(already_resolved/${specialBottomCardId})` });
+    return undefined;
+  }
+
+  fameDeck.resolvedSpecialByPlayer[playerId] = true;
+  resolveSpecialBottomFameRewards(G, playerId, specialBottomCardId);
+  if ((fameDeck.specialBottomSide ?? "A") === "A") {
+    fameDeck.specialBottomSide = "B";
+    G.log.push({ round: G.round, playerId, message: `FameSpecialResolved(${specialBottomCardId}/side=A->B)` });
+    return specialBottomCardId;
+  }
+
+  delete fameDeck.specialBottomCardId;
+  fameDeck.specialBottomSide = "face_down";
+  G.log.push({ round: G.round, playerId, message: `FameSpecialResolved(${specialBottomCardId}/side=B->face_down)` });
+  triggerScoring(G, "fame_deck_terminal_condition", playerId);
+  return specialBottomCardId;
+}
+
 function normalizedBotStateTokens(bot: BotState): string[] {
   const values = [bot.botStateSide, bot.botStateTableId, bot.merchantState].filter(Boolean);
   return values.flatMap((value) => {
@@ -100,27 +125,18 @@ export function takeFameCard(G: GameState, playerId: string): string | undefined
     return cardId;
   }
 
-  const specialBottomCardId = fameDeck.specialBottomCardId;
-  if (!specialBottomCardId) return undefined;
-  if (fameDeck.specialBottomSide === "face_down") return undefined;
-  if (fameDeck.resolvedSpecialByPlayer[playerId]) {
-    G.log.push({ round: G.round, playerId, message: `FameSpecialSkipped(already_resolved/${specialBottomCardId})` });
-    return undefined;
+  return resolveSpecialBottomFameCard(G, playerId);
+}
+
+export function drawFameCard(G: GameState, playerId: string): string | undefined {
+  const fameDeck = ensureFameDeck(G);
+  const cardId = fameDeck.available.shift();
+  if (cardId) {
+    G.players[playerId]?.hand.push(cardId);
+    return cardId;
   }
 
-  fameDeck.resolvedSpecialByPlayer[playerId] = true;
-  resolveSpecialBottomFameRewards(G, playerId, specialBottomCardId);
-  if ((fameDeck.specialBottomSide ?? "A") === "A") {
-    fameDeck.specialBottomSide = "B";
-    G.log.push({ round: G.round, playerId, message: `FameSpecialResolved(${specialBottomCardId}/side=A->B)` });
-    return specialBottomCardId;
-  }
-
-  delete fameDeck.specialBottomCardId;
-  fameDeck.specialBottomSide = "face_down";
-  G.log.push({ round: G.round, playerId, message: `FameSpecialResolved(${specialBottomCardId}/side=B->face_down)` });
-  triggerScoring(G, "fame_deck_terminal_condition", playerId);
-  return specialBottomCardId;
+  return resolveSpecialBottomFameCard(G, playerId);
 }
 
 export function returnFameCardToTop(G: GameState, cardId: string): void {

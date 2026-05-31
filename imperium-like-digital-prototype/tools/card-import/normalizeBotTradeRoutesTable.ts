@@ -1,6 +1,7 @@
 import type { BotEffectOp } from "../../engine/src/solo/botEffectOps";
 import type { BotTradeRoutesTable } from "../../engine/src/solo/botTradeRoutesTypes";
 import type { PrivateBotTradeRoutesTableCsvRow } from "./botTradeRoutesTableCsvTypes";
+import { normalizeResourceNames } from "./normalizeResources";
 
 export function normalizeBotTradeRoutesTables(rows: PrivateBotTradeRoutesTableCsvRow[]): Record<string, BotTradeRoutesTable> {
   const tables: Record<string, BotTradeRoutesTable> = {};
@@ -12,14 +13,14 @@ export function normalizeBotTradeRoutesTables(rows: PrivateBotTradeRoutesTableCs
         tradeRouteId: row.trade_route_card_id.trim(),
         publicPlaceholderName: row.public_placeholder_name.trim(),
         privateName: row.private_name.trim() || undefined,
-        commerceEffects: JSON.parse(row.commerce_effects_json || "[]") as BotEffectOp[],
-        profitEffects: JSON.parse(row.profit_effects_json || "[]") as BotEffectOp[]
+        commerceEffects: normalizeResourceNames(JSON.parse(row.commerce_effects_json || "[]") as BotEffectOp[]),
+        profitEffects: normalizeResourceNames(JSON.parse(row.profit_effects_json || "[]") as BotEffectOp[])
       });
     } else {
       tables[tableId].endOfTurnRows.push({
         merchantState: row.merchant_state.trim() as "merchants" | "merchant_empire",
         priority: Number(row.priority.trim()),
-        effects: JSON.parse(row.end_of_turn_effects_json || "[]") as BotEffectOp[]
+        effects: normalizeResourceNames(JSON.parse(row.end_of_turn_effects_json || "[]") as BotEffectOp[])
       });
     }
   }

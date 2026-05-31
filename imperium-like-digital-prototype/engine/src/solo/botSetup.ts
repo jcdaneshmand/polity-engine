@@ -12,9 +12,15 @@ function cardVpValue(card: Card | undefined): number {
   const vp = card?.vp as unknown;
   if (typeof vp === "number") return vp;
   if (vp && typeof vp === "object") {
-    const { mode, value } = vp as { mode?: string; value?: unknown };
+    const { mode, value, trueValue, falseValue } = vp as { mode?: string; value?: unknown; trueValue?: unknown; falseValue?: unknown };
     const numericValue = typeof value === "number" ? value : 0;
     if (mode === "none") return 0;
+    if (mode === "conditional" && (typeof trueValue === "number" || typeof falseValue === "number")) {
+      return Math.max(
+        typeof trueValue === "number" ? trueValue : numericValue,
+        typeof falseValue === "number" ? falseValue : numericValue
+      );
+    }
     if (mode === "conditional" || mode === "variable") return numericValue || 5;
     if (mode === "negative") return -Math.abs(numericValue);
     return numericValue;

@@ -23,7 +23,8 @@ describe("Exile acquisition", () => {
 
     expect(player.exile).toEqual([]);
     expect(player.hand).toContain("exiled_action");
-    expect(player.discard).toContain("unrest_from_supply");
+    expect(player.hand).toContain("unrest_from_supply");
+    expect(player.discard).not.toContain("unrest_from_supply");
     expect(G.unrestPile).toEqual([]);
   });
 

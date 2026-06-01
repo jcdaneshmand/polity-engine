@@ -1,5 +1,5 @@
 import type { GameState, ResourceName } from "./state";
-import { returnResourceToSupply } from "./resources";
+import { canonicalResourceName, normalizeResourceMap, resourceAmount, returnResourceToSupply } from "./resources";
 import { currentStateMatches } from "./stateMatching";
 import { takeUnrest } from "./unrest";
 
@@ -8,50 +8,55 @@ const RESOURCE_NAMES: ResourceName[] = ["materials", "knowledge", "influence", "
 
 export function normalizeResourceCost(cost: number | ResourceCost | undefined): ResourceCost {
   if (typeof cost === "number") return { materials: cost };
-  return cost ?? {};
+  return normalizeResourceMap(cost as Partial<Record<string, number | undefined>>);
 }
 
 export function describeResourceCost(cost: ResourceCost): string {
+  const normalized = normalizeResourceMap(cost as Partial<Record<string, number | undefined>>);
   return (["materials", "influence", "knowledge", "goods", "unrest"] as ResourceName[])
-    .filter((resource) => (cost[resource] ?? 0) > 0)
-    .map((resource) => `${resource}=${cost[resource]}`)
+    .filter((resource) => (normalized[resource] ?? 0) > 0)
+    .map((resource) => `${resource}=${normalized[resource]}`)
     .join(",");
 }
 
 export function availableForResourceCost(G: GameState, playerId: string, resource: ResourceName): number {
+  const canonical = canonicalResourceName(resource);
   const resources = G.players[playerId].resources;
-  const direct = resources[resource] ?? 0;
-  if (resource === "materials") return direct + 2 * ((resources.knowledge ?? 0) + (resources.goods ?? 0));
-  if (resource === "influence") return direct + (resources.knowledge ?? 0) + (resources.goods ?? 0);
+  const direct = resources[canonical] ?? 0;
+  if (canonical === "materials") return direct + 2 * ((resources.knowledge ?? 0) + (resources.goods ?? 0));
+  if (canonical === "influence") return direct + (resources.knowledge ?? 0) + (resources.goods ?? 0);
   return direct;
 }
 
 export function canPayResourceCost(G: GameState, playerId: string, resource: ResourceName, amount: number): boolean {
-  return canPayResourceCosts(G, playerId, { [resource]: amount });
+  return canPayResourceCosts(G, playerId, { [canonicalResourceName(resource)]: amount });
 }
 
 export function payResourceCost(G: GameState, playerId: string, resource: ResourceName, amount: number): boolean {
-  if (!canPayResourceCost(G, playerId, resource, amount)) {
+  const canonical = canonicalResourceName(resource);
+  if (!canPayResourceCost(G, playerId, canonical, amount)) {
     G.log.push({
       round: G.round,
       playerId,
-      message: `CostUnpaid(${resource}/required=${amount}/available=${availableForResourceCost(G, playerId, resource)})`
+      message: `CostUnpaid(${canonical}/required=${amount}/available=${availableForResourceCost(G, playerId, canonical)})`
     });
     return false;
   }
 
-  if (!payResourceCosts(G, playerId, { [resource]: amount })) {
+  if (!payResourceCosts(G, playerId, { [canonical]: amount })) {
     return false;
   }
 
-  G.log.push({ round: G.round, playerId, message: `Spent ${amount} ${resource}.` });
+  G.log.push({ round: G.round, playerId, message: `Spent ${amount} ${canonical}.` });
   return true;
 }
 
 export function canPayResourceCosts(G: GameState, playerId: string, cost: ResourceCost, payment?: ResourceCost): boolean {
-  if (!resourcesCanPayCost(G.players[playerId].resources, cost)) return false;
-  if (!payment) return true;
-  return paymentIsAvailable(G, playerId, payment) && selectedPaymentMatchesCost(payment, cost);
+  const normalizedCost = normalizeResourceMap(cost as Partial<Record<string, number | undefined>>);
+  const normalizedPayment = payment ? normalizeResourceMap(payment as Partial<Record<string, number | undefined>>) : undefined;
+  if (!resourcesCanPayCost(G.players[playerId].resources, normalizedCost)) return false;
+  if (!normalizedPayment) return true;
+  return paymentIsAvailable(G, playerId, normalizedPayment) && selectedPaymentMatchesCost(normalizedPayment, normalizedCost);
 }
 
 function resourcesCanPayCost(resources: Partial<Record<ResourceName, number>>, cost: ResourceCost): boolean {
@@ -101,7 +106,7 @@ function applySpentResourceOverrides(G: GameState, playerId: string, spent: Part
   for (const override of ruleset.stateOverrides ?? []) {
     if (override.op !== "take_unrest_when_spending_resource") continue;
     if (override.state && !currentStateMatches(G, playerId, override.state)) continue;
-    const amount = spent[override.resource] ?? 0;
+    const amount = resourceAmount(spent, override.resource);
     if (amount <= 0) continue;
     takeUnrest(G, { playerIds: [playerId], count: amount, triggeredBy: playerId });
     G.log.push({ round: G.round, playerId, message: `SpentResourcePenalty(${override.resource}/unrest=${amount})` });
@@ -110,8 +115,10 @@ function applySpentResourceOverrides(G: GameState, playerId: string, spent: Part
 }
 
 export function payResourceCosts(G: GameState, playerId: string, cost: ResourceCost, payment?: ResourceCost): boolean {
-  if (!canPayResourceCosts(G, playerId, cost, payment)) {
-    const required = Object.entries(cost)
+  const normalizedCost = normalizeResourceMap(cost as Partial<Record<string, number | undefined>>);
+  const normalizedPayment = payment ? normalizeResourceMap(payment as Partial<Record<string, number | undefined>>) : undefined;
+  if (!canPayResourceCosts(G, playerId, normalizedCost, normalizedPayment)) {
+    const required = Object.entries(normalizedCost)
       .filter(([, amount]) => (amount ?? 0) > 0)
       .map(([resource, amount]) => `${resource}=${amount}`)
       .join(",");
@@ -125,9 +132,9 @@ export function payResourceCosts(G: GameState, playerId: string, cost: ResourceC
 
   const resources = G.players[playerId].resources;
   const spent: Partial<Record<ResourceName, number>> = {};
-  if (payment) {
+  if (normalizedPayment) {
     for (const resource of RESOURCE_NAMES) {
-      const amount = payment[resource] ?? 0;
+      const amount = normalizedPayment[resource] ?? 0;
       if (amount <= 0) continue;
       resources[resource] = (resources[resource] ?? 0) - amount;
       spent[resource] = amount;
@@ -137,22 +144,22 @@ export function payResourceCosts(G: GameState, playerId: string, cost: ResourceC
     return true;
   }
 
-  resources.knowledge = (resources.knowledge ?? 0) - (cost.knowledge ?? 0);
-  if ((cost.knowledge ?? 0) > 0) spent.knowledge = (spent.knowledge ?? 0) + (cost.knowledge ?? 0);
-  resources.goods = (resources.goods ?? 0) - (cost.goods ?? 0);
-  if ((cost.goods ?? 0) > 0) spent.goods = (spent.goods ?? 0) + (cost.goods ?? 0);
-  resources.unrest = (resources.unrest ?? 0) - (cost.unrest ?? 0);
-  if ((cost.unrest ?? 0) > 0) spent.unrest = (spent.unrest ?? 0) + (cost.unrest ?? 0);
+  resources.knowledge = (resources.knowledge ?? 0) - (normalizedCost.knowledge ?? 0);
+  if ((normalizedCost.knowledge ?? 0) > 0) spent.knowledge = (spent.knowledge ?? 0) + (normalizedCost.knowledge ?? 0);
+  resources.goods = (resources.goods ?? 0) - (normalizedCost.goods ?? 0);
+  if ((normalizedCost.goods ?? 0) > 0) spent.goods = (spent.goods ?? 0) + (normalizedCost.goods ?? 0);
+  resources.unrest = (resources.unrest ?? 0) - (normalizedCost.unrest ?? 0);
+  if ((normalizedCost.unrest ?? 0) > 0) spent.unrest = (spent.unrest ?? 0) + (normalizedCost.unrest ?? 0);
 
-  const materialDirectPayment = Math.min(resources.materials ?? 0, cost.materials ?? 0);
+  const materialDirectPayment = Math.min(resources.materials ?? 0, normalizedCost.materials ?? 0);
   resources.materials = (resources.materials ?? 0) - materialDirectPayment;
   if (materialDirectPayment > 0) spent.materials = (spent.materials ?? 0) + materialDirectPayment;
-  let materialShortfall = Math.max(0, (cost.materials ?? 0) - materialDirectPayment);
+  let materialShortfall = Math.max(0, (normalizedCost.materials ?? 0) - materialDirectPayment);
 
-  const populationDirectPayment = Math.min(resources.influence ?? 0, cost.influence ?? 0);
+  const populationDirectPayment = Math.min(resources.influence ?? 0, normalizedCost.influence ?? 0);
   resources.influence = (resources.influence ?? 0) - populationDirectPayment;
   if (populationDirectPayment > 0) spent.influence = (spent.influence ?? 0) + populationDirectPayment;
-  let populationShortfall = Math.max(0, (cost.influence ?? 0) - populationDirectPayment);
+  let populationShortfall = Math.max(0, (normalizedCost.influence ?? 0) - populationDirectPayment);
 
   const spendSubstituteToken = (): void => {
     if ((resources.goods ?? 0) > 0) {

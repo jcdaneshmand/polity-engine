@@ -16,6 +16,76 @@ describe("effectRunner", () => {
     expect(G.players["0"].hand.length).toBe(1);
   });
 
+  it("accepts rulebook resource aliases at runtime", () => {
+    const G = createInitialState();
+    G.resourceSupply = { materials: 0, knowledge: 1, influence: 1, unrest: 0, goods: 0 };
+
+    runEffects({ G, playerId: "0" }, [
+      { trigger: "on_play", op: "gain_resource", resource: "progress", amount: 1 } as any,
+      { trigger: "on_play", op: "gain_resource", resource: "population", amount: 1 } as any
+    ]);
+
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["0"].resources.influence).toBe(1);
+    expect(G.resourceSupply.knowledge).toBe(0);
+    expect(G.resourceSupply.influence).toBe(0);
+    expect((G.players["0"].resources as any).progress).toBeUndefined();
+    expect((G.players["0"].resources as any).population).toBeUndefined();
+  });
+
+  it("uses rulebook resource aliases for conditional and movement effects", () => {
+    const G = createInitialState();
+    G.players["0"].resources.knowledge = 1;
+    G.players["0"].resources.influence = 1;
+    G.players["1"].resources.knowledge = 1;
+
+    runEffects({ G, playerId: "0" }, [{
+      trigger: "on_play",
+      op: "conditional_resource_at_least",
+      resource: "progress",
+      atLeast: 1,
+      then: [
+        { trigger: "on_play", op: "return_resource", resource: "population", amount: 1 },
+        { trigger: "on_play", op: "steal_resource", fromPlayerId: "1", resource: "progress", amount: 1 }
+      ],
+      else: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }]
+    } as any]);
+
+    expect(G.players["0"].resources.materials).toBe(0);
+    expect(G.players["0"].resources.influence).toBe(0);
+    expect(G.players["0"].resources.knowledge).toBe(2);
+    expect(G.players["1"].resources.knowledge).toBe(0);
+    expect((G.players["0"].resources as any).population).toBeUndefined();
+    expect((G.players["0"].resources as any).progress).toBeUndefined();
+    expect((G.players["1"].resources as any).progress).toBeUndefined();
+  });
+
+  it("pauses for player-selected discard costs and resumes remaining effects", () => {
+    const G = createInitialState();
+    G.players["0"].hand = ["discard_a", "discard_b", "keep_card"];
+    G.players["0"].resources.knowledge = 0;
+
+    runEffects({ G, playerId: "0", selfCardId: "discard_cost_source" }, [
+      { trigger: "on_play", op: "discard_cards", count: 2 } as any,
+      { trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 } as any
+    ]);
+
+    expect(G.pendingDiscardChoice).toEqual({
+      playerId: "0",
+      sourceCardId: "discard_cost_source",
+      cardIds: ["discard_a", "discard_b", "keep_card"],
+      count: 2,
+      resumeEffects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }]
+    });
+
+    (moves as any).resolveDiscardChoice({ G, ctx: { currentPlayer: "0" } as any }, ["discard_b", "discard_a"]);
+
+    expect(G.pendingDiscardChoice).toBeUndefined();
+    expect(G.players["0"].hand).toEqual(["keep_card"]);
+    expect(G.players["0"].discard).toEqual(["discard_b", "discard_a"]);
+    expect(G.players["0"].resources.knowledge).toBe(1);
+  });
+
   it("reshuffles discard when deck empty", () => {
     const G = createInitialState();
     G.players["0"].deck = [];
@@ -383,8 +453,8 @@ describe("effectRunner", () => {
     } as any]);
 
     expect(result).toBe(true);
-    expect(G.players["1"].discard).toContain("unrest_a");
-    expect(G.players["0"].discard).toContain("unrest_b");
+    expect(G.players["1"].hand).toContain("unrest_a");
+    expect(G.players["0"].hand).toContain("unrest_b");
     expect(G.unrestPile).toEqual(["unrest_c"]);
     expect(G.gameover).toBeUndefined();
     expect(G.log.at(-1)?.message).toBe("UnrestTaken(players=1,0/count=1/taken=2)");
@@ -427,7 +497,7 @@ describe("effectRunner", () => {
     const result = runEffects({ G, playerId: "0" }, [{ trigger: "on_play", op: "take_unrest", count: 1 } as any]);
 
     expect(result).toBe(true);
-    expect(G.players["0"].discard).toContain("unrest_a");
+    expect(G.players["0"].hand).toContain("unrest_a");
     expect(G.players["0"].resources.materials).toBe(1);
     expect(G.log.some((entry) => entry.message === "Nation hook after_gain_unrest #0 resolved.")).toBe(true);
   });
@@ -475,7 +545,7 @@ describe("effectRunner", () => {
     const result = runEffects({ G, playerId: "0" }, [{ trigger: "on_play", op: "take_unrest", count: 2 } as any]);
 
     expect(result).toBe(true);
-    expect(G.players["0"].discard).toEqual(["unrest_a"]);
+    expect(G.players["0"].hand).toEqual(["unrest_a"]);
     expect(G.unrestPile).toEqual(["unrest_b"]);
     expect(G.pendingChoice).toBeDefined();
     expect(G.log.some((entry) => entry.message === "UnrestTaken(players=0/count=2/taken=2)")).toBe(false);
@@ -483,7 +553,7 @@ describe("effectRunner", () => {
     resolveChoice({ G, ctx: { currentPlayer: "0" } as any }, 0);
 
     expect(G.pendingChoice).toBeDefined();
-    expect(G.players["0"].discard).toEqual(["unrest_a", "unrest_b"]);
+    expect(G.players["0"].hand).toEqual(["unrest_a", "unrest_b"]);
     expect(G.unrestPile).toEqual([]);
     expect(G.players["0"].resources.goods).toBe(1);
     expect(G.log.some((entry) => entry.message === "UnrestTaken(players=0/count=2/taken=2)")).toBe(false);
@@ -491,7 +561,7 @@ describe("effectRunner", () => {
     resolveChoice({ G, ctx: { currentPlayer: "0" } as any }, 0);
 
     expect(G.pendingChoice).toBeUndefined();
-    expect(G.players["0"].discard).toEqual(["unrest_a", "unrest_b"]);
+    expect(G.players["0"].hand).toEqual(["unrest_a", "unrest_b"]);
     expect(G.unrestPile).toEqual([]);
     expect(G.players["0"].resources.goods).toBe(2);
     expect(G.log.some((entry) => entry.message === "UnrestTaken(players=0/count=2/taken=2)")).toBe(true);
@@ -534,7 +604,7 @@ describe("effectRunner", () => {
 
     expect(resolvePendingUnrestAllocationChoice(G, "0", ["0"])).toBe(true);
 
-    expect(G.players["0"].discard).toContain("unrest_a");
+    expect(G.players["0"].hand).toContain("unrest_a");
     expect(G.players["1"].discard).not.toContain("unrest_a");
     expect(G.pendingUnrestAllocationChoice).toBeUndefined();
     expect(G.gameover?.reason).toBe("collapse:unrest_pile_empty");
@@ -591,7 +661,7 @@ describe("effectRunner", () => {
 
     expect(G.pendingUnrestAllocationChoice).toBeUndefined();
     expect(G.pendingChoice).toBeDefined();
-    expect(G.players["0"].discard).toContain("unrest_a");
+    expect(G.players["0"].hand).toContain("unrest_a");
     expect(G.gameover).toBeUndefined();
     expect(G.log.some((entry) => entry.message === "UnrestAllocationResolved(players=0/taken=1)")).toBe(false);
 
@@ -733,7 +803,7 @@ describe("effectRunner", () => {
 
     expect(result).toBe(true);
     expect(G.players["0"].resources.knowledge).toBe(0);
-    expect(G.players["0"].discard).toEqual(["alien_unrest_1", "alien_unrest_2"]);
+    expect(G.players["0"].hand).toEqual(["alien_unrest_1", "alien_unrest_2"]);
     expect(G.unrestPile).toEqual(["alien_unrest_3"]);
   });
 
@@ -783,6 +853,50 @@ describe("effectRunner", () => {
     expect(G.players["0"].resources.goods).toBe(1);
     expect(G.players["0"].resources.materials).toBe(3);
     expect(G.log.at(-1)?.message).toBe("CostUnpaid(goods/required=2/available=1)");
+  });
+
+  it("pays explicit resource costs before resolving later benefits", () => {
+    const G = createInitialState();
+    G.resourceSupply = { materials: 0 };
+    G.players["0"].resources.materials = 1;
+
+    const result = runEffects({ G, playerId: "0" }, [
+      { trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 },
+      { trigger: "on_play", op: "spend_resource", resource: "materials", amount: 1 }
+    ]);
+
+    expect(result).toBe(true);
+    expect(G.players["0"].resources.materials).toBe(1);
+    expect(G.resourceSupply.materials).toBe(0);
+  });
+
+  it("does not pay costs after an unresolved player choice before that choice resumes", () => {
+    const G = createInitialState();
+    G.players["0"].resources.materials = 1;
+
+    const result = runEffects({ G, playerId: "0", selfCardId: "choice_then_cost" }, [
+      {
+        trigger: "on_play",
+        op: "choose_one",
+        choices: [[{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }]]
+      } as any,
+      { trigger: "on_play", op: "spend_resource", resource: "materials", amount: 1 },
+      { trigger: "on_play", op: "gain_resource", resource: "influence", amount: 1 }
+    ]);
+
+    expect(result).toBe(true);
+    expect(G.players["0"].resources.materials).toBe(1);
+    expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.players["0"].resources.influence).toBe(0);
+    expect(G.pendingChoice).toEqual({
+      playerId: "0",
+      sourceCardId: "choice_then_cost",
+      choices: [[{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }]],
+      resumeEffects: [
+        { trigger: "on_play", op: "spend_resource", resource: "materials", amount: 1 },
+        { trigger: "on_play", op: "gain_resource", resource: "influence", amount: 1 }
+      ]
+    });
   });
 
   it("removes resources without using Goods as substitution", () => {
@@ -848,6 +962,56 @@ describe("effectRunner", () => {
     expect(G.log.at(-2)?.message).toBe("Returned 1/3 influence.");
   });
 
+  it("gain_action adds usable Action tokens for the current turn", () => {
+    const G = createInitialState();
+    const p = G.players["0"];
+    p.actionsRemaining = 0;
+    p.actionTokensAvailable = 0;
+
+    const result = runEffects({ G, playerId: "0" }, [
+      { trigger: "on_play", op: "gain_action", amount: 2 } as any
+    ]);
+
+    expect(result).toBe(true);
+    expect(p.actionsRemaining).toBe(2);
+    expect(p.actionTokensAvailable).toBe(2);
+    expect(G.log.at(-1)?.message).toBe("Gained 2 Action.");
+  });
+
+  it("spend_action spends an available Action token before later effects resolve", () => {
+    const G = createInitialState();
+    const p = G.players["0"];
+    p.actionsRemaining = 1;
+    p.actionTokensAvailable = 1;
+
+    const result = runEffects({ G, playerId: "0" }, [
+      { trigger: "on_play", op: "spend_action", amount: 1 } as any,
+      { trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }
+    ]);
+
+    expect(result).toBe(true);
+    expect(p.actionsRemaining).toBe(0);
+    expect(p.actionTokensAvailable).toBe(0);
+    expect(p.resources.knowledge).toBe(1);
+    expect(G.log.at(-2)?.message).toBe("Spent 1 Action.");
+  });
+
+  it("spend_action fails without an available Action token", () => {
+    const G = createInitialState();
+    const p = G.players["0"];
+    p.actionsRemaining = 0;
+    p.actionTokensAvailable = 0;
+
+    const result = runEffects({ G, playerId: "0" }, [
+      { trigger: "on_play", op: "spend_action", amount: 1 } as any,
+      { trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }
+    ]);
+
+    expect(result).toBe(false);
+    expect(p.resources.knowledge).toBe(0);
+    expect(G.log.at(-1)?.message).toBe("SpendActionFailed(required=1, available=0)");
+  });
+
   it("return_unrest moves a specified Unrest card from discard to the Unrest pile", () => {
     const G = createInitialState();
     G.players["0"].discard = ["discard_unrest"];
@@ -907,7 +1071,103 @@ describe("effectRunner", () => {
     ]));
   });
 
-  it("return_unrest creates a choice from hand and discard and resumes remaining effects", () => {
+  it("return_unrest can move a specified Unrest card from Exile", () => {
+    const G = createInitialState();
+    G.players["0"].exile = ["exiled_unrest"];
+    G.unrestPile = [];
+    G.cardDb.exiled_unrest = {
+      id: "exiled_unrest",
+      displayName: "Exiled Unrest",
+      type: "unrest",
+      cardType: "unrest",
+      suit: "unrest",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+
+    const result = runEffects({ G, playerId: "0" }, [
+      { trigger: "on_play", op: "return_unrest", cardId: "exiled_unrest", sourceZones: ["exile"] }
+    ]);
+
+    expect(result).toBe(true);
+    expect(G.players["0"].exile).toEqual([]);
+    expect(G.unrestPile).toEqual(["exiled_unrest"]);
+    expect(G.log.at(-1)?.message).toBe("UnrestReturned(exiled_unrest/exile)");
+  });
+
+  it("return_unrest can move a specified Unrest card from public setup Exile", () => {
+    const G = createInitialState();
+    G.players["0"].exile = [];
+    G.globalSpecialZones = {
+      exile: {
+        id: "exile",
+        displayName: "Exile",
+        visibility: "public",
+        scoresAsOwned: false,
+        cardIds: ["setup_exiled_unrest"]
+      }
+    };
+    G.unrestPile = [];
+    G.cardDb.setup_exiled_unrest = {
+      id: "setup_exiled_unrest",
+      displayName: "Setup Exiled Unrest",
+      type: "unrest",
+      cardType: "unrest",
+      suit: "unrest",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+
+    const result = runEffects({ G, playerId: "0" }, [
+      { trigger: "on_play", op: "return_unrest", cardId: "setup_exiled_unrest", sourceZones: ["exile"] }
+    ]);
+
+    expect(result).toBe(true);
+    expect(G.players["0"].exile).toEqual([]);
+    expect(G.globalSpecialZones.exile.cardIds).toEqual([]);
+    expect(G.unrestPile).toEqual(["setup_exiled_unrest"]);
+    expect(G.log.at(-1)?.message).toBe("UnrestReturned(setup_exiled_unrest/exile)");
+  });
+
+  it("return_unrest can move a garrisoned Unrest card attached to a play-area Region", () => {
+    const G = createInitialState();
+    G.players["0"].playArea = ["host_region"];
+    G.unrestPile = [];
+    G.cardDb.host_region = {
+      id: "host_region",
+      displayName: "Host Region",
+      type: "region",
+      cardType: "region",
+      suit: "region",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb.garrisoned_unrest = {
+      id: "garrisoned_unrest",
+      displayName: "Garrisoned Unrest",
+      type: "unrest",
+      cardType: "unrest",
+      suit: "unrest",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardStates = { host_region: { garrisonedCardIds: ["garrisoned_unrest"] } };
+
+    const result = runEffects({ G, playerId: "0" }, [
+      { trigger: "on_play", op: "return_unrest", cardId: "garrisoned_unrest", sourceZones: ["playArea"] } as any
+    ]);
+
+    expect(result).toBe(true);
+    expect(G.cardStates?.host_region?.garrisonedCardIds).toEqual([]);
+    expect(G.unrestPile).toEqual(["garrisoned_unrest"]);
+    expect(G.log.at(-1)?.message).toBe("UnrestReturned(garrisoned_unrest/playArea)");
+  });
+
+  it("return_unrest defaults to a choice from hand only and resumes remaining effects", () => {
     const G = createInitialState();
     G.players["0"].hand = ["hand_unrest"];
     G.players["0"].discard = ["discard_unrest"];
@@ -934,8 +1194,8 @@ describe("effectRunner", () => {
     expect(G.pendingReturnUnrestChoice).toEqual({
       playerId: "0",
       sourceCardId: "returner",
-      cardIds: ["hand_unrest", "discard_unrest"],
-      sourceZones: ["hand", "discard"],
+      cardIds: ["hand_unrest"],
+      sourceZones: ["hand"],
       resumeEffects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }]
     });
     expect(G.players["0"].resources.knowledge).toBe(0);
@@ -1155,6 +1415,42 @@ describe("effectRunner", () => {
     expect(G.marketUnrest.test_action_archive_survey).toEqual(["test_unrest_2"]);
   });
 
+  it("acquire_card from Market without criteria pauses for a player choice when multiple cards are eligible", () => {
+    const G = createInitialState();
+    G.market = ["market_region", "market_civilized", "market_uncivilized"];
+    G.marketDecks = undefined;
+    for (const [id, suit] of [
+      ["market_region", "region"],
+      ["market_civilized", "civilized"],
+      ["market_uncivilized", "uncivilized"]
+    ] as const) {
+      G.cardDb[id] = {
+        id,
+        displayName: id,
+        type: suit === "region" ? "region" : "action",
+        cardType: suit === "region" ? "region" : "action",
+        suit,
+        cost: 0,
+        tags: [],
+        effects: []
+      };
+    }
+
+    runEffects({ G, playerId: "0", selfCardId: "market_picker" }, [
+      { trigger: "on_play", op: "acquire_card", source: "market", count: 1 } as any
+    ]);
+
+    expect(G.pendingAcquireChoice).toEqual({
+      playerId: "0",
+      sourceCardId: "market_picker",
+      source: "market",
+      cardIds: ["market_region", "market_civilized", "market_uncivilized"],
+      destination: "hand"
+    });
+    expect(G.players["0"].hand).not.toContain("market_region");
+    expect(G.market).toEqual(["market_region", "market_civilized", "market_uncivilized"]);
+  });
+
   it("acquire_card by suit treats secondary printed suit icons as eligible", () => {
     const G = createInitialState();
     G.market = ["multi_icon_market", "fame_market"];
@@ -1271,7 +1567,7 @@ describe("effectRunner", () => {
 
     expect(G.players["0"].exile).toEqual([]);
     expect(G.players["0"].hand).toContain("exiled_action");
-    expect(G.players["0"].discard).toContain("test_unrest_1");
+    expect(G.players["0"].hand).toContain("test_unrest_1");
     expect(G.unrestPile).toEqual([]);
     expect(G.log.at(-1)?.message).toBe("AcquiredFromExile(exiled_action/destination=hand)");
   });
@@ -1493,7 +1789,7 @@ describe("effectRunner", () => {
     expect(G.log.at(-1)?.message).toBe("ExiledFromSunken(history_civilized)");
   });
 
-  it("exile_card removes a play-area host with its garrisoned cards and collects resources", () => {
+  it("exile_card removes a tokenless play-area host with its garrisoned cards", () => {
     const G = createInitialState();
     G.players["0"].playArea = ["play_region"];
     G.players["0"].resources.materials = 0;
@@ -1520,11 +1816,7 @@ describe("effectRunner", () => {
     };
     G.cardStates = {
       play_region: {
-        resources: { materials: 2 },
         garrisonedCardIds: ["garrisoned_card"]
-      },
-      garrisoned_card: {
-        resources: { knowledge: 1 }
       }
     };
 
@@ -1535,17 +1827,125 @@ describe("effectRunner", () => {
     expect(result).toBe(true);
     expect(G.players["0"].playArea).toEqual([]);
     expect(G.players["0"].exile).toEqual(["play_region", "garrisoned_card"]);
-    expect(G.players["0"].resources.materials).toBe(2);
-    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["0"].resources.materials).toBe(0);
+    expect(G.players["0"].resources.knowledge).toBe(0);
     expect(G.cardStates?.play_region).toBeUndefined();
     expect(G.cardStates?.garrisoned_card).toBeUndefined();
     expect(G.log.at(-1)?.message).toBe("ExiledFromPlayArea(play_region/garrisoned=1)");
   });
 
-  it("exile_card can target a garrisoned card without removing its host", () => {
+  it("exile_card cannot exile a player-owned card with resource tokens", () => {
+    const G = createInitialState();
+    G.players["0"].playArea = ["tokened_region"];
+    G.players["0"].resources.knowledge = 0;
+    G.cardDb.tokened_region = {
+      id: "tokened_region",
+      displayName: "Tokened Region",
+      type: "region",
+      cardType: "region",
+      suit: "region",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardStates = {
+      tokened_region: {
+        resources: { knowledge: 1 }
+      }
+    };
+
+    const result = runEffects({ G, playerId: "0" }, [
+      { trigger: "on_play", op: "exile_card", source: "playArea", cardId: "tokened_region" } as any
+    ]);
+
+    expect(result).toBe(false);
+    expect(G.players["0"].playArea).toEqual(["tokened_region"]);
+    expect(G.players["0"].exile).toEqual([]);
+    expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.cardStates?.tokened_region?.resources).toEqual({ knowledge: 1 });
+    expect(G.log.at(-2)?.message).toBe("ExileSkipped(player_card_has_tokens/tokened_region)");
+    expect(G.log.at(-1)?.message).toBe("ExileFailed(tokened_region)");
+  });
+
+  it("exile_card choices exclude player-owned cards with resource tokens", () => {
+    const G = createInitialState();
+    G.players["0"].playArea = ["tokened_region", "empty_region"];
+    for (const id of ["tokened_region", "empty_region"]) {
+      G.cardDb[id] = {
+        id,
+        displayName: id,
+        type: "region",
+        cardType: "region",
+        suit: "region",
+        cost: 0,
+        tags: [],
+        effects: []
+      };
+    }
+    G.cardStates = {
+      tokened_region: {
+        resources: { materials: 1 }
+      }
+    };
+
+    runEffects({ G, playerId: "0", selfCardId: "exile_picker" }, [
+      { trigger: "on_play", op: "exile_card", source: "playArea", suit: "region" } as any
+    ]);
+
+    expect(G.pendingExileChoice).toEqual({
+      playerId: "0",
+      sourceCardId: "exile_picker",
+      source: "playArea",
+      cardIds: ["empty_region"]
+    });
+  });
+
+  it("exile_card can target a tokenless garrisoned card without removing its host", () => {
     const G = createInitialState();
     G.players["0"].playArea = ["play_region"];
     G.players["0"].resources.knowledge = 0;
+    G.cardDb.play_region = {
+      id: "play_region",
+      displayName: "Play Region",
+      type: "region",
+      cardType: "region",
+      suit: "region",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb.garrisoned_card = {
+      id: "garrisoned_card",
+      displayName: "Garrisoned Card",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardStates = {
+      play_region: {
+        garrisonedCardIds: ["garrisoned_card"]
+      }
+    };
+
+    const result = runEffects({ G, playerId: "0", selfCardId: "garrison_exiler" }, [
+      { trigger: "on_play", op: "exile_card", source: "garrison", cardId: "garrisoned_card" } as any
+    ]);
+
+    expect(result).toBe(true);
+    expect(G.players["0"].playArea).toEqual(["play_region"]);
+    expect(G.cardStates?.play_region?.garrisonedCardIds).toEqual([]);
+    expect(G.players["0"].exile).toEqual(["garrisoned_card"]);
+    expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.cardStates?.garrisoned_card).toBeUndefined();
+    expect(G.log.at(-1)?.message).toBe("ExiledFromGarrison(garrisoned_card/host=play_region)");
+  });
+
+  it("exile_card cannot target a garrisoned card with resource tokens", () => {
+    const G = createInitialState();
+    G.players["0"].playArea = ["play_region"];
     G.cardDb.play_region = {
       id: "play_region",
       displayName: "Play Region",
@@ -1575,17 +1975,52 @@ describe("effectRunner", () => {
       }
     };
 
-    const result = runEffects({ G, playerId: "0", selfCardId: "garrison_exiler" }, [
+    const result = runEffects({ G, playerId: "0", selfCardId: "play_exiler" }, [
       { trigger: "on_play", op: "exile_card", source: "garrison", cardId: "garrisoned_card" } as any
     ]);
 
-    expect(result).toBe(true);
+    expect(result).toBe(false);
     expect(G.players["0"].playArea).toEqual(["play_region"]);
-    expect(G.cardStates?.play_region?.garrisonedCardIds).toEqual([]);
-    expect(G.players["0"].exile).toEqual(["garrisoned_card"]);
-    expect(G.players["0"].resources.knowledge).toBe(1);
-    expect(G.cardStates?.garrisoned_card).toBeUndefined();
-    expect(G.log.at(-1)?.message).toBe("ExiledFromGarrison(garrisoned_card/host=play_region)");
+    expect(G.cardStates?.play_region?.garrisonedCardIds).toEqual(["garrisoned_card"]);
+    expect(G.players["0"].exile).toEqual([]);
+    expect(G.log.at(-2)?.message).toBe("ExileSkipped(player_card_has_tokens/garrisoned_card)");
+    expect(G.log.at(-1)?.message).toBe("ExileFailed(garrisoned_card)");
+  });
+
+  it("exile_card cannot exile a host that would carry a tokened garrisoned card", () => {
+    const G = createInitialState();
+    G.players["0"].playArea = ["play_region"];
+    for (const id of ["play_region", "garrisoned_card"]) {
+      G.cardDb[id] = {
+        id,
+        displayName: id,
+        type: id === "play_region" ? "region" : "action",
+        cardType: id === "play_region" ? "region" : "action",
+        suit: id === "play_region" ? "region" : "civilized",
+        cost: 0,
+        tags: [],
+        effects: []
+      } as any;
+    }
+    G.cardStates = {
+      play_region: {
+        garrisonedCardIds: ["garrisoned_card"]
+      },
+      garrisoned_card: {
+        resources: { knowledge: 1 }
+      }
+    };
+
+    const result = runEffects({ G, playerId: "0", selfCardId: "play_exiler" }, [
+      { trigger: "on_play", op: "exile_card", source: "playArea", cardId: "play_region" } as any
+    ]);
+
+    expect(result).toBe(false);
+    expect(G.players["0"].playArea).toEqual(["play_region"]);
+    expect(G.cardStates?.play_region?.garrisonedCardIds).toEqual(["garrisoned_card"]);
+    expect(G.players["0"].exile).toEqual([]);
+    expect(G.log.at(-2)?.message).toBe("ExileSkipped(garrisoned_card_has_tokens/play_region/garrisoned_card)");
+    expect(G.log.at(-1)?.message).toBe("ExileFailed(play_region)");
   });
 
   it("exile_card can offer a garrisoned-card choice by criteria", () => {
@@ -1849,6 +2284,32 @@ describe("effectRunner", () => {
     expect(G.market).toEqual(["market_refill"]);
     expect(G.marketUnrest.market_refill).toEqual(["test_unrest_2"]);
     expect(G.log.some((entry) => entry.message === "CardGainedFromMarket(market_gain/destination=hand)")).toBe(true);
+  });
+
+  it("collects rulebook-named market resources into canonical player pools", () => {
+    const G = createInitialState();
+    G.market = ["market_gain"];
+    G.marketRefillPool = [];
+    G.marketDecks = undefined;
+    G.marketResources = { market_gain: { progress: 2, population: 1 } as any };
+    G.cardDb.market_gain = {
+      id: "market_gain",
+      displayName: "Market Gain",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+
+    runEffects({ G, playerId: "0" }, [{ trigger: "on_play", op: "gain_card", source: "market", suit: "civilized", count: 1 } as any]);
+
+    expect(G.players["0"].resources.knowledge).toBe(2);
+    expect(G.players["0"].resources.influence).toBe(1);
+    expect((G.players["0"].resources as any).progress).toBeUndefined();
+    expect((G.players["0"].resources as any).population).toBeUndefined();
+    expect(G.marketResources.market_gain).toBeUndefined();
   });
 
   it("take_card moves a matching market card but returns tucked Unrest instead of taking it", () => {
@@ -2179,6 +2640,56 @@ describe("effectRunner", () => {
     expect(G.marketDecks.uncivilizedDeck).toEqual(["visible_tributary_bottom"]);
     expect(G.marketDeckBottomCards.uncivilizedDeck).toBe("visible_tributary_bottom");
     expect(G.marketDecks.mainDeck).toEqual([]);
+  });
+
+  it("break_through for Tributary lets the player choose among visible small-deck bottom cards", () => {
+    const G = createInitialState();
+    G.marketDecks = {
+      mainDeck: ["main_tributary"],
+      regionDeck: ["visible_region_tributary"],
+      uncivilizedDeck: ["visible_uncivilized_tributary"],
+      civilizedDeck: [],
+      tributaryDeck: []
+    };
+    G.marketDeckBottomCards = {
+      regionDeck: "visible_region_tributary",
+      uncivilizedDeck: "visible_uncivilized_tributary"
+    };
+    for (const id of ["visible_region_tributary", "visible_uncivilized_tributary", "main_tributary"]) {
+      G.cardDb[id] = {
+        id,
+        displayName: id,
+        type: "action",
+        cardType: "action",
+        suit: "tributary",
+        setupBannerSuit: "tributary",
+        cost: 0,
+        tags: [],
+        effects: []
+      } as any;
+    }
+
+    runEffects({ G, playerId: "0", selfCardId: "tributary_breaker" }, [
+      { trigger: "on_play", op: "break_through", suit: "tributary", source: "deck", count: 1 } as any
+    ]);
+
+    expect(G.pendingBreakThroughChoice).toEqual({
+      playerId: "0",
+      sourceCardId: "tributary_breaker",
+      source: "deck",
+      suit: "tributary",
+      cardIds: ["visible_region_tributary", "visible_uncivilized_tributary"]
+    });
+    expect(G.players["0"].hand).toEqual([]);
+
+    moves.resolveBreakThroughChoice({ G, ctx: { currentPlayer: "0" } as any }, "visible_uncivilized_tributary");
+
+    expect(G.pendingBreakThroughChoice).toBeUndefined();
+    expect(G.players["0"].hand).toEqual(["visible_uncivilized_tributary"]);
+    expect(G.marketDecks.uncivilizedDeck).toEqual([]);
+    expect(G.marketDeckBottomCards.uncivilizedDeck).toBeUndefined();
+    expect(G.marketDecks.regionDeck).toEqual(["visible_region_tributary"]);
+    expect(G.marketDecks.mainDeck).toEqual(["main_tributary"]);
   });
 
   it("break_through from Market pauses for a new choice when refill creates multiple matches mid-effect", () => {
@@ -2743,7 +3254,7 @@ describe("effectRunner", () => {
     expect(G.log.at(-1)?.message).toBe("FindMissed(accession_card)");
   });
 
-  it("find_card by criteria stops at the first searched zone with eligible cards", () => {
+  it("find_card by criteria searches all listed zones before offering eligible choices", () => {
     const G = createInitialState();
     G.players["0"].hand = ["test_action_foundry_shift"];
     G.players["0"].discard = ["test_action_archive_survey"];
@@ -2764,12 +3275,14 @@ describe("effectRunner", () => {
     expect(G.pendingFindChoice).toEqual({
       playerId: "0",
       sourceCardId: "finder",
-      cardIds: ["test_action_foundry_shift"],
+      cardIds: ["test_action_foundry_shift", "test_action_archive_survey", "test_action_lineage_record"],
       destination: "discard"
     });
     expect(G.players["0"].deck).toEqual(["test_action_scholars_circle"]);
     expect(G.players["0"].nationDeck).toEqual(["test_action_lineage_record"]);
-    expect(G.log.at(-1)?.message).toBe("FindChoicePending(finder/options=1)");
+    expect(G.log.map((entry) => entry.message)).toContain("FindShuffled(deck)");
+    expect(G.log.map((entry) => entry.message)).toContain("FindShuffled(nationDeck)");
+    expect(G.log.at(-1)?.message).toBe("FindChoicePending(finder/options=3)");
   });
 
   it("find_card can explicitly search only History for an exact card", () => {
@@ -2798,6 +3311,105 @@ describe("effectRunner", () => {
     expect(G.players["0"].history).toEqual([]);
     expect(G.players["0"].hand).toEqual(["history_target", "history_target"]);
     expect(G.log.at(-1)?.message).toBe("FindResolved(history_target/history->hand)");
+  });
+
+  it("find_card can move a targeted garrisoned card without moving its host", () => {
+    const G = createInitialState();
+    G.players["0"].playArea = ["host_region"];
+    G.players["0"].discard = [];
+    G.players["0"].resources.goods = 0;
+    G.cardDb.host_region = {
+      id: "host_region",
+      displayName: "Host Region",
+      type: "region",
+      cardType: "region",
+      suit: "region",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb.garrisoned_target = {
+      id: "garrisoned_target",
+      displayName: "Garrisoned Target",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardStates = {
+      host_region: { garrisonedCardIds: ["garrisoned_target"] },
+      garrisoned_target: { resources: { goods: 1 } }
+    };
+
+    runEffects({ G, playerId: "0" }, [{
+      trigger: "on_play",
+      op: "find_card",
+      cardId: "garrisoned_target",
+      sourceZones: ["garrison"],
+      destination: "discard"
+    } as any]);
+
+    expect(G.players["0"].playArea).toEqual(["host_region"]);
+    expect(G.cardStates?.host_region?.garrisonedCardIds).toEqual([]);
+    expect(G.players["0"].discard).toEqual(["garrisoned_target"]);
+    expect(G.players["0"].resources.goods).toBe(1);
+    expect(G.cardStates?.garrisoned_target).toBeUndefined();
+    expect(G.log.at(-1)?.message).toBe("FindResolved(garrisoned_target/garrison->discard)");
+  });
+
+  it("find_card by criteria can offer and resolve a garrisoned-card choice", () => {
+    const G = createInitialState();
+    G.players["0"].playArea = ["host_region"];
+    G.cardDb.host_region = {
+      id: "host_region",
+      displayName: "Host Region",
+      type: "region",
+      cardType: "region",
+      suit: "region",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    for (const [id, suit] of [["garrisoned_civilized", "civilized"], ["garrisoned_uncivilized", "uncivilized"]] as const) {
+      G.cardDb[id] = {
+        id,
+        displayName: id,
+        type: "action",
+        cardType: "action",
+        suit,
+        cost: 0,
+        tags: [],
+        effects: []
+      };
+    }
+    G.cardStates = {
+      host_region: { garrisonedCardIds: ["garrisoned_civilized", "garrisoned_uncivilized"] }
+    };
+
+    runEffects({ G, playerId: "0", selfCardId: "finder" }, [{
+      trigger: "on_play",
+      op: "find_card",
+      suit: "civilized",
+      sourceZones: ["garrison"],
+      destination: "hand"
+    } as any]);
+
+    expect(G.pendingFindChoice).toEqual({
+      playerId: "0",
+      sourceCardId: "finder",
+      cardIds: ["garrisoned_civilized"],
+      destination: "hand"
+    });
+
+    (moves as any).resolveFindChoice({ G, ctx: { currentPlayer: "0" } as any }, "garrisoned_civilized");
+
+    expect(G.pendingFindChoice).toBeUndefined();
+    expect(G.players["0"].playArea).toEqual(["host_region"]);
+    expect(G.cardStates?.host_region?.garrisonedCardIds).toEqual(["garrisoned_uncivilized"]);
+    expect(G.players["0"].hand).toEqual(["garrisoned_civilized"]);
+    expect(G.log.at(-1)?.message).toBe("FindChoiceResolved(finder/garrisoned_civilized->hand)");
   });
 
   it("find_card treats a nation History replacement zone as History", () => {
@@ -3247,6 +3859,50 @@ describe("effectRunner", () => {
     expect(G.log.at(-1)?.message).toBe("ChoicePending(test_action_forum_debate/options=1)");
   });
 
+  it("does not offer choose_one resource-gain options when the finite supply is empty", () => {
+    const G = createInitialState();
+    G.resourceSupply = { materials: 0, knowledge: 0, influence: 1, unrest: 0, goods: 0 };
+
+    runEffects({ G, playerId: "0", selfCardId: "test_action_forum_debate" }, [{
+      trigger: "on_play",
+      op: "choose_one",
+      choices: [
+        [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }],
+        [{ trigger: "on_play", op: "gain_resource", resource: "influence", amount: 1 }]
+      ]
+    }]);
+
+    expect(G.pendingChoice).toEqual({
+      playerId: "0",
+      sourceCardId: "test_action_forum_debate",
+      choices: [[{ trigger: "on_play", op: "gain_resource", resource: "influence", amount: 1 }]]
+    });
+    expect(G.log.at(-1)?.message).toBe("ChoicePending(test_action_forum_debate/options=1)");
+  });
+
+  it("does not offer choose_one resource movement options that would move zero tokens", () => {
+    const G = createInitialState();
+    G.players["0"].resources.materials = 0;
+    G.players["1"].resources.goods = 0;
+
+    runEffects({ G, playerId: "0", selfCardId: "test_action_forum_debate" }, [{
+      trigger: "on_play",
+      op: "choose_one",
+      choices: [
+        [{ trigger: "on_play", op: "return_resource", resource: "materials", amount: 1 }],
+        [{ trigger: "on_play", op: "steal_resource", fromPlayerId: "1", resource: "goods", amount: 1 }],
+        [{ trigger: "on_play", op: "gain_resource", resource: "influence", amount: 1 }]
+      ]
+    } as any]);
+
+    expect(G.pendingChoice).toEqual({
+      playerId: "0",
+      sourceCardId: "test_action_forum_debate",
+      choices: [[{ trigger: "on_play", op: "gain_resource", resource: "influence", amount: 1 }]]
+    });
+    expect(G.log.at(-1)?.message).toBe("ChoicePending(test_action_forum_debate/options=1)");
+  });
+
   it("stops resolving later effects after a choose_one creates a pending decision", () => {
     const G = createInitialState();
 
@@ -3429,6 +4085,186 @@ describe("effectRunner", () => {
         { trigger: "on_play", op: "spend_resource", resource: "materials", amount: 2 },
         { trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }
       ]
+    } as any]);
+
+    expect(G.pendingChoice).toEqual({
+      playerId: "0",
+      sourceCardId: "test_action_optional",
+      choices: [[]]
+    });
+    expect(G.log.at(-1)?.message).toBe("OptionalPending(test_action_optional/options=1)");
+  });
+
+  it("offers only the skip path for optional effects whose non-skip text cannot resolve", () => {
+    const G = createInitialState();
+    G.players["0"].deck = [];
+    G.players["0"].discard = [];
+    G.players["0"].nationDeck = [];
+    G.players["0"].developmentArea = [];
+
+    runEffects({ G, playerId: "0", selfCardId: "test_action_optional" }, [{
+      trigger: "on_play",
+      op: "optional",
+      effects: [{ trigger: "on_play", op: "draw", count: 1 }]
+    } as any]);
+
+    expect(G.pendingChoice).toEqual({
+      playerId: "0",
+      sourceCardId: "test_action_optional",
+      choices: [[]]
+    });
+    expect(G.log.at(-1)?.message).toBe("OptionalPending(test_action_optional/options=1)");
+  });
+
+  it("offers only the skip path for optional resource gain when the finite supply is empty", () => {
+    const G = createInitialState();
+    G.resourceSupply = { materials: 0, knowledge: 0, influence: 0, unrest: 0, goods: 0 };
+
+    runEffects({ G, playerId: "0", selfCardId: "test_action_optional" }, [{
+      trigger: "on_play",
+      op: "optional",
+      effects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }]
+    } as any]);
+
+    expect(G.pendingChoice).toEqual({
+      playerId: "0",
+      sourceCardId: "test_action_optional",
+      choices: [[]]
+    });
+    expect(G.log.at(-1)?.message).toBe("OptionalPending(test_action_optional/options=1)");
+  });
+
+  it("offers only the skip path for optional Break through when no card or finite fallback Materials are available", () => {
+    const G = createInitialState();
+    G.resourceSupply = { materials: 0 };
+    G.marketDecks = { mainDeck: [], regionDeck: [], uncivilizedDeck: [], civilizedDeck: [], tributaryDeck: [] };
+    G.marketDeckBottomCards = {};
+
+    runEffects({ G, playerId: "0", selfCardId: "test_action_optional" }, [{
+      trigger: "on_play",
+      op: "optional",
+      effects: [{ trigger: "on_play", op: "break_through", suit: "civilized", source: "deck", count: 1 }]
+    } as any]);
+
+    expect(G.pendingChoice).toEqual({
+      playerId: "0",
+      sourceCardId: "test_action_optional",
+      choices: [[]]
+    });
+    expect(G.log.at(-1)?.message).toBe("OptionalPending(test_action_optional/options=1)");
+  });
+
+  it("offers only the skip path for optional Take Unrest when all named recipients are invalid", () => {
+    const G = createInitialState();
+    G.unrestPile = ["optional_targeted_unrest"];
+    G.cardDb.optional_targeted_unrest = {
+      id: "optional_targeted_unrest",
+      displayName: "Unrest",
+      type: "unrest",
+      cardType: "unrest",
+      suit: "unrest",
+      cost: 0,
+      tags: ["unrest"],
+      effects: []
+    };
+
+    runEffects({ G, playerId: "0", selfCardId: "test_action_optional" }, [{
+      trigger: "on_play",
+      op: "optional",
+      effects: [{ trigger: "on_play", op: "take_unrest", targetPlayerIds: ["9"], count: 1 }]
+    } as any]);
+
+    expect(G.pendingChoice).toEqual({
+      playerId: "0",
+      sourceCardId: "test_action_optional",
+      choices: [[]]
+    });
+    expect(G.log.at(-1)?.message).toBe("OptionalPending(test_action_optional/options=1)");
+  });
+
+  it("offers only the skip path for optional resource return when no token can be returned", () => {
+    const G = createInitialState();
+    G.players["0"].resources.materials = 0;
+
+    runEffects({ G, playerId: "0", selfCardId: "test_action_optional" }, [{
+      trigger: "on_play",
+      op: "optional",
+      effects: [{ trigger: "on_play", op: "return_resource", resource: "materials", amount: 1 }]
+    } as any]);
+
+    expect(G.pendingChoice).toEqual({
+      playerId: "0",
+      sourceCardId: "test_action_optional",
+      choices: [[]]
+    });
+    expect(G.log.at(-1)?.message).toBe("OptionalPending(test_action_optional/options=1)");
+  });
+
+  it("offers only the skip path for optional zero-token resource movement", () => {
+    const G = createInitialState();
+    G.players["0"].resources.materials = 1;
+
+    runEffects({ G, playerId: "0", selfCardId: "test_action_optional" }, [{
+      trigger: "on_play",
+      op: "optional",
+      effects: [{ trigger: "on_play", op: "return_resource", resource: "materials", amount: 0 }]
+    } as any]);
+
+    expect(G.pendingChoice).toEqual({
+      playerId: "0",
+      sourceCardId: "test_action_optional",
+      choices: [[]]
+    });
+    expect(G.log.at(-1)?.message).toBe("OptionalPending(test_action_optional/options=1)");
+  });
+
+  it("offers only the skip path for optional zero-count effects", () => {
+    const G = createInitialState();
+    G.players["0"].deck = ["test_action_foundry_shift"];
+
+    runEffects({ G, playerId: "0", selfCardId: "test_action_optional" }, [{
+      trigger: "on_play",
+      op: "optional",
+      effects: [{ trigger: "on_play", op: "draw", count: 0 }]
+    } as any]);
+
+    expect(G.pendingChoice).toEqual({
+      playerId: "0",
+      sourceCardId: "test_action_optional",
+      choices: [[]]
+    });
+    expect(G.log.at(-1)?.message).toBe("OptionalPending(test_action_optional/options=1)");
+  });
+
+  it("offers only the skip path for optional Take-card text with a non-market source", () => {
+    const G = createInitialState();
+    G.cardDb.exiled_civilized = {
+      id: "exiled_civilized",
+      displayName: "Exiled Civilized",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb.market_civilized = {
+      id: "market_civilized",
+      displayName: "Market Civilized",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.players["0"].exile = ["exiled_civilized"];
+    G.market = ["market_civilized"];
+
+    runEffects({ G, playerId: "0", selfCardId: "test_action_optional" }, [{
+      trigger: "on_play",
+      op: "optional",
+      effects: [{ trigger: "on_play", op: "take_card", source: "exile", suit: "civilized", count: 1 }]
     } as any]);
 
     expect(G.pendingChoice).toEqual({

@@ -1,4 +1,5 @@
 import type { Card, GameState, ResourceName } from "../game/state";
+import { addResourceAmount } from "../game/resources";
 import { deckForSuit, drawMarketDeckCard, refillMarketSlot } from "../game/marketRefill";
 import { triggerCollapse } from "../game/scoring";
 import { triggerScoringIfMainDeckEmpty } from "../game/scoringTriggers";
@@ -11,33 +12,49 @@ type BotAcquireCandidate =
   | { source: "market"; cardId: string; slotIndex: number }
   | { source: "exile"; cardId: string; ownerId: string; exileIndex: number; optionIndex: number }
   | { source: "global_exile"; cardId: string; exileIndex: number; optionIndex: number };
-type BotBreakThroughOptions = { discardGained?: boolean; resolveGained?: (cardId: string) => void };
+type BotBreakThroughOptions = { discardGained?: boolean; resolveGained?: (cardId: string) => void; randomNumber?: () => number };
+
+function shuffleWithRandom<T>(items: T[], randomNumber?: () => number): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const roll = randomNumber ? randomNumber() : 0;
+    const j = Math.floor(roll * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+function capPositiveCardVp(value: number): number {
+  return value > 0 ? Math.min(value, 10) : value;
+}
 
 function cardVpForBot(card: Card | undefined): number {
   const vp = card?.vp as unknown;
-  if (typeof vp === "number") return vp;
+  if (typeof vp === "number") return capPositiveCardVp(vp);
   if (typeof vp === "object" && vp !== null) {
     const { mode, value, trueValue, falseValue } = vp as { mode?: string; value?: unknown; trueValue?: unknown; falseValue?: unknown };
     const numericValue = typeof value === "number" ? value : 0;
     if (mode === "none") return 0;
     if (mode === "conditional" && (typeof trueValue === "number" || typeof falseValue === "number")) {
-      return Math.max(
+      return capPositiveCardVp(Math.max(
         typeof trueValue === "number" ? trueValue : numericValue,
         typeof falseValue === "number" ? falseValue : numericValue
-      );
+      ));
     }
-    if (mode === "conditional") return numericValue || 5;
-    if (mode === "variable") return numericValue || 5;
+    if (mode === "conditional") return capPositiveCardVp(numericValue || 5);
+    if (mode === "variable") return capPositiveCardVp(numericValue || 5);
     if (mode === "negative") return -Math.abs(numericValue);
-    return numericValue;
+    return capPositiveCardVp(numericValue);
   }
   return 0;
 }
 
 function marketTokenCount(G: GameState, cardId: string): number {
-  const resources = Object.values(G.marketResources?.[cardId] ?? {}).reduce((sum, amount) => sum + (amount ?? 0), 0);
-  const unrest = G.marketUnrest?.[cardId]?.length ?? 0;
-  return resources + unrest;
+  return Object.values(G.marketResources?.[cardId] ?? {}).reduce((sum, amount) => sum + (amount ?? 0), 0);
+}
+
+function marketCardVpForBot(G: GameState, cardId: string): number {
+  return cardVpForBot(G.cardDb[cardId]) + marketTokenCount(G, cardId);
 }
 
 function matchesFilter(G: GameState, cardId: string, filter?: BotAcquireFilter): boolean {
@@ -59,7 +76,7 @@ function chooseBotMarketCard(G: GameState, filter?: BotAcquireFilter): { cardId:
     .map((cardId, slotIndex) => ({ cardId, slotIndex }))
     .filter(({ cardId }) => matchesFilter(G, cardId, filter))
     .sort((a, b) => {
-      const vpDiff = cardVpForBot(G.cardDb[b.cardId]) - cardVpForBot(G.cardDb[a.cardId]);
+      const vpDiff = marketCardVpForBot(G, b.cardId) - marketCardVpForBot(G, a.cardId);
       if (vpDiff !== 0) return vpDiff;
       const tokenDiff = marketTokenCount(G, b.cardId) - marketTokenCount(G, a.cardId);
       if (tokenDiff !== 0) return tokenDiff;
@@ -91,7 +108,8 @@ function chooseBotAcquireCard(G: GameState, filter: BotAcquireFilter | undefined
   }
 
   return candidates.sort((a, b) => {
-    const vpDiff = cardVpForBot(G.cardDb[b.cardId]) - cardVpForBot(G.cardDb[a.cardId]);
+    const valueForChoice = (candidate: BotAcquireCandidate) => candidate.source === "market" ? marketCardVpForBot(G, candidate.cardId) : cardVpForBot(G.cardDb[candidate.cardId]);
+    const vpDiff = valueForChoice(b) - valueForChoice(a);
     if (vpDiff !== 0) return vpDiff;
     const tokenDiff = (b.source === "market" ? marketTokenCount(G, b.cardId) : 0) - (a.source === "market" ? marketTokenCount(G, a.cardId) : 0);
     if (tokenDiff !== 0) return tokenDiff;
@@ -138,7 +156,7 @@ function gainMarketResources(G: GameState, bot: BotState, cardId: string): void 
   const resources = G.marketResources?.[cardId];
   if (!resources) return;
   for (const [resource, amount] of Object.entries(resources) as [ResourceName, number | undefined][]) {
-    bot.resources[resource] = (bot.resources[resource] ?? 0) + (amount ?? 0);
+    addResourceAmount(bot.resources, resource, amount ?? 0);
   }
   delete G.marketResources?.[cardId];
 }
@@ -228,14 +246,14 @@ export function botBreakThrough(G: GameState, bot: BotState, filter?: BotAcquire
       if (!cardId) break;
       if (cardHasSuitIcon(G.cardDb[cardId], suit as any)) {
         placeBotGainedCards(bot, [cardId], options);
-        mainDeck.unshift(...missed);
+        mainDeck.splice(0, mainDeck.length, ...shuffleWithRandom([...mainDeck, ...missed], options?.randomNumber));
         triggerScoringIfMainDeckEmpty(G, bot.botId);
         G.log.push({ round: G.round, playerId: bot.botId, message: `BotBreakThroughMainDeck(${cardId}/${suit}/revealed=${missed.length})` });
         return true;
       }
       missed.push(cardId);
     }
-    mainDeck.unshift(...missed);
+    mainDeck.splice(0, mainDeck.length, ...shuffleWithRandom(missed, options?.randomNumber));
   }
 
   const gained = takeResourceFromSupply(G, "materials", 2);

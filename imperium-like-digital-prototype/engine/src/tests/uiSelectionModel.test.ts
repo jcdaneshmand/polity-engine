@@ -217,6 +217,12 @@ describe("selection model", () => {
     expect(play?.enabled).toBe(false);
     expect(play?.reason).toBe("Requires empire State");
   });
+  it("enables play actions when any multi-state requirement matches the active State",()=> {
+    const multiState={...G,cardDb:{...G.cardDb,c1:{...G.cardDb.c1,stateRequirement:"barbarian|empire"},s1:{id:"s1",displayName:"Barbarian",suit:"uncivilized",tags:["barbarian"]}},players:{"0":{...G.players["0"],hand:["c1"],actionsRemaining:1,stateArea:["s1"]}}};
+    const play=getAvailableActionsForSelection({kind:"hand_card",id:"c1"},multiState,ctx).find(a=>a.action==="play");
+    expect(play?.enabled).toBe(true);
+    expect(play?.reason).toBeUndefined();
+  });
   it("pending choice actions take priority",()=> {
     const acts=getAvailableActionsForSelection(null,{...G,pendingChoice:{playerId:"0",sourceCardId:"c1",choices:[[{op:"gain_resource",resource:"knowledge",amount:1}],[{op:"draw",count:2}]]}},ctx);
     expect(acts.map((a)=>a.action)).toEqual(["resolveChoice","resolveChoice","endTurn"]);
@@ -348,6 +354,26 @@ describe("selection model", () => {
     expect(acts.map((a)=>a.action)).toEqual(["resolveReturnUnrestChoice","endTurn"]);
     expect(acts[0]).toMatchObject({ label:"Return Unrest", enabled:true, cardId:"u1" });
     expect(acts[1].enabled).toBe(false);
+  });
+  it("pending selected discard-cost actions expose card combinations",()=> {
+    const withDiscard = {
+      ...G,
+      cardDb: {
+        ...G.cardDb,
+        c2:{id:"c2",displayName:"Card2",type:"action",cardType:"action",suit:"civilized"},
+        c3:{id:"c3",displayName:"Card3",type:"action",cardType:"action",suit:"civilized"}
+      },
+      pendingDiscardChoice:{playerId:"0",sourceCardId:"discard_source",cardIds:["c1","c2","c3"],count:2}
+    };
+    const acts=getAvailableActionsForSelection(null,withDiscard,ctx);
+    expect(getPendingUiState(withDiscard,ctx)).toMatchObject({
+      title:"Pending Discard",
+      detail:"Choose 2 cards from 3 options"
+    });
+    expect(acts.map((a)=>a.action)).toEqual(["resolveDiscardChoice","resolveDiscardChoice","resolveDiscardChoice","endTurn"]);
+    expect(acts.map((a)=>a.cardIds)).toEqual([["c1","c2"],["c1","c3"],["c2","c3"],undefined]);
+    expect(acts[0]).toMatchObject({ label:"Discard Card1, Card2", enabled:true });
+    expect(acts[3].enabled).toBe(false);
   });
   it("pending Place On Deck choice actions expose eligible cards",()=> {
     const acts=getAvailableActionsForSelection(null,{...G,pendingPlaceOnDeckChoice:{playerId:"0",sourceCardId:"place_source",sourceZone:"discard",cardIds:["c1","m1"]}},ctx);

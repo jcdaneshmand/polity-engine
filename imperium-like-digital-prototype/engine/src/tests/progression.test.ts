@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createInitialState as createInitialStateFromEngine } from "../game/initialState";
 import { createInitialGameStateFromPipeline } from "../setup/setupPipeline";
-import { resolveAcquireChoice, resolveBreakThroughChoice, resolveChoice, resolveDevelopmentChoice, resolveDrawChoice, resolveExileChoice, resolveFindChoice, resolveGarrisonChoice, resolveGiveCardChoice, resolveLookOrderChoice, resolveMarketCardChoice, resolvePlaceOnDeckChoice, resolveRegionChoice, resolveReturnUnrestChoice, resolveShortGameDevelopmentExileChoice, resolveSwapChoice, resolveTradeChoice, skipDevelopmentChoice } from "../game/moves";
+import { resolveAcquireChoice, resolveBreakThroughChoice, resolveChoice, resolveDevelopmentChoice, resolveDrawChoice, resolveExileChoice, resolveFindChoice, resolveGarrisonChoice, resolveGiveCardChoice, resolveLookOrderChoice, resolveMarketCardChoice, resolvePlaceOnDeckChoice, resolveReactiveExhaustChoice, resolveRegionChoice, resolveReturnUnrestChoice, resolveShortGameDevelopmentExileChoice, resolveSwapChoice, resolveTradeChoice, skipDevelopmentChoice } from "../game/moves";
 import { currentStateMatches } from "../game/stateMatching";
 import { continuePendingReshuffleLifecycle, drawCardWithReshuffleLifecycle } from "../game/zones";
 import type { GameOptions } from "../options/gameOptions";
@@ -198,7 +198,7 @@ describe("reshuffle progression", () => {
 
     expect(p.nationDeck).toEqual([]);
     expect(p.hand).toContain("test_action_lineage_record");
-    expect(p.progressionTokens?.developmentArea).toBe(1);
+    expect(p.progressionTokens?.nationDeck).toBe(1);
     expect(p.exhaustTokensAvailable).toBe(p.exhaustTokensBase - 1);
   });
 
@@ -215,8 +215,25 @@ describe("reshuffle progression", () => {
     expect(p.hand).toEqual(["test_action_lineage_record"]);
     expect(p.nationDeck).toEqual([]);
     expect(p.discard).toEqual([]);
-    expect(p.progressionTokens?.developmentArea).toBe(1);
+    expect(p.progressionTokens?.nationDeck).toBe(1);
     expect(G.log.some((entry) => entry.message === "NationCardAddedOnReshuffle(test_action_lineage_record)")).toBe(true);
+  });
+
+  it("places the reshuffle progression marker on the Nation deck when adding the last Nation card", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = [];
+    p.nationDeck = ["test_action_lineage_record"];
+    p.developmentArea = ["test_action_scholars_circle"];
+    p.exhaustTokensAvailable = 1;
+    p.progressionTokens = { nationDeck: 0, developmentArea: 0 };
+
+    drawCardWithReshuffleLifecycle(G, "0", () => 0);
+
+    expect(p.progressionTokens).toEqual({ nationDeck: 1, developmentArea: 0 });
+    expect(p.exhaustTokensAvailable).toBe(0);
+    expect(p.hand).toEqual(["test_action_lineage_record"]);
   });
 
   it("can offer development on reshuffle even if discard starts empty", () => {
@@ -493,7 +510,7 @@ describe("reshuffle progression", () => {
     expect(p.developmentArea).toEqual(["test_action_scholars_circle"]);
     expect(p.accessionCardId).toBeUndefined();
     expect(p.stateArea[0]).toBe("civilized_state");
-    expect(p.progressionTokens?.developmentArea).toBe(1);
+    expect(p.progressionTokens?.nationDeck).toBe(1);
   });
 
   it("short game accession pauses reshuffle for a Development removal choice", () => {
@@ -705,7 +722,7 @@ describe("reshuffle progression", () => {
     expect(p.deck).toEqual(["test_action_archive_survey"]);
     expect(p.discard).toEqual([]);
     expect(p.developmentArea).toEqual(["test_action_scholars_circle"]);
-    expect(p.progressionTokens?.developmentArea).toBe(1);
+    expect(p.progressionTokens?.nationDeck).toBe(1);
   });
 
   it("can offer development for no-Nation-deck nations that develop from the start", () => {
@@ -1329,6 +1346,63 @@ describe("reshuffle progression", () => {
     expect(G.pendingChoice).toBeUndefined();
     expect(p.resources.knowledge).toBe(1);
     expect(p.deck).toEqual([]);
+    expect(p.hand).toEqual(["test_action_archive_survey"]);
+    expect(G.log.some((entry) => entry.message === "Nation hook after_reshuffle #0 resolved.")).toBe(true);
+  });
+
+  it("pauses the interrupted draw when after-reshuffle creates a reactive Exhaust choice", () => {
+    const G = createInitialState({ usePrivateData: false });
+    const p = G.players["0"];
+    const exhaustCardId = "after_reshuffle_reactive_exhaust";
+    p.deck = [];
+    p.discard = ["test_action_archive_survey"];
+    p.nationDeck = [];
+    p.developmentArea = [];
+    p.playArea = [exhaustCardId];
+    p.exhaustTokensAvailable = 1;
+    G.cardDb[exhaustCardId] = {
+      id: exhaustCardId,
+      displayName: "After Reshuffle Reactive Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_exhaust",
+        op: "gain_resource",
+        resource: "influence",
+        amount: 1,
+        reactive: { trigger: "after_gain_resource", resource: "knowledge" }
+      } as any]
+    };
+    G.activeNationRulesets = {
+      "0": {
+        hookRules: [{
+          trigger: "after_reshuffle",
+          effects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }]
+        }]
+      }
+    } as any;
+
+    const drawn = drawCardWithReshuffleLifecycle(G, "0", () => 0);
+
+    expect(drawn).toBeNull();
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: [exhaustCardId],
+      resolvingPlayerId: "0",
+      trigger: "after_gain_resource",
+      resource: "knowledge"
+    });
+    expect(p.deck).toEqual(["test_action_archive_survey"]);
+    expect(p.hand).toEqual([]);
+
+    resolveReactiveExhaustChoice({ G, ctx, random: { Number: () => 0 } }, exhaustCardId);
+
+    expect(G.pendingReactiveExhaustChoice).toBeUndefined();
+    expect(p.resources.knowledge).toBe(1);
+    expect(p.resources.influence).toBe(1);
     expect(p.hand).toEqual(["test_action_archive_survey"]);
     expect(G.log.some((entry) => entry.message === "Nation hook after_reshuffle #0 resolved.")).toBe(true);
   });

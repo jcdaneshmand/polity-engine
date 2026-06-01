@@ -18,10 +18,20 @@ function optionalRows(path: string | undefined): Array<Record<string, string>> {
 }
 
 const nationPath = arg("--nations") ?? "private-card-data/imperium_nations_private.csv";
+const cardPath = arg("--cards") ?? "private-card-data/imperium_cards_private.csv";
 const rulesetPath = arg("--rulesets") ?? "private-card-data/imperium_nation_rulesets_private.csv";
 const strategyPath = arg("--strategy") ?? "private-card-data/imperium_nation_strategy_private.csv";
 const botTablesPath = arg("--bot-tables") ?? "private-card-data/imperium_bot_state_tables_private.csv";
 const botTradePath = arg("--bot-trade") ?? "private-card-data/imperium_bot_trade_routes_private.csv";
+const sources = [
+  ["cards", cardPath],
+  ["nations", nationPath],
+  ["rulesets", rulesetPath],
+  ["strategy", strategyPath],
+  ["bot-tables", botTablesPath],
+  ["bot-trade", botTradePath],
+] as const;
+const missingSources = sources.filter(([, sourcePath]) => !fs.existsSync(sourcePath));
 
 const nations = optionalRows(nationPath).map((row) => normalizeNation(row as any));
 const rulesets = optionalRows(rulesetPath).map((row) => normalizeNationRuleset(row as any));
@@ -60,4 +70,8 @@ const report = buildPrivateDataCompletenessReport({
   botTradeRoutesTables
 });
 
+if (missingSources.length > 0) {
+  process.stdout.write("Missing private data sources:\n");
+  for (const [label, sourcePath] of missingSources) process.stdout.write(`- ${label}: ${sourcePath}\n`);
+}
 process.stdout.write(formatPrivateDataCompletenessReport(report));

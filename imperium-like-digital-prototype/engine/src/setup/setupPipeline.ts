@@ -20,6 +20,7 @@ import { runNationHooks } from "../nations/nationRulesetHooks";
 import type { NationHookTrigger, NationRuleset, NationRulesetApplicationReport } from "../nations/nationRulesetTypes";
 import { activateState } from "../game/stateMatching";
 import { moveCardsToHistoryDestination } from "../game/history";
+import { resourceAmount, setResourceAmount } from "../game/resources";
 import type { PrivateDataBundle } from "./privateDataBundle";
 import { recordById } from "./privateDataBundle";
 
@@ -282,14 +283,25 @@ function isNationCompatibleWithOptions(nation: NationDefinition, options: GameOp
     && !nation.disallowedModes?.includes(options.mode);
 }
 
+function defaultNationRuleset(nation: NationDefinition): NationRuleset {
+  return { nationId: nation.id, displayName: nation.displayName, rulesetTags:["default_nation_deck"], requiredExpansions:[], setupOverrides:[], zoneOverrides:[], stateOverrides:[], reshuffleOverrides:[], cleanupOverrides:[], solsticeOverrides:[], scoringOverrides:[], collapseOverrides:[], botOverrides:[], shortGameOverrides:[], hookRules:[], implemented:false, tested:false };
+}
+
+function isNationRulesetCompatibleWithOptions(nation: NationDefinition, rulesetDb: Record<string, NationRuleset>, options: GameOptions): boolean {
+  const ruleset = getNationRuleset(rulesetDb, nation.id) ?? defaultNationRuleset(nation);
+  return validateNationRulesetCompatibility(nation, ruleset, options).length === 0;
+}
+
 function resolveSoloBotNationId(args: {
   requestedBotNationId?: string;
   nationDb: Record<string, NationDefinition>;
+  rulesetDb: Record<string, NationRuleset>;
   options: GameOptions;
   randomSeed?: string;
 }): string {
   const compatibleNationIds = Object.values(args.nationDb)
     .filter((nation) => isNationCompatibleWithOptions(nation, args.options))
+    .filter((nation) => isNationRulesetCompatibleWithOptions(nation, args.rulesetDb, args.options))
     .map((nation) => nation.id);
   if (!compatibleNationIds.length) throw new Error("No compatible nations available for solo bot.");
   if (!args.requestedBotNationId || args.requestedBotNationId === "random") {
@@ -298,6 +310,7 @@ function resolveSoloBotNationId(args: {
   const requested = args.nationDb[args.requestedBotNationId];
   if (!requested) throw new Error(`Solo bot nation not found: ${args.requestedBotNationId}`);
   if (!isNationCompatibleWithOptions(requested, args.options)) throw new Error(`Solo bot nation ${args.requestedBotNationId} is incompatible with the selected options.`);
+  if (!isNationRulesetCompatibleWithOptions(requested, args.rulesetDb, args.options)) throw new Error(`Solo bot nation ${args.requestedBotNationId} is incompatible with the selected ruleset options.`);
   return args.requestedBotNationId;
 }
 
@@ -324,7 +337,7 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   const setupReport: NonNullable<GameState["setupReport"]> = { delayedAggressiveCount:0, usedQuickSetup:false, shortGameExiled:0, shortGameNationAdvanced:0, practiceModeExiled:0 };
   const setupRandom = seededRandom(args.randomSeed);
   const soloBotNationId = options.mode === "solo"
-    ? resolveSoloBotNationId({ requestedBotNationId: args.soloBotNationId, nationDb: args.nationDb, options, randomSeed: args.randomSeed })
+    ? resolveSoloBotNationId({ requestedBotNationId: args.soloBotNationId, nationDb: args.nationDb, rulesetDb, options, randomSeed: args.randomSeed })
     : undefined;
   const players: GameState["players"] = {};
   const extraUnrestSupplyCardIds: string[] = [];
@@ -392,11 +405,11 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
           setupReport.shortGameNationAdvanced += advancedNationCards.length;
         }
         if (ov.op === "remove_starting_resource") {
-          player.resources[ov.resource] = Math.max(0, (player.resources[ov.resource] ?? 0) - ov.count);
+          setResourceAmount(player.resources, ov.resource, Math.max(0, resourceAmount(player.resources, ov.resource) - ov.count));
         }
         if (ov.op === "remove_starting_resources") {
           ov.resources.forEach((resource) => {
-            player.resources[resource] = 0;
+            setResourceAmount(player.resources, resource, 0);
           });
         }
         if (ov.op === "develop_one_remove_one_development") {

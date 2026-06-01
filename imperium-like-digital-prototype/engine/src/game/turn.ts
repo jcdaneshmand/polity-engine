@@ -10,6 +10,7 @@ import { startPracticeMarketExileChoice, tickPracticeClock } from "../solo/pract
 import { ensureCleanupMarketResourcePlaced, startCleanupMarketResourceChoice } from "./marketResources";
 import { collectAndClearCardStateToPlayer, collectCardResourcesToPlayer, detachGarrisonedCards } from "./regions";
 import { activateState, currentStateMatches, stateCardMatches, stateCardSupports, syncPlayerStateCardStats } from "./stateMatching";
+import { resourceAmount } from "./resources";
 
 function logOverride(G: GameState, playerId: string, nationId: string, category: string, op: string): void {
   G.log.push({ round: G.round, playerId, message: `NationRulesetApplied(${nationId}/${category}/${op})` });
@@ -107,6 +108,7 @@ function pendingInterruption(G: GameState): string | undefined {
   if (G.pendingDevelopmentChoice) return "pending_development_choice";
   if (G.pendingShortGameDevelopmentExileChoice) return "pending_short_game_development_exile_choice";
   if (G.pendingTradeChoice) return "pending_trade_choice";
+  if (G.pendingDiscardChoice) return "pending_discard_choice";
   if (G.pendingReturnUnrestChoice) return "pending_return_unrest_choice";
   if (G.pendingPlaceOnDeckChoice) return "pending_place_on_deck_choice";
   if (G.pendingGiveCardChoice) return "pending_give_card_choice";
@@ -155,6 +157,7 @@ function solsticeEffectsNeedPlayerOrder(G: GameState, cardIds: string[], phase: 
     "return_resource",
     "steal_resource",
     "discard_random",
+    "discard_cards",
     "take_unrest",
     "trigger_scoring",
     "trade",
@@ -253,7 +256,7 @@ function applyEndOfSolsticeRemovals(G: GameState, playerId: string, ruleset: Nat
   for (const ov of ruleset.solsticeOverrides ?? []) {
     if (ov.op !== "remove_play_card_and_nation_deck_if_resource_empty") continue;
     if (ov.state && !currentStateMatches(G, playerId, ov.state)) continue;
-    if ((p.resources[ov.resource] ?? 0) > 0) continue;
+    if (resourceAmount(p.resources, ov.resource) > 0) continue;
     const playIndex = p.playArea.indexOf(ov.cardId);
     if (playIndex < 0) continue;
     const [removedCardId] = p.playArea.splice(playIndex, 1);

@@ -8,22 +8,26 @@ import { initializeBotSlots } from "./botSlots";
 import type { BotState } from "./botTypes";
 import type { BotStateTable } from "./botStateTableTypes";
 
+function capPositiveCardVp(value: number): number {
+  return value > 0 ? Math.min(value, 10) : value;
+}
+
 function cardVpValue(card: Card | undefined): number {
   const vp = card?.vp as unknown;
-  if (typeof vp === "number") return vp;
+  if (typeof vp === "number") return capPositiveCardVp(vp);
   if (vp && typeof vp === "object") {
     const { mode, value, trueValue, falseValue } = vp as { mode?: string; value?: unknown; trueValue?: unknown; falseValue?: unknown };
     const numericValue = typeof value === "number" ? value : 0;
     if (mode === "none") return 0;
     if (mode === "conditional" && (typeof trueValue === "number" || typeof falseValue === "number")) {
-      return Math.max(
+      return capPositiveCardVp(Math.max(
         typeof trueValue === "number" ? trueValue : numericValue,
         typeof falseValue === "number" ? falseValue : numericValue
-      );
+      ));
     }
-    if (mode === "conditional" || mode === "variable") return numericValue || 5;
+    if (mode === "conditional" || mode === "variable") return capPositiveCardVp(numericValue || 5);
     if (mode === "negative") return -Math.abs(numericValue);
-    return numericValue;
+    return capPositiveCardVp(numericValue);
   }
   return 0;
 }
@@ -31,17 +35,16 @@ function cardVpValue(card: Card | undefined): number {
 function sortDynastyCards(cardIds: string[], cardDb: Record<string, Card>): string[] {
   return [...cardIds].sort((a, b) => {
     const vpDiff = cardVpValue(cardDb[b]) - cardVpValue(cardDb[a]);
-    if (vpDiff !== 0) return vpDiff;
-    return a.localeCompare(b);
+    return vpDiff;
   });
 }
 
 function defaultDynastyCards(args: { botNation: NationDefinition; cardDb: Record<string, Card>; shuffle: <T>(items: T[]) => T[] }): string[] {
-  const development = sortDynastyCards(args.botNation.developmentCardIds.filter((id) => args.cardDb[id]), args.cardDb);
+  const development = sortDynastyCards(args.shuffle(args.botNation.developmentCardIds.filter((id) => args.cardDb[id])), args.cardDb);
   const accession = args.botNation.accessionCardId && args.cardDb[args.botNation.accessionCardId] ? [args.botNation.accessionCardId] : [];
   const nation = args.shuffle(args.botNation.nationDeckCardIds.filter((id) => args.cardDb[id]));
   if (development.length || accession.length || nation.length) return [...nation, ...accession, ...development];
-  return sortDynastyCards(Object.values(args.cardDb).map((c) => c.id).filter((id) => args.cardDb[id].tags.includes("bot_dynasty")), args.cardDb);
+  return sortDynastyCards(args.shuffle(Object.values(args.cardDb).map((c) => c.id).filter((id) => args.cardDb[id].tags.includes("bot_dynasty"))), args.cardDb);
 }
 
 function applyShortGameDynastySetup(dynasty: string[], cardDb: Record<string, Card>): { deck: string[]; discard: string[] } {
@@ -94,6 +97,8 @@ export function setupSoloBot(args: { botNation: NationDefinition; botRuleset?: N
   const customStateStack = botOverrides.find((ov) => ov.op === "custom_bot_state_stack");
   const customDynastySetup = botOverrides.find((ov) => ov.op === "custom_dynasty_setup");
   const customCleanupEffects = botOverrides.flatMap((ov) => ov.op === "bot_custom_cleanup" ? ov.effect : []);
+  const skipAccessionStateFlip = botOverrides.some((ov) => ov.op === "skip_bot_accession_state_flip");
+  const cleanupMarketResource = botOverrides.find((ov) => ov.op === "bot_cleanup_market_resource");
   const customStateCardIds = customStateStack?.cardIds?.filter((id) => args.cardDb[id]) ?? [];
   const customDynastyCardIds = customDynastySetup?.config?.cardIds?.filter((id) => args.cardDb[id]) ?? [];
   const dynasty = customDynastyCardIds.length > 0 ? customDynastyCardIds : skipDefaultDynastySetup ? [] : defaultDynastyCards(args);
@@ -105,5 +110,5 @@ export function setupSoloBot(args: { botNation: NationDefinition; botRuleset?: N
   const slots = initializeBotSlots(config.slotCount);
   for (const slot of Object.values(slots)) slot.cardId = deck.shift();
   const startTable = initialBotStateTable({ botNationId: args.botNation.id, botRuleset: args.botRuleset, botStateTables: args.botStateTables });
-  return { botId: "bot_0", botNationId: args.botNation.id, botDeck: deck, botDiscard: shortGameDynastySetup.discard, botHistory: [], botPlayArea: [], botDynastyDeck: shortGameDynastySetup.deck, botStateTableId: startTable.tableId, botStateSide: startTable.side, slots, resources: botStartingResourcesForOptions(config, args.options), merchantState: args.options.enabledExpansions.includes("trade_routes") ? "merchants" : "none", difficulty, difficultyConfig: config, ...(customCleanupEffects.length ? { customCleanupEffects } : {}), botLog: [] };
+  return { botId: "bot_0", botNationId: args.botNation.id, botDeck: deck, botDiscard: shortGameDynastySetup.discard, botHistory: [], botPlayArea: [], botDynastyDeck: shortGameDynastySetup.deck, botStateTableId: startTable.tableId, botStateSide: startTable.side, slots, resources: botStartingResourcesForOptions(config, args.options), merchantState: args.options.enabledExpansions.includes("trade_routes") ? "merchants" : "none", difficulty, difficultyConfig: config, ...(skipAccessionStateFlip ? { skipAccessionStateFlip } : {}), ...(cleanupMarketResource ? { cleanupMarketResource: { resource: cleanupMarketResource.resource, count: cleanupMarketResource.count } } : {}), ...(customCleanupEffects.length ? { customCleanupEffects } : {}), botLog: [] };
 }

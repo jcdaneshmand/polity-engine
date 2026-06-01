@@ -232,4 +232,54 @@ describe("private data completeness report", () => {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
+
+  it("prints missing private source files before synthesizing placeholder nations", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "polity-completeness-missing-"));
+    try {
+      const missingNations = path.join(tmp, "missing-nations.csv");
+      const rulesets = path.join(tmp, "rulesets.csv");
+      const strategies = path.join(tmp, "strategy.csv");
+      const botTables = path.join(tmp, "bot-tables.csv");
+      const botTrade = path.join(tmp, "bot-trade.csv");
+
+      fs.writeFileSync(rulesets, [
+        "nation_id,nation_name_private,public_placeholder_name,ruleset_tags,required_expansions,excluded_expansions,allowed_modes,disallowed_modes,required_variants,excluded_variants,setup_overrides_json,zone_overrides_json,state_overrides_json,reshuffle_overrides_json,cleanup_overrides_json,solstice_overrides_json,scoring_overrides_json,collapse_overrides_json,bot_overrides_json,short_game_overrides_json,hook_rules_json,public_summary,private_notes,implemented,tested",
+        "cultists,Cultists,Cultists Rules,short_game_excluded,,,,,,,[],[],[],[],[],[],[],[],[],[],[],summary,notes,true,true"
+      ].join("\n"));
+      fs.writeFileSync(strategies, [
+        "nation_id,nation_name_private,public_placeholder_name,complexity,aggression,public_placeholder_summary,private_core_gameplan,private_early_game,private_mid_game,private_late_game,private_key_mechanics,private_market_priorities,private_risk_notes,private_rules_engine_notes,implemented,tested",
+        "cultists,Cultists,Cultists Strategy,3,moderate,summary,core,early,mid,late,chaos,market,risk,notes,true,true"
+      ].join("\n"));
+      fs.writeFileSync(botTables, [
+        "table_id,bot_nation_id,table_side,row_id,priority,trigger_kind,trigger_value,public_placeholder_label,private_trigger_label,private_effect_text,effects_json,implemented,tested,notes",
+        "cultists_research_ceremony,cultists,S,row_1,1,other,,Fallback,,,[],true,true,"
+      ].join("\n"));
+      fs.writeFileSync(botTrade, [
+        "table_id,row_type,merchant_state,priority,trade_route_card_id,public_placeholder_name,private_name,commerce_effects_json,profit_effects_json,end_of_turn_effects_json,implemented,tested,notes",
+        "trade_routes,end_of_turn,merchant_empire,1,,,,,,[],true,true,"
+      ].join("\n"));
+
+      const output = runTool("reportPrivateDataCompleteness.ts", [
+        "--nations", missingNations,
+        "--rulesets", rulesets,
+        "--strategy", strategies,
+        "--bot-tables", botTables,
+        "--bot-trade", botTrade
+      ]);
+
+      expect(output).toContain("Missing private data sources:");
+      expect(output).toContain(`- nations: ${missingNations}`);
+      expect(output).toContain("(cultists)");
+      expect(output).toContain("nation_data_not_implemented");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("prints the missing card source when checking default private data inputs", () => {
+    const output = runTool("reportPrivateDataCompleteness.ts");
+
+    expect(output).toContain("Missing private data sources:");
+    expect(output).toContain("- cards: private-card-data/imperium_cards_private.csv");
+  });
 });

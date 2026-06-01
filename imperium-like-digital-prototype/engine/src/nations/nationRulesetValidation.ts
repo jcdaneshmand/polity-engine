@@ -277,6 +277,8 @@ export function validateNationRuleset(ruleset: NationRuleset): ValidationIssue[]
   }));
   issues.push(...validateOverrides<BotOverride>(nationId, "botOverrides", ruleset.botOverrides, {
     skip_default_dynasty_setup: [],
+    skip_bot_accession_state_flip: [],
+    bot_cleanup_market_resource: ["resource", "count"],
     custom_dynasty_setup: ["config"],
     custom_bot_state_stack: ["cardIds"],
     initial_bot_state_table: ["tableId"],

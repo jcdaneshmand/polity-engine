@@ -75,12 +75,14 @@ function hasPendingInterruption(G: GameState): boolean {
     ?? G.pendingDevelopmentChoice
     ?? G.pendingShortGameDevelopmentExileChoice
     ?? G.pendingTradeChoice
+    ?? G.pendingDiscardChoice
     ?? G.pendingReturnUnrestChoice
     ?? G.pendingPlaceOnDeckChoice
     ?? G.pendingGiveCardChoice
     ?? G.pendingSwapChoice
     ?? G.pendingLookOrderChoice
     ?? G.pendingUnrestAllocationChoice
+    ?? G.pendingReactiveExhaustChoice
   );
 }
 
@@ -281,7 +283,7 @@ export function maybeReshuffleDeck(G: GameState, playerId: string, randomNumber?
       const inPlayOverride = nationCardInPlayOverride(G, playerId, nationCard.cardId);
       if (inPlayOverride) p.playArea.push(nationCard.cardId);
       else p.discard.push(nationCard.cardId);
-      spendProgressionToken(p, hasNationProgressionCards(p) ? "nationDeck" : "developmentArea");
+      spendProgressionToken(p, "nationDeck");
       G.log.push({ round: G.round, playerId, message: inPlayOverride ? `NationCardAddedToPlayOnReshuffle(${nationCard.cardId})` : `NationCardAddedOnReshuffle(${nationCard.cardId})` });
       if (nationCard.isAccession && !inPlayOverride && !isTerminalNationCard(G, playerId, nationCard.cardId)) flipStateForAccession(G, playerId, nationCard.cardId);
       triggerScoringForTerminalNationCard(G, playerId, nationCard.cardId);

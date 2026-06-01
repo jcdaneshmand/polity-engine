@@ -31,13 +31,16 @@ export type BotEffectOp =
   | { op: "bot_gain_fame"; count: number }
   | { op: "bot_acquire"; filter?: BotAcquireFilter; fromExile?: boolean; ifUnable?: BotEffectOp[] }
   | { op: "bot_break_through"; filter?: BotAcquireFilter; resolveGained?: boolean; discardGained?: boolean; ifUnable?: BotEffectOp[] }
+  | { op: "bot_exile_market"; ifUnable?: BotEffectOp[] }
   | { op: "bot_resolve_top_bot_deck" }
   | { op: "bot_resolve_top_dynasty_deck" }
   | { op: "bot_resolve_top_main_deck"; ifVp?: { value: number; effects: BotEffectOp[] } }
   | { op: "bot_discard_top_bot_deck"; count?: number; ifUnable?: BotEffectOp[] }
   | { op: "bot_discard_top_dynasty_deck"; count?: number; ifUnable?: BotEffectOp[] }
   | { op: "bot_return_from_discard"; filter?: BotAcquireFilter; ifUnable?: BotEffectOp[] }
+  | { op: "bot_abandon_in_play"; filter?: BotAcquireFilter; ifUnable?: BotEffectOp[] }
   | { op: "bot_recall_in_play"; filter?: BotAcquireFilter; ifUnable?: BotEffectOp[] }
+  | { op: "bot_swap_market"; filter?: BotAcquireFilter; marketFilter?: BotAcquireFilter; ifUnable?: BotEffectOp[] }
   | { op: "bot_move_top_discard_to_deck" }
   | { op: "bot_add_resource_to_market_slot"; resource: ResourceName; slot: "rolled" | SlotNumber; count: number }
   | { op: "bot_flip_state_table"; nextSide?: string; nextTableId?: string }

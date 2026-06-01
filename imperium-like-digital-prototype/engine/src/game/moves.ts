@@ -1,12 +1,12 @@
 import type { Ctx } from "boardgame.io";
-import { resolvePendingTradeChoice, runAcquireTriggers, runEffects, runTriggeredEffects } from "../cards/effectRunner";
+import { createReactiveExhaustChoice, resolvePendingTradeChoice, runAcquireTriggers, runEffects, runTriggeredEffects } from "../cards/effectRunner";
 import type { DrawSourceZone, Effect, EffectTrigger, FindSourceZone, GameState, LookSourceZone, PlaceOnDeckSourceZone, PlayerExileSource, ResourceName, ReturnUnrestSourceZone, Suit, SwapSourceZone, ZoneName } from "./state";
 import { continuePendingNationHooks, runNationHooks } from "../nations/nationRulesetHooks";
 import { continuePausedBotTurn } from "../solo/botTurn";
 import { canUseDevelopmentArea, continuePendingReshuffleLifecycle, resolvePendingDevelopmentChoice, resolvePendingShortGameDevelopmentExileChoice, skipPendingDevelopmentChoice } from "./zones";
 import { continuePendingUnrestAllocationResolution, continuePendingUnrestTake } from "./unrest";
 import { collectMarketResources, collectMarketUnrest, resolveCleanupMarketResourceChoice, startCleanupMarketResourceChoice } from "./marketResources";
-import { refillMarketSlot } from "./marketRefill";
+import { deckForSuit, refillMarketSlot } from "./marketRefill";
 import { availableForResourceCost, canPayResourceCost, canPayResourceCosts, describeResourceCost, normalizeResourceCost, payResourceCost, payResourceCosts, type ResourceCost } from "./payments";
 import { continuePendingScoringFinalization } from "./scoring";
 import { continuePausedSolstice, continuePendingTurnEndCleanup, prepareCleanupBeforeOptionalDiscard, resetCleanupTokensBeforeOptionalDiscard, resolveCleanupDiscardChoice, resolvePendingSolsticeOrderChoice, startCleanupDiscardChoice } from "./turn";
@@ -14,17 +14,18 @@ import {
   abandonRegionToDiscard,
   collectAndClearCardStateToPlayer,
   collectCardResourcesToPlayer,
+  detachGarrisonedCard,
   detachGarrisonedCards,
   garrisonCardOnRegion,
   garrisonedCardsInPlay,
   isRegionCard,
   recallRegionToHand
 } from "./regions";
-import { breakThrough } from "./breakThrough";
-import { acquireFromExile, availableExileCards, exileMarketCard, exilePlayerCard, playerExileSourceCards } from "./exile";
+import { breakThrough, visibleTributaryBreakThroughCards } from "./breakThrough";
+import { acquireFromExile, availableExileCards, exileMarketCard, exilePlayerCard, playerCardOrGarrisonHasTokens, playerExileSourceCards } from "./exile";
 import { acquireMarketCard, gainMarketCard, takeMarketCard } from "./marketAcquire";
 import { resolvePendingUnrestAllocationChoice, returnUnrestCard, zoneCardsForReturnUnrest } from "./unrest";
-import { currentStateMatches, normalizeStateToken } from "./stateMatching";
+import { currentStateMatches, currentStateMatchesAny } from "./stateMatching";
 import { placeCardOnDeck } from "./deckPlacement";
 import { giveCardToPlayer } from "./giveCard";
 import { availableSwapChoices, swapCardWithMarket } from "./swap";
@@ -33,6 +34,7 @@ import { startPracticeMarketExileChoice } from "../solo/practiceMode";
 import { peekFameCards } from "./fame";
 import { isAccessionCard, lookableNationDeckCards } from "./nationDeck";
 import { actualHistorySourceZoneIds, moveCardsToHistoryDestination } from "./history";
+import { canonicalResourceName, resourceAmount } from "./resources";
 
 interface MoveCtx {
   G: GameState;
@@ -121,12 +123,14 @@ function blockingPendingChoice(G: GameState): string | undefined {
   if (G.pendingDevelopmentChoice) return "pending_development_choice";
   if (G.pendingShortGameDevelopmentExileChoice) return "pending_short_game_development_exile_choice";
   if (G.pendingTradeChoice) return "pending_trade_choice";
+  if (G.pendingDiscardChoice) return "pending_discard_choice";
   if (G.pendingReturnUnrestChoice) return "pending_return_unrest_choice";
   if (G.pendingPlaceOnDeckChoice) return "pending_place_on_deck_choice";
   if (G.pendingGiveCardChoice) return "pending_give_card_choice";
   if (G.pendingSwapChoice) return "pending_swap_choice";
   if (G.pendingLookOrderChoice) return "pending_look_order_choice";
   if (G.pendingUnrestAllocationChoice) return "pending_unrest_allocation_choice";
+  if (G.pendingReactiveExhaustChoice) return "pending_reactive_exhaust_choice";
   if (G.pendingSolsticeOrderChoice) return "pending_solstice_order_choice";
   if (G.pendingCleanupMarketResourceChoice) return "pending_cleanup_market_resource_choice";
   if (G.pendingCleanupDiscardChoice) return "pending_cleanup_discard_choice";
@@ -153,12 +157,14 @@ type ResumablePendingChoice =
   | NonNullable<GameState["pendingDevelopmentChoice"]>
   | NonNullable<GameState["pendingShortGameDevelopmentExileChoice"]>
   | NonNullable<GameState["pendingTradeChoice"]>
+  | NonNullable<GameState["pendingDiscardChoice"]>
   | NonNullable<GameState["pendingReturnUnrestChoice"]>
   | NonNullable<GameState["pendingPlaceOnDeckChoice"]>
   | NonNullable<GameState["pendingGiveCardChoice"]>
   | NonNullable<GameState["pendingSwapChoice"]>
   | NonNullable<GameState["pendingLookOrderChoice"]>
-  | NonNullable<GameState["pendingUnrestAllocationChoice"]>;
+  | NonNullable<GameState["pendingUnrestAllocationChoice"]>
+  | NonNullable<GameState["pendingReactiveExhaustChoice"]>;
 
 function pendingEffectInterruption(G: GameState): ResumablePendingChoice | undefined {
   return G.pendingChoice
@@ -173,12 +179,14 @@ function pendingEffectInterruption(G: GameState): ResumablePendingChoice | undef
     ?? G.pendingDevelopmentChoice
     ?? G.pendingShortGameDevelopmentExileChoice
     ?? G.pendingTradeChoice
+    ?? G.pendingDiscardChoice
     ?? G.pendingReturnUnrestChoice
     ?? G.pendingPlaceOnDeckChoice
     ?? G.pendingGiveCardChoice
     ?? G.pendingSwapChoice
     ?? G.pendingLookOrderChoice
-    ?? G.pendingUnrestAllocationChoice;
+    ?? G.pendingUnrestAllocationChoice
+    ?? G.pendingReactiveExhaustChoice;
 }
 
 function finishAcquireCardResolution({ G, ctx, random }: MoveCtx, cardId: string): boolean {
@@ -238,7 +246,6 @@ function finishPendingAcquireCardResolution(moveCtx: MoveCtx): boolean {
 }
 
 function runTriggeredEffectsWithPayment(ctx: { G: GameState; playerId: string; selfCardId?: string; randomNumber?: () => number; enabledExpansions?: string[] }, effects: Effect[], trigger: EffectTrigger, payment?: ResourceCost): boolean {
-  if (!payment) return runTriggeredEffects(ctx, effects, trigger);
   const triggeredEffects = effects.filter((effect) => effect.trigger === trigger);
   const cost = explicitSpendCost(triggeredEffects);
   if (!resourceCostHasPositiveAmount(cost)) return runEffects(ctx, triggeredEffects);
@@ -391,7 +398,7 @@ function cardGoods(G: GameState, cardId: string): number {
 
 function cardMeetsStateRequirement(G: GameState, playerId: string, cardId: string): boolean {
   const requirement = G.cardDb[cardId]?.stateRequirement;
-  return !normalizeStateToken(requirement) || currentStateMatches(G, playerId, requirement);
+  return !requirement || currentStateMatchesAny(G, playerId, requirement);
 }
 
 function canDrawAtLeastOneCardOrReshuffle(G: GameState, playerId: string): boolean {
@@ -418,6 +425,12 @@ function canPayAnyDevelopmentCard(G: GameState, playerId: string): boolean {
   return p.developmentArea.some((cardId) => canPayResourceCosts(G, playerId, G.cardDb[cardId]?.developmentCost ?? {}));
 }
 
+function canGainResourceFromSupply(G: GameState, resource: ResourceName, amount: number): boolean {
+  const canonical = canonicalResourceName(resource);
+  if (amount <= 0) return false;
+  return !G.resourceSupply || (G.resourceSupply[canonical] ?? 0) > 0;
+}
+
 function canGainFameCard(G: GameState, playerId: string): boolean {
   const fameDeck = G.fameDeck;
   if (!fameDeck) return false;
@@ -441,9 +454,10 @@ function canLookAtCards(G: GameState, playerId: string, source: LookSourceZone):
 function canResolveTradeEffect(G: GameState, playerId: string): boolean {
   if (!G.options?.enabledExpansions?.includes("trade_routes")) return false;
   const p = G.players[playerId];
-  const hasGoodsFallback = (p.resources.goods ?? 0) > 0;
+  const hasGoods = (p.resources.goods ?? 0) > 0;
+  const hasGoodsFallback = hasGoods && canGainResourceFromSupply(G, "knowledge", 1);
   const ownRouteAvailable = p.playArea.some((cardId) =>
-    isTradeRouteCard(G, cardId) && cardGoods(G, cardId) < 3 && hasGoodsFallback
+    isTradeRouteCard(G, cardId) && cardGoods(G, cardId) < 3 && hasGoods
   );
   if (ownRouteAvailable || hasGoodsFallback) return true;
   return Object.entries(G.players).some(([candidatePlayerId, opponent]) =>
@@ -452,11 +466,40 @@ function canResolveTradeEffect(G: GameState, playerId: string): boolean {
   );
 }
 
+function tradeRoutesEnabled(G: GameState): boolean {
+  return Boolean(G.options?.enabledExpansions?.includes("trade_routes"));
+}
+
+function canResolveProfitEffect(G: GameState, playerId: string, selfCardId?: string): boolean {
+  return Boolean(
+    selfCardId
+    && tradeRoutesEnabled(G)
+    && G.players[playerId].playArea.includes(selfCardId)
+    && cardGoods(G, selfCardId) >= 3
+  );
+}
+
+function marketDeckHasDrawableCard(G: GameState, deckName: NonNullable<ReturnType<typeof deckForSuit>>): boolean {
+  const deck = G.marketDecks?.[deckName];
+  if (!deck || deck.length === 0) return false;
+  return !(deck.length === 1 && G.marketDeckBottomCards?.[deckName] === deck[0]);
+}
+
+function canResolveDeckBreakThroughEffect(G: GameState, suit: Suit): boolean {
+  if (suit === "tributary" && visibleTributaryBreakThroughCards(G).length > 0) return true;
+  const sourceDeck = suit === "tributary" ? undefined : deckForSuit(suit);
+  if (sourceDeck && marketDeckHasDrawableCard(G, sourceDeck)) return true;
+  const mainDeck = G.marketDecks?.mainDeck ?? [];
+  if (mainDeck.some((cardId) => cardHasSuitIcon(G.cardDb[cardId], suit))) return true;
+  return canGainResourceFromSupply(G, "materials", 1);
+}
+
 function isFindAccessionCard(G: GameState, p: GameState["players"][string], cardId: string): boolean {
   return isAccessionCard(G, p, cardId);
 }
 
 function findSourceZoneCardsForLegality(G: GameState, playerId: string, zone: string): string[] {
+  if (zone === "garrison") return garrisonedCardsInPlay(G, playerId);
   const player = G.players[playerId];
   const direct = (player as unknown as Record<string, unknown>)[zone];
   if (Array.isArray(direct)) return direct as string[];
@@ -476,7 +519,7 @@ function searchableFindZoneCards(G: GameState, playerId: string, zone: FindSourc
 }
 
 function returnUnrestSourceZones(effect: Extract<Effect, { op: "return_unrest" }>): ReturnUnrestSourceZone[] {
-  return effect.sourceZones?.length ? effect.sourceZones : ["hand", "discard"];
+  return effect.sourceZones?.length ? effect.sourceZones : ["hand"];
 }
 
 function canResolveReturnUnrestEffect(G: GameState, playerId: string, effect: Extract<Effect, { op: "return_unrest" }>): boolean {
@@ -496,7 +539,12 @@ function canResolvePlaceOnDeckEffect(G: GameState, playerId: string, effect: Ext
 }
 
 function giveCardRecipients(G: GameState, playerId: string, effect: Extract<Effect, { op: "give_card" }>): string[] {
-  return (effect.targetPlayerIds?.length ? effect.targetPlayerIds : Object.keys(G.players))
+  const candidates = effect.targetPlayerId
+    ? [effect.targetPlayerId]
+    : effect.targetPlayerIds?.length
+      ? effect.targetPlayerIds
+      : Object.keys(G.players);
+  return candidates
     .filter((candidatePlayerId) => candidatePlayerId !== playerId && Boolean(G.players[candidatePlayerId]));
 }
 
@@ -513,6 +561,21 @@ function swapSourceZone(effect: Extract<Effect, { op: "swap_card" }>): SwapSourc
 function canResolveSwapEffect(G: GameState, playerId: string, effect: Extract<Effect, { op: "swap_card" }>): boolean {
   return availableSwapChoices(G, playerId, swapSourceZone(effect))
     .some((choice) => (!effect.cardId || choice.cardId === effect.cardId) && (!effect.marketCardId || choice.marketCardId === effect.marketCardId));
+}
+
+function canResolveTakeUnrestEffect(G: GameState, playerId: string, effect: Extract<Effect, { op: "take_unrest" }>): boolean {
+  if (effect.count <= 0) return false;
+  const recipients = effect.targetPlayerIds ?? [playerId];
+  return recipients.some((candidatePlayerId) => Boolean(G.players[candidatePlayerId]));
+}
+
+function marketCardMatchesMoveEffect(G: GameState, cardId: string, effect: Extract<Effect, { op: "gain_card" | "take_card" }>): boolean {
+  const card = G.cardDb[cardId];
+  if (!card || effect.source !== "market") return false;
+  if (effect.cardId && cardId !== effect.cardId) return false;
+  if (effect.suit && !cardHasSuitIcon(card, effect.suit)) return false;
+  if (effect.cardType && (card.cardType ?? card.type) !== effect.cardType) return false;
+  return true;
 }
 
 function explicitSpendCost(effects: Effect[]): ResourceCost {
@@ -573,16 +636,62 @@ function isPlayerExileSource(source: Extract<Effect, { op: "exile_card" }>["sour
 function playerCardMatchesExileEffect(G: GameState, playerId: string, cardId: string, effect: Extract<Effect, { op: "exile_card" }>): boolean {
   const card = G.cardDb[cardId];
   if (!card) return false;
+  if (playerCardOrGarrisonHasTokens(G, cardId)) return false;
   if (effect.cardId && cardId !== effect.cardId) return false;
   if (effect.suit && !cardHasSuitIcon(card, effect.suit)) return false;
   if (effect.cardType && (card.cardType ?? card.type) !== effect.cardType) return false;
   return playerExileSourceCards(G, playerId, effect.source as PlayerExileSource).includes(cardId);
 }
 
+function canResolveChoiceEffectText(G: GameState, playerId: string, effect: Effect, selfCardId?: string): boolean {
+  const p = G.players[playerId];
+  switch (effect.op) {
+    case "draw":
+      return effect.count > 0 && (effect.source === "fameDeck"
+        ? canGainFameCard(G, playerId)
+        : effect.source && effect.source !== "deck"
+          ? drawChoiceSourceCards(G, playerId, effect.source).length > 0
+          : canDrawAtLeastOneCardOrReshuffle(G, playerId));
+    case "draw_if_able":
+      return effect.count > 0 && p.deck.length > 0;
+    case "gain_resource":
+      return effect.amount > 0 && canGainResourceFromSupply(G, effect.resource, effect.amount);
+    case "spend_action":
+      return effect.amount > 0 && p.actionsRemaining >= effect.amount && p.actionTokensAvailable >= effect.amount;
+    case "remove_resource":
+    case "return_resource":
+      return effect.amount > 0 && resourceAmount(p.resources, effect.resource) > 0;
+    case "steal_resource":
+      return effect.amount > 0 && resourceAmount(G.players[effect.fromPlayerId]?.resources, effect.resource) > 0;
+    case "spend_resource":
+      return effect.amount > 0 && canPayResourceCost(G, playerId, effect.resource, effect.amount);
+    case "discard_cards":
+      return effect.count > 0 && G.players[playerId].hand.filter((cardId) => cardId !== selfCardId).length >= effect.count;
+    case "gain_fame":
+      return effect.count > 0 && canGainFameCard(G, playerId);
+    case "look_cards":
+      return effect.count > 0 && canLookAtCards(G, playerId, effect.source);
+    case "optional":
+      return choiceOptionIsLegal(G, playerId, effect.effects, selfCardId);
+    case "choose_one":
+      return effect.choices.some((choice) => choiceOptionIsLegal(G, playerId, choice, selfCardId));
+    case "conditional_resource_at_least":
+      return resourceAmount(p.resources, effect.resource) >= effect.atLeast
+        ? effect.then.some((candidate) => canResolveChoiceEffectText(G, playerId, candidate, selfCardId))
+        : (effect.else ?? []).some((candidate) => canResolveChoiceEffectText(G, playerId, candidate, selfCardId));
+    case "conditional_state_is":
+      return currentStateMatches(G, playerId, effect.state)
+        ? effect.then.some((candidate) => canResolveChoiceEffectText(G, playerId, candidate, selfCardId))
+        : (effect.else ?? []).some((candidate) => canResolveChoiceEffectText(G, playerId, candidate, selfCardId));
+    default:
+      return canResolveEffectText(G, playerId, effect, selfCardId);
+  }
+}
+
 function choiceOptionIsLegal(G: GameState, playerId: string, effects: Effect[], selfCardId?: string): boolean {
   return effects.length > 0
     && canPayResourceCosts(G, playerId, explicitSpendCost(effects))
-    && effects.some((effect) => canResolveEffectText(G, playerId, effect, selfCardId));
+    && effects.some((effect) => canResolveChoiceEffectText(G, playerId, effect, selfCardId));
 }
 
 function resourceCostHasPositiveAmount(cost: ResourceCost): boolean {
@@ -600,9 +709,14 @@ function canResolveEffectText(G: GameState, playerId: string, effect: Effect, se
           : canDrawAtLeastOneCardOrReshuffle(G, playerId));
     case "draw_if_able":
       return effect.count <= 0 || p.deck.length > 0;
-    case "gain_resource":
     case "trigger_scoring":
       return true;
+    case "gain_resource":
+      return effect.amount <= 0 || canGainResourceFromSupply(G, effect.resource, effect.amount);
+    case "gain_action":
+      return effect.amount > 0;
+    case "spend_action":
+      return effect.amount <= 0 || (p.actionsRemaining >= effect.amount && p.actionTokensAvailable >= effect.amount);
     case "optional":
       return choiceOptionIsLegal(G, playerId, effect.effects, selfCardId);
     case "choose_one":
@@ -615,6 +729,8 @@ function canResolveEffectText(G: GameState, playerId: string, effect: Effect, se
       return true;
     case "discard_random":
       return p.hand.length > (effect.trigger === "on_play" ? 1 : 0);
+    case "discard_cards":
+      return effect.count > 0 && p.hand.filter((cardId) => cardId !== selfCardId).length >= effect.count;
     case "return_unrest":
       return canResolveReturnUnrestEffect(G, playerId, effect);
     case "place_card_on_deck":
@@ -624,14 +740,15 @@ function canResolveEffectText(G: GameState, playerId: string, effect: Effect, se
     case "swap_card":
       return canResolveSwapEffect(G, playerId, effect);
     case "take_unrest":
-      return true;
+      return canResolveTakeUnrestEffect(G, playerId, effect);
     case "gain_fame":
       return effect.count <= 0 || canGainFameCard(G, playerId);
     case "trade":
       return canResolveTradeEffect(G, playerId);
     case "commerce":
+      return tradeRoutesEnabled(G);
     case "profit":
-      return true;
+      return canResolveProfitEffect(G, playerId, selfCardId);
     case "garrison_card":
       return canResolveGarrisonEffect(G, playerId, effect, selfCardId);
     case "recall_region":
@@ -648,17 +765,18 @@ function canResolveEffectText(G: GameState, playerId: string, effect: Effect, se
         ? G.market.some((cardId) => marketCardMatchesExileEffect(G, cardId, effect))
         : playerExileSourceCards(G, playerId, effect.source).some((cardId) => playerCardMatchesExileEffect(G, playerId, cardId, effect));
     case "acquire_card":
-    case "gain_card":
-    case "take_card":
       return effect.source === "exile"
         ? availableExileCards(G, playerId).some((cardId) => (!effect.cardId || cardId === effect.cardId) && (!effect.suit || cardHasSuitIcon(G.cardDb[cardId], effect.suit)) && (!effect.cardType || (G.cardDb[cardId]?.cardType ?? G.cardDb[cardId]?.type) === effect.cardType))
         : G.market.some((cardId) => (!effect.cardId || cardId === effect.cardId) && (!effect.suit || cardHasSuitIcon(G.cardDb[cardId], effect.suit)) && (!effect.cardType || (G.cardDb[cardId]?.cardType ?? G.cardDb[cardId]?.type) === effect.cardType));
+    case "gain_card":
+    case "take_card":
+      return G.market.some((cardId) => marketCardMatchesMoveEffect(G, cardId, effect));
     case "break_through":
       return effect.source === "market"
         ? G.market.some((cardId) => cardHasSuitIcon(G.cardDb[cardId], effect.suit))
         : effect.source === "exile"
           ? availableExileCards(G, playerId).some((cardId) => cardHasSuitIcon(G.cardDb[cardId], effect.suit))
-          : true;
+          : canResolveDeckBreakThroughEffect(G, effect.suit);
     case "find_card":
       return ((effect.sourceZones?.length ? effect.sourceZones : ["hand", "discard", "deck", "nationDeck"]) as FindSourceZone[]).some((zone) => searchableFindZoneCards(G, playerId, zone).some((cardId) =>
         (!effect.cardId || cardId === effect.cardId) && (!effect.suit || cardHasSuitIcon(G.cardDb[cardId], effect.suit)) && (!effect.cardType || (G.cardDb[cardId]?.cardType ?? G.cardDb[cardId]?.type) === effect.cardType)
@@ -666,7 +784,7 @@ function canResolveEffectText(G: GameState, playerId: string, effect: Effect, se
     case "look_cards":
       return effect.count <= 0 || canLookAtCards(G, playerId, effect.source);
     case "conditional_resource_at_least":
-      return (p.resources[effect.resource] ?? 0) >= effect.atLeast
+      return resourceAmount(p.resources, effect.resource) >= effect.atLeast
         ? effect.then.some((candidate) => canResolveEffectText(G, playerId, candidate, selfCardId))
         : (effect.else ?? []).some((candidate) => canResolveEffectText(G, playerId, candidate, selfCardId));
     case "conditional_state_is":
@@ -715,7 +833,7 @@ function markActionToken(G: GameState, cardId: string): void {
 
 function canExhaustCard(G: GameState, playerId: string, cardId: string): boolean {
   const p = G.players[playerId];
-  return p.playArea.includes(cardId) || p.powerArea.includes(cardId) || p.stateArea.includes(cardId);
+  return p.playArea.includes(cardId) || p.powerArea.includes(cardId);
 }
 
 function isCardExhausted(G: GameState, cardId: string): boolean {
@@ -728,6 +846,24 @@ function markCardExhausted(G: GameState, cardId: string): void {
   G.cardStates[cardId] ??= {};
   G.cardStates[cardId].exhausted = true;
   G.cardStates[cardId].exhaustTokens = (G.cardStates[cardId].exhaustTokens ?? 0) + 1;
+}
+
+function appendResumeEffectsToPending(G: GameState, effects: Effect[] | undefined): void {
+  if (!effects?.length) return;
+  const pending = pendingEffectInterruption(G);
+  if (!pending) return;
+  pending.resumeEffects = [...(pending.resumeEffects ?? []), ...effects];
+}
+
+function resumeReactiveExhaustSourceEffects(moveCtx: MoveCtx, pending: NonNullable<GameState["pendingReactiveExhaustChoice"]>): boolean {
+  return resumeEffectsAfterPendingChoice(
+    {
+      ...moveCtx,
+      ctx: { ...moveCtx.ctx, currentPlayer: pending.resolvingPlayerId } as Ctx
+    },
+    pending.sourceCardId,
+    pending.resumeEffects ?? []
+  );
 }
 
 const INNOVATE_SUITS: Suit[] = ["region", "uncivilized", "civilized", "tributary"];
@@ -761,9 +897,10 @@ type FindZone = FindSourceZone;
 
 function findCardZone(G: GameState, playerId: string, cardId: string): FindZone | undefined {
   const p = G.players[playerId];
-  const zones: FindZone[] = ["hand", "discard", "deck", "nationDeck", "playArea", "history"];
+  const zones: Array<Exclude<FindZone, "garrison">> = ["hand", "discard", "deck", "nationDeck", "playArea", "history"];
   const directZone = zones.find((zone) => p[zone].includes(cardId));
   if (directZone) return directZone;
+  if (garrisonedCardsInPlay(G, playerId).includes(cardId)) return "garrison";
   const sideZone = Object.entries(p.sideAreas ?? {}).find(([, cards]) => cards.includes(cardId))?.[0];
   if (sideZone) return sideZone as FindZone;
   const playerSpecialZone = Object.entries(G.specialZones?.[playerId] ?? {}).find(([, zone]) => zone.cardIds.includes(cardId))?.[0];
@@ -772,6 +909,7 @@ function findCardZone(G: GameState, playerId: string, cardId: string): FindZone 
 }
 
 function findCardZoneCards(G: GameState, playerId: string, zoneId: string): string[] | undefined {
+  if (zoneId === "garrison") return garrisonedCardsInPlay(G, playerId);
   const p = G.players[playerId];
   const direct = (p as unknown as Record<string, unknown>)[zoneId];
   if (Array.isArray(direct)) return direct as string[];
@@ -786,6 +924,13 @@ function movePlayerCard(G: GameState, playerId: string, cardId: string, destinat
   const fromZone = findCardZone(G, playerId, cardId);
   if (!fromZone) return undefined;
   if (fromZone === destination) return destination;
+  if (fromZone === "garrison") {
+    if (!detachGarrisonedCard(G, playerId, cardId)) return undefined;
+    collectAndClearCardStateToPlayer(G, playerId, cardId);
+    if (destination === "history") return moveCardsToHistoryDestination(G, playerId, [cardId]);
+    p[destination].push(cardId);
+    return destination;
+  }
   const sourceCards = findCardZoneCards(G, playerId, fromZone);
   if (!sourceCards) return undefined;
   const index = sourceCards.indexOf(cardId);
@@ -923,6 +1068,7 @@ export function exhaustCard({ G, ctx, random }: MoveCtx, cardId: string, payment
 
   const snapshot = cloneGameState(G);
   p.exhaustTokensAvailable -= 1;
+  markCardExhausted(G, cardId);
   const resolved = runTriggeredEffectsWithPayment(
     { G, playerId: ctx.currentPlayer, selfCardId: cardId, randomNumber: random?.Number, enabledExpansions: G.options?.enabledExpansions },
     effects,
@@ -936,8 +1082,86 @@ export function exhaustCard({ G, ctx, random }: MoveCtx, cardId: string, payment
     return;
   }
   if (G.gameover) return;
-  markCardExhausted(G, cardId);
   G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: `Exhausted ${cardId}.` });
+}
+
+export function resolveReactiveExhaustChoice({ G, ctx, random }: MoveCtx, cardId: string): void {
+  const pending = G.pendingReactiveExhaustChoice;
+  if (!pending) {
+    logInvalidMove(G, ctx.currentPlayer, "resolveReactiveExhaustChoice", "no_pending_reactive_exhaust_choice");
+    return;
+  }
+  if (pending.playerId !== ctx.currentPlayer) {
+    logInvalidMove(G, ctx.currentPlayer, "resolveReactiveExhaustChoice", `pending_reactive_exhaust_for_player(${pending.playerId})`);
+    return;
+  }
+  if (!pending.cardIds.includes(cardId)) {
+    logInvalidMove(G, ctx.currentPlayer, "resolveReactiveExhaustChoice", `card_not_in_reactive_exhaust_options(${cardId})`);
+    return;
+  }
+  if (!canExhaustCard(G, ctx.currentPlayer, cardId)) {
+    logInvalidMove(G, ctx.currentPlayer, "resolveReactiveExhaustChoice", `card_not_exhaust_source(${cardId})`);
+    return;
+  }
+  if (isCardExhausted(G, cardId)) {
+    logInvalidMove(G, ctx.currentPlayer, "resolveReactiveExhaustChoice", `card_already_exhausted(${cardId})`);
+    return;
+  }
+  const p = G.players[ctx.currentPlayer];
+  if (p.exhaustTokensAvailable < 1) {
+    logInvalidMove(G, ctx.currentPlayer, "resolveReactiveExhaustChoice", "no_exhaust_tokens_available");
+    return;
+  }
+  const effects = (G.cardDb[cardId]?.effects ?? []).filter((effect) => effect.trigger === "on_exhaust");
+  if (effects.length === 0) {
+    logInvalidMove(G, ctx.currentPlayer, "resolveReactiveExhaustChoice", `no_exhaust_ability(${cardId})`);
+    return;
+  }
+  const snapshot = cloneGameState(G);
+  G.pendingReactiveExhaustChoice = undefined;
+  p.exhaustTokensAvailable -= 1;
+  markCardExhausted(G, cardId);
+  const resolved = runTriggeredEffects(
+    { G, playerId: ctx.currentPlayer, selfCardId: cardId, randomNumber: random?.Number, enabledExpansions: G.options?.enabledExpansions },
+    effects,
+    "on_exhaust"
+  );
+  if (!resolved) {
+    if (G.gameover) return;
+    restoreGameState(G, snapshot);
+    logInvalidMove(G, ctx.currentPlayer, "resolveReactiveExhaustChoice", `exhaust_effect_failed(${cardId})`);
+    return;
+  }
+  if (G.gameover || pendingEffectInterruption(G)) {
+    appendResumeEffectsToPending(G, pending.resumeEffects);
+    return;
+  }
+  G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: `ReactiveExhaustResolved(${cardId}).` });
+  if (!resumeReactiveExhaustSourceEffects({ G, ctx, random }, pending)) {
+    if (G.gameover) return;
+    restoreGameState(G, snapshot);
+    logInvalidMove(G, ctx.currentPlayer, "resolveReactiveExhaustChoice", `resume_effect_failed(${cardId})`);
+  }
+}
+
+export function skipReactiveExhaustChoice({ G, ctx, random }: MoveCtx): void {
+  const pending = G.pendingReactiveExhaustChoice;
+  if (!pending) {
+    logInvalidMove(G, ctx.currentPlayer, "skipReactiveExhaustChoice", "no_pending_reactive_exhaust_choice");
+    return;
+  }
+  if (pending.playerId !== ctx.currentPlayer) {
+    logInvalidMove(G, ctx.currentPlayer, "skipReactiveExhaustChoice", `pending_reactive_exhaust_for_player(${pending.playerId})`);
+    return;
+  }
+  const snapshot = cloneGameState(G);
+  G.pendingReactiveExhaustChoice = undefined;
+  G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: `ReactiveExhaustSkipped(${pending.trigger}/${pending.resource ?? "any"}).` });
+  if (!resumeReactiveExhaustSourceEffects({ G, ctx, random }, pending)) {
+    if (G.gameover) return;
+    restoreGameState(G, snapshot);
+    logInvalidMove(G, ctx.currentPlayer, "skipReactiveExhaustChoice", "resume_effect_failed");
+  }
 }
 
 export function profitCard({ G, ctx, random }: MoveCtx, cardId: string): void {
@@ -1017,6 +1241,20 @@ export function innovateTurn({ G, ctx, events, random }: MoveCtx, args: { suit: 
       return;
     }
   }
+  if (args.source === "deck" && args.suit === "tributary" && !args.cardId) {
+    const cardIds = visibleTributaryBreakThroughCards(G);
+    if (cardIds.length > 1) {
+      G.pendingBreakThroughChoice = {
+        playerId: ctx.currentPlayer,
+        sourceCardId: "innovate_turn",
+        source: "deck",
+        suit: args.suit,
+        cardIds
+      };
+      G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: `BreakThroughChoicePending(innovate_turn/source=deck/options=${cardIds.length})` });
+      return;
+    }
+  }
   breakThrough(G, { playerId: ctx.currentPlayer, suit: args.suit, source: args.source, count: 1, cardId: args.cardId, randomNumber: random?.Number });
   if (returnIfGameover(G) || pendingEffectInterruption(G)) return;
   continueEndTurnAfterCleanupChoices({ G, ctx, events, random });
@@ -1070,9 +1308,9 @@ export function resolveChoice({ G, ctx, random }: MoveCtx, choiceIndex: number, 
   const snapshot = cloneGameState(G);
   const resumeEffects = pending.resumeEffects ?? [];
   G.pendingChoice = undefined;
-  const choiceEffects = payment ? removeExplicitSpendEffects(choice) : choice;
   const cost = explicitSpendCost(choice);
-  if (payment && resourceCostHasPositiveAmount(cost) && !payResourceCosts(G, ctx.currentPlayer, cost, payment)) {
+  const choiceEffects = resourceCostHasPositiveAmount(cost) ? removeExplicitSpendEffects(choice) : choice;
+  if (resourceCostHasPositiveAmount(cost) && !payResourceCosts(G, ctx.currentPlayer, cost, payment)) {
     restoreGameState(G, snapshot);
     logInvalidMove(G, ctx.currentPlayer, "resolveChoice", `choice_effect_failed(index=${choiceIndex})`);
     return;
@@ -1220,6 +1458,15 @@ export function resolveAcquireChoice({ G, ctx, random }: MoveCtx, cardId: string
     triggerPending.resumeEffects = [...(triggerPending.resumeEffects ?? []), ...resumeEffects];
     return;
   }
+  createReactiveExhaustChoice(
+    { G, playerId: ctx.currentPlayer, selfCardId: pending.sourceCardId, randomNumber: random?.Number, enabledExpansions: G.options?.enabledExpansions },
+    { trigger: "after_acquire_card", targetPlayerId: ctx.currentPlayer }
+  );
+  const reactivePending = pendingEffectInterruption(G);
+  if (reactivePending) {
+    reactivePending.resumeEffects = [...(reactivePending.resumeEffects ?? []), ...resumeEffects];
+    return;
+  }
   if (!resumeEffectsAfterPendingChoice({ G, ctx, random }, pending.sourceCardId, resumeEffects)) {
     if (returnIfGameover(G)) return;
     if (handleAfterReshuffleHookFailure(G, ctx.currentPlayer, "resolveAcquireChoice")) return;
@@ -1351,7 +1598,11 @@ export function resolveBreakThroughChoice({ G, ctx, events, random }: MoveCtx, c
     logInvalidMove(G, ctx.currentPlayer, "resolveBreakThroughChoice", `card_not_in_break_through_options(${cardId})`);
     return;
   }
-  const inSource = pending.source === "exile" ? availableExileCards(G, ctx.currentPlayer).includes(cardId) : G.market.includes(cardId);
+  const inSource = pending.source === "exile"
+    ? availableExileCards(G, ctx.currentPlayer).includes(cardId)
+    : pending.source === "deck"
+      ? visibleTributaryBreakThroughCards(G).includes(cardId)
+      : G.market.includes(cardId);
   if (!inSource || !cardHasSuitIcon(G.cardDb[cardId], pending.suit)) {
     logInvalidMove(G, ctx.currentPlayer, "resolveBreakThroughChoice", `break_through_choice_failed(${cardId})`);
     return;
@@ -1597,6 +1848,53 @@ export function resolveTradeChoice({ G, ctx, random }: MoveCtx, routeCardId?: st
     logInvalidMove(G, ctx.currentPlayer, "resolveTradeChoice", `resume_effect_failed(${routeCardId ?? "goods_to_progress"})`);
     return;
   }
+  continuePausedRulesSequences(G, ctx, random?.Number);
+}
+
+export function resolveDiscardChoice({ G, ctx, random }: MoveCtx, cardIds: string[]): void {
+  const pending = G.pendingDiscardChoice;
+  if (!pending) {
+    logInvalidMove(G, ctx.currentPlayer, "resolveDiscardChoice", "no_pending_discard_choice");
+    return;
+  }
+  if (pending.playerId !== ctx.currentPlayer) {
+    logInvalidMove(G, ctx.currentPlayer, "resolveDiscardChoice", `pending_discard_for_player(${pending.playerId})`);
+    return;
+  }
+  if (cardIds.length !== pending.count) {
+    logInvalidMove(G, ctx.currentPlayer, "resolveDiscardChoice", `wrong_card_count(required=${pending.count}/selected=${cardIds.length})`);
+    return;
+  }
+  if (new Set(cardIds).size !== cardIds.length) {
+    logInvalidMove(G, ctx.currentPlayer, "resolveDiscardChoice", "duplicate_card_selection");
+    return;
+  }
+  const p = G.players[ctx.currentPlayer];
+  if (cardIds.some((cardId) => !pending.cardIds.includes(cardId) || !p.hand.includes(cardId))) {
+    logInvalidMove(G, ctx.currentPlayer, "resolveDiscardChoice", "card_not_in_discard_options");
+    return;
+  }
+  const snapshot = cloneGameState(G);
+  const resumeEffects = pending.resumeEffects ?? [];
+  for (const cardId of cardIds) {
+    const index = p.hand.indexOf(cardId);
+    if (index < 0) {
+      restoreGameState(G, snapshot);
+      logInvalidMove(G, ctx.currentPlayer, "resolveDiscardChoice", `discard_choice_failed(${cardId})`);
+      return;
+    }
+    p.hand.splice(index, 1);
+    p.discard.push(cardId);
+  }
+  G.pendingDiscardChoice = undefined;
+  if (!resumeEffectsAfterPendingChoice({ G, ctx, random }, pending.sourceCardId, resumeEffects)) {
+    if (returnIfGameover(G)) return;
+    if (handleAfterReshuffleHookFailure(G, ctx.currentPlayer, "resolveDiscardChoice")) return;
+    restoreGameState(G, snapshot);
+    logInvalidMove(G, ctx.currentPlayer, "resolveDiscardChoice", "resume_effect_failed");
+    return;
+  }
+  G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: `DiscardChoiceResolved(${pending.sourceCardId ?? "unknown"}/count=${cardIds.length})` });
   continuePausedRulesSequences(G, ctx, random?.Number);
 }
 

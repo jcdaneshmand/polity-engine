@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { SharedAreaRow } from "./SharedAreaRow";
 import { MarketRow } from "./MarketRow";
 import { PlayerArea } from "./PlayerArea";
-import { CardDetailPanel } from "./CardDetailPanel";
+import { CardDetailPanel, CardInspectionModal } from "./CardDetailPanel";
 import { ActionMenu } from "./ActionMenu";
 import { GameLogPanel } from "./GameLogPanel";
 import { BotRow } from "./BotRow";
@@ -17,6 +17,7 @@ import { resourceLabelsForGame } from "./resourceDisplay";
 export default function BoardLayout({ G, ctx, moves }: any) {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [detailCardId, setDetailCardId] = useState<string | null>(null);
+  const [zoomCardId, setZoomCardId] = useState<string | null>(null);
   const player = getCurrentPlayer(G, ctx);
   const marketIds = getMarketCards(G);
   const marketCards = marketIds.map((id) => G.cardDb?.[id]).filter(Boolean);
@@ -24,6 +25,9 @@ export default function BoardLayout({ G, ctx, moves }: any) {
   const resourceLabels = resourceLabelsForGame(G, ctx.currentPlayer);
   const selectedCard = getSelectedCard(selection, G);
   const detailCard = selectedCard ?? G.cardDb?.[G.pendingChoice?.sourceCardId];
+  const pinnedDetailCard = G.cardDb?.[detailCardId ?? ""];
+  const visibleDetailCard = pinnedDetailCard ?? detailCard;
+  const zoomCard = G.cardDb?.[zoomCardId ?? ""];
   const selectedZone = selection?.kind === "player_zone"
     ? getInspectableZone(player, selection.id, { ownerPlayerId: selection.playerId, viewerPlayerId: ctx.currentPlayer })
     : undefined;
@@ -36,10 +40,25 @@ export default function BoardLayout({ G, ctx, moves }: any) {
   const marketActionHintsByCardId = useMemo(() => getActionHintsByCardId(actions, "market"), [actions]);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => handleBoardKeyDown(e, { onEndTurn: () => moves.endTurn?.(), onClear: () => setSelection(null), onCyclePanel: () => {}, onShortcut: () => {} });
+    const onKey = (e: KeyboardEvent) => handleBoardKeyDown(e, {
+      onEndTurn: () => moves.endTurn?.(),
+      onClear: () => {
+        if (zoomCardId) {
+          setZoomCardId(null);
+          return;
+        }
+        setSelection(null);
+      },
+      onCyclePanel: () => {},
+      onShortcut: () => {},
+      onZoom: () => {
+        const cardId = detailCardId ?? detailCard?.id;
+        if (cardId) setZoomCardId(cardId);
+      }
+    });
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [moves]);
+  }, [detailCard?.id, detailCardId, moves, zoomCardId]);
 
   const onAction = (a: any) => {
     if (!a.enabled) return;
@@ -61,6 +80,7 @@ export default function BoardLayout({ G, ctx, moves }: any) {
     if (a.action === "skipDevelopmentChoice") moves.skipDevelopmentChoice?.();
     if (a.action === "resolveShortGameDevelopmentExileChoice" && a.cardId) moves.resolveShortGameDevelopmentExileChoice?.(a.cardId);
     if (a.action === "resolveTradeChoice") moves.resolveTradeChoice?.(a.cardId);
+    if (a.action === "resolveDiscardChoice" && a.cardIds) moves.resolveDiscardChoice?.(a.cardIds);
     if (a.action === "resolveReturnUnrestChoice" && a.cardId) moves.resolveReturnUnrestChoice?.(a.cardId);
     if (a.action === "resolvePlaceOnDeckChoice" && a.cardId) moves.resolvePlaceOnDeckChoice?.(a.cardId);
     if (a.action === "resolveGiveCardChoice" && a.cardId && a.recipientPlayerId) moves.resolveGiveCardChoice?.(a.cardId, a.recipientPlayerId);
@@ -111,9 +131,15 @@ export default function BoardLayout({ G, ctx, moves }: any) {
           ? <ZoneDetailPanel title={(shared.find((p)=>p.id===selection.id)?.label) ?? selection.id} cardIds={selectedSharedPile?.cardIds ?? []} hidden={selectedSharedPile?.hidden} count={selectedSharedPile?.count} cardDb={G.cardDb ?? {}} />
         : selection?.kind === "bot_zone"
           ? <ZoneDetailPanel title={(getBotPiles(G.solo?.bot).find((p)=>p.id===selection.id)?.label) ?? selection.id} cardIds={selectedBotZone?.cardIds ?? []} hidden={selectedBotZone?.hidden} count={selectedBotZone?.count} cardDb={G.cardDb ?? {}} />
-          : <CardDetailPanel card={G.cardDb?.[detailCardId ?? ""] ?? detailCard} pinned={!!detailCardId} onUnpin={() => setDetailCardId(null)} />}
+          : <CardDetailPanel
+            card={visibleDetailCard}
+            pinned={!!detailCardId}
+            onUnpin={() => setDetailCardId(null)}
+            onZoom={visibleDetailCard?.id ? () => setZoomCardId(visibleDetailCard.id) : undefined}
+          />}
       <ActionMenu actions={actions} onAction={onAction} />
       <GameLogPanel entries={getRecentLogEntries(G, 20)} />
     </div>
+    <CardInspectionModal card={zoomCard} onClose={() => setZoomCardId(null)} />
   </div>;
 }

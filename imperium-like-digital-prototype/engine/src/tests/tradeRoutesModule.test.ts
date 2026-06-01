@@ -89,6 +89,62 @@ describe("trade routes module", () => {
     expect(G.players["0"].resources.materials).toBe(1);
   });
 
+  it("does not play Profit-only text as a normal hand action", () => {
+    const G = createInitialGameState({ options: { playerCount:2, mode:"multiplayer", enabledExpansions:["trade_routes"], enabledVariants:[] } });
+    const card = "profit_only_action";
+    G.cardDb[card] = {
+      id: card,
+      displayName: "Profit Only",
+      type: "action",
+      cardType: "action",
+      suit: "civic",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_play", op: "profit", effects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }] } as any]
+    };
+    G.players["0"].hand = [card];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+
+    playCard({ G, ctx: { currentPlayer: "0" } as any }, card);
+
+    expect(G.players["0"].hand).toEqual([card]);
+    expect(G.players["0"].discard).not.toContain(card);
+    expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.players["0"].actionsRemaining).toBe(1);
+    expect(G.players["0"].actionTokensAvailable).toBe(1);
+    expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): no_resolvable_on_play_effects(${card})`);
+  });
+
+  it("offers only the skip path for optional Profit when the source route is not complete", () => {
+    const G = createInitialGameState({ options: { playerCount:2, mode:"multiplayer", enabledExpansions:["trade_routes"], enabledVariants:[] } });
+    G.cardDb.incomplete_route = {
+      id: "incomplete_route",
+      displayName: "Incomplete Route",
+      type: "trade_route",
+      cardType: "trade_route",
+      suit: "trade_route",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.players["0"].playArea = ["incomplete_route"];
+    G.cardStates = { incomplete_route: { resources: { goods: 2 } } };
+
+    runEffects({ G, playerId:"0", selfCardId:"incomplete_route", enabledExpansions:["trade_routes"] }, [{
+      trigger: "on_play",
+      op: "optional",
+      effects: [{ trigger: "on_play", op: "profit", effects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }] } as any]
+    } as any]);
+
+    expect(G.pendingChoice).toEqual({
+      playerId: "0",
+      sourceCardId: "incomplete_route",
+      choices: [[]]
+    });
+    expect(G.log.at(-1)?.message).toBe("OptionalPending(incomplete_route/options=1)");
+  });
+
   it("trade spends Goods to gain Progress when enabled and no route is selected", () => {
     const G = createInitialGameState({ options: { playerCount:2, mode:"multiplayer", enabledExpansions:["trade_routes"], enabledVariants:[] } });
     G.players["0"].resources.goods = 1;
@@ -100,6 +156,32 @@ describe("trade routes module", () => {
     expect(G.players["0"].resources.goods).toBe(0);
     expect(G.players["0"].resources.knowledge).toBe(1);
     expect(G.log.some((entry) => entry.message === "UnsupportedEffectOp(trade)")).toBe(false);
+  });
+
+  it("trade does not spend Goods when Progress supply makes fallback conversion impossible", () => {
+    const G = createInitialGameState({ options: { playerCount:2, mode:"multiplayer", enabledExpansions:["trade_routes"], enabledVariants:[] } });
+    G.players["0"].resources.goods = 1;
+    G.players["0"].resources.knowledge = 0;
+    G.resourceSupply = { knowledge: 0 };
+
+    const resolved = runEffects({ G, playerId:"0", enabledExpansions:["trade_routes"] }, [{ trigger:"on_play", op:"trade" } as any]);
+
+    expect(resolved).toBe(false);
+    expect(G.players["0"].resources.goods).toBe(1);
+    expect(G.players["0"].resources.knowledge).toBe(0);
+  });
+
+  it("trade effects fall back to the game options expansion context", () => {
+    const G = createInitialGameState({ options: { playerCount:2, mode:"multiplayer", enabledExpansions:["trade_routes"], enabledVariants:[] } });
+    G.players["0"].resources.goods = 1;
+    G.players["0"].resources.knowledge = 0;
+
+    const resolved = runEffects({ G, playerId:"0" }, [{ trigger:"on_play", op:"trade" } as any]);
+
+    expect(resolved).toBe(true);
+    expect(G.players["0"].resources.goods).toBe(0);
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.log.some((entry) => entry.message === "Ignored trade because trade_routes is disabled.")).toBe(false);
   });
 
   it("trade with available routes waits for the player to choose route Commerce or Goods for Progress", () => {
@@ -176,7 +258,7 @@ describe("trade routes module", () => {
     expect(G.log.at(-1)?.message).toBe("InvalidMove(resolveTradeChoice): trade_choice_failed(own_route)");
   });
 
-  it("resolving an opponent Trade route choice adds Goods from supply, gains Progress, and resolves owner Commerce", () => {
+  it("resolving an opponent Trade route choice adds Goods from supply, gains Progress, and resolves Commerce for the active player", () => {
     const G = createInitialGameState({ options: { playerCount:2, mode:"multiplayer", enabledExpansions:["trade_routes"], enabledVariants:[] } });
     G.cardDb.opponent_route = {
       id: "opponent_route",
@@ -191,6 +273,7 @@ describe("trade routes module", () => {
     G.players["1"].playArea = ["opponent_route"];
     G.players["0"].resources.goods = 0;
     G.players["0"].resources.knowledge = 0;
+    G.players["0"].resources.materials = 0;
     G.players["1"].resources.materials = 0;
     G.pendingTradeChoice = { playerId: "0", routeCardIds: ["opponent_route"], allowGoodsForProgress: false };
 
@@ -200,7 +283,8 @@ describe("trade routes module", () => {
     expect(G.players["0"].resources.goods).toBe(0);
     expect(G.players["0"].resources.knowledge).toBe(1);
     expect(G.cardStates?.opponent_route?.resources?.goods).toBe(1);
-    expect(G.players["1"].resources.materials).toBe(2);
+    expect(G.players["0"].resources.materials).toBe(2);
+    expect(G.players["1"].resources.materials).toBe(0);
   });
 
   it("profit collects Goods from a completed route, moves it to history, and resolves Profit effects", () => {

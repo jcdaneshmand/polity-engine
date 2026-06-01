@@ -124,6 +124,69 @@ describe("setup pipeline",()=>{
     });
     expect(tradeRoutes.players["0"].resources).toMatchObject({ materials:3, influence:2, knowledge:0, goods:1 });
   });
+  it("applies setup and short-game resource overrides using rulebook resource names",()=>{
+    const G=createInitialGameStateFromPipeline({
+      options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:["short_game"]},
+      playerNationIds:{"0":"alias_setup_nation","1":"alias_setup_nation"},
+      cardDb:cardDb([
+        card({id:"market_1"}),
+        card({id:"market_2"}),
+        card({id:"market_3"}),
+        card({id:"market_4"}),
+        card({id:"market_5"})
+      ]),
+      nationDb:{
+        alias_setup_nation:{
+          id:"alias_setup_nation",
+          displayName:"Alias Setup Nation",
+          powerCardIds:[],
+          stateCardIds:[],
+          startingDeckCardIds:[],
+          nationDeckCardIds:[],
+          developmentCardIds:[],
+          setupRules:[],
+          passiveRules:[],
+          actionTokensBase:3,
+          exhaustTokensBase:5,
+          requiredExpansions:[],
+          implemented:true,
+          tested:true
+        }
+      },
+      privateData:{
+        nationRulesets:[{
+          nationId:"alias_setup_nation",
+          displayName:"Alias Setup Rules",
+          rulesetTags:["short_game_exception"],
+          requiredExpansions:[],
+          setupOverrides:[
+            { op:"set_initial_resources", resources:{ progress:2, population:1 } as any },
+            { op:"gain_resource", resource:"progress" as any, count:1 }
+          ],
+          zoneOverrides:[],
+          stateOverrides:[],
+          reshuffleOverrides:[],
+          cleanupOverrides:[],
+          solsticeOverrides:[],
+          scoringOverrides:[],
+          collapseOverrides:[],
+          botOverrides:[],
+          shortGameOverrides:[
+            { op:"remove_starting_resource", resource:"population" as any, count:1 },
+            { op:"remove_starting_resources", resources:["progress" as any] }
+          ],
+          hookRules:[],
+          implemented:true,
+          tested:true
+        }]
+      }
+    } as any);
+
+    expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.players["0"].resources.influence).toBe(0);
+    expect((G.players["0"].resources as any).progress).toBeUndefined();
+    expect((G.players["0"].resources as any).population).toBeUndefined();
+  });
   it("sets a two-sided State card to its Barbarian side during default setup",()=>{
     const G=createInitialGameStateFromPipeline({
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[]},
@@ -369,6 +432,65 @@ describe("setup pipeline",()=>{
     });
 
     expect(G.solo?.bot.botNationId).toBe("requested_bot");
+  });
+  it("random solo bot setup skips nations excluded by the active ruleset options",()=>{
+    const G=createInitialGameStateFromPipeline({
+      options:{playerCount:1,mode:"solo",enabledExpansions:[],enabledVariants:["short_game"],soloDifficulty:"chieftain",commonsSetId:"classics",replacementPolicy:"none"},
+      cardDb: cardDb([
+        card({ id:"starter", ownership:"nation", startingLocation:"draw_deck" }),
+        card({ id:"bot_region", suit:"region", cardType:"attack", ownership:"bot", startingLocation:"bot_deck" })
+      ]),
+      nationDb:{
+        excluded_bot:{ ...nationDb.test_nation_alpha, id:"excluded_bot", displayName:"Excluded Bot" },
+        human_nation:{ ...nationDb.test_nation_alpha, id:"human_nation", displayName:"Human Nation" }
+      },
+      playerNationIds:{"0":"human_nation"},
+      soloBotNationId:"random",
+      privateData:{
+        nationRulesets:[
+          {
+            nationId:"excluded_bot",
+            displayName:"Excluded Bot Rules",
+            rulesetTags:["short_game_excluded"],
+            requiredExpansions:[],
+            setupOverrides:[],
+            zoneOverrides:[],
+            stateOverrides:[],
+            reshuffleOverrides:[],
+            cleanupOverrides:[],
+            solsticeOverrides:[],
+            scoringOverrides:[],
+            collapseOverrides:[],
+            botOverrides:[],
+            shortGameOverrides:[{ op:"excluded_from_short_game" }],
+            hookRules:[],
+            implemented:true,
+            tested:true
+          },
+          {
+            nationId:"human_nation",
+            displayName:"Human Nation Rules",
+            rulesetTags:["default_nation_deck"],
+            requiredExpansions:[],
+            setupOverrides:[],
+            zoneOverrides:[],
+            stateOverrides:[],
+            reshuffleOverrides:[],
+            cleanupOverrides:[],
+            solsticeOverrides:[],
+            scoringOverrides:[],
+            collapseOverrides:[],
+            botOverrides:[],
+            shortGameOverrides:[],
+            hookRules:[],
+            implemented:true,
+            tested:true
+          }
+        ]
+      }
+    } as any);
+
+    expect(G.solo?.bot.botNationId).toBe("human_nation");
   });
   it("filters commons cards that conflict with the requested solo bot nation",()=>{
     const G=createInitialGameStateFromPipeline({

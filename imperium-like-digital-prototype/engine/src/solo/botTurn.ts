@@ -11,13 +11,16 @@ function finishBotTurn(G: GameState, randomNumber?: () => number): void {
   if (!G.solo) return;
   const bot = G.solo.bot;
   const marketCardId = bot.unresolvedSlot ? G.market[bot.unresolvedSlot - 1] : undefined;
-  if (marketCardId) placeMarketResource(G, { playerId: bot.botId, cardId: marketCardId, resource: "knowledge", amount: 1 });
+  const cleanupResource = bot.cleanupMarketResource ?? { resource: "knowledge" as const, count: 1 };
+  if (marketCardId && cleanupResource.count > 0) {
+    placeMarketResource(G, { playerId: bot.botId, cardId: marketCardId, resource: cleanupResource.resource, amount: cleanupResource.count });
+  }
   if (G.options?.enabledExpansions.includes("trade_routes")) resolveBotTradeRoutesEndOfTurn(G, bot);
   runBotCleanup(bot, { G, randomNumber });
   const table = G.solo.botStateTables[bot.botStateTableId];
   if (table) {
     for (const effect of bot.customCleanupEffects ?? []) {
-      applyBotEffect(G, bot, table, "bot_cleanup", effect as BotEffectOp);
+      applyBotEffect(G, bot, table, "bot_cleanup", effect as BotEffectOp, { randomNumber });
       if (G.gameover) break;
     }
   }
@@ -38,6 +41,7 @@ function hasPendingInterruption(G: GameState): boolean {
     ?? G.pendingDevelopmentChoice
     ?? G.pendingShortGameDevelopmentExileChoice
     ?? G.pendingTradeChoice
+    ?? G.pendingDiscardChoice
     ?? G.pendingReturnUnrestChoice
     ?? G.pendingPlaceOnDeckChoice
     ?? G.pendingGiveCardChoice
@@ -46,6 +50,7 @@ function hasPendingInterruption(G: GameState): boolean {
     ?? G.pendingSolsticeOrderChoice
     ?? G.pendingCleanupMarketResourceChoice
     ?? G.pendingCleanupDiscardChoice
+    ?? G.pendingReactiveExhaustChoice
   );
 }
 
@@ -59,7 +64,7 @@ function pauseBotTurnIfInterrupted(G: GameState, remainingSlots: BotSlot[], effe
   return true;
 }
 
-function resolveBotSlots(G: GameState, slots: BotSlot[], effectsRemaining?: number): boolean {
+function resolveBotSlots(G: GameState, slots: BotSlot[], effectsRemaining?: number, randomNumber?: () => number): boolean {
   if (!G.solo) return false;
   const bot = G.solo.bot;
   let remaining = effectsRemaining;
@@ -69,7 +74,7 @@ function resolveBotSlots(G: GameState, slots: BotSlot[], effectsRemaining?: numb
     const cardId = revealSlotCard(bot, slot.slotNumber);
     const table = G.solo.botStateTables[bot.botStateTableId];
     if (cardId) bot.revealedSlotCard = { slotNumber: slot.slotNumber, cardId };
-    if (cardId && table) resolveBotCard({ G, bot, revealedCardId: cardId, source: "slot", table });
+    if (cardId && table) resolveBotCard({ G, bot, revealedCardId: cardId, source: "slot", table, randomNumber });
     if (G.gameover) return true;
     slot.cardId = undefined;
     if (cardId) remaining = remaining === undefined ? undefined : remaining - 1;
@@ -88,7 +93,7 @@ export function runBotTurn(args: { G: GameState; rollDie?: () => number; randomN
   rollAndBlockSlot(bot, roll);
   const effectLimit = bot.difficultyConfig.botEffectsPerTurn ?? Number.POSITIVE_INFINITY;
   const slots = getResolvableBotSlots(bot).slice(0, effectLimit);
-  if (resolveBotSlots(G, slots, Number.isFinite(effectLimit) ? effectLimit : undefined)) return G;
+  if (resolveBotSlots(G, slots, Number.isFinite(effectLimit) ? effectLimit : undefined, args.randomNumber)) return G;
   if (G.gameover) return G;
   finishBotTurn(G, args.randomNumber);
   return G;
@@ -103,7 +108,7 @@ export function continuePausedBotTurn(G: GameState, randomNumber?: () => number)
     .filter((slot): slot is BotSlot => Boolean(slot?.cardId && !slot.blockedByDie));
   G.solo.pausedBotTurn = undefined;
   G.log.push({ round: G.round, playerId: bot.botId, message: "BotTurnResumed" });
-  if (resolveBotSlots(G, slots, paused.effectsRemaining)) return;
+  if (resolveBotSlots(G, slots, paused.effectsRemaining, randomNumber)) return;
   if (G.gameover) return;
   finishBotTurn(G, randomNumber);
 }

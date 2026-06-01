@@ -1,4 +1,5 @@
 import type { GameState, ResourceName } from "./state";
+import { addResourceAmount } from "./resources";
 
 function removeOne(cards: string[], cardId: string): boolean {
   const index = cards.indexOf(cardId);
@@ -53,7 +54,7 @@ export function collectCardResourcesToPlayer(G: GameState, playerId: string, car
   const player = G.players[playerId];
   const state = G.cardStates?.[cardId];
   for (const [resource, amount] of Object.entries(state?.resources ?? {}) as [ResourceName, number | undefined][]) {
-    player.resources[resource] = (player.resources[resource] ?? 0) + (amount ?? 0);
+    addResourceAmount(player.resources, resource, amount ?? 0);
   }
 }
 

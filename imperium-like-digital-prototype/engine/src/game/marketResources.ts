@@ -1,4 +1,5 @@
 import type { GameState, ResourceName } from "./state";
+import { addResourceAmount } from "./resources";
 import { gainMarketResource } from "./resources";
 import { triggerCollapse } from "./scoring";
 
@@ -86,7 +87,7 @@ export function collectMarketResources(G: GameState, playerId: string, cardId: s
   if (!resources) return;
   const player = G.players[playerId];
   for (const [resource, amount] of Object.entries(resources) as [ResourceName, number | undefined][]) {
-    player.resources[resource] = (player.resources[resource] ?? 0) + (amount ?? 0);
+    addResourceAmount(player.resources, resource, amount ?? 0);
   }
   delete G.marketResources?.[cardId];
 }

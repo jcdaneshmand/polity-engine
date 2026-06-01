@@ -28,6 +28,39 @@
   font-size: 1.8rem;
 }
 
+.setup-summary {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.setup-summary div {
+  min-width: 0;
+  border: 1px solid #6e5f50;
+  border-radius: 6px;
+  background: #27231f;
+  padding: 8px;
+}
+
+.setup-summary span {
+  display: block;
+  color: #d9c7a7;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.setup-summary strong {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  color: #f3ead8;
+  font-size: 0.86rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .setup-kicker {
   margin: 0;
   color: #d9c7a7;
@@ -315,6 +348,10 @@
 @media (max-width: 720px) {
   .setup-grid {
     grid-template-columns: 1fr;
+  }
+
+  .setup-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .setup-heading,

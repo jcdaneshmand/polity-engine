@@ -8,6 +8,14 @@ export function normalizeStateToken(value: string | undefined): string | undefin
   return normalized;
 }
 
+function stateRequirementTokens(value: string | undefined): string[] {
+  if (!value) return [];
+  return value
+    .split(/\s*(?:\||,|;|\/|\bor\b)\s*/i)
+    .map(normalizeStateToken)
+    .filter(Boolean) as string[];
+}
+
 function stateCardTokens(G: GameState, cardId: string): string[] {
   const stateCard = G.cardDb[cardId];
   return [
@@ -36,6 +44,12 @@ export function currentStateMatches(G: GameState, playerId: string, state: strin
   if (!expected) return false;
   const stateCardId = G.players[playerId]?.stateArea[0];
   return stateCardId ? stateCardMatches(G, stateCardId, state) : false;
+}
+
+export function currentStateMatchesAny(G: GameState, playerId: string, requirement: string | undefined): boolean {
+  const expectedStates = stateRequirementTokens(requirement);
+  if (expectedStates.length === 0) return false;
+  return expectedStates.some((state) => currentStateMatches(G, playerId, state));
 }
 
 export function syncPlayerStateCardStats(G: GameState, playerId: string): void {

@@ -64,7 +64,10 @@ describe("nation ruleset validation", () => {
       solstice_overrides_json: JSON.stringify([{ op: "remove_play_card_and_nation_deck_if_resource_empty", cardId: "nadir", resource: "progress" }]),
       scoring_overrides_json: JSON.stringify([{ op: "score_resource_ratio", resource: "progress", denominator: 3 }]),
       collapse_overrides_json: "",
-      bot_overrides_json: JSON.stringify([{ op: "bot_custom_cleanup", effect: [{ op: "bot_gain_resource", resource: "progress", count: 1 }] }]),
+      bot_overrides_json: JSON.stringify([
+        { op: "bot_custom_cleanup", effect: [{ op: "bot_gain_resource", resource: "progress", count: 1 }] },
+        { op: "bot_cleanup_market_resource", resource: "population", count: 2 },
+      ]),
       short_game_overrides_json: JSON.stringify([{ op: "remove_starting_resource", resource: "population", count: 1 }, { op: "remove_starting_resources", resources: ["population", "progress"] }]),
       hook_rules_json: JSON.stringify([{ trigger: "after_reshuffle", effects: [{ trigger: "on_play", op: "gain_resource", resource: "progress", amount: 1 }] }]),
       public_summary: "",
@@ -79,7 +82,10 @@ describe("nation ruleset validation", () => {
     expect(normalized.cleanupOverrides).toEqual([{ op: "market_resource_added", resource: "knowledge", count: 1 }]);
     expect(normalized.solsticeOverrides).toEqual([{ op: "remove_play_card_and_nation_deck_if_resource_empty", cardId: "nadir", resource: "knowledge" }]);
     expect(normalized.scoringOverrides).toEqual([{ op: "score_resource_ratio", resource: "knowledge", denominator: 3 }]);
-    expect(normalized.botOverrides).toEqual([{ op: "bot_custom_cleanup", effect: [{ op: "bot_gain_resource", resource: "knowledge", count: 1 }] }]);
+    expect(normalized.botOverrides).toEqual([
+      { op: "bot_custom_cleanup", effect: [{ op: "bot_gain_resource", resource: "knowledge", count: 1 }] },
+      { op: "bot_cleanup_market_resource", resource: "influence", count: 2 },
+    ]);
     expect(normalized.shortGameOverrides).toEqual([{ op: "remove_starting_resource", resource: "influence", count: 1 }, { op: "remove_starting_resources", resources: ["influence", "knowledge"] }]);
     expect(normalized.hookRules).toEqual([{ trigger: "after_reshuffle", effects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }] }]);
   });
@@ -157,6 +163,27 @@ describe("nation ruleset validation", () => {
       field: "botOverrides[0].effect[0].resource",
       reason: "invalid resource 'stone'",
     });
+  });
+
+  it("imports nation-specific Bot cleanup Market token overrides", () => {
+    const rows = parseCsvFile(privateRulesetCsvPath);
+    const expected = new Map([
+      ["carthaginians", { op: "bot_cleanup_market_resource", resource: "materials", count: 2 }],
+      ["guptas", { op: "bot_cleanup_market_resource", resource: "goods", count: 1 }],
+      ["qin", { op: "bot_cleanup_market_resource", resource: "influence", count: 1 }],
+      ["tang", { op: "bot_cleanup_market_resource", resource: "influence", count: 1 }],
+      ["wagadou", { op: "bot_cleanup_market_resource", resource: "materials", count: 1 }],
+    ]);
+
+    for (const [nationId, override] of expected) {
+      const row = rows.find((entry) => entry.nation_id === nationId);
+
+      expect(row).toBeDefined();
+      const normalized = normalizeNationRuleset(row as any);
+
+      expect(normalized.botOverrides).toContainEqual(override);
+      expect(validateNationRuleset(normalized)).toEqual([]);
+    }
   });
 
   it("imports the Inuit short-game exception that skips default Nation-card advancement", () => {

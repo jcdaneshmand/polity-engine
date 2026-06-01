@@ -76,6 +76,10 @@ function toggleItem<T extends string>(items: T[], item: T): T[] {
   return items.includes(item) ? items.filter((value) => value !== item) : [...items, item];
 }
 
+function labelFor<T extends string>(items: Array<{ id: T; label: string }>, id: T): string {
+  return items.find((item) => item.id === id)?.label ?? id;
+}
+
 export default function NewGameSetup({ onStart, onOpenCardEntry }: NewGameSetupProps) {
   const [mode, setMode] = useState<GameMode>("multiplayer");
   const [playerCount, setPlayerCount] = useState<1 | 2 | 3 | 4>(2);
@@ -108,6 +112,14 @@ export default function NewGameSetup({ onStart, onOpenCardEntry }: NewGameSetupP
     [availableNations]
   );
   const activePlayerIds = Array.from({ length: normalizedPlayerCount }, (_, index) => String(index + 1));
+  const selectedNationLabels = activePlayerIds
+    .map((playerId) => availableNations.find((nation) => nation.id === playerNationIds[playerId])?.label ?? firstNationId(availableNations))
+    .join(", ");
+  const enabledModuleSummary = [
+    ...enabledExpansions.map((expansion) => labelFor(expansions, expansion)),
+    ...enabledVariants.map((variant) => labelFor(variants, variant))
+  ].join(", ") || "Core rules";
+  const privateDataSummary = privateDataConfirmed && hasPrivateData(privateData) ? privateDataReadyMessage : "Placeholder data";
 
   const updateMode = (nextMode: GameMode) => {
     setMode(nextMode);
@@ -198,6 +210,33 @@ export default function NewGameSetup({ onStart, onOpenCardEntry }: NewGameSetupP
             Start Game
           </button>
         </div>
+
+        <section className="setup-summary" aria-label="Launch Summary">
+          <div>
+            <span>Mode</span>
+            <strong>{labelFor(modes, mode)}</strong>
+          </div>
+          <div>
+            <span>Players</span>
+            <strong>{normalizedPlayerCount}</strong>
+          </div>
+          <div>
+            <span>Commons</span>
+            <strong>{labelFor(commonsSets, commonsSetId)}</strong>
+          </div>
+          <div>
+            <span>Modules</span>
+            <strong>{enabledModuleSummary}</strong>
+          </div>
+          <div>
+            <span>Nations</span>
+            <strong>{selectedNationLabels}</strong>
+          </div>
+          <div>
+            <span>Private Data</span>
+            <strong>{privateDataSummary}</strong>
+          </div>
+        </section>
 
         <div className="setup-grid">
           <fieldset className="setup-section">

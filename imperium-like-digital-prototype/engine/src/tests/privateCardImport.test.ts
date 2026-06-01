@@ -27,7 +27,13 @@ describe("private card import", () => {
       {trigger:"on_play",op:"break_through",source:"exile",suit:"civilized",count:1},
       {trigger:"on_play",op:"break_through",source:"market",suit:"civilized",count:1},
       {trigger:"on_play",op:"take_unrest",targetPlayerIds:["1","0"],count:1},
+      {trigger:"on_play",op:"return_unrest"},
+      {trigger:"on_play",op:"place_card_on_deck"},
+      {trigger:"on_play",op:"give_card"},
+      {trigger:"on_play",op:"swap_card"},
       {trigger:"on_play",op:"gain_fame",count:1},
+      {trigger:"on_play",op:"gain_action",amount:1},
+      {trigger:"on_play",op:"spend_action",amount:1},
       {trigger:"on_play",op:"trigger_scoring",reason:"card_effect"},
       {trigger:"on_play",op:"garrison_card",hostCardId:"region_a",cardId:"hand_a"},
       {trigger:"on_play",op:"garrison_card"},
@@ -37,6 +43,7 @@ describe("private card import", () => {
       {trigger:"on_play",op:"abandon_region"},
       {trigger:"on_play",op:"develop"},
       {trigger:"on_play",op:"exile_card",source:"market",cardId:"market_card"},
+      {trigger:"on_play",op:"look_cards",source:"deck",count:2},
       {trigger:"on_play",op:"choose_one",choices:[
         [{trigger:"on_play",op:"gain_resource",resource:"materials",amount:1}],
         [{trigger:"on_play",op:"optional",effects:[{trigger:"on_play",op:"draw_if_able",count:1}]}]

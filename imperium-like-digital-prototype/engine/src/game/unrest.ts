@@ -2,6 +2,7 @@ import type { GameState, ReturnUnrestSourceZone } from "./state";
 import { runNationHooks } from "../nations/nationRulesetHooks";
 import { triggerCollapse } from "./scoring";
 import { actualHistorySourceZoneIds } from "./history";
+import { detachGarrisonedCard } from "./regions";
 
 function activeRecipients(G: GameState, playerIds: string[]): string[] {
   return playerIds.filter((playerId) => !!G.players[playerId]);
@@ -21,12 +22,14 @@ function hasPendingInterruption(G: GameState): boolean {
     ?? G.pendingDevelopmentChoice
     ?? G.pendingShortGameDevelopmentExileChoice
     ?? G.pendingTradeChoice
+    ?? G.pendingDiscardChoice
     ?? G.pendingReturnUnrestChoice
     ?? G.pendingPlaceOnDeckChoice
     ?? G.pendingGiveCardChoice
     ?? G.pendingSwapChoice
     ?? G.pendingLookOrderChoice
     ?? G.pendingUnrestAllocationChoice
+    ?? G.pendingReactiveExhaustChoice
   );
 }
 
@@ -52,7 +55,7 @@ function takeUnrestFromPosition(
         triggerCollapse(G, "unrest_pile_empty", args.playerId);
         return false;
       }
-      player.discard.push(unrestCardId);
+      player.hand.push(unrestCardId);
       taken += 1;
       runNationHooks({ G, playerId, trigger: "after_gain_unrest", payload: { cardId: unrestCardId, triggeredBy: args.playerId } });
       if (G.gameover) return false;
@@ -113,7 +116,7 @@ export function isUnrestCard(G: GameState, cardId: string): boolean {
   return card?.suit === "unrest" || card?.cardType === "unrest" || card?.type === "unrest";
 }
 
-export function zoneCardsForReturnUnrest(G: GameState, playerId: string, zoneId: string): string[] | undefined {
+function directZoneCardsForReturnUnrest(G: GameState, playerId: string, zoneId: string): string[] | undefined {
   if (zoneId === "history") {
     const zones = actualHistorySourceZoneIds(G, playerId);
     if (zones.length !== 1 || zones[0] !== "history") {
@@ -130,17 +133,54 @@ export function zoneCardsForReturnUnrest(G: GameState, playerId: string, zoneId:
   return undefined;
 }
 
+export function zoneCardsForReturnUnrest(G: GameState, playerId: string, zoneId: string): string[] | undefined {
+  if (zoneId === "exile") {
+    const player = G.players[playerId];
+    if (!player) return undefined;
+    return [...player.exile, ...(G.globalSpecialZones?.exile?.cardIds ?? [])];
+  }
+  const cards = directZoneCardsForReturnUnrest(G, playerId, zoneId);
+  if (!cards) return undefined;
+  if (zoneId !== "playArea") return cards;
+  const garrisonedCardIds = cards.flatMap((hostCardId) => G.cardStates?.[hostCardId]?.garrisonedCardIds ?? []);
+  return [...cards, ...garrisonedCardIds];
+}
+
+function removeFromReturnUnrestZone(G: GameState, playerId: string, zoneId: string, cardId: string): boolean {
+  if (zoneId === "exile") {
+    const playerExile = G.players[playerId]?.exile;
+    const playerIndex = playerExile?.indexOf(cardId) ?? -1;
+    if (playerIndex >= 0) {
+      playerExile?.splice(playerIndex, 1);
+      return true;
+    }
+    const publicExile = G.globalSpecialZones?.exile?.cardIds;
+    const publicIndex = publicExile?.indexOf(cardId) ?? -1;
+    if (publicIndex >= 0) {
+      publicExile?.splice(publicIndex, 1);
+      return true;
+    }
+    return false;
+  }
+  const cards = directZoneCardsForReturnUnrest(G, playerId, zoneId);
+  if (!cards) return false;
+  const index = cards.indexOf(cardId);
+  if (index >= 0) {
+    cards.splice(index, 1);
+    return true;
+  }
+  if (zoneId !== "playArea") return false;
+  const hostCardId = detachGarrisonedCard(G, playerId, cardId);
+  return Boolean(hostCardId && cards.includes(hostCardId));
+}
+
 export function returnUnrestCard(G: GameState, playerId: string, cardId: string, sourceZones: ReturnUnrestSourceZone[]): ReturnUnrestSourceZone | undefined {
   const player = G.players[playerId];
   if (!player || !isUnrestCard(G, cardId)) return undefined;
   for (const zone of sourceZones) {
     const resolvedZones = zone === "history" ? actualHistorySourceZoneIds(G, playerId) : [zone];
     for (const resolvedZone of resolvedZones) {
-      const cards = zoneCardsForReturnUnrest(G, playerId, resolvedZone);
-      if (!cards) continue;
-      const index = cards.indexOf(cardId);
-      if (index < 0) continue;
-      cards.splice(index, 1);
+      if (!removeFromReturnUnrestZone(G, playerId, resolvedZone, cardId)) continue;
       G.unrestPile ??= [];
       G.unrestPile.push(cardId);
       G.log.push({ round: G.round, playerId, message: `UnrestReturned(${cardId}/${resolvedZone})` });
@@ -178,7 +218,7 @@ function resolveUnrestAllocationFromIndex(
   for (let index = args.nextIndex; index < args.availableUnrestCardIds.length; index += 1) {
     const recipientPlayerId = args.recipientPlayerIds[index];
     const unrestCardId = args.availableUnrestCardIds[index];
-    G.players[recipientPlayerId].discard.push(unrestCardId);
+    G.players[recipientPlayerId].hand.push(unrestCardId);
     runNationHooks({ G, playerId: recipientPlayerId, trigger: "after_gain_unrest", payload: { cardId: unrestCardId, triggeredBy: args.playerId } });
     if (G.gameover) return true;
     if (hasPendingInterruption(G)) {

@@ -56,14 +56,22 @@ function isActivateTurn(G: any): boolean {
 function normalizeStateToken(value: string | undefined): string | undefined {
   if (!value) return undefined;
   const normalized = value.toLowerCase().replace(/[_\s-]+/g, "");
-  if (normalized === "empire") return "civilized";
-  if (normalized === "barbarian") return "uncivilized";
+  if (normalized === "empire" || normalized === "civilised") return "civilized";
+  if (normalized === "barbarian" || normalized === "uncivilised") return "uncivilized";
   return normalized;
 }
 
+function stateRequirementTokens(value: string | undefined): string[] {
+  if (!value) return [];
+  return value
+    .split(/\s*(?:\||,|;|\/|\bor\b)\s*/i)
+    .map(normalizeStateToken)
+    .filter(Boolean) as string[];
+}
+
 function cardMeetsStateRequirement(G: any, ctx: any, cardId: string): boolean {
-  const requirement = normalizeStateToken(getCardById(G, cardId)?.stateRequirement);
-  if (!requirement) return true;
+  const requirements = stateRequirementTokens(getCardById(G, cardId)?.stateRequirement);
+  if (requirements.length === 0) return true;
   const stateCardId = G.players?.[ctx.currentPlayer]?.stateArea?.[0];
   const stateCard = stateCardId ? getCardById(G, stateCardId) : undefined;
   const stateTokens = [
@@ -72,7 +80,7 @@ function cardMeetsStateRequirement(G: any, ctx: any, cardId: string): boolean {
     stateCard?.suit,
     ...(stateCard?.tags ?? [])
   ].map(normalizeStateToken).filter(Boolean);
-  return stateTokens.includes(requirement);
+  return requirements.some((requirement) => stateTokens.includes(requirement));
 }
 
 function isFreePlayCard(G: any, cardId: string): boolean {
@@ -199,6 +207,26 @@ function orderedPermutations(cardIds: string[]): string[][] {
   });
 }
 
+function cardCombinations(cardIds: string[], count: number): string[][] {
+  if (count <= 0) return [[]];
+  if (count > cardIds.length) return [];
+  if (count === cardIds.length) return [[...cardIds]];
+  const results: string[][] = [];
+  const walk = (startIndex: number, chosen: string[]) => {
+    if (chosen.length === count) {
+      results.push([...chosen]);
+      return;
+    }
+    for (let index = startIndex; index < cardIds.length; index += 1) {
+      chosen.push(cardIds[index]);
+      walk(index + 1, chosen);
+      chosen.pop();
+    }
+  };
+  walk(0, []);
+  return results;
+}
+
 export function getPendingUiState(G: any, ctx: any): { title: string; detail: string; playerId?: string } | undefined {
   const plural = (count: number, singular: string) => `${count} ${singular}${count === 1 ? "" : "s"}`;
   const pendingExileDetail = (pendingExileChoice: any) => {
@@ -221,6 +249,7 @@ export function getPendingUiState(G: any, ctx: any): { title: string; detail: st
     G.pendingDevelopmentChoice ? { title: "Pending Development", detail: `Choose ${plural(G.pendingDevelopmentChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingDevelopmentChoice.playerId } :
     G.pendingShortGameDevelopmentExileChoice ? { title: "Pending Development Removal", detail: `Choose ${plural(G.pendingShortGameDevelopmentExileChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingShortGameDevelopmentExileChoice.playerId } :
     G.pendingTradeChoice ? { title: "Pending Trade", detail: plural((G.pendingTradeChoice.routeCardIds?.length ?? 0) + (G.pendingTradeChoice.allowGoodsForProgress ? 1 : 0), "option"), playerId: G.pendingTradeChoice.playerId } :
+    G.pendingDiscardChoice ? { title: "Pending Discard", detail: `Choose ${G.pendingDiscardChoice.count ?? 0} ${(G.pendingDiscardChoice.count ?? 0) === 1 ? "card" : "cards"} from ${plural(G.pendingDiscardChoice.cardIds?.length ?? 0, "option")}`, playerId: G.pendingDiscardChoice.playerId } :
     G.pendingReturnUnrestChoice ? { title: "Pending Return Unrest", detail: `Choose ${plural(G.pendingReturnUnrestChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingReturnUnrestChoice.playerId } :
     G.pendingPlaceOnDeckChoice ? { title: "Pending Deck Placement", detail: `Choose ${plural(G.pendingPlaceOnDeckChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingPlaceOnDeckChoice.playerId } :
     G.pendingGiveCardChoice ? { title: "Pending Give Card", detail: `${plural(G.pendingGiveCardChoice.cardIds?.length ?? 0, "card")} / ${plural(G.pendingGiveCardChoice.recipientPlayerIds?.length ?? 0, "recipient")}`, playerId: G.pendingGiveCardChoice.playerId } :
@@ -247,7 +276,7 @@ type HintZone = "hand" | "market";
 
 function actionHintZone(action: any, idField: "cardId" | "marketCardId"): HintZone | undefined {
   if (idField === "marketCardId") return "market";
-  if (action.action === "play" || action.action === "garrison" || action.action === "revolt" || action.action === "resolveCleanupDiscard") return "hand";
+  if (action.action === "play" || action.action === "garrison" || action.action === "revolt" || action.action === "resolveCleanupDiscard" || action.action === "resolveDiscardChoice") return "hand";
   if (action.action === "acquire" || action.action === "resolveAcquireChoice" || action.action === "resolveMarketCardChoice" || action.action === "resolveBreakThroughChoice" || action.action === "resolveCleanupMarketResource") return "market";
   if (action.action === "innovate" && action.source === "market") return "market";
   return undefined;
@@ -542,6 +571,22 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     }
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Trade choice first" });
+    return actions;
+  }
+  const pendingDiscardChoice = G.pendingDiscardChoice;
+  if (pendingDiscardChoice) {
+    const isCurrentPlayer = pendingDiscardChoice.playerId === ctx.currentPlayer;
+    cardCombinations(pendingDiscardChoice.cardIds ?? [], Number(pendingDiscardChoice.count ?? 0)).forEach((cardIds) => {
+      const names = cardIds.map((cardId) => getCardById(G, cardId)?.displayName ?? cardId);
+      actions.push({
+        label: `Discard ${names.join(", ")}`,
+        action: "resolveDiscardChoice",
+        enabled: isCurrentPlayer,
+        reason: isCurrentPlayer ? undefined : `Waiting for player ${pendingDiscardChoice.playerId}`,
+        cardIds
+      });
+    });
+    actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Discard choice first" });
     return actions;
   }
   const pendingReturnUnrestChoice = G.pendingReturnUnrestChoice;

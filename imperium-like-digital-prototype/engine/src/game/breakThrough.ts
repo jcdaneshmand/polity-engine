@@ -6,6 +6,8 @@ import { triggerScoringIfMainDeckEmpty } from "./scoringTriggers";
 import { cardHasSuitIcon } from "./suitIcons";
 import { availableExileCards } from "./exile";
 
+const TRIBUTARY_VISIBLE_BOTTOM_DECKS = ["regionDeck", "uncivilizedDeck", "civilizedDeck"] as const;
+
 function cardMatchesSuit(G: GameState, cardId: string, suit: Suit): boolean {
   return cardHasSuitIcon(G.cardDb[cardId], suit);
 }
@@ -42,8 +44,35 @@ function gainBreakThroughFallback(G: GameState, playerId: string, suit: Suit): v
   G.log.push({ round: G.round, playerId, message: `BreakThroughFailed(${suit}/gained=${gained === 2 ? 2 : `${gained}/2`} materials)` });
 }
 
+export function visibleTributaryBreakThroughCards(G: GameState): string[] {
+  return TRIBUTARY_VISIBLE_BOTTOM_DECKS.flatMap((deckName) => {
+    const deck = G.marketDecks?.[deckName];
+    const bottomCardId = G.marketDeckBottomCards?.[deckName];
+    if (!deck || deck.length !== 1 || !bottomCardId || deck[0] !== bottomCardId) return [];
+    return cardMatchesSuit(G, bottomCardId, "tributary") ? [bottomCardId] : [];
+  });
+}
+
+function takeVisibleTributaryBottom(G: GameState, playerId: string, cardId?: string): boolean {
+  for (const deckName of TRIBUTARY_VISIBLE_BOTTOM_DECKS) {
+    const deck = G.marketDecks?.[deckName];
+    const bottomCardId = G.marketDeckBottomCards?.[deckName];
+    if (!deck || deck.length !== 1 || !bottomCardId || deck[0] !== bottomCardId) continue;
+    if (cardId && bottomCardId !== cardId) continue;
+    if (!cardMatchesSuit(G, bottomCardId, "tributary")) continue;
+    deck.shift();
+    delete G.marketDeckBottomCards?.[deckName];
+    G.players[playerId].hand.push(bottomCardId);
+    G.log.push({ round: G.round, playerId, message: `BreakThroughVisibleBottom(${bottomCardId}/${deckName})` });
+    return true;
+  }
+  return false;
+}
+
 function breakThroughFromDeck(G: GameState, playerId: string, suit: Suit, randomNumber?: () => number): boolean {
-  const sourceDeck = deckForSuit(suit);
+  if (suit === "tributary" && takeVisibleTributaryBottom(G, playerId)) return true;
+
+  const sourceDeck = suit === "tributary" ? undefined : deckForSuit(suit);
   const smallDeckCard = sourceDeck ? drawMarketDeckCard(G, sourceDeck) : undefined;
   if (smallDeckCard) {
     G.players[playerId].hand.push(smallDeckCard);
@@ -100,7 +129,9 @@ export function breakThrough(G: GameState, args: { playerId: string; suit: Suit;
       ? breakThroughFromMarket(G, args.playerId, args.suit, args.cardId)
       : args.source === "exile"
         ? breakThroughFromExile(G, args.playerId, args.suit, args.cardId)
-        : breakThroughFromDeck(G, args.playerId, args.suit, args.randomNumber);
+        : args.suit === "tributary" && args.cardId
+          ? takeVisibleTributaryBottom(G, args.playerId, args.cardId) || breakThroughFromDeck(G, args.playerId, args.suit, args.randomNumber)
+          : breakThroughFromDeck(G, args.playerId, args.suit, args.randomNumber);
     if (!resolved) break;
   }
 }

@@ -103,6 +103,31 @@ describe("scoring", () => {
     expect(scorePlayer(G, "0")).toBe(20);
   });
 
+  it("caps each positive VP card at 10 across fixed, numeric, and conditional VP modes", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      numeric_vp: vpCard("numeric_vp", 12),
+      fixed_vp: vpCard("fixed_vp", { mode: "fixed", value: 14 }),
+      conditional_met: vpCard("conditional_met", {
+        mode: "conditional",
+        condition: { op: "self_in_zone", zoneId: "history" },
+        trueValue: 13,
+        falseValue: 3
+      }),
+      conditional_unmet: vpCard("conditional_unmet", {
+        mode: "conditional",
+        condition: { op: "self_in_zone", zoneId: "history" },
+        trueValue: 13,
+        falseValue: 11
+      })
+    };
+    G.players["0"].discard = ["numeric_vp", "fixed_vp", "conditional_unmet"];
+    G.players["0"].history = ["conditional_met"];
+
+    expect(scorePlayer(G, "0")).toBe(40);
+  });
+
   it("scores imported numeric conditional victory points and ignores unresolved conditionals", () => {
     const G = createInitialState();
     G.cardDb = {
@@ -157,6 +182,29 @@ describe("scoring", () => {
     G.players["0"].deck = ["deck_region_not_counted"];
 
     expect(scorePlayer(G, "0")).toBe(6);
+  });
+
+  it("does not count Trade Routes as in-play cards for structured variable victory points", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      variable_counter: vpCard("variable_counter", {
+        mode: "variable",
+        formula: { op: "count_cards", tag: "region", zones: ["playArea"], amountEach: 2, cap: 10 }
+      }),
+      play_region: { ...vpCard("play_region", 0), tags: ["region"] },
+      route_with_region_tag: {
+        ...vpCard("route_with_region_tag", 0),
+        type: "trade_route",
+        cardType: "trade_route",
+        suit: "trade_route",
+        tags: ["region"]
+      }
+    };
+    G.players["0"].discard = ["variable_counter"];
+    G.players["0"].playArea = ["play_region", "route_with_region_tag"];
+
+    expect(scorePlayer(G, "0")).toBe(2);
   });
 
   it("treats scored History replacement zones as History for structured VP rules", () => {
@@ -305,6 +353,41 @@ describe("scoring", () => {
     });
   });
 
+  it("uses the options recorded when scoring is triggered for scoring timing", () => {
+    const G = createInitialState({
+      options: {
+        playerCount: 2,
+        mode: "multiplayer",
+        enabledExpansions: [],
+        enabledVariants: []
+      }
+    });
+    G.market = [];
+    G.players["0"].hand = [];
+    G.players["1"].hand = [];
+    const playOrder = ["0", "1"];
+
+    triggerScoring(G, "test_trigger", "0");
+    G.options = {
+      playerCount: 2,
+      mode: "multiplayer",
+      enabledExpansions: [],
+      enabledVariants: ["short_game"]
+    };
+
+    onTurnEnd(G, { currentPlayer: "0", playOrder } as any);
+    onTurnEnd(G, { currentPlayer: "1", playOrder } as any);
+
+    expect(G.gameover).toBeUndefined();
+    expect(G.scoring).toMatchObject({ reason: "test_trigger", phase: "final_round", finalRound: 2 });
+    expect(G.scoringOptions).toMatchObject({
+      playerCount: 2,
+      mode: "multiplayer",
+      enabledExpansions: [],
+      enabledVariants: []
+    });
+  });
+
   it("clears the active scoring lifecycle when normal scoring finalizes", () => {
     const G = createInitialState();
     G.cardDb = {
@@ -332,12 +415,13 @@ describe("scoring", () => {
     });
     G.cardDb = {
       ...G.cardDb,
-      human_vp: vpCard("human_vp", 12),
+      human_vp_a: vpCard("human_vp_a", 7),
+      human_vp_b: vpCard("human_vp_b", 5),
       bot_deck_vp: vpCard("bot_deck_vp", 3),
       bot_discard_vp: vpCard("bot_discard_vp", 4),
       bot_history_vp: vpCard("bot_history_vp", 5)
     };
-    G.players["0"].hand = ["human_vp"];
+    G.players["0"].hand = ["human_vp_a", "human_vp_b"];
     const bot = G.solo!.bot;
     bot.botDeck = ["bot_deck_vp"];
     bot.botDiscard = ["bot_discard_vp"];
@@ -353,6 +437,31 @@ describe("scoring", () => {
       winner: "bot_0",
       reason: "normal_scoring:solo_test",
       scores: { "0": 12, bot_0: 12 }
+    });
+  });
+
+  it("uses the recorded solo option when normal scoring finalizes", () => {
+    const G = createInitialState({
+      options: { playerCount: 1, mode: "solo", enabledExpansions: [], enabledVariants: [], soloDifficulty: "chieftain" }
+    });
+    G.cardDb = {
+      ...G.cardDb,
+      human_vp: vpCard("human_vp", 2),
+      bot_vp: vpCard("bot_vp", 4)
+    };
+    G.players["0"].hand = ["human_vp"];
+    G.solo!.bot.botDeck = ["bot_vp"];
+
+    triggerScoring(G, "solo_test", "0");
+    G.scoring = { ...G.scoring!, phase: "final_round", finalRound: 1 };
+    G.options = { playerCount: 1, mode: "multiplayer", enabledExpansions: [], enabledVariants: [] };
+
+    finalizeNormalScoring(G);
+
+    expect(G.gameover).toEqual({
+      winner: "bot_0",
+      reason: "normal_scoring:solo_test",
+      scores: { "0": 2, bot_0: 4 }
     });
   });
 
@@ -388,7 +497,81 @@ describe("scoring", () => {
     G.solo!.bot.botDeck = ["bot_variable", "bot_conditional", "bot_negative"];
     G.solo!.bot.resources = {};
 
-    expect(scoreBot(G)).toBe(13);
+    expect(scoreBot(G)).toBe(9);
+  });
+
+  it("scores Bot negative VP cards as negative while conditional penalties use the best branch", () => {
+    const G = createInitialState({
+      options: { playerCount: 1, mode: "solo", enabledExpansions: [], enabledVariants: [], soloDifficulty: "imperator" }
+    });
+    G.cardDb = {
+      ...G.cardDb,
+      bot_negative_fixed: vpCard("bot_negative_fixed", { mode: "negative", value: 4 }),
+      bot_conditional_penalty: vpCard("bot_conditional_penalty", {
+        mode: "conditional",
+        value: 0,
+        trueValue: -4,
+        falseValue: 0
+      })
+    };
+    G.solo!.bot.botDeck = ["bot_negative_fixed", "bot_conditional_penalty"];
+    G.solo!.bot.resources = {};
+
+    expect(scoreBot(G)).toBe(-4);
+  });
+
+  it("scores Cultist Bot Unrest cards using the solo Cultist difficulty exception", () => {
+    const imperator = createInitialState({
+      options: { playerCount: 1, mode: "solo", enabledExpansions: [], enabledVariants: [], soloDifficulty: "imperator" }
+    });
+    imperator.cardDb = {
+      ...imperator.cardDb,
+      bot_unrest_a: vpCard("bot_unrest_a", { mode: "fixed", value: -2 }),
+      bot_unrest_b: vpCard("bot_unrest_b", { mode: "negative", value: 2 })
+    };
+    imperator.cardDb.bot_unrest_a.suit = "unrest";
+    imperator.cardDb.bot_unrest_a.cardType = "unrest";
+    imperator.cardDb.bot_unrest_b.suit = "unrest";
+    imperator.cardDb.bot_unrest_b.cardType = "unrest";
+    imperator.solo!.bot.botNationId = "cultists";
+    imperator.solo!.bot.botDeck = ["bot_unrest_a"];
+    imperator.solo!.bot.botDiscard = ["bot_unrest_b"];
+    imperator.solo!.bot.resources = {};
+
+    expect(scoreBot(imperator)).toBe(2);
+
+    const chieftain = createInitialState({
+      options: { playerCount: 1, mode: "solo", enabledExpansions: [], enabledVariants: [], soloDifficulty: "chieftain" }
+    });
+    chieftain.cardDb = imperator.cardDb;
+    chieftain.solo!.bot.botNationId = "cultists";
+    chieftain.solo!.bot.botDeck = ["bot_unrest_a"];
+    chieftain.solo!.bot.botDiscard = ["bot_unrest_b"];
+    chieftain.solo!.bot.resources = {};
+
+    expect(scoreBot(chieftain)).toBe(0);
+
+    const overlord = createInitialState({
+      options: { playerCount: 1, mode: "solo", enabledExpansions: [], enabledVariants: [], soloDifficulty: "overlord" }
+    });
+    overlord.cardDb = imperator.cardDb;
+    overlord.solo!.bot.botNationId = "cultists";
+    overlord.solo!.bot.botDeck = ["bot_unrest_a"];
+    overlord.solo!.bot.botDiscard = ["bot_unrest_b"];
+    overlord.solo!.bot.resources = {};
+
+    expect(scoreBot(overlord)).toBe(4);
+
+    const supremeRuler = createInitialState({
+      options: { playerCount: 1, mode: "solo", enabledExpansions: [], enabledVariants: [], soloDifficulty: "supreme_ruler" }
+    });
+    supremeRuler.cardDb = imperator.cardDb;
+    supremeRuler.solo!.bot.botNationId = "cultists";
+    supremeRuler.solo!.bot.botDeck = ["bot_unrest_a"];
+    supremeRuler.solo!.bot.botDiscard = ["bot_unrest_b"];
+    supremeRuler.solo!.bot.resources = {};
+
+    expect(scoreBot(supremeRuler)).toBe(4);
   });
 
   it("scores Bot structured conditional victory points at the best imported value", () => {
@@ -408,6 +591,42 @@ describe("scoring", () => {
     G.solo!.bot.resources = {};
 
     expect(scoreBot(G)).toBe(8);
+  });
+
+  it("caps each positive Bot VP card at 10", () => {
+    const G = createInitialState({
+      options: { playerCount: 1, mode: "solo", enabledExpansions: [], enabledVariants: [], soloDifficulty: "imperator" }
+    });
+    G.cardDb = {
+      ...G.cardDb,
+      bot_numeric: vpCard("bot_numeric", 12),
+      bot_fixed: vpCard("bot_fixed", { mode: "fixed", value: 13 }),
+      bot_variable: vpCard("bot_variable", { mode: "variable", value: 15 }),
+      bot_conditional: vpCard("bot_conditional", { mode: "conditional", value: 14 })
+    };
+    G.solo!.bot.botDeck = ["bot_numeric", "bot_fixed", "bot_variable", "bot_conditional"];
+    G.solo!.bot.resources = {};
+
+    expect(scoreBot(G)).toBe(40);
+  });
+
+  it("does not score Bot Power cards", () => {
+    const G = createInitialState({
+      options: { playerCount: 1, mode: "solo", enabledExpansions: [], enabledVariants: [], soloDifficulty: "imperator" }
+    });
+    G.cardDb = {
+      ...G.cardDb,
+      bot_power: vpCard("bot_power", { mode: "fixed", value: 10 }),
+      bot_action: vpCard("bot_action", { mode: "fixed", value: 3 })
+    };
+    G.cardDb.bot_power.cardType = "power";
+    G.cardDb.bot_power.type = "power";
+    G.cardDb.bot_power.suit = "power";
+    G.solo!.bot.botPlayArea = ["bot_power"];
+    G.solo!.bot.botDeck = ["bot_action"];
+    G.solo!.bot.resources = {};
+
+    expect(scoreBot(G)).toBe(3);
   });
 
   it("collapse scoring ends immediately and uses lowest Unrest instead of VP", () => {

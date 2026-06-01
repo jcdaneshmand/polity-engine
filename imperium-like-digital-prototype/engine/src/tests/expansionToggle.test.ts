@@ -80,6 +80,49 @@ describe("trade_routes expansion toggle", () => {
     expect(G.log.at(-1)?.message).toContain("Ignored trade");
   });
 
+  it("does not play Commerce-only text when trade_routes is disabled", () => {
+    const G = createInitialGameState({ options: { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: [] } });
+    const card = "commerce_only_action";
+    G.cardDb[card] = {
+      id: card,
+      displayName: "Commerce Only",
+      type: "action",
+      cardType: "action",
+      suit: "civic",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_play", op: "commerce" } as any]
+    };
+    G.players["0"].hand = [card];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+
+    playCard({ G, ctx: { currentPlayer: "0" } as any }, card);
+
+    expect(G.players["0"].hand).toEqual([card]);
+    expect(G.players["0"].discard).not.toContain(card);
+    expect(G.players["0"].actionsRemaining).toBe(1);
+    expect(G.players["0"].actionTokensAvailable).toBe(1);
+    expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): no_resolvable_on_play_effects(${card})`);
+  });
+
+  it("offers only the skip path for optional Commerce when trade_routes is disabled", () => {
+    const G = createInitialGameState({ options: { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: [] } });
+
+    runEffects({ G, playerId: "0", selfCardId: "test_action_optional", enabledExpansions: [] }, [{
+      trigger: "on_play",
+      op: "optional",
+      effects: [{ trigger: "on_play", op: "commerce" } as any]
+    } as any]);
+
+    expect(G.pendingChoice).toEqual({
+      playerId: "0",
+      sourceCardId: "test_action_optional",
+      choices: [[]]
+    });
+    expect(G.log.at(-1)?.message).toBe("OptionalPending(test_action_optional/options=1)");
+  });
+
   it("played card effects receive the enabled trade_routes expansion context", () => {
     const G = createInitialGameState({ options: { playerCount: 2, mode: "multiplayer", enabledExpansions: ["trade_routes"], enabledVariants: [] } });
     G.cardDb.trade_action = {

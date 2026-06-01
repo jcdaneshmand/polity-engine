@@ -33,6 +33,8 @@ export type BotState = {
   merchantState?: "none" | "merchants" | "merchant_empire";
   difficulty: SoloDifficulty;
   difficultyConfig: SoloDifficultyConfig;
+  skipAccessionStateFlip?: boolean;
+  cleanupMarketResource?: { resource: ResourceName; count: number };
   customCleanupEffects?: Extract<BotOverride, { op: "bot_custom_cleanup" }>["effect"];
   unresolvedSlot?: SlotNumber;
   revealedSlotCard?: { slotNumber: SlotNumber; cardId: string };

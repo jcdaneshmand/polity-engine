@@ -77,6 +77,25 @@ describe("regions, garrison, and recall", () => {
     expect(G.cardStates?.test_region).toBeUndefined();
   });
 
+  it("collects rulebook-named region resources into canonical player pools", () => {
+    const G = createInitialState();
+    G.cardDb.test_region = { id: "test_region", displayName: "Test Region", type: "region", cardType: "region", suit: "region", cost: 0, tags: [], effects: [] };
+    G.players["0"].playArea = ["test_region"];
+    G.cardStates = {
+      test_region: {
+        resources: { progress: 2, population: 1 } as any
+      }
+    };
+
+    recallRegion({ G, ctx }, "test_region");
+
+    expect(G.players["0"].resources.knowledge).toBe(2);
+    expect(G.players["0"].resources.influence).toBe(1);
+    expect((G.players["0"].resources as any).progress).toBeUndefined();
+    expect((G.players["0"].resources as any).population).toBeUndefined();
+    expect(G.cardStates?.test_region).toBeUndefined();
+  });
+
   it("moves resources from garrisoned cards and clears their runtime state when the host leaves play", () => {
     const G = createInitialState();
     G.cardDb.test_region = { id: "test_region", displayName: "Test Region", type: "region", cardType: "region", suit: "region", cost: 0, tags: [], effects: [] };

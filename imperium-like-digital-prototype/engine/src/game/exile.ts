@@ -34,7 +34,7 @@ export function acquireFromExile(G: GameState, args: { playerId: string; cardId:
 
   if (requiresUnrest) {
     const unrestCardId = G.unrestPile?.shift();
-    if (unrestCardId) player.discard.push(unrestCardId);
+    if (unrestCardId) player.hand.push(unrestCardId);
   }
 
   G.log.push({ round: G.round, playerId: args.playerId, message: `AcquiredFromExile(${args.cardId}/destination=${destination})` });
@@ -51,6 +51,19 @@ export function availableExileCards(G: GameState, playerId: string): string[] {
 function marketCardHasTokens(G: GameState, cardId: string): boolean {
   const resources = G.marketResources?.[cardId] ?? {};
   return Object.values(resources).some((amount) => (amount ?? 0) > 0);
+}
+
+export function playerCardHasTokens(G: GameState, cardId: string): boolean {
+  const state = G.cardStates?.[cardId];
+  return Object.values(state?.resources ?? {}).some((amount) => (amount ?? 0) > 0)
+    || (state?.actionTokens ?? 0) > 0
+    || (state?.exhaustTokens ?? 0) > 0
+    || state?.exhausted === true;
+}
+
+export function playerCardOrGarrisonHasTokens(G: GameState, cardId: string): string | undefined {
+  if (playerCardHasTokens(G, cardId)) return cardId;
+  return G.cardStates?.[cardId]?.garrisonedCardIds?.find((garrisonedCardId) => playerCardHasTokens(G, garrisonedCardId));
 }
 
 export function exileMarketCard(G: GameState, args: { playerId: string; cardId: string }): boolean {
@@ -103,6 +116,15 @@ export function playerExileSourceCards(G: GameState, playerId: string, source: P
 export function exilePlayerCard(G: GameState, args: { playerId: string; source: PlayerExileSource; cardId: string }): boolean {
   const player = G.players[args.playerId];
   if (!player) return false;
+  const tokenedCardId = playerCardOrGarrisonHasTokens(G, args.cardId);
+  if (tokenedCardId) {
+    if (tokenedCardId !== args.cardId) {
+      G.log.push({ round: G.round, playerId: args.playerId, message: `ExileSkipped(garrisoned_card_has_tokens/${args.cardId}/${tokenedCardId})` });
+      return false;
+    }
+    G.log.push({ round: G.round, playerId: args.playerId, message: `ExileSkipped(player_card_has_tokens/${args.cardId})` });
+    return false;
+  }
   if (args.source === "garrison") {
     const hostCardId = detachGarrisonedCard(G, args.playerId, args.cardId);
     if (!hostCardId) return false;

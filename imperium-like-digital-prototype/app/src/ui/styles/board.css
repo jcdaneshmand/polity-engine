@@ -48,6 +48,7 @@
 .turn-status strong { display:block; margin-top:2px; }
 .turn-status-pending { color:#ffe0a3; font-weight:700; }
 .detail-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.detail-heading-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; }
 .detail-heading h3 { margin:0; }
 .detail-subtitle { color:#d9c7a7; font-size:.82rem; margin-top:2px; }
 .detail-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; margin-top:8px; }
@@ -60,8 +61,19 @@
 .detail-effects { margin:5px 0 0; padding-left:18px; }
 .detail-effects li { margin-bottom:4px; line-height:1.25; }
 .detail-implementation { color:#d9c7a7; font-size:.76rem; margin-top:8px; }
-.unpin-button { border:1px solid #7a6a57; border-radius:6px; background:#4a4038; color:#f3ead8; padding:4px 8px; cursor:pointer; }
-.unpin-button:hover { border-color:#e6b86a; background:#57493f; }
+.unpin-button,.zoom-button { border:1px solid #7a6a57; border-radius:6px; background:#4a4038; color:#f3ead8; padding:4px 8px; cursor:pointer; }
+.unpin-button:hover,.zoom-button:hover { border-color:#e6b86a; background:#57493f; }
+.card-detail-panel--modal { border:0; border-radius:0; background:transparent; padding:0; }
+.card-detail-panel--modal .detail-heading { display:none; }
+.card-inspection-backdrop { position:fixed; inset:0; z-index:20; display:flex; align-items:center; justify-content:center; box-sizing:border-box; padding:18px; background:rgba(18,16,14,.78); }
+.card-inspection-modal { width:min(760px,100%); max-height:min(720px,calc(100vh - 36px)); overflow:auto; border:2px solid #e6b86a; border-radius:8px; background:#2f2925; color:#f3ead8; box-shadow:0 20px 60px rgba(0,0,0,.45); }
+.card-inspection-toolbar { position:sticky; top:0; z-index:1; display:flex; align-items:center; justify-content:space-between; gap:12px; border-bottom:1px solid #6e5f50; background:#3b342f; padding:10px 12px; }
+.card-inspection-toolbar strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.card-inspection-toolbar button { min-height:36px; border:1px solid #7a6a57; border-radius:6px; background:#4a4038; color:#f3ead8; cursor:pointer; padding:0 10px; }
+.card-inspection-toolbar button:hover { border-color:#e6b86a; background:#57493f; }
+.card-inspection-modal .card-detail-panel { font-size:1rem; }
+.card-inspection-modal .detail-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }
+.card-inspection-modal .detail-effects li { line-height:1.35; }
 .log-panel { max-height:180px; overflow:auto; }
 .badge { display:inline-flex; justify-content:space-between; gap:6px; padding:4px 7px; border:1px solid #7a6a57; border-radius:8px; margin:2px; }
 .badge.is-gain { animation: resource-gain-pulse .9s ease-out; border-color:#a8d977; color:#f0ffd8; }

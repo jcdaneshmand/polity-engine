@@ -90,18 +90,29 @@ function formatVp(vp: any): string {
   return `${vp.value ?? ""} variable VP`.trim();
 }
 
-export function CardDetailPanel({ card, pinned = false, onUnpin }: { card: any; pinned?: boolean; onUnpin?: () => void }) {
+type CardDetailPanelProps = {
+  card: any;
+  pinned?: boolean;
+  onUnpin?: () => void;
+  onZoom?: () => void;
+  variant?: "panel" | "modal";
+};
+
+export function CardDetailPanel({ card, pinned = false, onUnpin, onZoom, variant = "panel" }: CardDetailPanelProps) {
   if (!card) return <div className="panel detail">Select a card.</div>;
   const effects = card.effects ?? [];
   const tags = card.tags ?? [];
 
-  return <div className="panel detail card-detail-panel">
+  return <div className={`panel detail card-detail-panel card-detail-panel--${variant}`}>
     <div className="detail-heading">
       <div>
         <h3>{card.displayName}</h3>
         <div className="detail-subtitle">{titleWords(card.suit ?? card.type)} {titleWords(card.cardType ?? card.type)}</div>
       </div>
-      {pinned ? <button className="unpin-button" onClick={onUnpin}>Unpin</button> : null}
+      <div className="detail-heading-actions">
+        {onZoom ? <button className="zoom-button" type="button" onClick={onZoom}>Zoom</button> : null}
+        {pinned ? <button className="unpin-button" type="button" onClick={onUnpin}>Unpin</button> : null}
+      </div>
     </div>
     {pinned ? <div className="pinned-label">Pinned</div> : null}
     <div className="detail-grid">
@@ -118,4 +129,20 @@ export function CardDetailPanel({ card, pinned = false, onUnpin }: { card: any; 
     <div className="detail-implementation">Implemented: {card.implemented === undefined ? "Unknown" : card.implemented ? "Yes" : "No"} · Tested: {card.tested === undefined ? "Unknown" : card.tested ? "Yes" : "No"}</div>
     {isPrivateCardDebugEnabled ? <pre>{card.privateName} {card.rawEffectTextPrivate}</pre> : null}
   </div>;
+}
+
+export function CardInspectionModal({ card, onClose }: { card: any; onClose: () => void }) {
+  if (!card) return null;
+
+  return (
+    <div className="card-inspection-backdrop">
+      <div className="card-inspection-modal" role="dialog" aria-modal="true" aria-label={`${card.displayName} card inspection`}>
+        <div className="card-inspection-toolbar">
+          <strong>{card.displayName}</strong>
+          <button type="button" onClick={onClose}>Close</button>
+        </div>
+        <CardDetailPanel card={card} variant="modal" />
+      </div>
+    </div>
+  );
 }

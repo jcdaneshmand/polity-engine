@@ -62,6 +62,8 @@ export type ScoringOverride =
 export type CollapseOverride = { op: "auto_win_if_zone_empty"; zoneId: string } | { op: "custom_collapse_resolution"; effect: EffectOp[] };
 export type BotOverride =
   | { op: "skip_default_dynasty_setup" }
+  | { op: "skip_bot_accession_state_flip" }
+  | { op: "bot_cleanup_market_resource"; resource: ResourceName; count: number }
   | { op: "custom_dynasty_setup"; config?: { cardIds?: string[] } & Record<string, unknown> }
   | { op: "custom_bot_state_stack"; cardIds?: string[] }
   | { op: "initial_bot_state_table"; tableId: string; side?: string }

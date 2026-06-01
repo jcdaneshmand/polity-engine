@@ -103,6 +103,7 @@ export function resolveBotTrade(G: GameState, bot: BotState): boolean {
   const chosen = chooseTradeRoute(G, bot);
   if (!chosen) {
     if ((bot.resources.goods ?? 0) > 0) {
+      if (G.resourceSupply && (G.resourceSupply.knowledge ?? 0) <= 0) return false;
       bot.resources.goods = (bot.resources.goods ?? 0) - 1;
       returnResourceToSupply(G, "goods", 1);
       const gained = takeResourceFromSupply(G, "knowledge", 1);

@@ -1,4 +1,5 @@
 import type { GameState } from "./state";
+import type { GameOptions } from "../options/gameOptions";
 import type { ScoringOverride } from "../nations/nationRulesetTypes";
 import { runEffects } from "../cards/effectRunner";
 import { runNationHooks } from "../nations/nationRulesetHooks";
@@ -8,6 +9,14 @@ import { cardHasSuitIcon } from "./suitIcons";
 
 function logOverride(G: GameState, playerId: string, nationId: string, category: string, op: string): void {
   G.log.push({ round: G.round, playerId, message: `NationRulesetApplied(${nationId}/${category}/${op})` });
+}
+
+function cloneOptions(options: GameOptions | undefined): GameOptions | undefined {
+  return options ? JSON.parse(JSON.stringify(options)) as GameOptions : undefined;
+}
+
+function activeScoringOptions(G: GameState): GameOptions | undefined {
+  return G.scoringOptions ?? G.options;
 }
 
 function getZoneCards(G: GameState, playerId: string, zoneId: string): string[] {
@@ -27,12 +36,18 @@ function getZoneCards(G: GameState, playerId: string, zoneId: string): string[] 
   return [];
 }
 
+function isTradeRouteCard(G: GameState, cardId: string): boolean {
+  const card = G.cardDb[cardId];
+  return card?.type === "trade_route" || card?.cardType === "trade_route" || card?.suit === "trade_route";
+}
+
 function countVariableFormula(G: GameState, playerId: string, formula: { op?: string; tag?: unknown; suit?: unknown; zones?: unknown; amountEach?: unknown; cap?: unknown }): number | undefined {
   if (formula.op !== "count_cards" || typeof formula.amountEach !== "number") return undefined;
   const zoneIds = Array.isArray(formula.zones) ? formula.zones.filter((zone): zone is string => typeof zone === "string") : ["hand", "playArea", "deck", "discard", "powerArea", ...actualScoredHistoryZoneIds(G, playerId)];
   const count = zoneIds
-    .flatMap((zoneId) => getZoneCards(G, playerId, zoneId))
-    .filter((matchedCardId) => {
+    .flatMap((zoneId) => getZoneCards(G, playerId, zoneId).map((cardId) => ({ cardId, zoneId })))
+    .filter(({ cardId: matchedCardId, zoneId }) => {
+      if (zoneId === "playArea" && isTradeRouteCard(G, matchedCardId)) return false;
       const card = G.cardDb[matchedCardId];
       if (!card) return false;
       if (typeof formula.tag === "string" && !card.tags.includes(formula.tag)) return false;
@@ -43,9 +58,13 @@ function countVariableFormula(G: GameState, playerId: string, formula: { op?: st
   return typeof formula.cap === "number" ? Math.min(score, formula.cap) : Math.min(score, 10);
 }
 
+function capPositiveCardVp(value: number): number {
+  return value > 10 ? 10 : value;
+}
+
 function cardVp(G: GameState, playerId: string, cardId: string, zoneId?: string): number {
   const vp = G.cardDb[cardId]?.vp as unknown;
-  if (typeof vp === "number") return vp;
+  if (typeof vp === "number") return capPositiveCardVp(vp);
   if (typeof vp === "object" && vp !== null) {
     const { mode, value, condition, formula, trueValue, falseValue } = vp as {
       mode?: string;
@@ -62,13 +81,13 @@ function cardVp(G: GameState, playerId: string, cardId: string, zoneId?: string)
         && typeof zoneId === "string"
         && actualScoredHistoryZoneIds(G, playerId).includes(zoneId);
       const matchedValue = zoneId === condition.zoneId || isHistoryAlias ? trueValue : falseValue;
-      return typeof matchedValue === "number" ? matchedValue : numericValue;
+      return capPositiveCardVp(typeof matchedValue === "number" ? matchedValue : numericValue);
     }
-    if (mode === "conditional") return numericValue;
+    if (mode === "conditional") return capPositiveCardVp(numericValue);
     if (mode === "variable" && formula) return countVariableFormula(G, playerId, formula) ?? Math.min(numericValue, 10);
     if (mode === "variable") return Math.min(numericValue, 10);
     if (mode === "negative") return -Math.abs(numericValue);
-    return numericValue;
+    return capPositiveCardVp(numericValue);
   }
   return 0;
 }
@@ -85,27 +104,52 @@ function zoneIsExcluded(G: GameState, playerId: string, zoneId: string, excluded
 
 function botCardVp(G: GameState, cardId: string): number {
   const vp = G.cardDb[cardId]?.vp as unknown;
-  if (typeof vp === "number") return vp;
+  if (typeof vp === "number") return capPositiveCardVp(vp);
   if (typeof vp === "object" && vp !== null) {
     const { mode, value, trueValue, falseValue } = vp as { mode?: string; value?: unknown; trueValue?: unknown; falseValue?: unknown };
     const numericValue = typeof value === "number" ? value : 0;
     if (mode === "none") return 0;
-    if (mode === "variable") return numericValue || 5;
+    if (mode === "variable") return capPositiveCardVp(numericValue || 5);
     if (mode === "conditional" && (typeof trueValue === "number" || typeof falseValue === "number")) {
-      return Math.max(
+      return capPositiveCardVp(Math.max(
         typeof trueValue === "number" ? trueValue : numericValue,
         typeof falseValue === "number" ? falseValue : numericValue
-      );
+      ));
     }
-    if (mode === "conditional") return numericValue;
-    if (mode === "negative") return 0;
-    return numericValue;
+    if (mode === "conditional") return capPositiveCardVp(numericValue);
+    if (mode === "negative") return -Math.abs(numericValue);
+    return capPositiveCardVp(numericValue);
   }
   return 0;
 }
 
+function isBotCultistUnrestCard(G: GameState, cardId: string): boolean {
+  const bot = G.solo?.bot;
+  if (bot?.botNationId !== "cultists") return false;
+  const card = G.cardDb[cardId];
+  const type = card?.cardType ?? card?.type;
+  return type === "unrest" || card?.suit === "unrest" || card?.tags?.includes("unrest");
+}
+
+function isBotPowerCard(G: GameState, cardId: string): boolean {
+  const card = G.cardDb[cardId];
+  const type = card?.cardType ?? card?.type;
+  return type === "power" || card?.suit === "power" || card?.tags?.includes("power");
+}
+
+function botScoredCardVp(G: GameState, cardId: string): number {
+  if (isBotPowerCard(G, cardId)) return 0;
+  if (isBotCultistUnrestCard(G, cardId)) {
+    const difficulty = G.solo?.bot.difficulty;
+    if (difficulty === "chieftain") return 0;
+    if (difficulty === "overlord" || difficulty === "supreme_ruler") return 2;
+    return 1;
+  }
+  return botCardVp(G, cardId);
+}
+
 function scoreBotCardIds(G: GameState, cardIds: string[]): number {
-  return cardIds.reduce((sum, cardId) => sum + botCardVp(G, cardId), 0);
+  return cardIds.reduce((sum, cardId) => sum + botScoredCardVp(G, cardId), 0);
 }
 
 export function scoreBot(G: GameState): number {
@@ -172,6 +216,7 @@ function hasPendingInterruption(G: GameState): boolean {
     ?? G.pendingDevelopmentChoice
     ?? G.pendingShortGameDevelopmentExileChoice
     ?? G.pendingTradeChoice
+    ?? G.pendingDiscardChoice
     ?? G.pendingReturnUnrestChoice
     ?? G.pendingPlaceOnDeckChoice
     ?? G.pendingGiveCardChoice
@@ -179,6 +224,7 @@ function hasPendingInterruption(G: GameState): boolean {
     ?? G.pendingLookOrderChoice
     ?? G.pendingUnrestAllocationChoice
     ?? G.pendingSolsticeOrderChoice
+    ?? G.pendingReactiveExhaustChoice
   );
 }
 
@@ -349,6 +395,7 @@ export function applyScoringLifecycleOnce(G: GameState, playerId: string): boole
 export function triggerScoring(G: GameState, reason: string, triggeredBy?: string): void {
   if (G.scoring || G.gameover) return;
   G.scoring = { reason, triggeredBy, phase: "finish_current_round" };
+  G.scoringOptions = cloneOptions(G.options);
   G.log.push({ round: G.round, playerId: triggeredBy ?? "scoring", message: `ScoringTriggered(${reason})` });
 }
 
@@ -363,7 +410,7 @@ export function triggerCollapse(G: GameState, reason: string, triggeredBy?: stri
       if (G.gameover) return;
     }
   }
-  if (G.options?.mode === "solo" && G.solo) {
+  if (activeScoringOptions(G)?.mode === "solo" && G.solo) {
     const humanPlayerId = Object.keys(G.players)[0] ?? "0";
     G.scoring = undefined;
     G.gameover = {
@@ -415,7 +462,7 @@ export function finalizeNormalScoring(G: GameState): void {
     }
     scores[playerId] = score;
   }
-  if (G.options?.mode === "solo" && G.solo) {
+  if (activeScoringOptions(G)?.mode === "solo" && G.solo) {
     const humanPlayerId = playerIds[0] ?? "0";
     const botId = G.solo.bot.botId;
     scores[botId] = scoreBot(G);
@@ -451,8 +498,9 @@ export function continuePendingScoringFinalization(G: GameState): void {
 
 export function advanceScoringAtRoundBoundary(G: GameState): void {
   if (!G.scoring || G.gameover) return;
+  const options = activeScoringOptions(G);
   if (G.scoring.phase === "finish_current_round") {
-    if (G.options?.enabledVariants?.includes("short_game") || G.options?.mode === "practice") {
+    if (options?.enabledVariants?.includes("short_game") || options?.mode === "practice") {
       finalizeNormalScoring(G);
       return;
     }

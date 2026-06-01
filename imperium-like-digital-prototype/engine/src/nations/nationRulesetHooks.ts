@@ -68,6 +68,7 @@ function hasPendingInterruption(G: GameState): boolean {
     ?? G.pendingGiveCardChoice
     ?? G.pendingSwapChoice
     ?? G.pendingLookOrderChoice
+    ?? G.pendingReactiveExhaustChoice
   );
 }
 

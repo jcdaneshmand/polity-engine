@@ -52,6 +52,29 @@ function logInvalidMove(G: GameState, playerId: string, move: string, reason: st
   G.log.push({ round: G.round, playerId, message: `InvalidMove(${move}): ${reason}` });
 }
 
+function shuffleWithRandom<T>(items: T[], randomNumber?: () => number): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const roll = randomNumber ? randomNumber() : 0;
+    const j = Math.floor(roll * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+function shuffleResolvedFindDeck(G: GameState, playerId: string, zone: "deck" | "nationDeck", randomNumber?: () => number): void {
+  const player = G.players[playerId];
+  if (zone === "deck") {
+    player.deck = shuffleWithRandom(player.deck, randomNumber);
+    G.log.push({ round: G.round, playerId, message: "FindShuffled(deck)" });
+    return;
+  }
+  const accessionCards = player.nationDeck.filter((candidateId) => isAccessionCard(G, player, candidateId));
+  const regularCards = player.nationDeck.filter((candidateId) => !isAccessionCard(G, player, candidateId));
+  player.nationDeck = [...shuffleWithRandom(regularCards, randomNumber), ...accessionCards];
+  G.log.push({ round: G.round, playerId, message: "FindShuffled(nationDeck)" });
+}
+
 function cloneGameState(G: GameState): GameState {
   return JSON.parse(JSON.stringify(G)) as GameState;
 }
@@ -458,7 +481,7 @@ function canDrawAtLeastOneCardOrReshuffle(G: GameState, playerId: string): boole
   const progressionTokens = p.progressionTokens ?? { nationDeck: 0, developmentArea: 0 };
   const canSpendProgressionToken = progressionTokens.nationDeck <= 0
     && progressionTokens.developmentArea <= 0
-    && p.exhaustTokensAvailable > 0;
+    && p.actionTokensAvailable > 0;
   if (!canSpendProgressionToken) return false;
 
   const ruleset = G.activeNationRulesets?.[playerId];
@@ -1507,6 +1530,7 @@ export function resolveFindChoice({ G, ctx, random }: MoveCtx, cardId: string): 
     logInvalidMove(G, ctx.currentPlayer, "resolveFindChoice", `find_move_failed(${cardId})`);
     return;
   }
+  for (const shuffleZone of pending.shuffleZones ?? []) shuffleResolvedFindDeck(G, ctx.currentPlayer, shuffleZone, random?.Number);
   G.pendingFindChoice = undefined;
   createReactiveExhaustChoicesForResourceGains(
     { G, playerId: ctx.currentPlayer, selfCardId: pending.sourceCardId, randomNumber: random?.Number, enabledExpansions: G.options?.enabledExpansions },

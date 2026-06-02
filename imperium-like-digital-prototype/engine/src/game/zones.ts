@@ -43,7 +43,7 @@ function hasProgressionMarker(player: PlayerState): boolean {
 }
 
 function canSpendProgressionToken(player: PlayerState): boolean {
-  return !hasProgressionMarker(player) && player.exhaustTokensAvailable > 0;
+  return !hasProgressionMarker(player) && player.actionTokensAvailable > 0;
 }
 
 export function canUseDevelopmentArea(G: GameState, playerId: string): boolean {
@@ -53,7 +53,7 @@ export function canUseDevelopmentArea(G: GameState, playerId: string): boolean {
 
 function spendProgressionToken(player: PlayerState, destination: "nationDeck" | "developmentArea"): void {
   const tokens = ensureProgressionTokens(player);
-  player.exhaustTokensAvailable -= 1;
+  player.actionTokensAvailable -= 1;
   tokens[destination] += 1;
 }
 

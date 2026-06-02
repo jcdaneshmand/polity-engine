@@ -475,12 +475,15 @@ function runFindCard(ctx: Ctx, effect: Extract<Effect, { op: "find_card" }>): vo
     for (const zone of zones) {
       for (const resolvedZone of resolvedFindZones(ctx.G, ctx.playerId, zone)) {
         const found = searchableFindCards(ctx.G, ctx.playerId, player, resolvedZone).includes(effect.cardId);
-        if (resolvedZone === "deck" || resolvedZone === "nationDeck") shuffleFindDeckIfNeeded(ctx.G, ctx.playerId, resolvedZone, ctx.randomNumber);
-        if (!found) continue;
+        if (!found) {
+          if (resolvedZone === "deck" || resolvedZone === "nationDeck") shuffleFindDeckIfNeeded(ctx.G, ctx.playerId, resolvedZone, ctx.randomNumber);
+          continue;
+        }
         const collectedResources: Partial<Record<ResourceName, number>> = {};
         const sourceWasInPlay = resolvedZone === "playArea" && sourceCardIsInPlay(ctx.G, ctx.playerId, effect.cardId);
         const destination = moveFoundCard(ctx.G, ctx.playerId, resolvedZone, effect.destination, effect.cardId, collectedResources);
         if (!destination) continue;
+        if (resolvedZone === "deck" || resolvedZone === "nationDeck") shuffleFindDeckIfNeeded(ctx.G, ctx.playerId, resolvedZone, ctx.randomNumber);
         ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `FindResolved(${effect.cardId}/${resolvedZone}->${destination})` });
         createReactiveExhaustChoicesForResourceGains(ctx, collectedResources, effect.cardId, sourceWasInPlay);
         return;
@@ -491,19 +494,27 @@ function runFindCard(ctx: Ctx, effect: Extract<Effect, { op: "find_card" }>): vo
   }
 
   const cardIds: string[] = [];
+  const shuffleZones: ("deck" | "nationDeck")[] = [];
   for (const zone of zones) {
     for (const resolvedZone of resolvedFindZones(ctx.G, ctx.playerId, zone)) {
       for (const cardId of searchableFindCards(ctx.G, ctx.playerId, player, resolvedZone)) {
         if (cardMatchesFindCriteria(ctx.G, ctx.playerId, cardId, effect) && !cardIds.includes(cardId)) cardIds.push(cardId);
       }
-      if (resolvedZone === "deck" || resolvedZone === "nationDeck") shuffleFindDeckIfNeeded(ctx.G, ctx.playerId, resolvedZone, ctx.randomNumber);
+      if ((resolvedZone === "deck" || resolvedZone === "nationDeck") && !shuffleZones.includes(resolvedZone)) shuffleZones.push(resolvedZone);
     }
   }
   if (cardIds.length > 0) {
-    ctx.G.pendingFindChoice = { playerId: ctx.playerId, sourceCardId: ctx.selfCardId, cardIds, destination: effect.destination };
+    ctx.G.pendingFindChoice = {
+      playerId: ctx.playerId,
+      sourceCardId: ctx.selfCardId,
+      cardIds,
+      destination: effect.destination,
+      ...(shuffleZones.length > 0 ? { shuffleZones } : {})
+    };
     ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `FindChoicePending(${ctx.selfCardId ?? "unknown"}/options=${cardIds.length})` });
     return;
   }
+  for (const shuffleZone of shuffleZones) shuffleFindDeckIfNeeded(ctx.G, ctx.playerId, shuffleZone, ctx.randomNumber);
   ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: "FindMissed(criteria)" });
 }
 
@@ -613,7 +624,7 @@ function canPayAnyDevelopmentCard(G: GameState, playerId: string): boolean {
 
 function canSpendProgressionToken(player: PlayerState): boolean {
   const tokens = player.progressionTokens ?? { nationDeck: 0, developmentArea: 0 };
-  return tokens.nationDeck <= 0 && tokens.developmentArea <= 0 && player.exhaustTokensAvailable > 0;
+  return tokens.nationDeck <= 0 && tokens.developmentArea <= 0 && player.actionTokensAvailable > 0;
 }
 
 function canDevelopBeforeNationDeckEmpty(G: GameState, playerId: string): boolean {

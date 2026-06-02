@@ -103,9 +103,19 @@ export function getInspectableZone(
   }
 
   const cardIds = getZoneCards(owner, zoneId);
+  if (
+    zoneId === "nationDeck"
+    && owner?.accessionCardId
+    && (
+      !(owner?.nationDeck ?? []).includes(owner.accessionCardId)
+      || owner?.nationDeck?.at?.(-1) === owner.accessionCardId
+    )
+  ) {
+    return { hidden: false, cardIds: [owner.accessionCardId], count: zoneCount(owner, zoneId) };
+  }
   const hiddenZones = new Set(["deck", "nationDeck", "botDeck", "botDynastyDeck"]);
   if (hiddenZones.has(zoneId)) return { hidden: true, cardIds: [], count: zoneCount(owner, zoneId) };
-  const ownerVisibleZones = new Set(["hand"]);
+  const ownerVisibleZones = new Set(["hand", "history"]);
   if (
     ownerVisibleZones.has(zoneId) &&
     viewer?.ownerPlayerId !== undefined &&

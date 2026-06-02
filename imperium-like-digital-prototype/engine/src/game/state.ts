@@ -133,7 +133,7 @@ export interface GameState {
   cardStates?: Record<string, CardRuntimeState>;
   pendingChoice?: { playerId: string; sourceCardId?: string; choices: Effect[][]; resumeEffects?: Effect[] };
   pendingDrawChoice?: { playerId: string; sourceCardId?: string; source: Exclude<DrawSourceZone, "deck" | "fameDeck">; cardIds: string[]; remainingCount: number; resumeEffects?: Effect[] };
-  pendingFindChoice?: { playerId: string; sourceCardId?: string; cardIds: string[]; destination: ZoneName; resumeEffects?: Effect[] };
+  pendingFindChoice?: { playerId: string; sourceCardId?: string; cardIds: string[]; destination: ZoneName; shuffleZones?: ("deck" | "nationDeck")[]; resumeEffects?: Effect[] };
   pendingAcquireChoice?: { playerId: string; sourceCardId?: string; source: "market" | "exile"; cardIds: string[]; destination: "hand" | "discard"; resumeEffects?: Effect[] };
   pendingMarketCardChoice?: { playerId: string; sourceCardId?: string; op: "gain_card" | "take_card"; cardIds: string[]; destination: "hand" | "discard"; resumeEffects?: Effect[] };
   pendingBreakThroughChoice?: { playerId: string; sourceCardId?: string; source: "market" | "deck" | "exile"; suit: Suit; cardIds: string[]; resumeEffects?: Effect[] };

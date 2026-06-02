@@ -1830,6 +1830,33 @@ describe("turn loop", () => {
     expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): no_resolvable_on_play_effects(${card})`);
   });
 
+  it("plays draw text when Action-token reshuffle progression can add a Nation card", () => {
+    const G = createInitialState();
+    const card = "test_action_archive_survey";
+    G.cardDb[card] = {
+      ...G.cardDb[card],
+      effects: [{ trigger: "on_play", op: "draw", count: 1 } as any]
+    };
+    G.players["0"].hand = [card];
+    G.players["0"].deck = [];
+    G.players["0"].discard = [];
+    G.players["0"].nationDeck = ["test_action_lineage_record"];
+    G.players["0"].developmentArea = [];
+    G.players["0"].actionsRemaining = 2;
+    G.players["0"].actionTokensAvailable = 2;
+    G.players["0"].exhaustTokensAvailable = 0;
+    G.players["0"].progressionTokens = { nationDeck: 0, developmentArea: 0 };
+
+    playCard({ G, ctx, random: { Number: () => 0 } }, card);
+
+    expect(G.players["0"].hand).toEqual(["test_action_lineage_record"]);
+    expect(G.players["0"].discard).toContain(card);
+    expect(G.players["0"].nationDeck).toEqual([]);
+    expect(G.players["0"].actionTokensAvailable).toBe(0);
+    expect(G.players["0"].exhaustTokensAvailable).toBe(0);
+    expect(G.log.some((entry) => entry.message === `InvalidMove(playCard): no_resolvable_on_play_effects(${card})`)).toBe(false);
+  });
+
   it("does not treat discard Unrest as a resolvable default Return Unrest source", () => {
     const G = createInitialState();
     const card = "test_action_archive_survey";

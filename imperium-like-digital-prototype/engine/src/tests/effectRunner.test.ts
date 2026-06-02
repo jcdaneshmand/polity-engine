@@ -3416,12 +3416,13 @@ describe("effectRunner", () => {
       playerId: "0",
       sourceCardId: "finder",
       cardIds: ["test_action_foundry_shift", "test_action_archive_survey", "test_action_lineage_record"],
-      destination: "discard"
+      destination: "discard",
+      shuffleZones: ["deck", "nationDeck"]
     });
     expect(G.players["0"].deck).toEqual(["test_action_scholars_circle"]);
     expect(G.players["0"].nationDeck).toEqual(["test_action_lineage_record"]);
-    expect(G.log.map((entry) => entry.message)).toContain("FindShuffled(deck)");
-    expect(G.log.map((entry) => entry.message)).toContain("FindShuffled(nationDeck)");
+    expect(G.log.map((entry) => entry.message)).not.toContain("FindShuffled(deck)");
+    expect(G.log.map((entry) => entry.message)).not.toContain("FindShuffled(nationDeck)");
     expect(G.log.at(-1)?.message).toBe("FindChoicePending(finder/options=3)");
   });
 
@@ -3451,6 +3452,67 @@ describe("effectRunner", () => {
     expect(G.players["0"].history).toEqual([]);
     expect(G.players["0"].hand).toEqual(["history_target", "history_target"]);
     expect(G.log.at(-1)?.message).toBe("FindResolved(history_target/history->hand)");
+  });
+
+  it("find_card removes an exact Draw deck hit before shuffling the searched deck", () => {
+    const G = createInitialState();
+    G.players["0"].deck = ["target_card", "deck_a", "deck_b"];
+    for (const id of ["target_card", "deck_a", "deck_b"]) {
+      G.cardDb[id] = {
+        id,
+        displayName: id,
+        type: "action",
+        cardType: "action",
+        suit: "uncivilized",
+        cost: 0,
+        tags: [],
+        effects: []
+      };
+    }
+
+    runEffects({ G, playerId: "0", randomNumber: () => 0 }, [{
+      trigger: "on_play",
+      op: "find_card",
+      cardId: "target_card",
+      sourceZones: ["deck"],
+      destination: "hand"
+    } as any]);
+
+    expect(G.players["0"].hand).toEqual(["target_card"]);
+    expect(G.players["0"].deck).toEqual(["deck_b", "deck_a"]);
+    expect(G.log.map((entry) => entry.message)).toContain("FindShuffled(deck)");
+    expect(G.log.at(-1)?.message).toBe("FindResolved(target_card/deck->hand)");
+  });
+
+  it("find_card by criteria removes the chosen Draw deck card before shuffling the searched deck", () => {
+    const G = createInitialState();
+    G.players["0"].deck = ["match_a", "match_b", "miss_c"];
+    for (const id of ["match_a", "match_b", "miss_c"]) {
+      G.cardDb[id] = {
+        id,
+        displayName: id,
+        type: "action",
+        cardType: "action",
+        suit: id.startsWith("match") ? "uncivilized" : "civilized",
+        cost: 0,
+        tags: [],
+        effects: []
+      };
+    }
+
+    runEffects({ G, playerId: "0", selfCardId: "finder", randomNumber: () => 0 }, [{
+      trigger: "on_play",
+      op: "find_card",
+      sourceZones: ["deck"],
+      suit: "uncivilized",
+      destination: "hand"
+    } as any]);
+    (moves as any).resolveFindChoice({ G, ctx: { currentPlayer: "0" } as any, random: { Number: () => 0 } as any }, "match_a");
+
+    expect(G.players["0"].hand).toEqual(["match_a"]);
+    expect(G.players["0"].deck).toEqual(["miss_c", "match_b"]);
+    expect(G.log.map((entry) => entry.message)).toContain("FindShuffled(deck)");
+    expect(G.log.at(-1)?.message).toBe("FindChoiceResolved(finder/match_a->hand)");
   });
 
   it("find_card can move a targeted garrisoned card without moving its host", () => {
@@ -4254,6 +4316,34 @@ describe("effectRunner", () => {
       choices: [[]]
     });
     expect(G.log.at(-1)?.message).toBe("OptionalPending(test_action_optional/options=1)");
+  });
+
+  it("offers optional draw when Action-token reshuffle progression can add a Nation card", () => {
+    const G = createInitialState();
+    const p = G.players["0"];
+    p.deck = [];
+    p.discard = [];
+    p.nationDeck = ["test_action_lineage_record"];
+    p.developmentArea = [];
+    p.actionTokensAvailable = 1;
+    p.exhaustTokensAvailable = 0;
+    p.progressionTokens = { nationDeck: 0, developmentArea: 0 };
+
+    runEffects({ G, playerId: "0", selfCardId: "test_action_optional" }, [{
+      trigger: "on_play",
+      op: "optional",
+      effects: [{ trigger: "on_play", op: "draw", count: 1 }]
+    } as any]);
+
+    expect(G.pendingChoice).toEqual({
+      playerId: "0",
+      sourceCardId: "test_action_optional",
+      choices: [
+        [{ trigger: "on_play", op: "draw", count: 1 }],
+        []
+      ]
+    });
+    expect(G.log.at(-1)?.message).toBe("OptionalPending(test_action_optional/options=2)");
   });
 
   it("offers only the skip path for optional resource gain when the finite supply is empty", () => {

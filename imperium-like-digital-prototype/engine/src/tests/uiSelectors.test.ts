@@ -80,15 +80,22 @@ describe("ui selectors",()=>{
     expect(getInspectableZone(player,"hand")).toEqual({ hidden: false, cardIds: ["h1"], count: 1 });
     expect(getInspectableZone(player,"developmentArea")).toEqual({ hidden: false, cardIds: ["dev1"], count: 1 });
   });
-  it("shows History card identities to all players",()=> {
+  it("shows History card identities only to their owner",()=> {
     const player:any={history:["hist1","hist2"]};
     expect(getInspectableZone(player,"history",{ ownerPlayerId:"0", viewerPlayerId:"0" })).toEqual({ hidden: false, cardIds: ["hist1","hist2"], count: 2 });
-    expect(getInspectableZone(player,"history",{ ownerPlayerId:"0", viewerPlayerId:"1" })).toEqual({ hidden: false, cardIds: ["hist1","hist2"], count: 2 });
+    expect(getInspectableZone(player,"history",{ ownerPlayerId:"0", viewerPlayerId:"1" })).toEqual({ hidden: true, cardIds: [], count: 2 });
   });
-  it("counts a separately tracked Accession as the hidden bottom Nation deck card",()=> {
+  it("exposes a separately tracked Accession as the public bottom Nation deck card",()=> {
     const player:any={deck:[],nationDeck:["n1","n2"],accessionCardId:"acc"};
-    expect(getInspectableZone(player,"nationDeck")).toEqual({ hidden: true, cardIds: [], count: 3 });
+    expect(getInspectableZone(player,"nationDeck")).toEqual({ hidden: false, cardIds: ["acc"], count: 3 });
     expect(getPlayerZoneCounts(player).nationDeck).toBe(3);
+  });
+  it("exposes an embedded Accession only when it is still the public bottom Nation deck card",()=> {
+    const player:any={deck:[],nationDeck:["n1","n2","acc"],accessionCardId:"acc"};
+    expect(getInspectableZone(player,"nationDeck")).toEqual({ hidden: false, cardIds: ["acc"], count: 3 });
+
+    player.nationDeck = ["n1","acc","n2"];
+    expect(getInspectableZone(player,"nationDeck")).toEqual({ hidden: true, cardIds: [], count: 3 });
   });
   it("shows hand to its owner and count-only to opponents",()=> {
     const player:any={hand:["h1","h2"]};

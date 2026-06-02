@@ -280,10 +280,10 @@ function updateMarketSlotAfterBotSwap(G: GameState, marketIndex: number, previou
   slot.attachedUnrestCardIds = [...(G.marketUnrest?.[incomingCardId] ?? [])];
 }
 
-function chooseBotSwapMarketCard(G: GameState, botCardId: string, filter?: BotAcquireFilter): { cardId: string; slotIndex: number } | undefined {
+function chooseBotSwapMarketCard(G: GameState, botId: string, botCardId: string, filter?: BotAcquireFilter): { cardId: string; slotIndex: number } | undefined {
   return G.market
     .map((cardId, slotIndex) => ({ cardId, slotIndex }))
-    .filter(({ cardId }) => cardMatchesFilter(G, cardId, filter) && cardCanSwapWithMarket(G, botCardId, cardId))
+    .filter(({ cardId }) => cardMatchesFilter(G, cardId, filter) && cardCanSwapWithMarket(G, botId, botCardId, cardId))
     .sort((a, b) => {
       const value = (cardId: string) => cardVpValueForCondition(G.cardDb[cardId]) + marketResourceTokenCount(G, cardId);
       const vpDiff = value(b.cardId) - value(a.cardId);
@@ -298,7 +298,7 @@ function botSwapMarket(G: GameState, bot: BotState, filter?: BotAcquireFilter, m
   for (let botIndex = bot.botPlayArea.length - 1; botIndex >= 0; botIndex -= 1) {
     const botCardId = bot.botPlayArea[botIndex];
     if (!cardMatchesFilter(G, botCardId, filter)) continue;
-    const chosen = chooseBotSwapMarketCard(G, botCardId, marketFilter);
+    const chosen = chooseBotSwapMarketCard(G, bot.botId, botCardId, marketFilter);
     if (!chosen) continue;
 
     const [marketCardId] = G.market.splice(chosen.slotIndex, 1, botCardId);

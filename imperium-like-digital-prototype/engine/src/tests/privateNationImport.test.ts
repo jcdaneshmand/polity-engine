@@ -14,10 +14,10 @@ describe("private nation import",()=>{
   it("implemented true tested false warning",()=>expect(validatePrivateNationsRows([row],known,false).counts.warnings).toBeGreaterThan(0));
   it("identical names warning",()=>expect(validatePrivateNationsRows([{...row,public_placeholder_name:"Priv Nation"}],known,false).counts.warnings).toBeGreaterThan(0));
   it("pipe lists parse and setup player",()=>{ const n=normalizeNation(row); const p=setupPlayerFromNation({nation:n,cardDb:{c1:{} as any,c2:{} as any,c3:{} as any},playerId:"0",shuffle:(x)=>x}); expect(p.deck.length).toBe(2); expect(p.nationDeck.length).toBe(1); expect(p.powerArea.length).toBe(1); expect(p.stateArea.length).toBe(1); });
-  it("keeps player Nation deck cards in listed order while keeping accession separate",()=> {
+  it("shuffles player Nation deck cards while keeping accession separate",()=> {
     const n=normalizeNation({...row,nation_deck_card_ids:"c1|c2|c3",accession_card_id:"c4"});
     const p=setupPlayerFromNation({nation:n,cardDb:{c1:{} as any,c2:{} as any,c3:{} as any,c4:{} as any},playerId:"0",shuffle:(x)=>[...x].reverse()});
-    expect(p.nationDeck).toEqual(["c1","c2","c3"]);
+    expect(p.nationDeck).toEqual(["c3","c2","c1"]);
     expect(p.accessionCardId).toBe("c4");
   });
   it("missing card refs fatal by default",()=>expect(validatePrivateNationsRows([row],new Set(),false).counts.fatal).toBeGreaterThan(0));

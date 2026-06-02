@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createInitialState } from "../game/initialState";
 import { gainFameCardsForBot, peekFameCards, resolveBotKingOfKings, returnFameCardToTop, takeFameCard } from "../game/fame";
+import { resolveDevelopmentChoice } from "../game/moves";
 
 function addSoloBot(G: ReturnType<typeof createInitialState>, overrides: Record<string, unknown> = {}) {
   G.solo = {
@@ -157,6 +158,53 @@ describe("Fame deck", () => {
     });
   });
 
+  it("resolves the King of Kings free Develop without reshuffling, drawing, or changing the Fame scoring trigger", () => {
+    const G = createInitialState();
+    G.cardDb.civilized_state = {
+      id: "civilized_state",
+      displayName: "Empire",
+      type: "state",
+      cardType: "state",
+      suit: "civilized",
+      cost: 0,
+      tags: ["empire"],
+      effects: []
+    };
+    G.players["1"].stateArea = ["civilized_state"];
+    G.players["1"].developmentArea = ["test_action_scholars_circle", "test_action_foundry_shift"];
+    G.players["1"].deck = [];
+    G.players["1"].discard = ["existing_discard"];
+    G.players["1"].hand = [];
+    G.players["1"].progressionTokens = { nationDeck: 0, developmentArea: 0 };
+    G.cardDb.test_action_scholars_circle.developmentCost = { materials: 99 };
+    G.cardDb.test_action_foundry_shift.developmentCost = { materials: 99 };
+    G.fameDeck = {
+      available: [],
+      specialBottomCardId: "king_of_kings",
+      specialBottomSide: "B",
+      resolvedSpecialByPlayer: { "0": true }
+    };
+
+    expect(takeFameCard(G, "1")).toBe("king_of_kings");
+
+    resolveDevelopmentChoice(
+      { G, ctx: { currentPlayer: "1" } as any, random: { Number: () => 0 } as any },
+      "test_action_scholars_circle"
+    );
+
+    expect(G.pendingDevelopmentChoice).toBeUndefined();
+    expect(G.players["1"].developmentArea).toEqual(["test_action_foundry_shift"]);
+    expect(G.players["1"].discard).toEqual(["existing_discard", "test_action_scholars_circle"]);
+    expect(G.players["1"].deck).toEqual([]);
+    expect(G.players["1"].hand).toEqual([]);
+    expect(G.players["1"].progressionTokens).toEqual({ nationDeck: 0, developmentArea: 0 });
+    expect(G.scoring).toEqual({
+      reason: "fame_deck_terminal_condition",
+      triggeredBy: "1",
+      phase: "finish_current_round"
+    });
+  });
+
   it("uses the active side of a two-sided State card for King of Kings rewards", () => {
     const G = createInitialState();
     G.cardDb.two_sided_state = {
@@ -183,6 +231,59 @@ describe("Fame deck", () => {
 
     expect(G.players["0"].resources.knowledge).toBe(3);
     expect(G.pendingDevelopmentChoice?.cardIds).toEqual(["test_action_scholars_circle"]);
+  });
+
+  it("can suppress King of Kings rewards for a ruleset-specific state exception", () => {
+    const G = createInitialState();
+    G.cardDb.exception_state = {
+      id: "exception_state",
+      displayName: "Exception State",
+      type: "state",
+      cardType: "state",
+      suit: "civilized",
+      cost: 0,
+      tags: ["empire"],
+      effects: []
+    };
+    G.players["0"].stateArea = ["exception_state"];
+    G.players["0"].resources.knowledge = 0;
+    G.players["0"].developmentArea = ["test_action_scholars_circle"];
+    G.cardStates = { exception_state: { activeState: "civilized" } };
+    G.activeNationRulesets = {
+      "0": {
+        nationId: "reward_exception",
+        displayName: "Reward Exception",
+        rulesetTags: [],
+        requiredExpansions: [],
+        setupOverrides: [],
+        zoneOverrides: [],
+        stateOverrides: [{ op: "suppress_king_of_kings_reward", state: "civilized" }],
+        reshuffleOverrides: [],
+        cleanupOverrides: [],
+        solsticeOverrides: [],
+        scoringOverrides: [],
+        collapseOverrides: [],
+        botOverrides: [],
+        shortGameOverrides: [],
+        hookRules: [],
+        implemented: true,
+        tested: true
+      }
+    };
+    G.fameDeck = {
+      available: [],
+      specialBottomCardId: "king_of_kings",
+      specialBottomSide: "A",
+      resolvedSpecialByPlayer: {}
+    };
+
+    expect(takeFameCard(G, "0")).toBe("king_of_kings");
+
+    expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.pendingDevelopmentChoice).toBeUndefined();
+    expect(G.fameDeck.specialBottomSide).toBe("B");
+    expect(G.fameDeck.resolvedSpecialByPlayer).toEqual({ "0": true });
+    expect(G.log.map((entry) => entry.message)).toContain("KingOfKingsRewardSuppressed(king_of_kings/civilized)");
   });
 
   it("prevents the same player from resolving either side of the special bottom Fame card twice", () => {

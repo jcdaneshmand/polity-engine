@@ -1,6 +1,6 @@
 import type { GameState, ResourceName, SwapSourceZone } from "./state";
 import { returnMarketUnrest, tuckUnrestUnderMarketCard } from "./marketResources";
-import { cardMarketSuitIcons } from "./suitIcons";
+import { cardMarketSuitIconsForPlayer } from "./suitIcons";
 
 export interface SwapChoice {
   cardId: string;
@@ -11,9 +11,9 @@ function sourceCards(G: GameState, playerId: string, sourceZone: SwapSourceZone)
   return G.players[playerId]?.[sourceZone];
 }
 
-export function cardCanSwapWithMarket(G: GameState, cardId: string, marketCardId: string): boolean {
-  const cardIcons = cardMarketSuitIcons(G.cardDb[cardId]);
-  const marketIcons = cardMarketSuitIcons(G.cardDb[marketCardId]);
+export function cardCanSwapWithMarket(G: GameState, playerId: string, cardId: string, marketCardId: string): boolean {
+  const cardIcons = cardMarketSuitIconsForPlayer(G, playerId, G.cardDb[cardId]);
+  const marketIcons = cardMarketSuitIconsForPlayer(G, playerId, G.cardDb[marketCardId]);
   return [...marketIcons].some((suit) => cardIcons.has(suit));
 }
 
@@ -23,7 +23,7 @@ export function availableSwapChoices(G: GameState, playerId: string, sourceZone:
   const choices: SwapChoice[] = [];
   for (const cardId of cards) {
     for (const marketCardId of G.market) {
-      if (cardCanSwapWithMarket(G, cardId, marketCardId)) choices.push({ cardId, marketCardId });
+      if (cardCanSwapWithMarket(G, playerId, cardId, marketCardId)) choices.push({ cardId, marketCardId });
     }
   }
   return choices;
@@ -44,7 +44,7 @@ export function swapCardWithMarket(G: GameState, args: { playerId: string; sourc
   const sourceIndex = cards.indexOf(args.cardId);
   const marketIndex = G.market.indexOf(args.marketCardId);
   if (sourceIndex < 0 || marketIndex < 0) return false;
-  if (!cardCanSwapWithMarket(G, args.cardId, args.marketCardId)) return false;
+  if (!cardCanSwapWithMarket(G, args.playerId, args.cardId, args.marketCardId)) return false;
 
   const marketResources = { ...(G.marketResources?.[args.marketCardId] ?? {}) } as Partial<Record<ResourceName, number>>;
   if (G.marketResources) delete G.marketResources[args.marketCardId];

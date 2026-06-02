@@ -28,6 +28,11 @@ function getZoneCards(G: GameState, playerId: string, zoneId: string): string[] 
       return resolvedZones.flatMap((resolvedZoneId) => getZoneCards(G, playerId, resolvedZoneId));
     }
   }
+  if (zoneId === "nationDeck") {
+    const cards = [...p.nationDeck];
+    if (p.accessionCardId && !cards.includes(p.accessionCardId)) cards.push(p.accessionCardId);
+    return cards;
+  }
   const direct = (p as any)[zoneId];
   if (Array.isArray(direct)) return direct;
   if (p.sideAreas?.[zoneId]) return p.sideAreas[zoneId];
@@ -219,6 +224,7 @@ function hasPendingInterruption(G: GameState): boolean {
     ?? G.pendingDiscardChoice
     ?? G.pendingReturnUnrestChoice
     ?? G.pendingPlaceOnDeckChoice
+    ?? G.pendingReturnExhaustTokenChoice
     ?? G.pendingGiveCardChoice
     ?? G.pendingSwapChoice
     ?? G.pendingLookOrderChoice

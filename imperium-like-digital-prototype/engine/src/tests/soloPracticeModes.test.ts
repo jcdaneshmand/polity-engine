@@ -83,6 +83,18 @@ describe("solo/practice modes",()=>{
     });
     expect(G.practiceClock).toEqual({ turnsRemaining: 12, progressTokens: 11 });
   });
+  it("practice does not offer optional market Exile when automatic churn leaves no tokenless market cards",()=>{
+    const G=createInitialGameState({ options:{playerCount:1,mode:"practice",enabledExpansions:[],enabledVariants:[]} });
+    G.market = ["test_action_foundry_shift"];
+    G.marketResources = {};
+    G.players["0"].hand = ["test_action_scholars_circle"];
+
+    onTurnEnd(G, { currentPlayer: "0", playOrder: ["0"] } as any);
+
+    expect(G.pendingExileChoice).toBeUndefined();
+    expect(G.pendingCleanupDiscardChoice).toBeUndefined();
+    expect(G.practiceClock).toEqual({ turnsRemaining: 11, progressTokens: 11 });
+  });
   it("practice cleanup pauses for an optional market Exile choice after churn",()=>{
     const G=createInitialGameState({ options:{playerCount:1,mode:"practice",enabledExpansions:[],enabledVariants:[]} });
     const ctx = { currentPlayer: "0", playOrder: ["0"] } as any;

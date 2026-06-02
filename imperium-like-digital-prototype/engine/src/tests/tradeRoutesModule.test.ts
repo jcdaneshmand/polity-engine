@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createInitialGameState } from "../game/initialState";
 import { runEffects } from "../cards/effectRunner";
-import { playCard, profitCard, resolveTradeChoice } from "../game/moves";
+import { playCard, profitCard, resolveReactiveExhaustChoice, resolveTradeChoice } from "../game/moves";
 
 function addScoringUnrest(G: any, counts: Record<string, number>) {
   for (const [playerId, count] of Object.entries(counts)) {
@@ -435,6 +435,67 @@ describe("trade routes module", () => {
     expect(G.players["0"].history).toContain("completed_route");
     expect(G.players["0"].resources.goods).toBe(3);
     expect(G.players["0"].resources.knowledge).toBe(1);
+  });
+
+  it("pauses after collecting Profit Goods for a resource reactive Exhaust before resolving Profit effects", () => {
+    const G = createInitialGameState({ options: { playerCount:2, mode:"multiplayer", enabledExpansions:["trade_routes"], enabledVariants:[] } });
+    G.cardDb.completed_route = {
+      id: "completed_route",
+      displayName: "Completed Route",
+      type: "trade_route",
+      cardType: "trade_route",
+      suit: "trade_route",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_play", op: "profit", destination: "history", effects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }] } as any]
+    };
+    G.cardDb.goods_reactive_exhaust = {
+      id: "goods_reactive_exhaust",
+      displayName: "Goods Reactive Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_exhaust",
+        op: "gain_resource",
+        resource: "influence",
+        amount: 1,
+        reactive: { trigger: "after_gain_resource", resource: "goods" }
+      } as any]
+    };
+    G.players["0"].playArea = ["completed_route", "goods_reactive_exhaust"];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.players["0"].resources.goods = 0;
+    G.players["0"].resources.knowledge = 0;
+    G.players["0"].resources.influence = 0;
+    G.cardStates = { completed_route: { resources: { goods: 3 } } };
+
+    profitCard({ G, ctx: { currentPlayer: "0" } as any }, "completed_route");
+
+    expect(G.players["0"].history).toContain("completed_route");
+    expect(G.players["0"].resources.goods).toBe(3);
+    expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.players["0"].resources.influence).toBe(0);
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: ["goods_reactive_exhaust"],
+      resolvingPlayerId: "0",
+      sourceCardId: "completed_route",
+      trigger: "after_gain_resource",
+      resource: "goods"
+    });
+
+    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "0" } as any }, "goods_reactive_exhaust");
+
+    expect(G.pendingReactiveExhaustChoice).toBeUndefined();
+    expect(G.players["0"].resources.influence).toBe(1);
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["0"].exhaustTokensAvailable).toBe(0);
+    expect(G.cardStates?.goods_reactive_exhaust?.exhaustTokens).toBe(1);
   });
 
   it("does not resolve a Profit action without an available Action token", () => {

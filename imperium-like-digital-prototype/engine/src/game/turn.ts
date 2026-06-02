@@ -58,6 +58,11 @@ function clearPlayerCleanupMarkers(G: GameState, playerId: string): void {
   cardIds.forEach((cardId) => clearCardMarkers(G, cardId));
 }
 
+function clearTreatAsEffects(G: GameState, playerId: string): void {
+  if (!G.treatedSuitIconsThisTurn) return;
+  G.treatedSuitIconsThisTurn[playerId] = [];
+}
+
 export function resetCleanupTokensBeforeOptionalDiscard(G: GameState, playerId: string): void {
   const p = G.players[playerId];
   clearPlayerCleanupMarkers(G, playerId);
@@ -111,10 +116,12 @@ function pendingInterruption(G: GameState): string | undefined {
   if (G.pendingDiscardChoice) return "pending_discard_choice";
   if (G.pendingReturnUnrestChoice) return "pending_return_unrest_choice";
   if (G.pendingPlaceOnDeckChoice) return "pending_place_on_deck_choice";
+  if (G.pendingReturnExhaustTokenChoice) return "pending_return_exhaust_token_choice";
   if (G.pendingGiveCardChoice) return "pending_give_card_choice";
   if (G.pendingSwapChoice) return "pending_swap_choice";
   if (G.pendingLookOrderChoice) return "pending_look_order_choice";
   if (G.pendingUnrestAllocationChoice) return "pending_unrest_allocation_choice";
+  if (G.pendingReactiveExhaustChoice) return "pending_reactive_exhaust_choice";
   if (G.pendingSolsticeOrderChoice) return "pending_solstice_order_choice";
   if (G.pendingCleanupMarketResourceChoice) return "pending_cleanup_market_resource_choice";
   if (G.pendingCleanupDiscardChoice) return "pending_cleanup_discard_choice";
@@ -407,6 +414,7 @@ function finishRoundHandoff(G: GameState, playerId: string): void {
 export function continuePausedSolstice(G: GameState, playerId: string, randomNumber?: () => number): void {
   if (G.gameover) return;
   const pendingRoundEnd = G.pendingSolsticeRoundEnd;
+  if (pendingRoundEnd || G.pendingSolsticeContinuation || G.pausedSolstice) G.currentTurnType = "solstice";
   if (pendingRoundEnd && !pendingInterruption(G)) {
     G.pendingSolsticeRoundEnd = undefined;
     if (!applyCollapseWinChecksForAllPlayers(G, randomNumber)) {
@@ -448,6 +456,7 @@ export function resolvePendingSolsticeOrderChoice(G: GameState, playerId: string
   if (new Set(cardIds).size !== cardIds.length) return false;
   if (cardIds.some((cardId) => !pending.cardIds.includes(cardId))) return false;
 
+  G.currentTurnType = "solstice";
   G.pendingSolsticeOrderChoice = undefined;
   const completed = runOrderedSolsticeCardEffects(G, playerId, pending.phase, cardIds, paused, randomNumber);
   if (!completed) return true;
@@ -472,14 +481,17 @@ export function onTurnBegin(G: GameState, ctx: Ctx, randomNumber?: () => number)
   p.exhaustTokensAvailable = p.exhaustTokensBase;
   G.freePlayedThisTurn ??= {};
   G.freePlayedThisTurn[ctx.currentPlayer] = [];
+  clearTreatAsEffects(G, ctx.currentPlayer);
 
   applyCollapseWinChecksForAllPlayers(G, randomNumber);
 }
 
 function finishTurnAfterModeCleanup(G: GameState, ctx: Ctx, randomNumber?: () => number): void {
   G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: "TurnPhase(reshuffle_as_needed): next_draw_handles_reshuffle_lifecycle" });
+  clearTreatAsEffects(G, ctx.currentPlayer);
   if (isLastPlayerInRound(G, ctx)) {
     const playOrder = getTurnOrder(G, ctx);
+    G.currentTurnType = "solstice";
     if (!runSolsticeForAllPlayers(G, playOrder, randomNumber)) return;
     if (G.gameover) return;
     if (pendingInterruption(G)) return;
@@ -525,6 +537,15 @@ function continueCleanupAfterEffects(G: GameState, ctx: Ctx, randomNumber?: () =
   finishTurnAfterCleanupDraw(G, ctx, randomNumber);
 }
 
+function startPracticeMarketExileBeforeCleanup(G: GameState, ctx: Ctx): boolean {
+  if (G.options?.mode !== "practice") return false;
+  if (G.cleanupMarketResourcePlaced?.playerId !== ctx.currentPlayer) return false;
+  if (G.cleanupMarketResourcePlaced.round !== G.round) return false;
+  if (!startPracticeMarketExileChoice(G, ctx.currentPlayer)) return false;
+  G.pendingPracticeMarketExileBeforeCleanup = { playerId: ctx.currentPlayer };
+  return true;
+}
+
 export function continuePendingTurnEndCleanup(G: GameState, playerId: string, randomNumber?: () => number): void {
   const pending = G.pendingTurnEndCleanup;
   if (!pending || pending.playerId !== playerId || G.gameover || pendingInterruption(G)) return;
@@ -532,6 +553,7 @@ export function continuePendingTurnEndCleanup(G: GameState, playerId: string, ra
   const ctx = { currentPlayer: pending.playerId, playOrder: pending.playOrder } as unknown as Ctx;
   if (pending.stage === "before_optional_discard") {
     if (!prepareCleanupBeforeOptionalDiscard(G, ctx, randomNumber, pending.nextCleanupOverrideIndex ?? 0)) return;
+    if (startPracticeMarketExileBeforeCleanup(G, ctx)) return;
     resetCleanupTokensBeforeOptionalDiscard(G, ctx.currentPlayer);
     if (startCleanupDiscardChoice(G, ctx.currentPlayer)) return;
     continueCleanupAfterEffects(G, ctx, randomNumber);
@@ -556,5 +578,6 @@ export function onTurnEnd(G: GameState, ctx: Ctx, randomNumber?: () => number): 
     && G.cleanupMarketResourcePlaced?.playerId !== ctx.currentPlayer
     && startCleanupMarketResourceChoice(G, ctx.currentPlayer)) return;
   if (!prepareCleanupBeforeOptionalDiscard(G, ctx, randomNumber)) return;
+  if (startPracticeMarketExileBeforeCleanup(G, ctx)) return;
   continueCleanupAfterEffects(G, ctx, randomNumber);
 }

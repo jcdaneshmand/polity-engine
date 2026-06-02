@@ -12,7 +12,21 @@ function ensureFameDeck(G: GameState): NonNullable<GameState["fameDeck"]> {
   return G.fameDeck;
 }
 
+function kingOfKingsRewardSuppressionState(G: GameState, playerId: string): string | undefined {
+  const ruleset = G.activeNationRulesets?.[playerId];
+  for (const override of ruleset?.stateOverrides ?? []) {
+    if (override.op !== "suppress_king_of_kings_reward") continue;
+    if (!override.state || currentStateMatches(G, playerId, override.state)) return override.state ?? "any";
+  }
+  return undefined;
+}
+
 function resolveSpecialBottomFameRewards(G: GameState, playerId: string, cardId: string): void {
+  const suppressedState = kingOfKingsRewardSuppressionState(G, playerId);
+  if (suppressedState) {
+    G.log.push({ round: G.round, playerId, message: `KingOfKingsRewardSuppressed(${cardId}/${suppressedState})` });
+    return;
+  }
   if (currentStateMatches(G, playerId, "uncivilized")) {
     const gained = gainPlayerResource(G, playerId, "knowledge", 6);
     G.log.push({ round: G.round, playerId, message: `KingOfKingsReward(${cardId}/uncivilized/progress=${gained === 6 ? 6 : `${gained}/6`})` });

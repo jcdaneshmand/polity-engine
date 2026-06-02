@@ -13,7 +13,7 @@
 - Each player has a current state shown by a State card. State gates playable cards and some effect branches, but it does not prevent owning, acquiring, or using already-played cards unless a rule/effect says so.
 - Players build from a shared market, small source decks, a main deck, nation-specific progression cards, and face-up development cards.
 - Per-turn economy uses separate Action and Exhaust tokens. Resource tokens are persistent between turns.
-- Some cards remain in play, host resources, or host garrisoned cards. Card instances need runtime state separate from definitions.
+- Some cards remain in play, host resources, or host garrisoned cards. Card instances need runtime state separate from definitions. When hosted resource tokens move into a player's pool, that movement is a resource gain for timing purposes and may open reactive Exhaust windows before later effect text resumes.
 - Action and Exhaust token availability is modeled from the visible State card pool. Taking a normal Action spends one Action token from the State card. Using an Exhaust ability moves one Exhaust token from the State card onto the exhausted card, and cleanup removes Action/Exhaust markers from cards before resetting the State card pool.
 - History, Exile, Garrison, Development, Nation deck, Fame deck, Unrest pile, and Market all have distinct timing/scoring rules and should not be collapsed into generic discard behavior.
 
@@ -23,7 +23,7 @@
 - `CivState`: support at least the two base state symbols plus nation-specific aliases. Prefer data labels such as `barbarian | empire | custom_1 | custom_2` in code, with display text supplied by private nation data.
 - `ZoneName`: `hand | drawDeck | discard | playArea | history | nationDeck | developmentArea | garrison | exile | market | unrestPile | fameDeck | mainDeck | regionDeck | uncivilisedDeck | civilisedDeck | tradeRouteDeck | botDeck | botDiscard | botSlots | removedFromGame`.
 - `Resource`: `materials | population | progress | goods`.
-- `TurnType`: `activate | innovate | revolt`.
+- `TurnType`: `activate | innovate | revolt | solstice`.
 - `CardVisibility`: `face_up | face_down | hidden_count_only | owner_visible`.
 
 ## State Shape Priorities
@@ -46,7 +46,7 @@
 - Market slot cards and resources are public. Tucked Unrest under market cards is public by count/type, but the implementation can store the exact card ID if all Unrest cards are equivalent for prototype purposes.
 - Region cards in the market do not receive tucked Unrest during setup or refill.
 - History is public: cards placed into History remain visible and score normally, but generally cannot be used again. Discard, play area, exile, and garrison contents are public unless a nation-specific rule says otherwise.
-- Nation deck order is fixed by setup data and then hidden; Development choice is face-up and player-selected.
+- Regular Nation deck cards are shuffled during setup and then hidden; Development choice is face-up and player-selected. If Accession is stored separately in runtime state, hidden Nation deck counts, progression checks, ruleset zone conditions, and collapse/auto-win zone checks must still treat it as the bottom Nation deck card without exposing its identity.
 
 ## Setup Pipeline
 
@@ -55,7 +55,7 @@
 1. Select player nations and initialize player count, first player, and enabled modules.
 2. For each player, configure Power card, State card, starting deck, starting resources, Nation deck, Development area, hand size, action/exhaust tokens, and any nation-specific setup rules. The default starting resource pool is 3 Materials, 2 Population, and 1 Progress; with Trade Routes enabled, the 1 Progress is replaced by 1 Goods.
    - A single physical two-sided State card must still have an active side in runtime state. Default nations start on the Barbarian/uncivilized side unless a nation ruleset explicitly starts on another side.
-3. Nation deck cards keep their listed setup order, with Accession tracked separately underneath them. The current top card of the ordered Nation deck is the next progression card that will be added during reshuffle.
+3. Regular Nation deck cards are shuffled into a hidden Nation deck, with Accession tracked separately underneath them. The current top card of that shuffled Nation deck is the next progression card that will be added during reshuffle.
 4. Development cards start face up in the Development area. They are not in the player's deck and do not score until developed into the deck/discard lifecycle.
 5. Build Commons from enabled card sets and player-count/variant filters.
 6. Build Region, Uncivilised, Civilised, Fame, Unrest, Main, and optional expansion decks/piles.
@@ -76,7 +76,8 @@
 - A player spends Action tokens to play eligible action cards, resolve Profit where allowed, and perform other action-costed effects. Card text may also explicitly Gain Action or Spend Action; these effects modify both the current turn's remaining actions and the available Action tokens on the State card.
 - Acquire is resolved from card/effect text or a pending Acquire choice, not from a generic Market-row click. UI Market rows may show costs and inspectability, but must not advertise direct Market acquisition as a normal player action, and the public boardgame.io move map must not expose a direct Market Acquire move.
 - A player spends Exhaust tokens to use exhaust abilities on cards in play or their Power card. The Exhaust token is moved onto the exhausted card before the ability resolves, so immediate interruptions such as Collapse still leave the marker on the card state.
-- Some Exhaust abilities are reactive rather than ordinary Activate-turn choices. When a reactive Exhaust condition is met by a resolved effect, including another player's effect, the owning player may use or decline that Exhaust after the triggering effect sentence finishes and before the next sentence/effect resolves. Reactive Exhausts are still never usable during Solstice, Revolt, or Innovate turns. Implemented reactive trigger windows cover resource-gain, Take Unrest, and Acquire effects, and lifecycle continuations such as reshuffle hooks must pause and resume around those pending choices. Additional trigger conditions should use the same pending-choice/resume model.
+- Return-Exhaust-token effects move one Exhaust marker from an eligible play-area card back to the player's State-card pool. If the chosen card has no Exhaust markers remaining, it is no longer exhausted. An Exhaust ability that returns its own just-spent token is legal because the marker is placed before effect text resolves. If multiple play-area cards have returnable markers, the player chooses one before later effect text resumes.
+- Some Exhaust abilities are reactive rather than ordinary Activate-turn choices. When a reactive Exhaust condition is met by a resolved effect, including another player's effect, the owning player may use or decline that Exhaust after the triggering effect sentence finishes and before the next sentence/effect resolves. Reactive Exhausts are still never usable during Solstice, Revolt, or Innovate turns; Solstice is marked as its own turn type while active or paused so resource-gain Solstice effects do not open reactive Exhaust windows. Implemented reactive trigger windows cover card play, resource-gain, resource-gain from a suited card in play, Take Unrest, Acquire, and Break through effects, and lifecycle continuations such as reshuffle hooks must pause and resume around those pending choices. Additional trigger conditions should use the same pending-choice/resume model.
 - Costs are checked and paid before benefits resolve.
 - Explicit discard-card costs are paid by choosing the required number of eligible cards from hand before the remaining effect text resolves. Free-play effects remove only the action cost; they do not waive printed resource or discard return costs.
 - If an effect cannot be resolved in full, follow the keyword's "as much as possible" or "cannot choose this option" rule. Optional text and choose-one branches may be offered only when the selected branch can pay its explicit costs and at least one effect in that branch can currently resolve.
@@ -86,7 +87,9 @@
 
 - A specialized turn type controlled by state/card rules.
 - Discard the player's hand, then Break through for a Region, Uncivilised, Civilised, or Tributary card. Innovate cannot Break through for Fame cards.
+- Passive effects still trigger on an Innovate turn, but Break through remains distinct from Acquire: effects that trigger when a card is Acquired do not trigger from the Innovate Break through.
 - It does not use the normal action/exhaust cadence unless the relevant rule or card explicitly grants that permission.
+- If an Innovate Break-through passive opens a player choice, resolving that choice must resume the pending passive hook sequence and then continue into normal cleanup.
 - It still needs cleanup and draw-up resolution after its specialized effect sequence.
 
 ### Revolt Turn
@@ -94,6 +97,7 @@
 - A specialized turn type tied to Unrest/state pressure.
 - Return any selected Unrest cards from hand to the shared Unrest pile, then proceed to normal cleanup. Non-returned cards remain in hand unless the player later chooses to discard them during the cleanup discard step.
 - It should skip normal action/exhaust sequencing unless explicitly allowed.
+- Passive effects still trigger on a Revolt turn. Data-driven nation passives can use `after_revolt` for Revolt responses after selected Unrest cards are returned and before cleanup begins. If the passive opens a player choice, resolving that choice must resume the pending passive hook sequence and then continue into normal cleanup.
 - It still resolves cleanup/draw-up as defined by the turn type.
 
 ## Cleanup Contract
@@ -108,6 +112,7 @@ Cleanup should be a fixed service, not duplicated in moves:
 6. Complete turn handoff. After all players have taken a turn, enter Solstice before the next round.
 
 Played cards usually move to discard immediately after resolving unless they are persistent/in-play cards or specify another destination. Cleanup should not blindly discard the whole play area.
+Cleanup effects that create player choices or reactive Exhaust windows pause cleanup and resume the remaining cleanup sequence after that pending window resolves or is skipped.
 
 ## Draw And Reshuffle Lifecycle
 
@@ -123,7 +128,7 @@ Use one central draw service.
 
 When reshuffle is triggered:
 
-1. If the player has cards in their Nation deck, take the next/top Nation card and put it in the discard pile. If this was the accession/state-changing card, flip or change the State card at the correct point. Move the tracking token from the State card onto the Nation deck for that reshuffle marker, even if that addition empties the Nation deck.
+1. If the player has cards in their Nation deck, take the next/top Nation card and put it in the discard pile. If this was the accession/state-changing card, flip or change the State card at the correct point. Move the tracking token from the State card onto the Nation deck for that reshuffle marker, or into the Development area if that addition empties the Nation deck.
 2. If the player has no Nation deck cards left and has at least one card in Development area, they may pay the development cost of one face-up Development card they can afford. The chosen card goes to discard. Move the tracking token from State to Development area. If no remaining Development card is payable, no Develop occurs.
 3. Shuffle discard to become the new draw deck.
 4. Resolve "when you reshuffle" effects.
@@ -148,7 +153,7 @@ Important implementation consequences:
 - Acquire selects a legal face-up market card unless an effect expands the eligible zone.
 - Card effects that acquire from the market with suit/type/card criteria must use the matching eligible market cards, not default to the first slot. If an Acquire effect has no narrowing criteria and multiple market cards are available, the active player must choose the acquired card.
 - The acquired card moves to the destination specified by the effect, usually discard or hand depending on keyword/effect.
-- Resources on the acquired market card are gained by the acquiring player.
+- Resources on the acquired market card are gained by the acquiring player. Because those tokens enter the player's resource pool during the card-gain sentence, they can open resource-gain reactive Exhaust windows before later effect text resumes.
 - The Unrest tucked under an acquired market card is taken into the player's hand unless the acquisition rule says otherwise. Region cards should not have tucked Unrest.
 - Refill the market slot from the correct source. If the relevant small deck is depleted, use the main deck/refill fallback.
 - Newly refilled cards can become eligible for additional acquisitions in the same resolving effect when the effect allows multiple acquisitions.
@@ -158,7 +163,7 @@ Important implementation consequences:
 ### Break Through
 
 - The player first declares the requested suit when multiple suits are allowed.
-- One path takes a matching face-up market card into hand, gains resources on it, and returns its tucked Unrest instead of taking it. If more than one market card matches, the choice must be explicit or otherwise deterministic by the relevant solo/bot tie-break rule.
+- One path takes a matching face-up market card into hand, gains resources on it, and returns its tucked Unrest instead of taking it. Those gained market-resource tokens can open resource-gain reactive Exhaust windows before later effect text resumes. If more than one market card matches, the choice must be explicit or otherwise deterministic by the relevant solo/bot tie-break rule.
 - Another path takes from the matching face-down small deck.
 - If the small deck is depleted or the suit has no small deck, reveal from the main deck until a matching card is found; take it and shuffle nonmatching revealed cards back. If no matching card can be found, including when the main deck is absent or unavailable, apply the fallback reward.
 - Breaking through for Tributary uses the visible Tributary cards exposed at the bottoms of depleted small decks before searching the Main deck; if more than one such card is visible, represent the player choice, including during Innovate.
@@ -167,7 +172,7 @@ Important implementation consequences:
 ### Take, Gain, Find, Draw
 
 - Keep card-movement verbs distinct in the effect DSL. They often share movement mechanics but differ in source, destination, visibility, and whether Unrest/market refill side effects happen.
-- Find for an exact named card searches hand, discard, draw deck, then Nation deck while excluding the accession card and stops at the first found copy, shuffling any searched draw/Nation decks afterward. Find by criteria, such as "Find a Civilised card", searches all listed sources before presenting the active player with every eligible choice. Effects may explicitly restrict the searched sources or include play area, History, or garrison; those non-default sources should be searched only when specified. A Find from garrison targets the attached child card itself, collects any resources on that child, and leaves its host in play.
+- Find for an exact named card searches hand, discard, draw deck, then Nation deck while excluding the accession card and stops at the first found copy, shuffling any searched draw/Nation decks afterward. Find by criteria, such as "Find a Civilised card", searches all listed sources before presenting the active player with every eligible choice. Effects may explicitly restrict the searched sources or include play area, History, or garrison; those non-default sources should be searched only when specified. A Find from garrison targets the attached child card itself, collects any resources on that child, and leaves its host in play. A Find that moves a play-area host carries its garrisoned cards and uses normal hosted-resource collection and reactive timing.
 - Look effects reveal the requested cards to the looking player without moving them. If fewer eligible cards exist, reveal as many as possible. Look-only action text is playable only when the requested source has at least one eligible card to inspect. When looking at multiple cards from the same hidden deck, the player may return the looked cards in any order. When looking at the Nation deck, ignore the accession card unless it is the only card available; this applies whether the engine stores the Accession card inside `nationDeck` or separately as `accessionCardId`. When looking at Fame, ignore the special bottom Fame card while ordinary Fame cards remain, but reveal it if it is the only face-up Fame card left.
 - Taking Unrest means taking the next card from the shared Unrest pile into that player's hand. This applies to direct Take Unrest effects, human-facing Bot table rows, market acquisition tucked Unrest, and the extra Unrest taken when a human acquires a non-Unrest card from Exile.
 - "Gain a resource" adds a token from supply to a pool/card. If a finite supply cannot provide at least one requested token, gain-resource-only action text and choice branches are not currently resolvable; mandatory effects already in progress still gain as much as the supply can provide.
@@ -196,20 +201,22 @@ Important implementation consequences:
 - Explicit top-level Pay costs gate the whole Action or Exhaust ability during legality checks; if the player cannot pay them, the move is not legal even when a later benefit would otherwise resolve.
 - Choice groups require explicit player choice unless the choice is deterministic from legality.
 - Choice options that include explicit costs must remain unresolved and unavailable when those costs cannot be paid; failed choice resolution should not clear the pending choice or leak partial effects.
-- Any effect-created player choice interrupts the current effect list: effects after the choice do not resolve until the player resolves the pending choice, then the remaining effects resume in order. This applies to choose-one/optional choices and keyword choices such as Draw from a face-up zone, Find, Acquire, Gain/Take from the Market, Break through, Exile, Garrison, Recall/Abandon, Develop, and Trade, including choices created during reshuffle hooks, Solstice, and scoring hooks.
+- Any effect-created player choice interrupts the current effect list: effects after the choice do not resolve until the player resolves the pending choice, then the remaining effects resume in order. This applies to choose-one/optional choices and keyword choices such as Draw from a face-up zone, Find, Acquire, Gain/Take from the Market, Break through, Exile, Garrison, Recall/Abandon, Develop, Trade, and Return Exhaust token, including choices created during reshuffle hooks, Solstice, and scoring hooks.
 - Optional effects must be represented as optional. The non-skip branch of optional action text must still be legal/resolvable for that optional text to make the card playable; a skip-only optional path is not a playable effect by itself. Mandatory effects resolve as much as possible.
 - Triggered responses can occur between sentences when the rules allow.
 - State-gated phrases/options only resolve if the player's current State card shows the required symbol/state.
-- Passive effects must be queryable by services they modify: market refill, resource placement, reshuffle, scoring, card movement, and damage/unrest handling.
+- Treat As effects are player-scoped, last only until the current turn ends, and replace the original icon for matching purposes until they expire before Solstice. The same temporary icon view must be used by effect legality, pending choices, Acquire, Break through, Find, Exile, Gain/Take, Swap, and same-turn nation hook payload checks; scoring and solo bot static table matching should keep printed/imported icons.
+- Passive effects must be queryable by services they modify: market refill, resource placement, reshuffle, scoring, card movement, and damage/unrest handling. Reactive resource-gain conditions that name a source suit must test the actual card that produced or released the resource, not merely the card whose broader effect list is currently resolving.
+- Data-driven passive hooks include a distinct Break-through hook. Innovate Break-through is not an Acquire, but it must still be able to trigger passive rules that care about cards gained by Break-through. Card-effect Acquire and Break-through paths use the same hook core as move-level Acquire/Innovate paths, including pending choice continuation.
 
 ## Play Area, Regions, Garrison, And History
 
 - Cards in play remain available for persistent effects, exhaust abilities, Solstice, scoring, and region-style actions until moved.
 - A bare Garrison keyword uses the source card itself as the host when that source is an eligible Region in play; garrisoning under a third unrelated card should be explicit in effect data.
 - If a garrisoned card itself is targeted by Find, Exile, History, Recall/Abandon-style movement, or a nation replacement effect, move only that garrisoned card and leave its host in play. Effects that target garrisoned children directly should use a garrison-specific source instead of the host's play-area source.
-- Recalling a region returns it and its garrisoned cards to hand and moves resources on it to the player's pool.
-- Abandoning a region moves it to discard unless an effect says otherwise, carries its garrisoned cards with it, and moves resources on it to the player's pool; only legal card types can be recalled/abandoned.
-- When a card is removed from play to History, Exile, discard, or a nation-specific replacement zone, resources on that card move to the owning player's resource pool unless the effect explicitly says otherwise.
+- Recalling a region returns it and its garrisoned cards to hand and moves resources on it to the player's pool. Collected Region or garrisoned-card resources can open resource-gain reactive Exhaust windows before later effect text resumes.
+- Abandoning a region moves it to discard unless an effect says otherwise, carries its garrisoned cards with it, and moves resources on it to the player's pool; only legal card types can be recalled/abandoned. Collected Region or garrisoned-card resources use the same resource-gain reactive timing as Recall.
+- When a card is removed from play to History, Exile, discard, or a nation-specific replacement zone, resources on that card move to the owning player's resource pool unless the effect explicitly says otherwise. History-bound movement, including nation-specific History replacements, uses the same resource-gain reactive timing before later effect text resumes.
 - Garrisoned cards are attached to a host card and move according to the host's movement rule.
 - History is a public scored zone. Cards in History are normally out of future play but still count for scoring unless a specific rule says otherwise.
 - When a nation has no History or uses a History replacement zone, all History-bound movement and History-source references must use that replacement, including direct History keywords, pending-choice destinations such as Find-to-History, Trade Route Profit destinations, setup placements, and Return Unrest effects that name History as their source.
@@ -269,6 +276,7 @@ Collapse:
 - Returned Fame cards go to the top unless a specific effect says otherwise.
 - The special bottom Fame card starts Side A up. The first resolution flips it to Side B without triggering normal scoring. Each player may resolve either side only once total; a player who resolved Side A cannot resolve Side B. Resolving Side B flips the card face down and triggers normal scoring.
 - Resolving the special bottom Fame card gives 6 Progress while the player's active State side matches the uncivilized/barbarian icon, or 3 Progress plus a free Develop while the active State side matches the civilized/empire icon. For a single two-sided State card, use the runtime active side rather than every icon printed on the card. Free Develop does not pay the Development cost, does not require a reshuffle tracking token, and does not place one.
+- Nation rulesets can suppress the special Fame reward for state-specific exceptions. The player still resolves the special Fame card for one-time eligibility and side/terminal timing, but gains no Progress and opens no free Develop choice.
 - In solo, if the Bot would gain the special bottom Fame card, resolve the Bot-specific reward regardless of side showing: barbarian-side Bot gains 6 Progress; empire-side Bot gains 3 Progress and moves the top Dynasty card to the top of the Bot deck. This triggers scoring, and later Bot attempts to gain the special card do nothing.
 - Bot table effects that gain Fame take ordinary face-down Fame cards onto the top of the Bot deck. If no ordinary Fame remains, the same effect resolves the special bottom Fame card through the Bot-specific King of Kings rule instead.
 - Track per-player resolution of the special Fame card sides/eligibility.
@@ -312,14 +320,14 @@ Collapse:
 - Bot Trade Route Profit effects can gain resources based on the count of matching Bot in-play cards, such as Trans-Saharan Trade's Region-scaling Progress reward. Trade Route cards in the Bot play area do not count as matching in-play cards for those generic count effects.
 - Bot effect rows can encode table-driven if-unable fallbacks for effects such as return-from-discard, recall, acquire, break-through, and top-card discard; the fallback resolves only when the primary effect cannot do anything.
 - Practice mode is a simplified solo variant and should be feature-flagged separately from full solo.
-- Practice setup follows the special practice variant: after Market setup, Exile the top 15 Main deck cards, then track a 12-turn/12-Progress market-churn clock. Each cleanup places one of those Progress tokens on a player-chosen Market card, offers the optional Market Exile choice immediately afterward, then continues the remaining cleanup steps. The practice game scores immediately when the 12-turn clock expires, without the normal extra final round.
+- Practice setup follows the special practice variant: after Market setup, Exile the top 15 Main deck cards, then track a 12-turn/12-Progress market-churn clock. Each cleanup places one of those Progress tokens on a player-chosen Market card, offers the optional Market Exile choice immediately afterward for any tokenless Market cards, then continues the remaining cleanup steps. If every Market card has a token, no Practice Exile choice opens. The practice game scores immediately when the 12-turn clock expires, without the normal extra final round.
 - Solo changes to multiplayer rules should live in a solo rules adapter, not scattered through core services.
 
 ## Options And Variants
 
 - Trade Routes expansion is a module with its own deck/cards/timing and should remain feature-flagged.
 - Card effect execution must receive the active expansion/variant context from every move path, so Trade Routes-only keywords are ignored when disabled and available for real resolution when enabled.
-- With Trade Routes enabled, Trade Route cards stay in play after being played and resolve their Commerce effects immediately. A human Trade effect offers all available Trade Route cards with fewer than 3 Goods plus the Goods-for-Progress fallback when the player can pay it and can gain the Progress from any finite supply. Triggering your own route moves 1 Goods from your pool to the card and resolves that route's Commerce effects for you. Triggering an opponent's route adds 1 Goods from supply to that card, gives the active player 1 Progress, and resolves that route's Commerce effects for the active player. If no route is available, Trade may convert 1 Goods to 1 Progress only where the Progress can actually be gained; otherwise it spends nothing and does not resolve. Trade-only action text is not playable when no route is available and the player has no Goods fallback. A completed route can use a Profit action by spending an available Action token, collecting its stored Goods to the owner, moving the route to discard unless the effect specifies another destination, and resolving its Profit effects.
+- With Trade Routes enabled, Trade Route cards stay in play after being played and resolve their Commerce effects immediately. A human Trade effect offers all available Trade Route cards with fewer than 3 Goods plus the Goods-for-Progress fallback when the player can pay it and can gain the Progress from any finite supply. Triggering your own route moves 1 Goods from your pool to the card and resolves that route's Commerce effects for you. Triggering an opponent's route adds 1 Goods from supply to that card, gives the active player 1 Progress, and resolves that route's Commerce effects for the active player. If no route is available, Trade may convert 1 Goods to 1 Progress only where the Progress can actually be gained; otherwise it spends nothing and does not resolve. Trade-only action text is not playable when no route is available and the player has no Goods fallback. A completed route can use a Profit action by spending an available Action token, collecting its stored Goods to the owner, moving the route to discard unless the effect specifies another destination, and resolving its Profit effects. Collected Profit Goods can trigger resource-gain reactive Exhausts before the Profit effects resolve.
 - Lowered aggression, quick setup, precious cards, short game, practice mode, difficulty levels, and campaign mode are configuration options.
 - Precious Cards prevents the voluntary cleanup discard choice entirely; players keep their hand through draw-up unless another explicit effect discards cards.
 - In the short game variant setup, after Market setup exile the top 10 Main deck cards, then put the top 2 Nation deck cards into each player's discard unless a nation exception replaces that step. The short-game setup exceptions are: Atlanteans free-Develop one Development and remove another; Arthurians garrison one non-Graal impending Quest and add the top Nation card to the starting deck in addition to the normal 2-card advance; Inuit remove all starting Materials/Population/Progress/Goods and choose one Winter and one Summer card for discard; Martians remove 4 starting Progress; Polynesians turn one of the advanced Nation cards into mana at random. Short game is not suitable for Utopians or Cultists, and random solo Bot setup must skip ruleset-excluded nations instead of selecting one and failing later.
@@ -330,7 +338,7 @@ Collapse:
 ## Implementation Milestones
 
 - **M1:** minimal playable shell: placeholder cards, draw/play/acquire/cleanup, deterministic market refill, legal move reporting, tests.
-- **M2:** full progression: ordered Nation deck setup with top-card reshuffle additions, Development choice/payment during reshuffle, state/accession hooks, draw-if-able behavior, scoring triggers.
+- **M2:** full progression: shuffled hidden Nation deck setup with deterministic top-card reshuffle additions, Development choice/payment during reshuffle, state/accession hooks, draw-if-able behavior, scoring triggers.
 - **M3:** keyword coverage: Break through, garrison, recall, abandon, history, exile, payment substitution, passive hooks.
 - **M4:** Solstice, endgame, collapse, Fame deck edge cases, broader scoring.
 - **M5:** civilization hooks, expansion modules, full solo bot, save/replay determinism.
@@ -349,4 +357,5 @@ Collapse:
 10. Fame bottom-card availability.
 11. Scoring exclusions for Nation deck and Development area.
 12. Solo bot overrides leaking into multiplayer services.
-13. Reactive Exhaust timing between effect sentences, including trigger conditions beyond resource gain, Take Unrest, and Acquire.
+13. Reactive Exhaust timing between effect sentences, including trigger conditions beyond card play, resource gain, Take Unrest, Acquire, and Break through.
+14. Auditing every interruption list for lifecycle-specific continuations, especially reactive/resource windows that can open during cleanup draw, Solstice, or scoring.

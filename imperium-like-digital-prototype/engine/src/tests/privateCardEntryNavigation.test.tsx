@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import NewGameSetup from "../../../app/src/ui/setup/NewGameSetup";
 import PrivateCardEntry from "../../../app/src/ui/privateData/PrivateCardEntry";
+import { PlayerZonesPanel } from "../../../app/src/ui/layout/PlayerZonesPanel";
 
 describe("private card entry navigation", () => {
   it("keeps the card entry tool beside private data upload controls", () => {
@@ -51,5 +52,17 @@ describe("private card entry navigation", () => {
     expect(source).toContain("Ruleset Name");
     expect(source).not.toContain("Private Ruleset Name");
     expect(source).toContain("buildNationRulesetName");
+  });
+
+  it("does not render the hidden Accession card identity in player zone chrome", () => {
+    const html = renderToStaticMarkup(
+      <PlayerZonesPanel
+        player={{ deck: [], discard: [], hand: [], playArea: [], history: [], developmentArea: [], nationDeck: ["nation_1"], accessionCardId: "secret_accession" }}
+        onSelectZone={() => {}}
+      />
+    );
+
+    expect(html).toContain("Nation Deck");
+    expect(html).not.toContain("secret_accession");
   });
 });

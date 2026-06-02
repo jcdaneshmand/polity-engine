@@ -1,4 +1,4 @@
-import type { GameState } from "./state";
+import type { GameState, ResourceName } from "./state";
 import { collectMarketResources, collectMarketUnrest, returnMarketUnrest } from "./marketResources";
 import { refillMarketSlot } from "./marketRefill";
 
@@ -10,12 +10,20 @@ function removeMarketCard(G: GameState, cardId: string): { cardId: string; slotI
   return { cardId: removedCardId, slotIndex };
 }
 
-export function acquireMarketCard(G: GameState, args: { playerId: string; cardId: string; destination?: "hand" | "discard" }): boolean {
+function addCollectedResources(target: Partial<Record<ResourceName, number>> | undefined, collected: Partial<Record<ResourceName, number>>): void {
+  if (!target) return;
+  for (const [resource, amount] of Object.entries(collected) as Array<[ResourceName, number | undefined]>) {
+    if ((amount ?? 0) <= 0) continue;
+    target[resource] = (target[resource] ?? 0) + (amount ?? 0);
+  }
+}
+
+export function acquireMarketCard(G: GameState, args: { playerId: string; cardId: string; destination?: "hand" | "discard"; collectedResources?: Partial<Record<ResourceName, number>> }): boolean {
   const removed = removeMarketCard(G, args.cardId);
   if (!removed) return false;
   const acquiredCardId = removed.cardId;
 
-  collectMarketResources(G, args.playerId, acquiredCardId);
+  addCollectedResources(args.collectedResources, collectMarketResources(G, args.playerId, acquiredCardId));
   G.players[args.playerId][args.destination ?? "hand"].push(acquiredCardId);
   collectMarketUnrest(G, args.playerId, acquiredCardId);
   refillMarketSlot(G, { playerId: args.playerId, slotIndex: removed.slotIndex, acquiredCardId });
@@ -24,12 +32,12 @@ export function acquireMarketCard(G: GameState, args: { playerId: string; cardId
   return true;
 }
 
-export function gainMarketCard(G: GameState, args: { playerId: string; cardId: string; destination?: "hand" | "discard" }): boolean {
+export function gainMarketCard(G: GameState, args: { playerId: string; cardId: string; destination?: "hand" | "discard"; collectedResources?: Partial<Record<ResourceName, number>> }): boolean {
   const removed = removeMarketCard(G, args.cardId);
   if (!removed) return false;
   const gainedCardId = removed.cardId;
 
-  collectMarketResources(G, args.playerId, gainedCardId);
+  addCollectedResources(args.collectedResources, collectMarketResources(G, args.playerId, gainedCardId));
   G.players[args.playerId][args.destination ?? "hand"].push(gainedCardId);
   collectMarketUnrest(G, args.playerId, gainedCardId);
   refillMarketSlot(G, { playerId: args.playerId, slotIndex: removed.slotIndex, acquiredCardId: gainedCardId });
@@ -38,12 +46,12 @@ export function gainMarketCard(G: GameState, args: { playerId: string; cardId: s
   return true;
 }
 
-export function takeMarketCard(G: GameState, args: { playerId: string; cardId: string; destination?: "hand" | "discard" }): boolean {
+export function takeMarketCard(G: GameState, args: { playerId: string; cardId: string; destination?: "hand" | "discard"; collectedResources?: Partial<Record<ResourceName, number>> }): boolean {
   const removed = removeMarketCard(G, args.cardId);
   if (!removed) return false;
   const takenCardId = removed.cardId;
 
-  collectMarketResources(G, args.playerId, takenCardId);
+  addCollectedResources(args.collectedResources, collectMarketResources(G, args.playerId, takenCardId));
   G.players[args.playerId][args.destination ?? "hand"].push(takenCardId);
   returnMarketUnrest(G, args.playerId, takenCardId);
   refillMarketSlot(G, { playerId: args.playerId, slotIndex: removed.slotIndex, acquiredCardId: takenCardId });

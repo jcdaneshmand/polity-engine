@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { runEffects } from "../cards/effectRunner";
 import { createInitialState } from "../game/initialState";
 import * as moves from "../game/moves";
-import { resolveChoice, resolveExileChoice, resolveLookOrderChoice } from "../game/moves";
+import { resolveAcquireChoice, resolveChoice, resolveExileChoice, resolveLookOrderChoice } from "../game/moves";
+import { cardHasSuitIconForPlayer } from "../game/suitIcons";
 import type { GameState } from "../game/state";
 import { resolvePendingUnrestAllocationChoice } from "../game/unrest";
 import type { GameOptions } from "../options/gameOptions";
@@ -58,6 +59,56 @@ describe("effectRunner", () => {
     expect((G.players["0"].resources as any).population).toBeUndefined();
     expect((G.players["0"].resources as any).progress).toBeUndefined();
     expect((G.players["1"].resources as any).progress).toBeUndefined();
+  });
+
+  it("treats one suit icon as another for the current player and removes the original icon", () => {
+    const G = createInitialState();
+    G.cardDb.treat_target = {
+      id: "treat_target",
+      displayName: "Treat Target",
+      type: "action",
+      cardType: "action",
+      suit: "uncivilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+
+    expect(runEffects({ G, playerId: "0" }, [
+      { trigger: "on_play", op: "treat_suit_as", from: "uncivilized", to: ["civilized"] }
+    ])).toBe(true);
+
+    expect(cardHasSuitIconForPlayer(G, "0", G.cardDb.treat_target, "civilized")).toBe(true);
+    expect(cardHasSuitIconForPlayer(G, "0", G.cardDb.treat_target, "uncivilized")).toBe(false);
+    expect(cardHasSuitIconForPlayer(G, "1", G.cardDb.treat_target, "uncivilized")).toBe(true);
+  });
+
+  it("uses treated suit icons when resolving later effects in the same card text", () => {
+    const G = createInitialState();
+    G.market = ["treated_market_card"];
+    G.marketSlots = [];
+    G.marketRefillPool = [];
+    G.cardDb.treated_market_card = {
+      id: "treated_market_card",
+      displayName: "Treated Market Card",
+      type: "action",
+      cardType: "action",
+      suit: "uncivilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+
+    expect(runEffects({ G, playerId: "0" }, [
+      { trigger: "on_play", op: "treat_suit_as", from: "uncivilized", to: ["civilized"] },
+      { trigger: "on_play", op: "acquire_card", count: 1, suit: "civilized", destination: "hand" }
+    ])).toBe(true);
+
+    expect(G.pendingAcquireChoice?.cardIds).toEqual(["treated_market_card"]);
+    resolveAcquireChoice({ G, ctx: { currentPlayer: "0" } as any }, "treated_market_card");
+
+    expect(G.players["0"].hand).toContain("treated_market_card");
+    expect(G.market).not.toContain("treated_market_card");
   });
 
   it("pauses for player-selected discard costs and resumes remaining effects", () => {
@@ -1415,6 +1466,28 @@ describe("effectRunner", () => {
     expect(G.marketUnrest.test_action_archive_survey).toEqual(["test_unrest_2"]);
   });
 
+  it("acquire_card effect triggers data-driven after_acquire nation hooks", () => {
+    const G = createInitialState();
+    G.market = ["test_action_foundry_shift"];
+    G.marketRefillPool = [];
+    G.marketDecks = undefined;
+    G.activeNationRulesets = {
+      "0": {
+        hookRules: [{
+          trigger: "after_acquire",
+          condition: { op: "payload_card_is", payloadKey: "cardId", cardId: "test_action_foundry_shift" },
+          effects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }]
+        }]
+      }
+    } as any;
+
+    runEffects({ G, playerId: "0" }, [{ trigger: "on_play", op: "acquire_card", count: 1 }]);
+
+    expect(G.players["0"].hand).toContain("test_action_foundry_shift");
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.log.some((entry) => entry.message === "Nation hook after_acquire #0 resolved.")).toBe(true);
+  });
+
   it("acquire_card from Market without criteria pauses for a player choice when multiple cards are eligible", () => {
     const G = createInitialState();
     G.market = ["market_region", "market_civilized", "market_uncivilized"];
@@ -2516,6 +2589,29 @@ describe("effectRunner", () => {
     expect(G.marketUnrest.test_action_archive_survey).toEqual(["test_unrest_2"]);
   });
 
+  it("break_through effect triggers data-driven after_break_through nation hooks", () => {
+    const G = createInitialState();
+    G.market = ["test_action_foundry_shift"];
+    G.marketRefillPool = [];
+    G.marketDecks = undefined;
+    G.cardDb.test_action_foundry_shift = { ...G.cardDb.test_action_foundry_shift, suit: "uncivilized" };
+    G.activeNationRulesets = {
+      "0": {
+        hookRules: [{
+          trigger: "after_break_through",
+          condition: { op: "payload_card_is", payloadKey: "cardId", cardId: "test_action_foundry_shift" },
+          effects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }]
+        }]
+      }
+    } as any;
+
+    runEffects({ G, playerId: "0" }, [{ trigger: "on_play", op: "break_through", suit: "uncivilized", source: "market", count: 1 } as any]);
+
+    expect(G.players["0"].hand).toContain("test_action_foundry_shift");
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.log.some((entry) => entry.message === "Nation hook after_break_through #0 resolved.")).toBe(true);
+  });
+
   it("acquire_card triggers acquired-card on-acquire text but break_through does not", () => {
     const G = createInitialState();
     G.market = ["trigger_card"];
@@ -3111,6 +3207,8 @@ describe("effectRunner", () => {
     } as any]);
 
     expect(G.lookedCards?.cardIds).toEqual(["accession_card"]);
+    expect(G.pendingLookOrderChoice).toBeUndefined();
+    expect(G.players["0"].accessionCardId).toBe("accession_card");
   });
 
   it("look_cards can reveal a separately tracked Accession when it is the only Nation card left", () => {
@@ -3252,6 +3350,48 @@ describe("effectRunner", () => {
     expect(G.players["0"].hand).toEqual([]);
     expect(G.players["0"].nationDeck).toEqual(["accession_card"]);
     expect(G.log.at(-1)?.message).toBe("FindMissed(accession_card)");
+  });
+
+  it("does not Find a separately tracked accession card from the Nation deck", () => {
+    const G = createInitialState();
+    G.players["0"].hand = [];
+    G.players["0"].discard = [];
+    G.players["0"].deck = [];
+    G.players["0"].nationDeck = [];
+    G.players["0"].accessionCardId = "accession_card";
+    G.cardDb.accession_card = {
+      id: "accession_card",
+      displayName: "Accession",
+      type: "accession",
+      cardType: "accession",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+
+    runEffects({ G, playerId: "0", randomNumber: () => 0 }, [{
+      trigger: "on_play",
+      op: "find_card",
+      cardId: "accession_card",
+      destination: "hand"
+    } as any]);
+
+    expect(G.players["0"].hand).toEqual([]);
+    expect(G.players["0"].accessionCardId).toBe("accession_card");
+    expect(G.log.at(-1)?.message).toBe("FindMissed(accession_card)");
+
+    runEffects({ G, playerId: "0", randomNumber: () => 0 }, [{
+      trigger: "on_play",
+      op: "find_card",
+      suit: "civilized",
+      destination: "hand"
+    } as any]);
+
+    expect(G.pendingFindChoice).toBeUndefined();
+    expect(G.players["0"].hand).toEqual([]);
+    expect(G.players["0"].accessionCardId).toBe("accession_card");
+    expect(G.log.at(-1)?.message).toBe("FindMissed(criteria)");
   });
 
   it("find_card by criteria searches all listed zones before offering eligible choices", () => {

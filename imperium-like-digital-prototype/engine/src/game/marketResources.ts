@@ -1,5 +1,5 @@
 import type { GameState, ResourceName } from "./state";
-import { addResourceAmount } from "./resources";
+import { addResourceAmount, normalizeResourceMap } from "./resources";
 import { gainMarketResource } from "./resources";
 import { triggerCollapse } from "./scoring";
 
@@ -46,7 +46,7 @@ export function placeMarketResource(G: GameState, args: { playerId: string; card
 }
 
 export function startCleanupMarketResourceChoice(G: GameState, playerId: string): boolean {
-  if (G.market.length === 0) return false;
+  if (G.market.length <= 1) return false;
   if (G.cleanupMarketResourcePlaced?.playerId === playerId && G.cleanupMarketResourcePlaced.round === G.round) return false;
   const spec = cleanupMarketResourceSpec(G, playerId);
   G.pendingCleanupMarketResourceChoice = {
@@ -82,14 +82,16 @@ export function ensureCleanupMarketResourcePlaced(G: GameState, playerId: string
   placeMarketResource(G, { playerId, cardId: firstMarketCard, resource: spec.resource, amount: spec.amount, markCleanup: true });
 }
 
-export function collectMarketResources(G: GameState, playerId: string, cardId: string): void {
+export function collectMarketResources(G: GameState, playerId: string, cardId: string): Partial<Record<ResourceName, number>> {
   const resources = G.marketResources?.[cardId];
-  if (!resources) return;
+  if (!resources) return {};
+  const collected = normalizeResourceMap(resources);
   const player = G.players[playerId];
   for (const [resource, amount] of Object.entries(resources) as [ResourceName, number | undefined][]) {
     addResourceAmount(player.resources, resource, amount ?? 0);
   }
   delete G.marketResources?.[cardId];
+  return collected;
 }
 
 export function collectMarketUnrest(G: GameState, playerId: string, cardId: string): void {

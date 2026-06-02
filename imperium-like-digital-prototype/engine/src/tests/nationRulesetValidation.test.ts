@@ -247,6 +247,12 @@ describe("nation ruleset validation", () => {
     expect(normalized.tested).toBe(true);
   });
 
+  it("validates ruleset-specific King of Kings reward suppression states", () => {
+    expect(validateNationRuleset(ruleset({
+      stateOverrides: [{ op: "suppress_king_of_kings_reward", state: "ceremonial" }]
+    }))).toEqual([]);
+  });
+
   it("imports the Martians Alien-state scoring, payment, and nadir reshuffle exceptions", () => {
     const rows = parseCsvFile(privateRulesetCsvPath);
     const martians = rows.find((row) => row.nation_id === "martians");

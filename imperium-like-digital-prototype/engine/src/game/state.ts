@@ -15,7 +15,7 @@ export type ReturnUnrestSourceZone = "hand" | "playArea" | "discard" | "deck" | 
 export type PlaceOnDeckSourceZone = "hand" | "discard";
 export type SwapSourceZone = "hand" | "discard" | "deck";
 export type ResourceName = "materials" | "knowledge" | "influence" | "unrest" | "goods";
-export type TurnType = "activate" | "innovate" | "revolt";
+export type TurnType = "activate" | "innovate" | "revolt" | "solstice";
 export type EffectOp = Record<string, unknown>;
 export type MarketDeckName = "mainDeck" | "regionDeck" | "uncivilizedDeck" | "civilizedDeck" | "tributaryDeck";
 export type EffectTrigger = "on_play" | "on_exhaust" | "on_acquire" | "on_solstice" | "end_of_solstice";
@@ -30,9 +30,11 @@ export type VpValue = number | {
   falseValue?: number | null;
 };
 export type ReactiveExhaustCondition =
-  | { trigger: "after_gain_resource"; resource?: ResourceName }
+  | { trigger: "after_gain_resource"; resource?: ResourceName; sourceSuit?: Suit }
   | { trigger: "after_take_unrest"; target?: "self" | "opponent" | "any" }
-  | { trigger: "after_acquire_card"; target?: "self" | "opponent" | "any" };
+  | { trigger: "after_acquire_card"; target?: "self" | "opponent" | "any" }
+  | { trigger: "after_play_card"; target?: "self" | "opponent" | "any" }
+  | { trigger: "after_break_through_card"; target?: "self" | "opponent" | "any" };
 
 export type Effect =
   | { trigger: EffectTrigger; op: "draw"; count: number; source?: DrawSourceZone }
@@ -52,8 +54,10 @@ export type Effect =
   | { trigger: EffectTrigger; op: "gain_fame"; count: number }
   | { trigger: EffectTrigger; op: "gain_action"; amount: number }
   | { trigger: EffectTrigger; op: "spend_action"; amount: number }
+  | { trigger: EffectTrigger; op: "return_exhaust_token"; cardId?: string }
   | { trigger: EffectTrigger; op: "trigger_scoring"; reason: string }
   | { trigger: EffectTrigger; op: "trade" }
+  | { trigger: EffectTrigger; op: "treat_suit_as"; from: Suit; to: Suit[] }
   | { trigger: EffectTrigger; op: "commerce"; effects: Effect[] }
   | { trigger: EffectTrigger; op: "profit"; destination?: "discard" | "history"; effects: Effect[] }
   | { trigger: EffectTrigger; op: "garrison_card"; hostCardId?: string; cardId?: string }
@@ -125,6 +129,7 @@ export interface GameState {
   unrestPile?: string[];
   currentTurnType?: TurnType;
   freePlayedThisTurn?: Record<string, string[]>;
+  treatedSuitIconsThisTurn?: Record<string, Array<{ from: Suit; to: Suit[] }>>;
   cardStates?: Record<string, CardRuntimeState>;
   pendingChoice?: { playerId: string; sourceCardId?: string; choices: Effect[][]; resumeEffects?: Effect[] };
   pendingDrawChoice?: { playerId: string; sourceCardId?: string; source: Exclude<DrawSourceZone, "deck" | "fameDeck">; cardIds: string[]; remainingCount: number; resumeEffects?: Effect[] };
@@ -141,13 +146,14 @@ export interface GameState {
   pendingDiscardChoice?: { playerId: string; sourceCardId?: string; cardIds: string[]; count: number; resumeEffects?: Effect[] };
   pendingReturnUnrestChoice?: { playerId: string; sourceCardId?: string; cardIds: string[]; sourceZones: ReturnUnrestSourceZone[]; resumeEffects?: Effect[] };
   pendingPlaceOnDeckChoice?: { playerId: string; sourceCardId?: string; sourceZone: PlaceOnDeckSourceZone; cardIds: string[]; resumeEffects?: Effect[] };
+  pendingReturnExhaustTokenChoice?: { playerId: string; sourceCardId?: string; cardIds: string[]; resumeEffects?: Effect[] };
   pendingGiveCardChoice?: { playerId: string; sourceCardId?: string; cardIds: string[]; recipientPlayerIds: string[]; resumeEffects?: Effect[] };
   pendingSwapChoice?: { playerId: string; sourceCardId?: string; sourceZone: SwapSourceZone; choices: { cardId: string; marketCardId: string }[]; resumeEffects?: Effect[] };
   pendingLookOrderChoice?: { playerId: string; sourceCardId?: string; source: LookSourceZone; cardIds: string[]; resumeEffects?: Effect[] };
   pendingUnrestAllocationChoice?: { playerId: string; recipientPlayerIds: string[]; countPerPlayer: number; availableUnrestCardIds: string[]; resumeEffects?: Effect[] };
   pendingReactiveExhaustChoice?: { playerId: string; cardIds: string[]; resolvingPlayerId: string; sourceCardId?: string; resumeEffects?: Effect[]; trigger: ReactiveExhaustCondition["trigger"]; resource?: ResourceName; targetPlayerId?: string };
   pendingPlayCardResolution?: { playerId: string; cardId: string; freePlay: boolean; payment?: Partial<Record<ResourceName, number>> };
-  pendingPlayedCardResolution?: { playerId: string; cardId: string; freePlay: boolean; afterPlayHooksStarted?: boolean; rollbackSnapshot?: GameState };
+  pendingPlayedCardResolution?: { playerId: string; cardId: string; freePlay: boolean; afterPlayReactiveChecked?: boolean; afterPlayHooksStarted?: boolean; rollbackSnapshot?: GameState };
   pendingAcquireCardResolution?: { playerId: string; cardId: string };
   pendingNationHookContinuation?: { playerId: string; trigger: NationHookTrigger; payload?: Record<string, unknown>; nextIndex: number; resolvedHookIndex: number };
   pendingUnrestTakeContinuation?: { playerId: string; recipientPlayerIds: string[]; countPerPlayer: number; recipientIndex: number; cardIndex: number; taken: number };

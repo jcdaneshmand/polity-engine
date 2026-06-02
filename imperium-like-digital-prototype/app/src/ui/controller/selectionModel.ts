@@ -252,6 +252,7 @@ export function getPendingUiState(G: any, ctx: any): { title: string; detail: st
     G.pendingDiscardChoice ? { title: "Pending Discard", detail: `Choose ${G.pendingDiscardChoice.count ?? 0} ${(G.pendingDiscardChoice.count ?? 0) === 1 ? "card" : "cards"} from ${plural(G.pendingDiscardChoice.cardIds?.length ?? 0, "option")}`, playerId: G.pendingDiscardChoice.playerId } :
     G.pendingReturnUnrestChoice ? { title: "Pending Return Unrest", detail: `Choose ${plural(G.pendingReturnUnrestChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingReturnUnrestChoice.playerId } :
     G.pendingPlaceOnDeckChoice ? { title: "Pending Deck Placement", detail: `Choose ${plural(G.pendingPlaceOnDeckChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingPlaceOnDeckChoice.playerId } :
+    G.pendingReturnExhaustTokenChoice ? { title: "Pending Return Exhaust", detail: `Choose ${plural(G.pendingReturnExhaustTokenChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingReturnExhaustTokenChoice.playerId } :
     G.pendingGiveCardChoice ? { title: "Pending Give Card", detail: `${plural(G.pendingGiveCardChoice.cardIds?.length ?? 0, "card")} / ${plural(G.pendingGiveCardChoice.recipientPlayerIds?.length ?? 0, "recipient")}`, playerId: G.pendingGiveCardChoice.playerId } :
     G.pendingSwapChoice ? { title: "Pending Swap", detail: plural(G.pendingSwapChoice.choices?.length ?? 0, "option"), playerId: G.pendingSwapChoice.playerId } :
     G.pendingUnrestAllocationChoice ? { title: "Pending Unrest Allocation", detail: plural(G.pendingUnrestAllocationChoice.availableUnrestCardIds?.length ?? 0, "Unrest"), playerId: G.pendingUnrestAllocationChoice.playerId } :
@@ -277,7 +278,7 @@ type HintZone = "hand" | "market";
 function actionHintZone(action: any, idField: "cardId" | "marketCardId"): HintZone | undefined {
   if (idField === "marketCardId") return "market";
   if (action.action === "play" || action.action === "garrison" || action.action === "revolt" || action.action === "resolveCleanupDiscard" || action.action === "resolveDiscardChoice") return "hand";
-  if (action.action === "acquire" || action.action === "resolveAcquireChoice" || action.action === "resolveMarketCardChoice" || action.action === "resolveBreakThroughChoice" || action.action === "resolveCleanupMarketResource") return "market";
+  if (action.action === "resolveAcquireChoice" || action.action === "resolveMarketCardChoice" || action.action === "resolveBreakThroughChoice" || action.action === "resolveCleanupMarketResource") return "market";
   if (action.action === "innovate" && action.source === "market") return "market";
   return undefined;
 }
@@ -619,6 +620,22 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Place On Deck choice first" });
+    return actions;
+  }
+  const pendingReturnExhaustTokenChoice = G.pendingReturnExhaustTokenChoice;
+  if (pendingReturnExhaustTokenChoice) {
+    const isCurrentPlayer = pendingReturnExhaustTokenChoice.playerId === ctx.currentPlayer;
+    (pendingReturnExhaustTokenChoice.cardIds ?? []).forEach((cardId: string) => {
+      const card = getCardById(G, cardId);
+      actions.push({
+        label: `Return Exhaust token from ${card?.displayName ?? cardId}`,
+        action: "resolveReturnExhaustTokenChoice",
+        enabled: isCurrentPlayer,
+        reason: isCurrentPlayer ? undefined : `Waiting for player ${pendingReturnExhaustTokenChoice.playerId}`,
+        cardId
+      });
+    });
+    actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Return Exhaust choice first" });
     return actions;
   }
   const pendingGiveCardChoice = G.pendingGiveCardChoice;

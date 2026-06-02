@@ -64,7 +64,6 @@ export default function BoardLayout({ G, ctx, moves }: any) {
     if (!a.enabled) return;
     if (a.action === "view" && a.cardId) setDetailCardId(a.cardId);
     if (a.action === "play" && a.cardId) moves.playCard?.(a.cardId);
-    if (a.action === "acquire" && a.cardId) moves.acquireCard?.(a.cardId);
     if (a.action === "profit" && a.cardId) moves.profitCard?.(a.cardId);
     if (a.action === "resolveChoice" && typeof a.choiceIndex === "number") moves.resolveChoice?.(a.choiceIndex);
     if (a.action === "resolveDrawChoice" && a.cardId) moves.resolveDrawChoice?.(a.cardId);
@@ -83,6 +82,7 @@ export default function BoardLayout({ G, ctx, moves }: any) {
     if (a.action === "resolveDiscardChoice" && a.cardIds) moves.resolveDiscardChoice?.(a.cardIds);
     if (a.action === "resolveReturnUnrestChoice" && a.cardId) moves.resolveReturnUnrestChoice?.(a.cardId);
     if (a.action === "resolvePlaceOnDeckChoice" && a.cardId) moves.resolvePlaceOnDeckChoice?.(a.cardId);
+    if (a.action === "resolveReturnExhaustTokenChoice" && a.cardId) moves.resolveReturnExhaustTokenChoice?.(a.cardId);
     if (a.action === "resolveGiveCardChoice" && a.cardId && a.recipientPlayerId) moves.resolveGiveCardChoice?.(a.cardId, a.recipientPlayerId);
     if (a.action === "resolveSwapChoice" && a.cardId && a.marketCardId) moves.resolveSwapChoice?.(a.cardId, a.marketCardId);
     if (a.action === "resolveUnrestAllocationChoice" && a.recipientPlayerIds) moves.resolveUnrestAllocationChoice?.(a.recipientPlayerIds);

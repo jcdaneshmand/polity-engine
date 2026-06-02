@@ -25,6 +25,7 @@ function hasPendingInterruption(G: GameState): boolean {
     ?? G.pendingDiscardChoice
     ?? G.pendingReturnUnrestChoice
     ?? G.pendingPlaceOnDeckChoice
+    ?? G.pendingReturnExhaustTokenChoice
     ?? G.pendingGiveCardChoice
     ?? G.pendingSwapChoice
     ?? G.pendingLookOrderChoice

@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 import { getActionHintsByCardId, getAvailableActionsForSelection, getMarketCardClickAction, getPendingUiState, getSelectedCard } from "../../../app/src/ui/controller/selectionModel";
 import { compactReason, groupActionsForMenu } from "../../../app/src/ui/layout/ActionMenu";
 import { formatLogMessage } from "../../../app/src/ui/layout/GameLogPanel";
@@ -168,6 +170,11 @@ describe("selection model", () => {
   });
   it("does not expose direct market Acquire as a normal player action",()=> {
     expect(getAvailableActionsForSelection({kind:"market_slot",id:"m1"},G,ctx).some(a=>a.action==="acquire")).toBe(false);
+  });
+  it("does not route UI actions through the removed direct market acquire move",()=> {
+    const source=fs.readFileSync(path.resolve(import.meta.dirname, "../../../app/src/ui/layout/BoardLayout.tsx"), "utf8");
+    expect(source).not.toContain("moves.acquireCard");
+    expect(source).not.toContain('a.action === "acquire"');
   });
   it("still hides direct market acquisition when no Action tokens are available",()=> {
     const noAction = {...G,players:{"0":{...G.players["0"],actionsRemaining:0,actionTokensAvailable:0,resources:{materials:3}}}};
@@ -381,6 +388,21 @@ describe("selection model", () => {
     expect(acts[0]).toMatchObject({ label:"Place Card1 on deck", enabled:true, cardId:"c1" });
     expect(acts[1]).toMatchObject({ label:"Place Market1 on deck", enabled:true, cardId:"m1" });
     expect(acts[2].enabled).toBe(false);
+  });
+  it("pending Return Exhaust token choice actions expose eligible play-area cards",()=> {
+    const withReturnExhaust = {
+      ...G,
+      cardDb: {...G.cardDb, e1:{id:"e1",displayName:"Spent Forum",type:"in_play",cardType:"in_play"}},
+      pendingReturnExhaustTokenChoice:{playerId:"0",sourceCardId:"return_exhaust_source",cardIds:["e1"]}
+    };
+    const acts=getAvailableActionsForSelection(null,withReturnExhaust,ctx);
+    expect(getPendingUiState(withReturnExhaust,ctx)).toMatchObject({
+      title:"Pending Return Exhaust",
+      detail:"Choose 1 card"
+    });
+    expect(acts.map((a)=>a.action)).toEqual(["resolveReturnExhaustTokenChoice","endTurn"]);
+    expect(acts[0]).toMatchObject({ label:"Return Exhaust token from Spent Forum", enabled:true, cardId:"e1" });
+    expect(acts[1].enabled).toBe(false);
   });
   it("pending Give Card choice actions expose card and recipient pairs",()=> {
     const acts=getAvailableActionsForSelection(null,{...G,pendingGiveCardChoice:{playerId:"0",sourceCardId:"give_source",cardIds:["c1"],recipientPlayerIds:["1","2"]}},ctx);

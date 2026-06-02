@@ -748,6 +748,31 @@ describe("scoring", () => {
     expect(G.log.at(-1)?.message).toMatch(/^CollapseAutoWin\(.+\/chaos_pile\)$/);
   });
 
+  it("collapse auto-win zone checks count a separately tracked Accession in the Nation deck", () => {
+    const G = createInitialState();
+    G.players["0"].nationDeck = [];
+    G.players["0"].accessionCardId = "accession_card";
+    G.cardDb.accession_card = {
+      id: "accession_card",
+      displayName: "Accession",
+      type: "accession",
+      cardType: "accession",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      collapseOverrides: [{ op: "auto_win_if_zone_empty", zoneId: "nationDeck" }]
+    };
+
+    triggerCollapse(G, "unrest_pile_empty", "0");
+
+    expect(G.gameover?.reason).not.toBe("auto_win_if_zone_empty:nationDeck");
+    expect(G.log.some((entry) => entry.message.includes("CollapseAutoWin") && entry.message.includes("nationDeck"))).toBe(false);
+  });
+
   it("solo collapse auto-win overrides beat the default Bot Collapse win", () => {
     const G = createInitialState({
       options: { playerCount: 1, mode: "solo", enabledExpansions: [], enabledVariants: [], soloDifficulty: "chieftain" }

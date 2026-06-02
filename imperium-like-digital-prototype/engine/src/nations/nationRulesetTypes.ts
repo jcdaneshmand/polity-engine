@@ -40,7 +40,8 @@ export type StateOverride =
   | { op: "start_as_state"; state: string }
   | { op: "never_flip_to_empire" }
   | { op: "flip_state_on_solstice"; sequence: string[]; loop?: boolean }
-  | { op: "take_unrest_when_spending_resource"; resource: ResourceName; state?: string };
+  | { op: "take_unrest_when_spending_resource"; resource: ResourceName; state?: string }
+  | { op: "suppress_king_of_kings_reward"; state?: string };
 export type ReshuffleOverride =
   | { op: "skip_default_nation_card_addition" }
   | { op: "development_available_from_start" }
@@ -80,7 +81,7 @@ export type ShortGameOverride =
   | { op: "move_one_advanced_nation_card_to_side_area"; areaId: string; selection?: "first" | "random" }
   | { op: "garrison_development_and_add_nation_to_starting_deck"; developmentCardId: string; hostCardId: string };
 
-export type NationHookTrigger = "before_setup_player" | "after_setup_player" | "before_play_card" | "after_play_card" | "before_acquire" | "after_acquire" | "before_reshuffle" | "after_reshuffle" | "after_develop" | "after_gain_unrest" | "before_solstice" | "after_solstice" | "before_scoring" | "after_scoring";
+export type NationHookTrigger = "before_setup_player" | "after_setup_player" | "before_play_card" | "after_play_card" | "before_acquire" | "after_acquire" | "after_break_through" | "after_revolt" | "before_reshuffle" | "after_reshuffle" | "after_develop" | "after_gain_unrest" | "before_solstice" | "after_solstice" | "before_scoring" | "after_scoring";
 export type NationHookRule = { trigger: NationHookTrigger; condition?: EffectCondition; effects: EffectOp[]; priority?: number; description?: string };
 
 export type NationRuleset = {

@@ -23,12 +23,18 @@ export function getSharedPiles(G: GameState) {
   ];
 }
 export function getCardById(G: GameState, cardId?: string) { return cardId ? G.cardDb?.[cardId] : undefined; }
+function zoneCount(owner: any, zoneId: string): number {
+  const direct = owner?.[zoneId];
+  const base = Array.isArray(direct) ? direct.length : (Array.isArray(owner?.sideAreas?.[zoneId]) ? owner.sideAreas[zoneId].length : 0);
+  if (zoneId === "nationDeck" && owner?.accessionCardId && !(owner?.nationDeck ?? []).includes(owner.accessionCardId)) return base + 1;
+  return base;
+}
 export function getPlayerZoneCounts(player: any) {
   if (!player) return { deck: 0, discard: 0, hand: 0, playArea: 0, history: 0, developmentArea: 0, nationDeck: 0 };
   return {
     deck: player.deck?.length ?? 0, discard: player.discard?.length ?? 0, hand: player.hand?.length ?? 0,
     playArea: player.playArea?.length ?? 0, history: player.history?.length ?? 0,
-    developmentArea: player.developmentArea?.length ?? 0, nationDeck: player.nationDeck?.length ?? 0
+    developmentArea: player.developmentArea?.length ?? 0, nationDeck: zoneCount(player, "nationDeck")
   };
 }
 export function getZoneCards(player: any, zoneId: string): string[] {
@@ -98,7 +104,7 @@ export function getInspectableZone(
 
   const cardIds = getZoneCards(owner, zoneId);
   const hiddenZones = new Set(["deck", "nationDeck", "botDeck", "botDynastyDeck"]);
-  if (hiddenZones.has(zoneId)) return { hidden: true, cardIds: [], count: cardIds.length };
+  if (hiddenZones.has(zoneId)) return { hidden: true, cardIds: [], count: zoneCount(owner, zoneId) };
   const ownerVisibleZones = new Set(["hand"]);
   if (
     ownerVisibleZones.has(zoneId) &&

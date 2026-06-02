@@ -34,7 +34,7 @@ const RULESET_TAGS: NationRulesetTag[] = [
 const GAME_MODES: GameMode[] = ["multiplayer", "solo", "practice"];
 const VARIANTS: VariantId[] = ["lowered_aggression", "quick_setup", "precious_cards", "short_game"];
 const EXPANSIONS: ExpansionId[] = ["trade_routes"];
-const HOOK_TRIGGERS: NationHookTrigger[] = ["before_setup_player", "after_setup_player", "before_play_card", "after_play_card", "before_acquire", "after_acquire", "before_reshuffle", "after_reshuffle", "after_develop", "after_gain_unrest", "before_solstice", "after_solstice", "before_scoring", "after_scoring"];
+const HOOK_TRIGGERS: NationHookTrigger[] = ["before_setup_player", "after_setup_player", "before_play_card", "after_play_card", "before_acquire", "after_acquire", "after_break_through", "after_revolt", "before_reshuffle", "after_reshuffle", "after_develop", "after_gain_unrest", "before_solstice", "after_solstice", "before_scoring", "after_scoring"];
 const RESOURCE_NAMES: ResourceName[] = ["materials", "knowledge", "influence", "unrest", "goods"];
 const CARD_TYPES: CardType[] = ["action", "unit", "technology", "legacy", "in_play", "attack", "power", "state", "development", "accession", "nation", "region", "unrest", "fame", "trade_route", "bot_state", "other"];
 const SUITS: Suit[] = ["military", "civic", "economic", "unrest", "wild", "region", "uncivilized", "civilized", "tributary", "fame", "power", "trade_route", "none", "multi"];
@@ -248,6 +248,7 @@ export function validateNationRuleset(ruleset: NationRuleset): ValidationIssue[]
     never_flip_to_empire: [],
     flip_state_on_solstice: ["sequence"],
     take_unrest_when_spending_resource: ["resource"],
+    suppress_king_of_kings_reward: [],
   }));
   issues.push(...validateOverrides<ReshuffleOverride>(nationId, "reshuffleOverrides", ruleset.reshuffleOverrides, {
     skip_default_nation_card_addition: [],

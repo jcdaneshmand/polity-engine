@@ -534,6 +534,53 @@ describe("setup pipeline",()=>{
     expect(sequence("seed-a")).toEqual(sequence("seed-a"));
     expect(sequence("seed-a")).not.toEqual(sequence("seed-b"));
   });
+  it("shuffles regular Nation deck cards while leaving Accession separate and Development visible",()=>{
+    const setupArgs = {
+      options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[],commonsSetId:"classics",replacementPolicy:"none"} as GameOptions,
+      playerNationIds:{"0":"setup_nation","1":"setup_nation"},
+      randomSeed:"parity-seed",
+      cardDb: cardDb([
+        ...Array.from({ length: 5 }, (_, index) => card({
+          id: `market_${index + 1}`,
+          suit: "none",
+          smallDeckEligible: false
+        })),
+        ...["n1","n2","n3","n4","accession","dev1","dev2"].map((id) => card({
+          id,
+          ownership:"nation",
+          startingLocation:"box",
+          cardType: id === "accession" ? "accession" : id.startsWith("dev") ? "development" : "nation",
+          tags: id === "accession" ? ["accession"] : []
+        }))
+      ]),
+      nationDb:{
+        setup_nation:{
+          id:"setup_nation",
+          displayName:"Setup Nation",
+          powerCardIds:[],
+          stateCardIds:[],
+          startingDeckCardIds:[],
+          nationDeckCardIds:["n1","n2","n3","n4"],
+          accessionCardId:"accession",
+          developmentCardIds:["dev1","dev2"],
+          setupRules:[],
+          passiveRules:[],
+          actionTokensBase:3,
+          exhaustTokensBase:5,
+          requiredExpansions:[],
+          implemented:true,
+          tested:true
+        }
+      }
+    };
+
+    const G = createInitialGameStateFromPipeline(setupArgs);
+
+    expect(G.players["0"].nationDeck).toEqual(["n3","n4","n2","n1"]);
+    expect(G.players["0"].nationDeck).not.toContain("accession");
+    expect(G.players["0"].accessionCardId).toBe("accession");
+    expect(G.players["0"].developmentArea).toEqual(["dev1","dev2"]);
+  });
   it("uses randomSeed to deterministically shuffle solo Bot setup",()=>{
     const setupArgs = {
       options:{playerCount:1,mode:"solo",enabledExpansions:[],enabledVariants:[],soloDifficulty:"chieftain",commonsSetId:"classics",replacementPolicy:"none"} as GameOptions,

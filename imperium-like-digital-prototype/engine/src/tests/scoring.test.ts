@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createInitialState } from "../game/initialState";
 import { finalizeNormalScoring, scoreBot, scorePlayer, triggerCollapse, triggerScoring } from "../game/scoring";
-import { resolveChoice, resolveExileChoice, resolveGiveCardChoice, resolveMarketCardChoice, resolvePlaceOnDeckChoice, resolveReturnUnrestChoice, resolveSwapChoice } from "../game/moves";
+import { resolveChoice, resolveExileChoice, resolveGiveCardChoice, resolveMarketCardChoice, resolvePlaceOnDeckChoice, resolveReactiveExhaustChoice, resolveReturnUnrestChoice, resolveSwapChoice } from "../game/moves";
 import { onTurnEnd } from "../game/turn";
 
 function vpCard(id: string, vp: unknown): any {
@@ -51,6 +51,27 @@ describe("scoring", () => {
     G.players["0"].nationDeck = ["nation_vp"];
     G.players["0"].developmentArea = ["development_vp"];
     G.players["0"].discard = ["discard_vp"];
+
+    expect(scorePlayer(G, "0")).toBe(4);
+  });
+
+  it("does not score garrisoned cards attached to unplayed Nation or Development cards", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      nation_host: vpCard("nation_host", 50),
+      development_host: vpCard("development_host", 50),
+      nation_child: vpCard("nation_child", 50),
+      development_child: vpCard("development_child", 50),
+      discard_vp: vpCard("discard_vp", 4)
+    };
+    G.players["0"].nationDeck = ["nation_host"];
+    G.players["0"].developmentArea = ["development_host"];
+    G.players["0"].discard = ["discard_vp"];
+    G.cardStates = {
+      nation_host: { garrisonedCardIds: ["nation_child"] },
+      development_host: { garrisonedCardIds: ["development_child"] }
+    };
 
     expect(scorePlayer(G, "0")).toBe(4);
   });
@@ -184,6 +205,24 @@ describe("scoring", () => {
     expect(scorePlayer(G, "0")).toBe(6);
   });
 
+  it("counts garrisoned cards attached to counted scoring zones for structured variable victory points", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      variable_counter: vpCard("variable_counter", {
+        mode: "variable",
+        formula: { op: "count_cards", tag: "region", zones: ["playArea"], amountEach: 2, cap: 10 }
+      }),
+      play_region: { ...vpCard("play_region", 0), tags: ["region"] },
+      garrisoned_region: { ...vpCard("garrisoned_region", 0), tags: ["region"] }
+    };
+    G.players["0"].discard = ["variable_counter"];
+    G.players["0"].playArea = ["play_region"];
+    G.cardStates = { play_region: { garrisonedCardIds: ["garrisoned_region"] } };
+
+    expect(scorePlayer(G, "0")).toBe(4);
+  });
+
   it("does not count Trade Routes as in-play cards for structured variable victory points", () => {
     const G = createInitialState();
     G.cardDb = {
@@ -203,6 +242,25 @@ describe("scoring", () => {
     };
     G.players["0"].discard = ["variable_counter"];
     G.players["0"].playArea = ["play_region", "route_with_region_tag"];
+
+    expect(scorePlayer(G, "0")).toBe(2);
+  });
+
+  it("scores structured variable victory points from resource pools without counting resources on cards", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      resource_counter: vpCard("resource_counter", {
+        mode: "variable",
+        formula: { op: "count_resources", resources: ["materials", "influence"], amountEach: 1, denominator: 2, cap: 10 }
+      }),
+      resource_host: vpCard("resource_host", 0)
+    };
+    G.players["0"].discard = ["resource_counter"];
+    G.players["0"].playArea = ["resource_host"];
+    G.players["0"].resources.materials = 3;
+    G.players["0"].resources.influence = 2;
+    G.cardStates = { resource_host: { resources: { materials: 5, influence: 5 } } };
 
     expect(scorePlayer(G, "0")).toBe(2);
   });
@@ -437,6 +495,109 @@ describe("scoring", () => {
       winner: "bot_0",
       reason: "normal_scoring:solo_test",
       scores: { "0": 12, bot_0: 12 }
+    });
+  });
+
+  it("records a campaign outcome snapshot when solo campaign scoring finishes", () => {
+    const G = createInitialState({
+      options: {
+        playerCount: 1,
+        mode: "solo",
+        enabledExpansions: [],
+        enabledVariants: [],
+        soloDifficulty: "warlord",
+        campaignMode: "standard",
+        campaignProgress: {
+          mode: "standard",
+          playerNationId: "test_nation_sun_coast",
+          wins: 1,
+          losses: 0,
+          currentDifficulty: "warlord",
+          defeatedBotNationIds: ["first_bot"],
+          startingDeckAdditions: [],
+          startingDeckRemovals: [],
+          setAsideCommonsCardIds: [],
+          doubleStartingResourcesForNextGame: false
+        }
+      }
+    });
+    G.cardDb = {
+      ...G.cardDb,
+      human_vp: vpCard("human_vp", 10),
+      bot_vp: vpCard("bot_vp", 3)
+    };
+    G.players["0"].hand = ["human_vp"];
+    G.solo!.bot.botNationId = "campaign_bot";
+    G.solo!.bot.botDeck = ["bot_vp"];
+    G.scoring = { reason: "campaign_test", triggeredBy: "0", phase: "final_round", finalRound: 1 };
+
+    finalizeNormalScoring(G);
+
+    expect(G.gameover?.campaignOutcome).toEqual({
+      mode: "standard",
+      won: true,
+      humanPlayerId: "0",
+      botId: "bot_0",
+      botNationId: "campaign_bot",
+      difficulty: "warlord",
+      score: 10,
+      scoreKind: "victory_points",
+      botScore: 3,
+      requiresCampaignChoice: true,
+      result: {
+        won: true,
+        botNationId: "campaign_bot",
+        difficulty: "warlord",
+        score: 10
+      }
+    });
+  });
+
+  it("records a campaign loss outcome when solo campaign Collapse finishes", () => {
+    const G = createInitialState({
+      options: {
+        playerCount: 1,
+        mode: "solo",
+        enabledExpansions: [],
+        enabledVariants: [],
+        soloDifficulty: "chieftain",
+        campaignMode: "standard",
+        campaignProgress: {
+          mode: "standard",
+          playerNationId: "test_nation_sun_coast",
+          wins: 0,
+          losses: 1,
+          currentDifficulty: "chieftain",
+          defeatedBotNationIds: [],
+          startingDeckAdditions: [],
+          startingDeckRemovals: [],
+          setAsideCommonsCardIds: [],
+          doubleStartingResourcesForNextGame: false
+        }
+      }
+    });
+    G.solo!.bot.botNationId = "collapse_bot";
+    G.players["0"].hand = ["unrest_a", "unrest_b"];
+    G.cardDb = { ...G.cardDb, unrest_a: unrestCard("unrest_a"), unrest_b: unrestCard("unrest_b") };
+
+    triggerCollapse(G, "unrest_empty", "0");
+
+    expect(G.gameover?.campaignOutcome).toEqual({
+      mode: "standard",
+      won: false,
+      humanPlayerId: "0",
+      botId: "bot_0",
+      botNationId: "collapse_bot",
+      difficulty: "chieftain",
+      score: 2,
+      scoreKind: "collapse_unrest",
+      requiresCampaignChoice: false,
+      result: {
+        won: false,
+        botNationId: "collapse_bot",
+        difficulty: "chieftain",
+        score: 2
+      }
     });
   });
 
@@ -704,6 +865,39 @@ describe("scoring", () => {
       reason: "collapse:test_collapse",
       scores: { "0": 0, "1": 0 },
       tieBreakScores: { "0": 0, "1": 0 }
+    });
+  });
+
+  it("collapse scoring does not count garrisoned Unrest attached to ignored zones", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      nation_host: vpCard("nation_host", 0),
+      development_host: vpCard("development_host", 0),
+      exile_host: vpCard("exile_host", 0),
+      nation_child_unrest: unrestCard("nation_child_unrest"),
+      development_child_unrest: unrestCard("development_child_unrest"),
+      exile_child_unrest: unrestCard("exile_child_unrest"),
+      counted_host: vpCard("counted_host", 0),
+      counted_child_unrest: unrestCard("counted_child_unrest")
+    };
+    G.players["0"].nationDeck = ["nation_host"];
+    G.players["0"].developmentArea = ["development_host"];
+    G.players["0"].exile = ["exile_host"];
+    G.players["0"].discard = ["counted_host"];
+    G.cardStates = {
+      nation_host: { garrisonedCardIds: ["nation_child_unrest"] },
+      development_host: { garrisonedCardIds: ["development_child_unrest"] },
+      exile_host: { garrisonedCardIds: ["exile_child_unrest"] },
+      counted_host: { garrisonedCardIds: ["counted_child_unrest"] }
+    };
+
+    triggerCollapse(G, "test_collapse");
+
+    expect(G.gameover).toEqual({
+      winner: "1",
+      reason: "collapse:test_collapse",
+      scores: { "0": 1, "1": 0 }
     });
   });
 
@@ -996,6 +1190,30 @@ describe("scoring", () => {
     expect(G.log.some((entry) => entry.message === "NationRulesetApplied(test/scoring/custom_scoring_effect)")).toBe(false);
   });
 
+  it("routes injected randomness through scoring lifecycle hooks", () => {
+    const G = createInitialState();
+    G.players["0"].hand = ["random_keep", "random_discard"];
+    G.players["1"].hand = [];
+    G.cardDb.random_keep = vpCard("random_keep", 0);
+    G.cardDb.random_discard = vpCard("random_discard", 0);
+    G.scoring = { reason: "test_trigger", triggeredBy: "0", phase: "final_round", finalRound: 1 };
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      hookRules: [{
+        trigger: "before_scoring",
+        effects: [{ trigger: "on_play", op: "discard_random", count: 1 } as any],
+        implemented: true,
+        tested: true
+      } as any]
+    };
+
+    (finalizeNormalScoring as any)(G, () => 0.6);
+
+    expect(G.players["0"].hand).toEqual(["random_keep"]);
+    expect(G.players["0"].discard).toContain("random_discard");
+    expect(G.log.some((entry) => entry.message === "Discarded random_discard at random.")).toBe(true);
+  });
+
   it("stops scoring lifecycle when a before_scoring hook fails", () => {
     const G = createInitialState();
     G.cardDb = {
@@ -1071,6 +1289,128 @@ describe("scoring", () => {
     resolveChoice({ G, ctx: { currentPlayer: "0" } as any }, 0);
 
     expect(G.pendingChoice).toBeUndefined();
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.gameover).toEqual({
+      winner: "0",
+      reason: "normal_scoring:test_trigger",
+      scores: { "0": 6, "1": 2 }
+    });
+  });
+
+  it("pauses normal scoring finalization when before_scoring opens a reactive Exhaust window", () => {
+    const G = createInitialState();
+    const exhaustCardId = "scoring_reactive_exhaust";
+    G.cardDb = {
+      ...G.cardDb,
+      p0_vp: vpCard("p0_vp", 5),
+      p1_vp: vpCard("p1_vp", 2),
+      [exhaustCardId]: {
+        id: exhaustCardId,
+        displayName: "Scoring Reactive Exhaust",
+        type: "in_play",
+        cardType: "in_play",
+        suit: "none",
+        cost: 0,
+        tags: [],
+        effects: [{
+          trigger: "on_exhaust",
+          op: "gain_resource",
+          resource: "knowledge",
+          amount: 1,
+          reactive: { trigger: "after_gain_resource", resource: "materials" }
+        } as any]
+      }
+    };
+    G.players["0"].hand = ["p0_vp"];
+    G.players["0"].playArea = [exhaustCardId];
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.players["1"].hand = ["p1_vp"];
+    G.scoring = { reason: "test_trigger", triggeredBy: "0", phase: "final_round", finalRound: 1 };
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      hookRules: [{
+        trigger: "before_scoring",
+        effects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 } as any]
+      }]
+    };
+
+    finalizeNormalScoring(G);
+
+    expect(G.players["0"].resources.materials).toBe(1);
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: [exhaustCardId],
+      resolvingPlayerId: "0",
+      trigger: "after_gain_resource",
+      resource: "materials"
+    });
+    expect(G.pendingScoringFinalization).toEqual({ playerIds: ["0", "1"], scores: {}, nextPlayerIndex: 0 });
+    expect(G.gameover).toBeUndefined();
+
+    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "0" } as any }, exhaustCardId);
+
+    expect(G.pendingReactiveExhaustChoice).toBeUndefined();
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.gameover).toEqual({
+      winner: "0",
+      reason: "normal_scoring:test_trigger",
+      scores: { "0": 6, "1": 2 }
+    });
+  });
+
+  it("pauses normal scoring finalization when after_scoring opens a reactive Exhaust window", () => {
+    const G = createInitialState();
+    const exhaustCardId = "after_scoring_reactive_exhaust";
+    G.cardDb = {
+      ...G.cardDb,
+      p0_vp: vpCard("p0_vp", 5),
+      p1_vp: vpCard("p1_vp", 2),
+      [exhaustCardId]: {
+        id: exhaustCardId,
+        displayName: "After Scoring Reactive Exhaust",
+        type: "in_play",
+        cardType: "in_play",
+        suit: "none",
+        cost: 0,
+        tags: [],
+        effects: [{
+          trigger: "on_exhaust",
+          op: "gain_resource",
+          resource: "knowledge",
+          amount: 1,
+          reactive: { trigger: "after_gain_resource", resource: "materials" }
+        } as any]
+      }
+    };
+    G.players["0"].hand = ["p0_vp"];
+    G.players["0"].playArea = [exhaustCardId];
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.players["1"].hand = ["p1_vp"];
+    G.scoring = { reason: "test_trigger", triggeredBy: "0", phase: "final_round", finalRound: 1 };
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      hookRules: [{
+        trigger: "after_scoring",
+        effects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 } as any]
+      }]
+    };
+
+    finalizeNormalScoring(G);
+
+    expect(G.players["0"].resources.materials).toBe(1);
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: [exhaustCardId],
+      resolvingPlayerId: "0",
+      trigger: "after_gain_resource",
+      resource: "materials"
+    });
+    expect(G.pendingScoringFinalization).toEqual({ playerIds: ["0", "1"], scores: {}, nextPlayerIndex: 0 });
+    expect(G.gameover).toBeUndefined();
+
+    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "0" } as any }, exhaustCardId);
+
+    expect(G.pendingReactiveExhaustChoice).toBeUndefined();
     expect(G.players["0"].resources.knowledge).toBe(1);
     expect(G.gameover).toEqual({
       winner: "0",
@@ -1178,9 +1518,10 @@ describe("scoring", () => {
       ...G.cardDb,
       p0_vp: vpCard("p0_vp", 5),
       p1_vp: vpCard("p1_vp", 2),
-      hand_unrest: { ...vpCard("hand_unrest", 0), type: "unrest", cardType: "unrest", suit: "unrest", tags: ["unrest"] }
+      hand_unrest: { ...vpCard("hand_unrest", 0), type: "unrest", cardType: "unrest", suit: "unrest", tags: ["unrest"] },
+      hand_unrest_b: { ...vpCard("hand_unrest_b", 0), type: "unrest", cardType: "unrest", suit: "unrest", tags: ["unrest"] }
     };
-    G.players["0"].hand = ["p0_vp", "hand_unrest"];
+    G.players["0"].hand = ["p0_vp", "hand_unrest", "hand_unrest_b"];
     G.players["1"].hand = ["p1_vp"];
     G.scoring = { reason: "test_trigger", triggeredBy: "0", phase: "final_round", finalRound: 1 };
     G.activeNationRulesets!["0"] = {
@@ -1195,7 +1536,7 @@ describe("scoring", () => {
 
     expect(G.pendingReturnUnrestChoice).toEqual({
       playerId: "0",
-      cardIds: ["hand_unrest"],
+      cardIds: ["hand_unrest", "hand_unrest_b"],
       sourceZones: ["hand"]
     });
     expect(G.pendingScoringFinalization).toEqual({ playerIds: ["0", "1"], scores: {}, nextPlayerIndex: 0 });
@@ -1249,9 +1590,11 @@ describe("scoring", () => {
       ...G.cardDb,
       p0_vp: vpCard("p0_vp", 5),
       p1_vp: vpCard("p1_vp", 2),
+      hand_unrest: { ...unrestCard("hand_unrest"), vp: { mode: "negative", value: 0 } },
       flooded_unrest: { ...unrestCard("flooded_unrest"), vp: { mode: "negative", value: 4 } }
     };
     G.players["0"].powerArea = ["p0_vp"];
+    G.players["0"].hand = ["hand_unrest"];
     G.players["0"].sideAreas = { flooded: ["flooded_unrest"] };
     G.players["1"].powerArea = ["p1_vp"];
     G.scoring = { reason: "test_trigger", triggeredBy: "0", phase: "final_round", finalRound: 1 };
@@ -1268,7 +1611,7 @@ describe("scoring", () => {
 
     expect(G.pendingReturnUnrestChoice).toEqual({
       playerId: "0",
-      cardIds: ["flooded_unrest"],
+      cardIds: ["hand_unrest", "flooded_unrest"],
       sourceZones: ["hand", "playArea", "discard", "deck", "flooded"]
     });
     expect(G.pendingScoringFinalization).toEqual({ playerIds: ["0", "1"], scores: {}, nextPlayerIndex: 0 });
@@ -1279,6 +1622,53 @@ describe("scoring", () => {
     expect(G.pendingReturnUnrestChoice).toBeUndefined();
     expect(G.players["0"].sideAreas?.flooded).toEqual([]);
     expect(G.unrestPile).toContain("flooded_unrest");
+    expect(G.gameover).toEqual({
+      winner: "0",
+      reason: "normal_scoring:test_trigger",
+      scores: { "0": 5, "1": 2 }
+    });
+  });
+
+  it("normal scoring return-Unrest choices include garrisoned Unrest attached to scored-zone hosts", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      p0_vp: vpCard("p0_vp", 5),
+      p1_vp: vpCard("p1_vp", 2),
+      discard_host: vpCard("discard_host", 0),
+      hand_unrest: { ...unrestCard("hand_unrest"), vp: { mode: "negative", value: 0 } },
+      garrisoned_unrest: { ...unrestCard("garrisoned_unrest"), vp: { mode: "negative", value: 4 } }
+    };
+    G.players["0"].powerArea = ["p0_vp"];
+    G.players["0"].hand = ["hand_unrest"];
+    G.players["0"].discard = ["discard_host"];
+    G.players["1"].powerArea = ["p1_vp"];
+    G.cardStates = { discard_host: { garrisonedCardIds: ["garrisoned_unrest"] } };
+    G.scoring = { reason: "test_trigger", triggeredBy: "0", phase: "final_round", finalRound: 1 };
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      hookRules: [{
+        trigger: "before_scoring",
+        effects: [{ trigger: "on_play", op: "return_unrest" } as any]
+      } as any]
+    };
+
+    finalizeNormalScoring(G);
+
+    expect(G.pendingReturnUnrestChoice).toMatchObject({
+      playerId: "0"
+    });
+    expect(G.pendingReturnUnrestChoice?.cardIds).toContain("garrisoned_unrest");
+    expect(G.pendingReturnUnrestChoice?.cardIds).toContain("hand_unrest");
+    expect(G.pendingReturnUnrestChoice?.sourceZones).toContain("discard");
+    expect(G.gameover).toBeUndefined();
+
+    resolveReturnUnrestChoice({ G, ctx: { currentPlayer: "0" } as any }, "garrisoned_unrest");
+
+    expect(G.pendingReturnUnrestChoice).toBeUndefined();
+    expect(G.players["0"].discard).toEqual(["discard_host"]);
+    expect(G.cardStates?.discard_host?.garrisonedCardIds).toEqual([]);
+    expect(G.unrestPile).toContain("garrisoned_unrest");
     expect(G.gameover).toEqual({
       winner: "0",
       reason: "normal_scoring:test_trigger",
@@ -1314,11 +1704,13 @@ describe("scoring", () => {
         expectedKey: "pendingSwapChoice",
         effect: { trigger: "on_play", op: "swap_card", sourceZone: "hand" },
         setup(G: ReturnType<typeof createInitialState>) {
-          G.players["0"].hand = ["p0_vp", "hand_civilized"];
-          G.market = ["market_civilized"];
+          G.players["0"].hand = ["p0_vp", "hand_civilized", "hand_uncivilized"];
+          G.market = ["market_civilized", "market_uncivilized"];
           G.unrestPile = ["test_unrest_1"];
           G.cardDb.hand_civilized = { ...vpCard("hand_civilized", 0), suit: "civilized" };
           G.cardDb.market_civilized = { ...vpCard("market_civilized", 0), suit: "civilized" };
+          G.cardDb.hand_uncivilized = { ...vpCard("hand_uncivilized", 0), suit: "uncivilized" };
+          G.cardDb.market_uncivilized = { ...vpCard("market_uncivilized", 0), suit: "uncivilized" };
         },
         resolve(G: ReturnType<typeof createInitialState>) {
           resolveSwapChoice({ G, ctx: { currentPlayer: "0" } as any }, "hand_civilized", "market_civilized");

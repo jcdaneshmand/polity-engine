@@ -1,9 +1,10 @@
-import type { GameOptions, SoloDifficulty } from "./gameOptions";
+import type { CampaignMode, GameOptions, SoloDifficulty } from "./gameOptions";
 
 export type OptionValidationIssue = { level: "fatal" | "warning"; message: string };
 export type OptionValidationReport = { options: GameOptions; issues: OptionValidationIssue[] };
 
 const soloDifficulties = new Set<SoloDifficulty>(["chieftain", "warlord", "imperator", "sovereign", "overlord", "supreme_ruler"]);
+const campaignModes = new Set<CampaignMode>(["standard", "supreme_ruler"]);
 
 export function validateGameOptions(input: GameOptions): OptionValidationReport {
   const options = { ...input, enabledExpansions: [...new Set(input.enabledExpansions)], enabledVariants: [...new Set(input.enabledVariants)], commonsSetId: input.commonsSetId ?? "classics", replacementPolicy: input.replacementPolicy ?? "use_replacements" };
@@ -19,6 +20,20 @@ export function validateGameOptions(input: GameOptions): OptionValidationReport 
   if (options.mode === "solo" && !options.soloDifficulty) {
     options.soloDifficulty = "chieftain" as SoloDifficulty;
     issues.push({ level: "warning", message: "soloDifficulty omitted; defaulted to chieftain." });
+  }
+  if (options.campaignMode && !campaignModes.has(options.campaignMode)) issues.push({ level: "fatal", message: `Unknown campaignMode: ${String(options.campaignMode)}.` });
+  if (options.campaignMode && options.mode !== "solo") issues.push({ level: "fatal", message: "campaignMode requires solo mode." });
+  if (options.campaignProgress && options.mode !== "solo") issues.push({ level: "fatal", message: "campaignProgress requires solo mode." });
+  if (options.campaignProgress && options.campaignMode && options.campaignProgress.mode !== options.campaignMode) {
+    issues.push({ level: "fatal", message: "campaignProgress mode must match campaignMode." });
+  }
+  if (options.campaignProgress && !options.campaignMode) {
+    options.campaignMode = options.campaignProgress.mode;
+    issues.push({ level: "warning", message: "campaignMode omitted; defaulted from campaignProgress." });
+  }
+  if (options.campaignMode === "supreme_ruler" && options.soloDifficulty !== "supreme_ruler") {
+    options.soloDifficulty = "supreme_ruler";
+    issues.push({ level: "warning", message: "campaignMode supreme_ruler requires soloDifficulty supreme_ruler; normalized." });
   }
   if (!["classics", "legends", "horizons", "custom"].includes(options.commonsSetId)) issues.push({ level: "fatal", message: `Unknown commonsSetId: ${String(options.commonsSetId)}.` });
   if (!["none", "use_replacements", "prefer_latest"].includes(options.replacementPolicy)) issues.push({ level: "fatal", message: `Unknown replacementPolicy: ${String(options.replacementPolicy)}.` });

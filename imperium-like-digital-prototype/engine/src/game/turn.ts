@@ -54,7 +54,21 @@ function clearCardMarkers(G: GameState, cardId: string): void {
 
 function clearPlayerCleanupMarkers(G: GameState, playerId: string): void {
   const p = G.players[playerId];
-  const cardIds = [...p.playArea, ...p.powerArea, ...p.stateArea, ...p.nationDeck, ...p.developmentArea];
+  const baseCardIds = [
+    ...p.hand,
+    ...p.deck,
+    ...p.discard,
+    ...p.playArea,
+    ...p.history,
+    ...p.exile,
+    ...p.powerArea,
+    ...p.stateArea,
+    ...p.nationDeck,
+    ...p.developmentArea,
+    ...Object.values(p.sideAreas ?? {}).flatMap((cards) => cards)
+  ];
+  const attachedCardIds = baseCardIds.flatMap((cardId) => G.cardStates?.[cardId]?.garrisonedCardIds ?? []);
+  const cardIds = [...new Set([...baseCardIds, ...attachedCardIds])];
   cardIds.forEach((cardId) => clearCardMarkers(G, cardId));
 }
 
@@ -67,6 +81,7 @@ export function resetCleanupTokensBeforeOptionalDiscard(G: GameState, playerId: 
   const p = G.players[playerId];
   clearPlayerCleanupMarkers(G, playerId);
   p.progressionTokens = { nationDeck: 0, developmentArea: 0 };
+  p.actionsRemaining = p.actionTokensBase;
   p.actionTokensAvailable = p.actionTokensBase;
   p.exhaustTokensAvailable = p.exhaustTokensBase;
 }
@@ -115,6 +130,7 @@ function pendingInterruption(G: GameState): string | undefined {
   if (G.pendingTradeChoice) return "pending_trade_choice";
   if (G.pendingDiscardChoice) return "pending_discard_choice";
   if (G.pendingReturnUnrestChoice) return "pending_return_unrest_choice";
+  if (G.pendingReturnFameChoice) return "pending_return_fame_choice";
   if (G.pendingPlaceOnDeckChoice) return "pending_place_on_deck_choice";
   if (G.pendingReturnExhaustTokenChoice) return "pending_return_exhaust_token_choice";
   if (G.pendingGiveCardChoice) return "pending_give_card_choice";
@@ -125,6 +141,18 @@ function pendingInterruption(G: GameState): string | undefined {
   if (G.pendingSolsticeOrderChoice) return "pending_solstice_order_choice";
   if (G.pendingCleanupMarketResourceChoice) return "pending_cleanup_market_resource_choice";
   if (G.pendingCleanupDiscardChoice) return "pending_cleanup_discard_choice";
+  if (G.pendingPlayCardResolution) return "pending_play_card_resolution";
+  if (G.pendingPlayedCardResolution) return "pending_played_card_resolution";
+  if (G.pendingAcquireCardResolution) return "pending_acquire_card_resolution";
+  if (G.pendingAcquireEffectResolution) return "pending_acquire_effect_resolution";
+  if (G.pendingMarketMoveEffectResolution) return "pending_market_move_effect_resolution";
+  if (G.pendingMarketUnrestHookContinuation) return "pending_market_unrest_hook_continuation";
+  if (G.pendingNationHookContinuation) return "pending_nation_hook_continuation";
+  if (G.pendingUnrestTakeContinuation) return "pending_unrest_take_continuation";
+  if (G.pendingUnrestAllocationResolution) return "pending_unrest_allocation_resolution";
+  if (G.pendingScoringFinalization) return "pending_scoring_finalization";
+  if (G.pendingScoringLifecycle) return "pending_scoring_lifecycle";
+  if (G.pendingPracticeMarketExileBeforeCleanup) return "pending_practice_market_exile_before_cleanup";
   return undefined;
 }
 
@@ -180,6 +208,18 @@ function solsticeEffectsNeedPlayerOrder(G: GameState, cardIds: string[], phase: 
     "find_card",
     "look_cards",
     "gain_fame",
+    "return_unrest",
+    "return_fame",
+    "place_card_on_deck",
+    "give_card",
+    "swap_card",
+    "return_exhaust_token",
+    "gain_card",
+    "take_card",
+    "gain_action",
+    "spend_action",
+    "commerce",
+    "treat_suit_as",
     "conditional_resource_at_least",
     "conditional_state_is",
     "optional",
@@ -393,13 +433,13 @@ function runSolsticeForAllPlayers(G: GameState, playOrder: string[], randomNumbe
   return true;
 }
 
-function finishSolsticeRound(G: GameState, playerId: string): void {
+function finishSolsticeRound(G: GameState, playerId: string, randomNumber?: () => number): void {
   if (G.gameover || pendingInterruption(G)) return;
   G.pausedSolstice = undefined;
   G.round += 1;
-  advanceScoringAtRoundBoundary(G);
+  advanceScoringAtRoundBoundary(G, randomNumber);
   if (G.gameover || pendingInterruption(G) || G.pendingScoringFinalization) return;
-  if (!applyCollapseWinChecksForAllPlayers(G)) {
+  if (!applyCollapseWinChecksForAllPlayers(G, randomNumber)) {
     if (!G.gameover) G.pendingSolsticeRoundEnd = { playerId };
     return;
   }
@@ -445,7 +485,7 @@ export function continuePausedSolstice(G: GameState, playerId: string, randomNum
   G.log.push({ round: G.round, playerId, message: "SolsticeResumed" });
   if (!runSolsticeForAllPlayers(G, paused.playOrder, randomNumber, paused)) return;
   if (G.gameover || pendingInterruption(G)) return;
-  finishSolsticeRound(G, playerId);
+  finishSolsticeRound(G, playerId, randomNumber);
 }
 
 export function resolvePendingSolsticeOrderChoice(G: GameState, playerId: string, cardIds: string[], randomNumber?: () => number): boolean {
@@ -495,7 +535,7 @@ function finishTurnAfterModeCleanup(G: GameState, ctx: Ctx, randomNumber?: () =>
     if (!runSolsticeForAllPlayers(G, playOrder, randomNumber)) return;
     if (G.gameover) return;
     if (pendingInterruption(G)) return;
-    finishSolsticeRound(G, ctx.currentPlayer);
+    finishSolsticeRound(G, ctx.currentPlayer, randomNumber);
     return;
   }
   if (!applyCollapseWinChecksForAllPlayers(G, randomNumber)) {

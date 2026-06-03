@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createInitialGameStateFromPipeline } from "../setup/setupPipeline";
+import { resolveShortGameDevelopmentExileChoice } from "../game/moves";
 
 const cards:any = {
   a:{id:"a",displayName:"A",suit:"region",cardType:"attack",cost:{materials:0,population:0,progress:0,goods:0},developmentCost:{materials:0,population:0,progress:0,goods:0},vp:{mode:"none",value:null},startingLocation:"box",isTradeRouteExpansion:false,effects:[],tags:["aggressive"],implemented:false,tested:false,requiredExpansions:[],delayableInLoweredAggression:true,allowedModes:["multiplayer","solo","practice"]}
@@ -39,6 +40,12 @@ const nationProgressionCard = (id: string): any => ({
   ownership: "nation"
 });
 
+const startingDeckCard = (id: string): any => ({
+  ...mainDeckCard(id),
+  startingLocation: "draw_deck",
+  ownership: "nation"
+});
+
 describe("variants",()=>{
   it("lowered aggression delays count",()=>{ const G=createInitialGameStateFromPipeline({ options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:["lowered_aggression"]}, cardDb:cards, nationDb:{test_nation_sun_coast:nation}, playerNationIds:{"0":"test_nation_sun_coast","1":"test_nation_sun_coast"} }); expect(G.setupReport?.delayedAggressiveCount).toBeGreaterThanOrEqual(1); });
   it("quick_setup path used",()=>{ const G=createInitialGameStateFromPipeline({ options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:["quick_setup"]}, cardDb:cards, nationDb:{test_nation_sun_coast:nation}, playerNationIds:{"0":"test_nation_sun_coast","1":"test_nation_sun_coast"} }); expect(G.setupReport?.usedQuickSetup).toBe(true); });
@@ -67,6 +74,130 @@ describe("variants",()=>{
     expect(G.players["0"].nationDeck).toEqual(["n3", "n4"]);
     expect(G.players["1"].discard).toEqual(["n1", "n2"]);
     expect(G.setupReport?.shortGameNationAdvanced).toBe(4);
+  });
+  it("short game setup treats separated Accession as the bottom Nation card when advancing two cards",()=>{
+    const marketCards = Object.fromEntries(Array.from({ length: 15 }, (_, index) => {
+      const id = `main_${index + 1}`;
+      return [id, mainDeckCard(id)];
+    }));
+    const shortNation = {
+      ...nation,
+      startingDeckCardIds: [],
+      nationDeckCardIds: ["n1"],
+      accessionCardId: "accession",
+      developmentCardIds: ["dev_a", "dev_b"]
+    };
+    const G=createInitialGameStateFromPipeline({
+      options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:["short_game"]},
+      cardDb:{
+        ...marketCards,
+        n1: nationProgressionCard("n1"),
+        accession: { ...nationProgressionCard("accession"), cardType: "accession", tags: ["accession"] },
+        dev_a: nationProgressionCard("dev_a"),
+        dev_b: nationProgressionCard("dev_b")
+      },
+      nationDb:{test_nation_sun_coast:shortNation},
+      playerNationIds:{"0":"test_nation_sun_coast","1":"test_nation_sun_coast"}
+    });
+
+    expect(G.players["0"].discard).toEqual(["n1", "accession"]);
+    expect(G.players["0"].developmentArea).toEqual(["dev_a", "dev_b"]);
+    expect(G.players["0"].exile).toEqual([]);
+    expect(G.players["0"].nationDeck).toEqual([]);
+    expect(G.players["0"].accessionCardId).toBeUndefined();
+    expect(G.players["1"].discard).toEqual(["n1", "accession"]);
+    expect(G.players["1"].developmentArea).toEqual(["dev_a", "dev_b"]);
+    expect(G.players["1"].exile).toEqual([]);
+    expect(G.players["1"].nationDeck).toEqual([]);
+    expect(G.players["1"].accessionCardId).toBeUndefined();
+    expect(G.pendingShortGameDevelopmentExileChoice).toEqual({
+      playerId: "0",
+      cardIds: ["dev_a", "dev_b"],
+      resumeDrawCount: 0,
+      resumeBehavior: "none"
+    });
+    expect(G.pendingShortGameDevelopmentExileQueue).toEqual([{
+      playerId: "1",
+      cardIds: ["dev_a", "dev_b"],
+      resumeDrawCount: 0,
+      resumeBehavior: "none"
+    }]);
+
+    resolveShortGameDevelopmentExileChoice({ G, ctx: { currentPlayer: "0" } as any }, "dev_b");
+    expect(G.players["0"].developmentArea).toEqual(["dev_a"]);
+    expect(G.players["0"].exile).toEqual(["dev_b"]);
+    expect(G.players["0"].discard).toEqual(["n1", "accession"]);
+    expect(G.players["0"].deck).toEqual([]);
+    expect(G.pendingShortGameDevelopmentExileChoice).toEqual({
+      playerId: "1",
+      cardIds: ["dev_a", "dev_b"],
+      resumeDrawCount: 0,
+      resumeBehavior: "none"
+    });
+    expect(G.pendingShortGameDevelopmentExileQueue).toBeUndefined();
+
+    resolveShortGameDevelopmentExileChoice({ G, ctx: { currentPlayer: "1" } as any }, "dev_a");
+    expect(G.players["1"].developmentArea).toEqual(["dev_b"]);
+    expect(G.players["1"].exile).toEqual(["dev_a"]);
+    expect(G.players["1"].discard).toEqual(["n1", "accession"]);
+    expect(G.players["1"].deck).toEqual([]);
+    expect(G.pendingShortGameDevelopmentExileChoice).toBeUndefined();
+    expect(G.setupReport?.shortGameNationAdvanced).toBe(4);
+  });
+  it("short game setup can skip Accession Development removal for nation exceptions",()=>{
+    const rulesetPath = path.join(os.tmpdir(), `polity-short-game-${Date.now()}.json`);
+    try {
+      fs.writeFileSync(rulesetPath, JSON.stringify([{
+        nationId:"test_nation_sun_coast",
+        displayName:"Short Game Accession Skip Exception",
+        rulesetTags:["short_game_exception"],
+        requiredExpansions:[],
+        setupOverrides:[],
+        zoneOverrides:[],
+        stateOverrides:[],
+        reshuffleOverrides:[],
+        cleanupOverrides:[],
+        solsticeOverrides:[],
+        scoringOverrides:[],
+        collapseOverrides:[],
+        botOverrides:[],
+        shortGameOverrides:[{op:"skip_accession_development_exile"}],
+        hookRules:[],
+        implemented:true,
+        tested:true
+      }]));
+      const shortNation = {
+        ...nation,
+        startingDeckCardIds: [],
+        nationDeckCardIds: ["n1"],
+        accessionCardId: "accession",
+        developmentCardIds: ["dev_a"]
+      };
+
+      const G=createInitialGameStateFromPipeline({
+        options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:["short_game"]},
+        cardDb:{
+          n1: nationProgressionCard("n1"),
+          accession: { ...nationProgressionCard("accession"), cardType: "accession", tags: ["accession"] },
+          dev_a: nationProgressionCard("dev_a")
+        },
+        nationDb:{test_nation_sun_coast:shortNation},
+        playerNationIds:{"0":"test_nation_sun_coast","1":"test_nation_sun_coast"},
+        usePrivateRules:true,
+        privateRulesetPath:rulesetPath
+      });
+
+      expect(G.players["0"].discard).toEqual(["n1", "accession"]);
+      expect(G.players["0"].developmentArea).toEqual(["dev_a"]);
+      expect(G.players["0"].exile).toEqual([]);
+      expect(G.players["1"].discard).toEqual(["n1", "accession"]);
+      expect(G.players["1"].developmentArea).toEqual(["dev_a"]);
+      expect(G.players["1"].exile).toEqual([]);
+      expect(G.pendingShortGameDevelopmentExileChoice).toBeUndefined();
+      expect(G.pendingShortGameDevelopmentExileQueue).toBeUndefined();
+    } finally {
+      fs.rmSync(rulesetPath, { force:true });
+    }
   });
   it("practice setup exiles the top fifteen Main deck cards after Market setup",()=>{
     const marketCards = Object.fromEntries(Array.from({ length: 20 }, (_, index) => {
@@ -439,16 +570,141 @@ describe("variants",()=>{
       });
 
       expect(G.players["0"].discard).toEqual(["n1", "n2"]);
-      expect(G.players["0"].hand).toEqual(["n3"]);
-      expect(G.players["0"].deck).toEqual([]);
+      expect(G.players["0"].hand).toEqual([]);
+      expect(G.players["0"].deck).toEqual(["n3"]);
       expect(G.players["0"].nationDeck).toEqual(["n4"]);
       expect(G.players["0"].developmentArea).toEqual(["graal_card"]);
       expect(G.cardStates?.court_card?.garrisonedCardIds).toEqual(["quest_card"]);
       expect(G.players["1"].discard).toEqual(["n1", "n2"]);
-      expect(G.players["1"].hand).toEqual(["n3"]);
-      expect(G.players["1"].deck).toEqual([]);
+      expect(G.players["1"].hand).toEqual([]);
+      expect(G.players["1"].deck).toEqual(["n3"]);
       expect(G.players["1"].developmentArea).toEqual(["graal_card"]);
       expect(G.setupReport?.shortGameNationAdvanced).toBe(4);
+    } finally {
+      fs.rmSync(rulesetPath, { force:true });
+    }
+  });
+  it("short game quest-added Nation cards are not drawn into the opening hand",()=>{
+    const rulesetPath = path.join(os.tmpdir(), `polity-short-game-${Date.now()}.json`);
+    try {
+      fs.writeFileSync(rulesetPath, JSON.stringify([{
+        nationId:"test_nation_sun_coast",
+        displayName:"Short Game Quest Opening Hand Exception",
+        rulesetTags:["short_game_exception"],
+        requiredExpansions:[],
+        setupOverrides:[],
+        zoneOverrides:[],
+        stateOverrides:[],
+        reshuffleOverrides:[],
+        cleanupOverrides:[],
+        solsticeOverrides:[],
+        scoringOverrides:[],
+        collapseOverrides:[],
+        botOverrides:[],
+        shortGameOverrides:[{
+          op:"garrison_development_and_add_nation_to_starting_deck",
+          developmentCardId:"quest_card",
+          hostCardId:"court_card"
+        }],
+        hookRules:[],
+        implemented:true,
+        tested:true
+      }]));
+      const starterIds = ["starter_1", "starter_2", "starter_3", "starter_4", "starter_5"];
+      const shortNation = {
+        ...nation,
+        powerCardIds: ["court_card"],
+        startingDeckCardIds: starterIds,
+        nationDeckCardIds: ["n1", "n2", "n3"],
+        developmentCardIds: ["quest_card"]
+      };
+
+      const G=createInitialGameStateFromPipeline({
+        options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:["short_game"]},
+        cardDb:{
+          court_card: nationProgressionCard("court_card"),
+          quest_card: nationProgressionCard("quest_card"),
+          ...Object.fromEntries(starterIds.map((id) => [id, startingDeckCard(id)])),
+          n1: nationProgressionCard("n1"),
+          n2: nationProgressionCard("n2"),
+          n3: nationProgressionCard("n3")
+        },
+        nationDb:{test_nation_sun_coast:shortNation},
+        playerNationIds:{"0":"test_nation_sun_coast","1":"test_nation_sun_coast"},
+        usePrivateRules:true,
+        privateRulesetPath:rulesetPath
+      });
+
+      expect(G.players["0"].hand).toEqual(starterIds);
+      expect(G.players["0"].deck).toEqual(["n3"]);
+      expect(G.players["0"].discard).toEqual(["n1", "n2"]);
+      expect(G.players["1"].hand).toEqual(starterIds);
+      expect(G.players["1"].deck).toEqual(["n3"]);
+      expect(G.players["1"].discard).toEqual(["n1", "n2"]);
+    } finally {
+      fs.rmSync(rulesetPath, { force:true });
+    }
+  });
+  it("short game quest exception can add separated Accession when it is the next Nation card",()=>{
+    const rulesetPath = path.join(os.tmpdir(), `polity-short-game-${Date.now()}.json`);
+    try {
+      fs.writeFileSync(rulesetPath, JSON.stringify([{
+        nationId:"test_nation_sun_coast",
+        displayName:"Short Game Quest Accession Exception",
+        rulesetTags:["short_game_exception"],
+        requiredExpansions:[],
+        setupOverrides:[],
+        zoneOverrides:[],
+        stateOverrides:[],
+        reshuffleOverrides:[],
+        cleanupOverrides:[],
+        solsticeOverrides:[],
+        scoringOverrides:[],
+        collapseOverrides:[],
+        botOverrides:[],
+        shortGameOverrides:[{
+          op:"garrison_development_and_add_nation_to_starting_deck",
+          developmentCardId:"quest_card",
+          hostCardId:"court_card"
+        }],
+        hookRules:[],
+        implemented:true,
+        tested:true
+      }]));
+      const shortNation = {
+        ...nation,
+        powerCardIds: ["court_card"],
+        startingDeckCardIds: [],
+        nationDeckCardIds: ["n1", "n2"],
+        accessionCardId: "accession",
+        developmentCardIds: ["quest_card"]
+      };
+
+      const G=createInitialGameStateFromPipeline({
+        options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:["short_game"]},
+        cardDb:{
+          court_card: nationProgressionCard("court_card"),
+          quest_card: nationProgressionCard("quest_card"),
+          n1: nationProgressionCard("n1"),
+          n2: nationProgressionCard("n2"),
+          accession: { ...nationProgressionCard("accession"), cardType: "accession", tags: ["accession"] }
+        },
+        nationDb:{test_nation_sun_coast:shortNation},
+        playerNationIds:{"0":"test_nation_sun_coast","1":"test_nation_sun_coast"},
+        usePrivateRules:true,
+        privateRulesetPath:rulesetPath
+      });
+
+      expect(G.players["0"].discard).toEqual(["n1", "n2"]);
+      expect(G.players["0"].hand).toEqual([]);
+      expect(G.players["0"].deck).toEqual(["accession"]);
+      expect(G.players["0"].nationDeck).toEqual([]);
+      expect(G.players["0"].accessionCardId).toBeUndefined();
+      expect(G.players["1"].discard).toEqual(["n1", "n2"]);
+      expect(G.players["1"].hand).toEqual([]);
+      expect(G.players["1"].deck).toEqual(["accession"]);
+      expect(G.players["1"].nationDeck).toEqual([]);
+      expect(G.players["1"].accessionCardId).toBeUndefined();
     } finally {
       fs.rmSync(rulesetPath, { force:true });
     }

@@ -1,4 +1,6 @@
 import type { Card, GameState, ResourceName } from "../game/state";
+import { createReactiveExhaustChoice } from "../cards/effectRunner";
+import { marketCardHasTokens } from "../game/exile";
 import { gainFameCardsForBot } from "../game/fame";
 import { placeMarketResource, returnMarketUnrest, tuckUnrestUnderMarketCard } from "../game/marketResources";
 import { refillMarketSlot } from "../game/marketRefill";
@@ -19,7 +21,74 @@ export type BotCardResolutionResult = { resolvedRowId?: string; cardDestination:
 type BotEffectResolution = { resolved: boolean; warnings: string[] };
 type BotResolutionOptions = { randomNumber?: () => number };
 
+function cloneGameState(G: GameState): GameState {
+  return JSON.parse(JSON.stringify(G)) as GameState;
+}
+
+function cloneBotState(bot: BotState): BotState {
+  return JSON.parse(JSON.stringify(bot)) as BotState;
+}
+
+function restoreGameStatePreservingBot(G: GameState, snapshot: GameState, bot: BotState, botSnapshot: BotState): void {
+  for (const key of Object.keys(G) as Array<keyof GameState>) delete G[key];
+  Object.assign(G, snapshot);
+  for (const key of Object.keys(bot) as Array<keyof BotState>) delete bot[key];
+  Object.assign(bot, botSnapshot);
+  if (G.solo) G.solo.bot = bot;
+}
+
 const match = (row: BotStateTable["rows"][number], card: Card) => row.trigger.kind === "card_id" ? row.trigger.cardId === card.id : row.trigger.kind === "card_name_private" ? card.displayName.trim().toLowerCase() === row.trigger.value.trim().toLowerCase() : row.trigger.kind === "suit" ? cardHasSuitIcon(card, row.trigger.suit as any) : row.trigger.kind === "card_type" ? row.trigger.cardType === (card.cardType ?? card.type) : row.trigger.kind === "tag" ? card.tags.includes(row.trigger.tag) : row.trigger.kind === "unrest" ? card.tags.includes("unrest") || card.suit === "unrest" || (card.cardType ?? card.type) === "unrest" : row.trigger.kind === "other";
+
+function hasPendingInterruption(G: GameState): boolean {
+  return Boolean(
+    G.pendingChoice
+    ?? G.pendingDrawChoice
+    ?? G.pendingFindChoice
+    ?? G.pendingAcquireChoice
+    ?? G.pendingMarketCardChoice
+    ?? G.pendingBreakThroughChoice
+    ?? G.pendingExileChoice
+    ?? G.pendingGarrisonChoice
+    ?? G.pendingRegionChoice
+    ?? G.pendingDevelopmentChoice
+    ?? G.pendingShortGameDevelopmentExileChoice
+    ?? G.pendingTradeChoice
+    ?? G.pendingDiscardChoice
+    ?? G.pendingReturnUnrestChoice
+    ?? G.pendingReturnFameChoice
+    ?? G.pendingPlaceOnDeckChoice
+    ?? G.pendingReturnExhaustTokenChoice
+    ?? G.pendingGiveCardChoice
+    ?? G.pendingSwapChoice
+    ?? G.pendingLookOrderChoice
+    ?? G.pendingUnrestAllocationChoice
+    ?? G.pendingSolsticeOrderChoice
+    ?? G.pendingCleanupMarketResourceChoice
+    ?? G.pendingCleanupDiscardChoice
+    ?? G.pendingReactiveExhaustChoice
+    ?? G.pendingPlayCardResolution
+    ?? G.pendingPlayedCardResolution
+    ?? G.pendingAcquireCardResolution
+    ?? G.pendingAcquireEffectResolution
+    ?? G.pendingMarketMoveEffectResolution
+    ?? G.pendingMarketUnrestHookContinuation
+    ?? G.pendingNationHookContinuation
+    ?? G.pendingUnrestTakeContinuation
+    ?? G.pendingUnrestAllocationResolution
+    ?? G.pendingPostDevelopmentResolution
+    ?? G.pendingReshuffleResolution
+    ?? G.pendingAfterReshuffleEffects
+    ?? G.pendingReshuffleDraw
+    ?? G.pendingTurnEndCleanup
+    ?? G.pendingScoringFinalization
+    ?? G.pendingScoringLifecycle
+    ?? G.pendingCollapseLifecycle
+    ?? G.pendingSolsticeContinuation
+    ?? G.pendingSolsticeRoundEnd
+    ?? G.pendingPracticeMarketExileBeforeCleanup
+    ?? G.pausedSolstice
+  );
+}
 
 function cardMatchesFilter(G: GameState, cardId: string, filter?: BotAcquireFilter): boolean {
   const card = G.cardDb[cardId];
@@ -42,6 +111,13 @@ function findSideTableId(G: GameState, bot: BotState, nextSide: string): string 
 
 function humanPlayerId(G: GameState, bot: BotState): string | undefined {
   return Object.keys(G.players).sort().find((playerId) => playerId !== bot.botId);
+}
+
+function botEffectSourceIsInPlay(G: GameState, bot: BotState, sourceCardId: string | undefined): boolean {
+  if (!sourceCardId) return false;
+  if (bot.botPlayArea.includes(sourceCardId)) return true;
+  if (Object.values(bot.slots).some((slot) => slot.cardId === sourceCardId)) return true;
+  return Object.values(G.players).some((player) => player.playArea.includes(sourceCardId) || player.powerArea.includes(sourceCardId));
 }
 
 function resolveTopBotCard(G: GameState, bot: BotState, table: BotStateTable, deck: "botDeck" | "botDynastyDeck", source: "bot_deck" | "dynasty_deck", options?: BotResolutionOptions): BotEffectResolution {
@@ -328,6 +404,17 @@ function botMoveTopDiscardToDeck(G: GameState, bot: BotState): boolean {
   return true;
 }
 
+function moveResolvedBotCardToDestination(G: GameState, bot: BotState, cardId: string, destination: BotCardResolutionResult["cardDestination"]): void {
+  if (destination === "history") bot.botHistory.push(cardId);
+  else if (destination === "play") bot.botPlayArea.push(cardId);
+  else if (destination === "bottom_deck") bot.botDeck.push(cardId);
+  else if (destination === "unrest") {
+    G.unrestPile ??= [];
+    G.unrestPile.push(cardId);
+    maybeGainSupremeRulerReturnBonus(G, bot);
+  } else bot.botDiscard.push(cardId);
+}
+
 function isTradeRouteCard(G: GameState, cardId: string): boolean {
   const card = G.cardDb[cardId];
   return card?.type === "trade_route" || card?.cardType === "trade_route" || card?.suit === "trade_route";
@@ -385,7 +472,7 @@ function ensureGlobalExile(G: GameState): NonNullable<GameState["globalSpecialZo
 }
 
 function botExileMarketCard(G: GameState, bot: BotState): boolean {
-  const slotIndex = G.market.findIndex((cardId) => cardId && marketResourceTokenCount(G, cardId) === 0);
+  const slotIndex = G.market.findIndex((cardId) => cardId && !marketCardHasTokens(G, cardId));
   if (slotIndex < 0) {
     G.log.push({ round: G.round, playerId: bot.botId, message: "BotExileSkipped(all_market_cards_have_tokens)" });
     return false;
@@ -426,15 +513,21 @@ export function applyBotEffectWithResolution(G: GameState, bot: BotState, table:
       {
         const available = resourceAmount(bot.resources, effect.resource);
         if (available < effect.count) return { resolved: false, warnings: [] };
+        const snapshot = cloneGameState(G);
+        const botSnapshot = cloneBotState(bot);
         setResourceAmount(bot.resources, effect.resource, available - effect.count);
         returnResourceToSupply(G, effect.resource, effect.count);
-        const result = resolveBotFallbackEffects(G, bot, table, sourceCardId, effect.effects, options);
-        if (!result.resolved) {
-          const refunded = takeResourceFromSupply(G, effect.resource, effect.count);
-          addResourceAmount(bot.resources, effect.resource, refunded);
-          return { resolved: false, warnings: result.warnings };
+        const warnings: string[] = [];
+        for (const childEffect of effect.effects) {
+          const result = applyBotEffectWithResolution(G, bot, table, sourceCardId, childEffect, options);
+          warnings.push(...result.warnings);
+          if (G.gameover || hasPendingInterruption(G)) return { resolved: true, warnings };
+          if (!result.resolved) {
+            restoreGameStatePreservingBot(G, snapshot, bot, botSnapshot);
+            return { resolved: false, warnings };
+          }
         }
-        return { resolved: true, warnings: result.warnings };
+        return { resolved: true, warnings };
       }
     case "bot_move_resource_to_state_card":
       if (moveBotResourceToStateCard(G, bot, table, effect.resource, effect.count)) return { resolved: true, warnings: [] };
@@ -473,12 +566,11 @@ export function applyBotEffectWithResolution(G: GameState, bot: BotState, table:
       if (botExileMarketCard(G, bot)) return { resolved: true, warnings: [] };
       return resolveBotFallbackEffects(G, bot, table, sourceCardId, effect.ifUnable, options);
     case "bot_trade":
-      return { resolved: resolveBotTrade(G, bot), warnings: [] };
+      return { resolved: resolveBotTrade(G, bot, options?.randomNumber), warnings: [] };
     case "bot_trigger_trade_route":
-      resolveBotTriggerTradeRoute(G, bot, effect.cardId ?? sourceCardId);
-      return { resolved: true, warnings: [] };
+      return { resolved: resolveBotTriggerTradeRoute(G, bot, effect.cardId ?? sourceCardId, options?.randomNumber), warnings: [] };
     case "bot_resolve_profits_where_able":
-      return { resolved: resolveBotProfitsWhereAble(G, bot), warnings: [] };
+      return { resolved: resolveBotProfitsWhereAble(G, bot, options?.randomNumber), warnings: [] };
     case "bot_add_resource_to_market_slot":
       {
         const warnings = addResourceToMarketSlot(G, bot, effect);
@@ -513,12 +605,32 @@ export function applyBotEffectWithResolution(G: GameState, bot: BotState, table:
     case "human_gain_resource": {
       const playerId = humanPlayerId(G, bot);
       if (!playerId) return { resolved: false, warnings: ["missing human player"] };
-      return { resolved: gainPlayerResource(G, playerId, effect.resource, effect.count) > 0, warnings: [] };
+      const resource = canonicalResourceName(effect.resource);
+      const gained = gainPlayerResource(G, playerId, resource, effect.count);
+      if (gained > 0) {
+        createReactiveExhaustChoice(
+          { G, playerId: bot.botId, selfCardId: sourceCardId, randomNumber: options?.randomNumber, enabledExpansions: G.options?.enabledExpansions },
+          {
+            trigger: "after_gain_resource",
+            resource,
+            sourceCardId,
+            sourceWasInPlay: botEffectSourceIsInPlay(G, bot, sourceCardId)
+          }
+        );
+      }
+      return { resolved: gained > 0, warnings: [] };
     }
     case "human_take_unrest": {
       const playerId = humanPlayerId(G, bot);
       if (!playerId) return { resolved: false, warnings: ["missing human player"] };
-      takeUnrest(G, { playerIds: [playerId], count: effect.count, triggeredBy: bot.botId });
+      const handCountBefore = G.players[playerId].hand.length;
+      takeUnrest(G, { playerIds: [playerId], count: effect.count, triggeredBy: bot.botId, randomNumber: options?.randomNumber });
+      if ((G.players[playerId]?.hand.length ?? 0) > handCountBefore) {
+        createReactiveExhaustChoice(
+          { G, playerId: bot.botId, selfCardId: sourceCardId, randomNumber: options?.randomNumber, enabledExpansions: G.options?.enabledExpansions },
+          { trigger: "after_take_unrest", targetPlayerId: playerId }
+        );
+      }
       return { resolved: effect.count > 0, warnings: [] };
     }
     case "human_recall":
@@ -569,7 +681,8 @@ export function resolveBotCard(args: { G: GameState; bot: BotState; revealedCard
     let destination: BotCardResolutionResult["cardDestination"] = "discard";
     const warnings: string[] = [];
     let resolvedPart = false;
-    for (const effect of row.effects) {
+    for (let index = 0; index < row.effects.length; index += 1) {
+      const effect = row.effects[index];
       if (effect.op === "bot_return_revealed_card_to_unrest") destination = "unrest";
       if (effect.op === "bot_put_revealed_card_into_history") destination = "history";
       if (effect.op === "bot_play_revealed_card") destination = "play";
@@ -578,15 +691,56 @@ export function resolveBotCard(args: { G: GameState; bot: BotState; revealedCard
       resolvedPart ||= result.resolved;
       warnings.push(...result.warnings);
       if (args.G.gameover) return { resolvedRowId: row.id, cardDestination: destination, resolvedAny: true, warnings };
+      if (hasPendingInterruption(args.G)) {
+        args.G.solo!.pendingBotRowContinuation = {
+          revealedCardId: card.id,
+          source: args.source,
+          tableId: args.table.id,
+          effects: row.effects,
+          nextEffectIndex: index + 1,
+          destination
+        };
+        return { resolvedRowId: row.id, cardDestination: destination, resolvedAny: true, warnings };
+      }
     }
     if (!resolvedPart) continue;
-    if (destination === "history") args.bot.botHistory.push(card.id); else if (destination === "play") args.bot.botPlayArea.push(card.id); else if (destination === "bottom_deck") args.bot.botDeck.push(card.id); else if (destination === "unrest") {
-      args.G.unrestPile ??= [];
-      args.G.unrestPile.push(card.id);
-      maybeGainSupremeRulerReturnBonus(args.G, args.bot);
-    } else args.bot.botDiscard.push(card.id);
+    moveResolvedBotCardToDestination(args.G, args.bot, card.id, destination);
     return { resolvedRowId: row.id, cardDestination: destination, resolvedAny: true, warnings };
   }
   args.bot.botDiscard.push(card.id);
   return { cardDestination: "discard", resolvedAny: false, warnings: [] };
+}
+
+export function continuePendingBotRowContinuation(G: GameState, bot: BotState, randomNumber?: () => number): boolean {
+  const pending = G.solo?.pendingBotRowContinuation;
+  if (!pending || hasPendingInterruption(G) || G.gameover) return false;
+  const table = G.solo?.botStateTables[pending.tableId];
+  if (!table) {
+    G.solo!.pendingBotRowContinuation = undefined;
+    bot.botDiscard.push(pending.revealedCardId);
+    bot.botLog.push({ round: G.round, playerId: bot.botId, message: `missing bot state table: ${pending.tableId}` });
+    return true;
+  }
+  G.solo!.pendingBotRowContinuation = undefined;
+  let destination = pending.destination;
+  for (let index = pending.nextEffectIndex; index < pending.effects.length; index += 1) {
+    const effect = pending.effects[index];
+    if (effect.op === "bot_return_revealed_card_to_unrest") destination = "unrest";
+    if (effect.op === "bot_put_revealed_card_into_history") destination = "history";
+    if (effect.op === "bot_play_revealed_card") destination = "play";
+    if (effect.op === "bot_put_revealed_card_on_bottom_of_deck") destination = "bottom_deck";
+    const result = applyBotEffectWithResolution(G, bot, table, pending.revealedCardId, effect, { randomNumber });
+    bot.botLog.push(...result.warnings.map((message) => ({ round: G.round, playerId: bot.botId, message })));
+    if (G.gameover) return true;
+    if (hasPendingInterruption(G)) {
+      G.solo!.pendingBotRowContinuation = {
+        ...pending,
+        nextEffectIndex: index + 1,
+        destination
+      };
+      return true;
+    }
+  }
+  moveResolvedBotCardToDestination(G, bot, pending.revealedCardId, destination);
+  return true;
 }

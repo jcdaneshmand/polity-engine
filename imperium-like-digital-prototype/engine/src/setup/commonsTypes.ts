@@ -1,6 +1,6 @@
 import type { ExpansionId, NormalizedCardRecord, Suit } from "../../../tools/card-import/cardCsvTypes";
 import type { NationDefinition } from "../nations/nationSchema";
-import type { GameMode, VariantId } from "../options/gameOptions";
+import type { CampaignMode, GameMode, VariantId } from "../options/gameOptions";
 
 export type CommonsSetId = "classics" | "legends" | "horizons" | "custom";
 export type CommonsOwnership = "commons" | "nation" | "bot" | "replacement";
@@ -22,6 +22,7 @@ export type CommonsSetupOptions = {
   effectiveCommonsPlayerCount: 2 | 3 | 4;
   enabledExpansions: ExpansionId[];
   enabledVariants: VariantId[];
+  campaignMode?: CampaignMode;
   mode?: GameMode;
   selectedNationIds: string[];
   replacementPolicy: CommonsReplacementPolicy;

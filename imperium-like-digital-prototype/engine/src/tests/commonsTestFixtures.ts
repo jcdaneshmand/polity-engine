@@ -52,6 +52,7 @@ export function options(overrides: Partial<CommonsSetupOptions> = {}): CommonsSe
     effectiveCommonsPlayerCount: 2,
     enabledExpansions: [],
     enabledVariants: [],
+    campaignMode: undefined,
     selectedNationIds: [],
     replacementPolicy: "use_replacements",
     ...overrides

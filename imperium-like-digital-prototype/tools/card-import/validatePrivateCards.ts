@@ -3,7 +3,10 @@ import type { CardImportError, CardImportReport, PrivateCardCsvRow } from "./car
 import { collectInvalidResourceNames } from "./normalizeResources";
 
 const suits = new Set(["region","uncivilized","civilized","tributary","fame","unrest","power","trade_route","none","multi"]);
-const types = new Set(["action","in_play","attack","power","state","development","accession","nation","region","unrest","fame","trade_route","bot_state","other"]);
+const suitIcons = new Set(["region","uncivilized","civilized","tributary","fame","unrest","power","trade_route"]);
+const setupBannerSuits = new Set(["region","uncivilized","civilized","tributary","none"]);
+const breakThroughSuits = new Set(["region","uncivilized","civilized","tributary"]);
+const types = new Set(["action","unit","technology","legacy","in_play","attack","power","state","development","accession","nation","region","unrest","fame","trade_route","bot_state","other"]);
 const starts = new Set(["draw_deck","nation_deck","accession","development_area","in_play","supply","market","fame_deck","unrest_pile","bot_deck","box","other"]);
 const vpModes = new Set(["none","fixed","variable","negative","conditional"]);
 const expansions = new Set(["trade_routes"]);
@@ -13,6 +16,14 @@ const commonsSets = new Set(["classics","legends","horizons","custom"]);
 const commonsGroups = new Set(["base","trade_friendly","trade_routes","replacement"]);
 const playerCounts = new Set(["1+","2+","3+","4+"]);
 const req = ["card_id","public_placeholder_name","suit","card_type","starting_location","vp_mode","implemented","tested"];
+const effectTriggers = new Set(["on_play","on_exhaust","on_acquire","on_solstice","end_of_solstice"]);
+const reactiveTriggers = new Set(["after_gain_resource","after_take_unrest","after_acquire_card","after_play_card","after_break_through_card"]);
+const reactiveTargets = new Set(["self","opponent","any"]);
+const reactiveFields = new Set(["trigger","target","sourceSuit","resource"]);
+const vpDetailFields = new Set(["condition","formula","trueValue","falseValue"]);
+const vpConditionFields = new Set(["op","zoneId"]);
+const vpCountCardsFormulaFields = new Set(["op","tag","suit","zones","amountEach","cap"]);
+const vpCountResourcesFormulaFields = new Set(["op","resource","resources","amountEach","denominator","cap"]);
 const effectOps = new Set([
   "draw",
   "draw_if_able",
@@ -24,6 +35,7 @@ const effectOps = new Set([
   "discard_random",
   "discard_cards",
   "return_unrest",
+  "return_fame",
   "place_card_on_deck",
   "give_card",
   "swap_card",
@@ -31,8 +43,10 @@ const effectOps = new Set([
   "gain_fame",
   "gain_action",
   "spend_action",
+  "return_exhaust_token",
   "trigger_scoring",
   "trade",
+  "treat_suit_as",
   "commerce",
   "profit",
   "garrison_card",
@@ -52,10 +66,79 @@ const effectOps = new Set([
   "optional",
   "choose_one"
 ]);
+const drawSources = new Set(["deck","discard","exile","fameDeck"]);
+const exileSources = new Set(["market","hand","discard","deck","playArea","history","garrison"]);
+const acquireSources = new Set(["market","exile"]);
+const marketMoveSources = new Set(["market"]);
+const breakThroughSources = new Set(["market","deck","exile"]);
+const findSources = new Set(["hand","discard","deck","nationDeck","playArea","history","garrison"]);
+const lookSources = new Set(["deck","nationDeck","fameDeck"]);
+const returnUnrestSources = new Set(["hand","playArea","discard","deck","history","exile"]);
+const returnFameSources = new Set(["hand","playArea","discard","deck","history","exile"]);
+const placeOnDeckSources = new Set(["hand","discard"]);
+const swapSources = new Set(["hand","discard","deck"]);
+const findDestinations = new Set(["deck","hand","discard","playArea","history","exile"]);
+const gainDestinations = new Set(["hand","discard"]);
+const profitDestinations = new Set(["discard","history"]);
+const cardIdEffectOps = new Set(["return_unrest","return_fame","place_card_on_deck","give_card","swap_card","return_exhaust_token","garrison_card","recall_region","abandon_region","exile_card","acquire_card","gain_card","take_card","break_through","find_card"]);
+const hostCardIdEffectOps = new Set(["garrison_card"]);
+const marketCardIdEffectOps = new Set(["swap_card"]);
+const targetPlayerIdEffectOps = new Set(["give_card"]);
+const targetPlayerIdsEffectOps = new Set(["give_card","take_unrest"]);
+const fromPlayerIdEffectOps = new Set(["steal_resource"]);
+const reasonEffectOps = new Set(["trigger_scoring"]);
+const stateEffectOps = new Set(["conditional_state_is"]);
+const fromEffectOps = new Set(["treat_suit_as"]);
+const toEffectOps = new Set(["treat_suit_as"]);
+const effectsEffectOps = new Set(["optional","commerce","profit"]);
+const choicesEffectOps = new Set(["choose_one"]);
+const thenEffectOps = new Set(["conditional_resource_at_least","conditional_state_is"]);
+const elseEffectOps = new Set(["conditional_resource_at_least","conditional_state_is"]);
+const sourceEffectOps = new Set(["draw","draw_if_able","exile_card","acquire_card","gain_card","take_card","break_through","look_cards"]);
+const sourceZonesEffectOps = new Set(["return_unrest","return_fame","find_card"]);
+const sourceZoneEffectOps = new Set(["place_card_on_deck","swap_card"]);
+const destinationEffectOps = new Set(["find_card","acquire_card","gain_card","take_card","profit"]);
+const suitEffectOps = new Set(["acquire_card","gain_card","take_card","find_card","exile_card","break_through"]);
+const cardTypeEffectOps = new Set(["acquire_card","gain_card","take_card","find_card","exile_card","break_through"]);
+const resourceEffectOps = new Set(["gain_resource","spend_resource","remove_resource","return_resource","steal_resource","conditional_resource_at_least"]);
+const countEffectOps = new Set(["draw","draw_if_able","discard_random","discard_cards","take_unrest","gain_fame","exile_card","acquire_card","gain_card","take_card","break_through","look_cards"]);
+const amountEffectOps = new Set(["gain_resource","spend_resource","remove_resource","return_resource","steal_resource","gain_action","spend_action"]);
+const atLeastEffectOps = new Set(["conditional_resource_at_least"]);
+const effectFields = new Set([
+  "trigger",
+  "op",
+  "count",
+  "source",
+  "resource",
+  "amount",
+  "fromPlayerId",
+  "cardId",
+  "sourceZones",
+  "sourceZone",
+  "targetPlayerId",
+  "targetPlayerIds",
+  "marketCardId",
+  "reason",
+  "from",
+  "to",
+  "effects",
+  "destination",
+  "hostCardId",
+  "suit",
+  "cardType",
+  "atLeast",
+  "then",
+  "else",
+  "state",
+  "choices",
+  "reactive"
+]);
 
 const isBool=(v:string)=>["true","false"].includes((v||"").trim().toLowerCase());
 const isNonNeg=(v:string)=>v.trim()==="" || (/^\d+$/.test(v.trim()));
 const isNumber=(v:unknown): v is number=>typeof v==="number" && Number.isFinite(v);
+const isPositiveInteger=(v:unknown): v is number=>typeof v==="number" && Number.isInteger(v) && v > 0;
+const isNonNegativeIntegerValue=(v:unknown): v is number=>typeof v==="number" && Number.isInteger(v) && v >= 0;
 const pipeValues=(v:string)=>v.split("|").map((x)=>x.trim()).filter(Boolean);
 
 function validateOptionalEnum(args: { errors: CardImportError[]; row: number; field: string; value: string | undefined; allowed: Set<string>; message: string }) {
@@ -76,6 +159,17 @@ function validatePipeEnums(args: { errors: CardImportError[]; row: number; field
     }
   }
   return fatal;
+}
+
+function validateStateRequirement(errors: CardImportError[], row: number, value: string | undefined) {
+  const trimmed = (value || "").trim();
+  if (!trimmed) return false;
+  const tokens = trimmed.split(/\s*(?:\||,|;|\/|\bor\b)\s*/i);
+  if (tokens.length === 0 || tokens.some((token) => token.trim().length === 0)) {
+    errors.push({ level: "fatal", row, field: "state_requirement", message: "Invalid state_requirement" });
+    return true;
+  }
+  return false;
 }
 
 function validateOptionalBool(errors: CardImportError[], row: number, field: string, value: string | undefined) {
@@ -111,23 +205,354 @@ function validateEffectOps(errors: CardImportError[], row: number, effects: unkn
       fatal = true;
       return;
     }
+    const record = effect as Record<string, unknown>;
+    Object.keys(record).forEach((fieldName) => {
+      if (!effectFields.has(fieldName)) {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Unsupported effect field at ${path}[${index}]: ${fieldName}` });
+        fatal = true;
+      }
+    });
+    const trigger = record.trigger;
+    if (typeof trigger !== "string" || !effectTriggers.has(trigger)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Unsupported effect trigger at ${path}[${index}]: ${String(trigger ?? "missing")}` });
+      fatal = true;
+    }
+    const validateSource = (allowed: Set<string>, defaultValue?: string, required = false) => {
+      const source = record.source ?? defaultValue;
+      if (source === undefined && required) {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Missing source for ${op} at ${path}[${index}]` });
+        fatal = true;
+        return;
+      }
+      if (source !== undefined && (typeof source !== "string" || !allowed.has(source))) {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid source for ${op} at ${path}[${index}]: ${String(source)}` });
+        fatal = true;
+      }
+    };
+    const validateSourceZones = (allowed: Set<string>, property: "sourceZones" | "sourceZone") => {
+      const value = record[property];
+      if (value === undefined) return;
+      const values = property === "sourceZones" ? value : [value];
+      if (!Array.isArray(values) || values.length === 0 || values.some((source) => typeof source !== "string" || !allowed.has(source))) {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid ${property} for ${op} at ${path}[${index}]` });
+        fatal = true;
+      }
+    };
+    const validateSuitField = (field: "suit" | "from") => {
+      const value = record[field];
+      if (value !== undefined && (typeof value !== "string" || !suits.has(value))) {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid ${field} for ${op} at ${path}[${index}]: ${String(value)}` });
+        fatal = true;
+      }
+    };
+    const validateRequiredIconSuitField = (field: "from") => {
+      const value = record[field];
+      if (value === undefined) {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Missing ${field} for ${op} at ${path}[${index}]` });
+        fatal = true;
+        return;
+      }
+      if (typeof value !== "string" || !suitIcons.has(value)) {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid ${field} for ${op} at ${path}[${index}]: ${String(value)}` });
+        fatal = true;
+      }
+    };
+    const validateRequiredBreakThroughSuitField = () => {
+      const value = record.suit;
+      if (value === undefined) {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Missing suit for ${op} at ${path}[${index}]` });
+        fatal = true;
+        return;
+      }
+      if (typeof value !== "string" || !breakThroughSuits.has(value)) {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid suit for ${op} at ${path}[${index}]: ${String(value)}` });
+        fatal = true;
+      }
+    };
+    const validateIconSuitArray = (field: "to") => {
+      const value = record[field];
+      if (value !== undefined && (!Array.isArray(value) || value.length === 0 || value.some((suit) => typeof suit !== "string" || !suitIcons.has(suit)))) {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid ${field} for ${op} at ${path}[${index}]` });
+        fatal = true;
+      }
+    };
+    const validateCardTypeField = () => {
+      const value = record.cardType;
+      if (value !== undefined && (typeof value !== "string" || !types.has(value))) {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid cardType for ${op} at ${path}[${index}]: ${String(value)}` });
+        fatal = true;
+      }
+    };
+    const validatePositiveIntegerField = (fieldName: "count" | "amount") => {
+      const value = record[fieldName];
+      if (!isPositiveInteger(value)) {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid ${fieldName} for ${op} at ${path}[${index}]: ${String(value)}` });
+        fatal = true;
+      }
+    };
+    const validateOptionalPositiveIntegerField = (fieldName: "count" | "amount") => {
+      if (record[fieldName] !== undefined) validatePositiveIntegerField(fieldName);
+    };
+    const validateNonNegativeIntegerField = (fieldName: "atLeast") => {
+      const value = record[fieldName];
+      if (!isNonNegativeIntegerValue(value)) {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid ${fieldName} for ${op} at ${path}[${index}]: ${String(value)}` });
+        fatal = true;
+      }
+    };
+    const validateDestination = (allowed: Set<string>, required = false) => {
+      const value = record.destination;
+      if (value === undefined && !required) return;
+      if (typeof value !== "string" || !allowed.has(value)) {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid destination for ${op} at ${path}[${index}]: ${String(value)}` });
+        fatal = true;
+      }
+    };
+    const validateRequiredString = (fieldName: "fromPlayerId" | "reason" | "state") => {
+      const value = record[fieldName];
+      if (typeof value !== "string" || value.trim().length === 0) {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Missing ${fieldName} for ${op} at ${path}[${index}]` });
+        fatal = true;
+      }
+    };
+    const validateRequiredResource = () => {
+      const value = record.resource;
+      if (typeof value !== "string" || value.trim().length === 0) {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Missing resource for ${op} at ${path}[${index}]` });
+        fatal = true;
+      }
+    };
+    const validateOptionalString = (fieldName: "cardId" | "hostCardId" | "marketCardId" | "targetPlayerId") => {
+      const value = record[fieldName];
+      if (value !== undefined && (typeof value !== "string" || value.trim().length === 0)) {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid ${fieldName} for ${op} at ${path}[${index}]: ${String(value)}` });
+        fatal = true;
+      }
+    };
+    const validateOptionalStringArray = (fieldName: "targetPlayerIds") => {
+      const value = record[fieldName];
+      if (value !== undefined && (!Array.isArray(value) || value.length === 0 || value.some((entry) => typeof entry !== "string" || entry.trim().length === 0))) {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid ${fieldName} for ${op} at ${path}[${index}]` });
+        fatal = true;
+      }
+    };
+    const validateReactiveMetadata = () => {
+      const reactive = record.reactive;
+      if (reactive === undefined) return;
+      if (trigger !== "on_exhaust") {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Reactive metadata is only valid on on_exhaust effects at ${path}[${index}]` });
+        fatal = true;
+      }
+      if (!reactive || typeof reactive !== "object" || Array.isArray(reactive)) {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid reactive metadata at ${path}[${index}]` });
+        fatal = true;
+        return;
+      }
+      const condition = reactive as Record<string, unknown>;
+      Object.keys(condition).forEach((fieldName) => {
+        if (!reactiveFields.has(fieldName)) {
+          errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Unsupported reactive field at ${path}[${index}]: ${fieldName}` });
+          fatal = true;
+        }
+      });
+      if (typeof condition.trigger !== "string" || !reactiveTriggers.has(condition.trigger)) {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid reactive trigger at ${path}[${index}]: ${String(condition.trigger ?? "missing")}` });
+        fatal = true;
+      }
+      const triggerName = typeof condition.trigger === "string" && reactiveTriggers.has(condition.trigger) ? condition.trigger : undefined;
+      if (condition.target !== undefined && ((typeof condition.target !== "string" || !reactiveTargets.has(condition.target)) || triggerName === "after_gain_resource")) {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid reactive target at ${path}[${index}]: ${String(condition.target)}` });
+        fatal = true;
+      }
+      if (condition.sourceSuit !== undefined && ((typeof condition.sourceSuit !== "string" || !suitIcons.has(condition.sourceSuit)) || (triggerName !== undefined && triggerName !== "after_gain_resource"))) {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid reactive sourceSuit at ${path}[${index}]: ${String(condition.sourceSuit)}` });
+        fatal = true;
+      }
+      if (condition.resource !== undefined && triggerName !== undefined && triggerName !== "after_gain_resource") {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid reactive resource at ${path}[${index}]: ${String(condition.resource)}` });
+        fatal = true;
+      }
+    };
+    if (["draw","draw_if_able","discard_random","discard_cards","take_unrest","gain_fame","acquire_card","gain_card","take_card","break_through","look_cards"].includes(op)) validatePositiveIntegerField("count");
+    if (op === "exile_card") validateOptionalPositiveIntegerField("count");
+    if (["gain_resource","spend_resource","remove_resource","return_resource","steal_resource","gain_action","spend_action"].includes(op)) validatePositiveIntegerField("amount");
+    if (op === "conditional_resource_at_least") validateNonNegativeIntegerField("atLeast");
+    if (op === "draw") validateSource(drawSources, "deck");
+    if (op === "draw_if_able" && record.source !== undefined) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid source for ${op} at ${path}[${index}]: ${String(record.source)}` });
+      fatal = true;
+    }
+    if (op === "exile_card") validateSource(exileSources, undefined, true);
+    if (op === "acquire_card") validateSource(acquireSources, "market");
+    if (op === "gain_card" || op === "take_card") validateSource(marketMoveSources, undefined, true);
+    if (op === "break_through") validateSource(breakThroughSources, undefined, true);
+    if (op === "look_cards") validateSource(lookSources, undefined, true);
+    if (op === "return_unrest") validateSourceZones(returnUnrestSources, "sourceZones");
+    if (op === "return_fame") validateSourceZones(returnFameSources, "sourceZones");
+    if (op === "place_card_on_deck") validateSourceZones(placeOnDeckSources, "sourceZone");
+    if (op === "swap_card") validateSourceZones(swapSources, "sourceZone");
+    if (op === "find_card") validateDestination(findDestinations, true);
+    if (op === "acquire_card" || op === "gain_card" || op === "take_card") validateDestination(gainDestinations);
+    if (op === "profit") validateDestination(profitDestinations);
+    if (op === "break_through") validateRequiredBreakThroughSuitField();
+    if (["acquire_card","gain_card","take_card","find_card","exile_card"].includes(op)) validateSuitField("suit");
+    if (op === "break_through" && record.cardType !== undefined) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid cardType for ${op} at ${path}[${index}]: ${String(record.cardType)}` });
+      fatal = true;
+    }
+    if (record.cardId !== undefined && !cardIdEffectOps.has(op)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid cardId for ${op} at ${path}[${index}]: ${String(record.cardId)}` });
+      fatal = true;
+    }
+    if (record.hostCardId !== undefined && !hostCardIdEffectOps.has(op)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid hostCardId for ${op} at ${path}[${index}]: ${String(record.hostCardId)}` });
+      fatal = true;
+    }
+    if (record.marketCardId !== undefined && !marketCardIdEffectOps.has(op)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid marketCardId for ${op} at ${path}[${index}]: ${String(record.marketCardId)}` });
+      fatal = true;
+    }
+    if (record.targetPlayerId !== undefined && !targetPlayerIdEffectOps.has(op)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid targetPlayerId for ${op} at ${path}[${index}]: ${String(record.targetPlayerId)}` });
+      fatal = true;
+    }
+    if (record.targetPlayerIds !== undefined && !targetPlayerIdsEffectOps.has(op)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid targetPlayerIds for ${op} at ${path}[${index}]` });
+      fatal = true;
+    }
+    if (record.fromPlayerId !== undefined && !fromPlayerIdEffectOps.has(op)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid fromPlayerId for ${op} at ${path}[${index}]: ${String(record.fromPlayerId)}` });
+      fatal = true;
+    }
+    if (record.reason !== undefined && !reasonEffectOps.has(op)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid reason for ${op} at ${path}[${index}]: ${String(record.reason)}` });
+      fatal = true;
+    }
+    if (record.state !== undefined && !stateEffectOps.has(op)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid state for ${op} at ${path}[${index}]: ${String(record.state)}` });
+      fatal = true;
+    }
+    if (record.from !== undefined && !fromEffectOps.has(op)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid from for ${op} at ${path}[${index}]: ${String(record.from)}` });
+      fatal = true;
+    }
+    if (record.to !== undefined && !toEffectOps.has(op)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid to for ${op} at ${path}[${index}]` });
+      fatal = true;
+    }
+    if (record.effects !== undefined && !effectsEffectOps.has(op)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid effects for ${op} at ${path}[${index}]` });
+      fatal = true;
+    }
+    if (record.choices !== undefined && !choicesEffectOps.has(op)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid choices for ${op} at ${path}[${index}]` });
+      fatal = true;
+    }
+    if (record.then !== undefined && !thenEffectOps.has(op)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid then for ${op} at ${path}[${index}]` });
+      fatal = true;
+    }
+    if (record.else !== undefined && !elseEffectOps.has(op)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid else for ${op} at ${path}[${index}]` });
+      fatal = true;
+    }
+    if (record.source !== undefined && !sourceEffectOps.has(op)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid source for ${op} at ${path}[${index}]: ${String(record.source)}` });
+      fatal = true;
+    }
+    if (record.sourceZones !== undefined && !sourceZonesEffectOps.has(op)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid sourceZones for ${op} at ${path}[${index}]` });
+      fatal = true;
+    }
+    if (record.sourceZone !== undefined && !sourceZoneEffectOps.has(op)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid sourceZone for ${op} at ${path}[${index}]` });
+      fatal = true;
+    }
+    if (record.destination !== undefined && !destinationEffectOps.has(op)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid destination for ${op} at ${path}[${index}]: ${String(record.destination)}` });
+      fatal = true;
+    }
+    if (record.suit !== undefined && !suitEffectOps.has(op)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid suit for ${op} at ${path}[${index}]: ${String(record.suit)}` });
+      fatal = true;
+    }
+    if (record.cardType !== undefined && !cardTypeEffectOps.has(op)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid cardType for ${op} at ${path}[${index}]: ${String(record.cardType)}` });
+      fatal = true;
+    }
+    if (record.resource !== undefined && !resourceEffectOps.has(op)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid resource for ${op} at ${path}[${index}]: ${String(record.resource)}` });
+      fatal = true;
+    }
+    if (record.count !== undefined && !countEffectOps.has(op)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid count for ${op} at ${path}[${index}]: ${String(record.count)}` });
+      fatal = true;
+    }
+    if (record.amount !== undefined && !amountEffectOps.has(op)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid amount for ${op} at ${path}[${index}]: ${String(record.amount)}` });
+      fatal = true;
+    }
+    if (record.atLeast !== undefined && !atLeastEffectOps.has(op)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid atLeast for ${op} at ${path}[${index}]: ${String(record.atLeast)}` });
+      fatal = true;
+    }
+    if (["acquire_card","gain_card","take_card","find_card","exile_card"].includes(op)) validateCardTypeField();
+    if (op === "find_card") validateSourceZones(findSources, "sourceZones");
+    if (op === "treat_suit_as") {
+      validateRequiredIconSuitField("from");
+      validateIconSuitArray("to");
+    }
+    if (fromPlayerIdEffectOps.has(op)) validateRequiredString("fromPlayerId");
+    if (op === "trigger_scoring") validateRequiredString("reason");
+    if (op === "conditional_state_is") validateRequiredString("state");
+    if (["gain_resource","spend_resource","remove_resource","return_resource","steal_resource","conditional_resource_at_least"].includes(op)) validateRequiredResource();
+    if (cardIdEffectOps.has(op)) validateOptionalString("cardId");
+    if (hostCardIdEffectOps.has(op)) validateOptionalString("hostCardId");
+    if (marketCardIdEffectOps.has(op)) validateOptionalString("marketCardId");
+    if (targetPlayerIdEffectOps.has(op)) {
+      validateOptionalString("targetPlayerId");
+      validateOptionalStringArray("targetPlayerIds");
+    }
+    if (op === "take_unrest") validateOptionalStringArray("targetPlayerIds");
+    validateReactiveMetadata();
     if (op === "optional" || op === "commerce" || op === "profit") {
-      fatal = validateEffectOps(errors, row, (effect as { effects?: unknown }).effects, `${path}[${index}].effects`, false) || fatal;
+      const nestedEffects = (effect as { effects?: unknown }).effects;
+      if (Array.isArray(nestedEffects) && nestedEffects.length === 0) {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `${path}[${index}].effects must contain at least one effect` });
+        fatal = true;
+      }
+      fatal = validateEffectOps(errors, row, nestedEffects, `${path}[${index}].effects`, false) || fatal;
     }
     if (op === "choose_one") {
       const choices = (effect as { choices?: unknown }).choices;
       if (!Array.isArray(choices)) {
         errors.push({ level: "fatal", row, field: "effect_ops_json", message: `${path}[${index}].choices must parse to array` });
         fatal = true;
+      } else if (choices.length === 0) {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `${path}[${index}].choices must contain at least one choice` });
+        fatal = true;
       } else {
         choices.forEach((choice, choiceIndex) => {
+          if (Array.isArray(choice) && choice.length === 0) {
+            errors.push({ level: "fatal", row, field: "effect_ops_json", message: `${path}[${index}].choices[${choiceIndex}] must contain at least one effect` });
+            fatal = true;
+          }
           fatal = validateEffectOps(errors, row, choice, `${path}[${index}].choices[${choiceIndex}]`, false) || fatal;
         });
       }
     }
     if (op === "conditional_resource_at_least" || op === "conditional_state_is") {
-      fatal = validateEffectOps(errors, row, (effect as { then?: unknown }).then, `${path}[${index}].then`, false) || fatal;
+      const thenEffects = (effect as { then?: unknown }).then;
+      if (Array.isArray(thenEffects) && thenEffects.length === 0) {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `${path}[${index}].then must contain at least one effect` });
+        fatal = true;
+      }
+      fatal = validateEffectOps(errors, row, thenEffects, `${path}[${index}].then`, false) || fatal;
       const elseEffects = (effect as { else?: unknown }).else;
+      if (Array.isArray(elseEffects) && elseEffects.length === 0) {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `${path}[${index}].else must contain at least one effect` });
+        fatal = true;
+      }
       if (elseEffects !== undefined) fatal = validateEffectOps(errors, row, elseEffects, `${path}[${index}].else`, false) || fatal;
     }
   });
@@ -155,12 +580,25 @@ function validateVpDetails(errors: CardImportError[], row: number, value: string
   const parsed = parseVpDetails(errors, row, value);
   if (parsed.fatal || !parsed.details) return parsed;
   const details = parsed.details;
+  let fatal = false;
+  Object.keys(details as Record<string, unknown>).forEach((fieldName) => {
+    if (!vpDetailFields.has(fieldName)) {
+      errors.push({ level: "fatal", row, field: "vp_details_json", message: `Unsupported VP detail field: ${fieldName}` });
+      fatal = true;
+    }
+  });
   if (details.condition !== undefined) {
     const condition = details.condition as { op?: unknown; zoneId?: unknown };
     if (!condition || typeof condition !== "object" || Array.isArray(condition)) {
       errors.push({ level: "fatal", row, field: "vp_details_json", message: "VP condition must be an object" });
       return { fatal: true };
     }
+    Object.keys(condition as Record<string, unknown>).forEach((fieldName) => {
+      if (!vpConditionFields.has(fieldName)) {
+        errors.push({ level: "fatal", row, field: "vp_details_json", message: `Unsupported VP condition field: ${fieldName}` });
+        fatal = true;
+      }
+    });
     if (condition.op !== "self_in_zone") {
       errors.push({ level: "fatal", row, field: "vp_details_json", message: `Unsupported VP condition: ${String(condition.op ?? "missing")}` });
       return { fatal: true };
@@ -171,33 +609,59 @@ function validateVpDetails(errors: CardImportError[], row: number, value: string
     }
   }
   if (details.formula !== undefined) {
-    const formula = details.formula as { op?: unknown; tag?: unknown; suit?: unknown; zones?: unknown; amountEach?: unknown; cap?: unknown };
+    const formula = details.formula as { op?: unknown; tag?: unknown; suit?: unknown; zones?: unknown; resource?: unknown; resources?: unknown; amountEach?: unknown; denominator?: unknown; cap?: unknown };
     if (!formula || typeof formula !== "object" || Array.isArray(formula)) {
       errors.push({ level: "fatal", row, field: "vp_details_json", message: "VP formula must be an object" });
       return { fatal: true };
     }
-    if (formula.op !== "count_cards") {
+    if (formula.op !== "count_cards" && formula.op !== "count_resources") {
       errors.push({ level: "fatal", row, field: "vp_details_json", message: `Unsupported VP formula: ${String(formula.op ?? "missing")}` });
       return { fatal: true };
     }
+    const formulaFields = formula.op === "count_cards" ? vpCountCardsFormulaFields : vpCountResourcesFormulaFields;
+    Object.keys(formula as Record<string, unknown>).forEach((fieldName) => {
+      if (!formulaFields.has(fieldName)) {
+        errors.push({ level: "fatal", row, field: "vp_details_json", message: `Unsupported VP formula field: ${fieldName}` });
+        fatal = true;
+      }
+    });
     if (!isNumber(formula.amountEach)) {
-      errors.push({ level: "fatal", row, field: "vp_details_json", message: "VP count_cards formula requires numeric amountEach" });
+      errors.push({ level: "fatal", row, field: "vp_details_json", message: `VP ${formula.op} formula requires numeric amountEach` });
       return { fatal: true };
     }
-    if (formula.tag !== undefined && typeof formula.tag !== "string") {
-      errors.push({ level: "fatal", row, field: "vp_details_json", message: "VP count_cards formula tag must be a string" });
-      return { fatal: true };
+    if (formula.op === "count_cards") {
+      if (formula.tag !== undefined && typeof formula.tag !== "string") {
+        errors.push({ level: "fatal", row, field: "vp_details_json", message: "VP count_cards formula tag must be a string" });
+        return { fatal: true };
+      }
+      if (formula.suit !== undefined && (typeof formula.suit !== "string" || !suitIcons.has(formula.suit))) {
+        errors.push({ level: "fatal", row, field: "vp_details_json", message: `Invalid VP count_cards formula suit: ${String(formula.suit)}` });
+        return { fatal: true };
+      }
+      if (formula.zones !== undefined && (!Array.isArray(formula.zones) || formula.zones.some((zone) => typeof zone !== "string" || !zone.trim()))) {
+        errors.push({ level: "fatal", row, field: "vp_details_json", message: "VP count_cards formula zones must be a string array" });
+        return { fatal: true };
+      }
     }
-    if (formula.suit !== undefined && (typeof formula.suit !== "string" || !suits.has(formula.suit))) {
-      errors.push({ level: "fatal", row, field: "vp_details_json", message: `Invalid VP count_cards formula suit: ${String(formula.suit)}` });
-      return { fatal: true };
-    }
-    if (formula.zones !== undefined && (!Array.isArray(formula.zones) || formula.zones.some((zone) => typeof zone !== "string" || !zone.trim()))) {
-      errors.push({ level: "fatal", row, field: "vp_details_json", message: "VP count_cards formula zones must be a string array" });
-      return { fatal: true };
+    if (formula.op === "count_resources") {
+      const hasSingleResource = typeof formula.resource === "string" && formula.resource.trim().length > 0;
+      const hasResourceList = Array.isArray(formula.resources) && formula.resources.length > 0 && formula.resources.every((resource) => typeof resource === "string" && resource.trim().length > 0);
+      if (!hasSingleResource && !hasResourceList) {
+        errors.push({ level: "fatal", row, field: "vp_details_json", message: "VP count_resources formula requires resource or resources" });
+        return { fatal: true };
+      }
+      const invalidResources = collectInvalidResourceNames({ formula }, "$.vp_details_json");
+      if (invalidResources.length > 0) {
+        errors.push({ level: "fatal", row, field: "vp_details_json", message: `Invalid VP count_resources formula resource: ${invalidResources[0].resource}` });
+        return { fatal: true };
+      }
+      if (formula.denominator !== undefined && (!isNumber(formula.denominator) || formula.denominator <= 0)) {
+        errors.push({ level: "fatal", row, field: "vp_details_json", message: "VP count_resources formula denominator must be positive numeric when present" });
+        return { fatal: true };
+      }
     }
     if (formula.cap !== undefined && !isNumber(formula.cap)) {
-      errors.push({ level: "fatal", row, field: "vp_details_json", message: "VP count_cards formula cap must be numeric when present" });
+      errors.push({ level: "fatal", row, field: "vp_details_json", message: `VP ${formula.op} formula cap must be numeric when present` });
       return { fatal: true };
     }
   }
@@ -209,7 +673,7 @@ function validateVpDetails(errors: CardImportError[], row: number, value: string
     errors.push({ level: "fatal", row, field: "vp_details_json", message: "falseValue must be numeric when present" });
     return { fatal: true };
   }
-  return { fatal: false, details };
+  return { fatal, details };
 }
 
 export function validatePrivateCardsRows(rows: PrivateCardCsvRow[]): CardImportReport {
@@ -218,13 +682,18 @@ export function validatePrivateCardsRows(rows: PrivateCardCsvRow[]): CardImportR
     for(const f of req){ if(!(r[f]??"").trim()){ errors.push({level:"fatal",row,field:f,message:"Required field missing"}); fatal=true; }}
     const id=(r.card_id||"").trim(); if(!id){fatal=true;} else if(seen.has(id)){errors.push({level:"fatal",row,field:"card_id",message:"Duplicate card_id"}); fatal=true;} else seen.add(id);
     if(!suits.has((r.suit||"").trim())){errors.push({level:"fatal",row,field:"suit",message:"Invalid suit"}); fatal=true;}
-    fatal = validatePipeEnums({ errors, row, field: "suit_icons", value: r.suit_icons, allowed: suits, message: "Invalid suit_icons" }) || fatal;
+    fatal = validatePipeEnums({ errors, row, field: "suit_icons", value: r.suit_icons, allowed: suitIcons, message: "Invalid suit_icons" }) || fatal;
+    if ((r.suit || "").trim() === "multi" && new Set(pipeValues(r.suit_icons || "")).size < 2) {
+      errors.push({ level: "fatal", row, field: "suit_icons", message: "Multi-suit cards require at least two suit_icons" });
+      fatal = true;
+    }
     if(!types.has((r.card_type||"").trim())){errors.push({level:"fatal",row,field:"card_type",message:"Invalid card_type"}); fatal=true;}
+    fatal = validateStateRequirement(errors, row, r.state_requirement) || fatal;
     if(!starts.has((r.starting_location||"").trim())){errors.push({level:"fatal",row,field:"starting_location",message:"Invalid starting_location"}); fatal=true;}
     if(!vpModes.has((r.vp_mode||"").trim())){errors.push({level:"fatal",row,field:"vp_mode",message:"Invalid vp_mode"}); fatal=true;}
     fatal = validateOptionalEnum({ errors, row, field: "ownership", value: r.ownership, allowed: ownerships, message: "Invalid ownership" }) || fatal;
     fatal = validateOptionalEnum({ errors, row, field: "commons_set_id", value: r.commons_set_id, allowed: commonsSets, message: "Invalid commons_set_id" }) || fatal;
-    fatal = validateOptionalEnum({ errors, row, field: "setup_banner_suit", value: r.setup_banner_suit, allowed: suits, message: "Invalid setup_banner_suit" }) || fatal;
+    fatal = validateOptionalEnum({ errors, row, field: "setup_banner_suit", value: r.setup_banner_suit, allowed: setupBannerSuits, message: "Invalid setup_banner_suit" }) || fatal;
     fatal = validateOptionalEnum({ errors, row, field: "commons_group", value: r.commons_group, allowed: commonsGroups, message: "Invalid commons_group" }) || fatal;
     fatal = validateOptionalEnum({ errors, row, field: "player_count_requirement", value: r.player_count_requirement, allowed: playerCounts, message: "Invalid player_count_requirement" }) || fatal;
     fatal = validatePipeEnums({ errors, row, field: "required_expansions", value: r.required_expansions, allowed: expansions, message: "Invalid required_expansions" }) || fatal;

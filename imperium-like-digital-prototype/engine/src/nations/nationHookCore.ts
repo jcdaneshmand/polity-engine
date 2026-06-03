@@ -68,8 +68,10 @@ export function hasNationHookInterruption(G: GameState): boolean {
     ?? G.pendingDevelopmentChoice
     ?? G.pendingShortGameDevelopmentExileChoice
     ?? G.pendingTradeChoice
+    ?? G.pendingDiscardChoice
     ?? G.pendingUnrestAllocationChoice
     ?? G.pendingReturnUnrestChoice
+    ?? G.pendingReturnFameChoice
     ?? G.pendingPlaceOnDeckChoice
     ?? G.pendingReturnExhaustTokenChoice
     ?? G.pendingGiveCardChoice

@@ -139,8 +139,17 @@ export function buildCommonsDecks(input: CommonsDeckConstructionInput): CommonsD
 
   if (quickSetup) {
     const quickSetupDeck = shuffleWithRng(activeCards.filter((card) => isMainDeckEligible(card)).map((card) => card.id), input.rng);
-    initialMarket = createInitialMarket({ sourceDeck: quickSetupDeck, unrestPile, cardById });
+    const smallDeckSize = smallDeckFaceDownSize(input.options.effectiveCommonsPlayerCount);
+    regionDeck = quickSetupDeck.splice(0, smallDeckSize);
+    uncivilizedDeck = quickSetupDeck.splice(0, smallDeckSize);
+    civilizedDeck = quickSetupDeck.splice(0, smallDeckSize);
     mainDeck = quickSetupDeck;
+    initialMarket = createInitialMarketFromDeckSequence({
+      sourceDecks: [regionDeck, uncivilizedDeck, civilizedDeck, mainDeck, mainDeck],
+      fallbackDeck: mainDeck,
+      unrestPile,
+      cardById
+    });
   } else {
     const marketCards = activeCards.filter((card) => isMainDeckEligible(card));
     const smallDeckCards = marketCards.filter((card) => isSmallDeckEligible(card) && DEFAULT_SMALL_DECK_SUITS.includes(getSetupSuit(card)));

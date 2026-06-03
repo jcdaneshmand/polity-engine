@@ -8,6 +8,21 @@ function removeOne(cards: string[], cardId: string): boolean {
   return true;
 }
 
+function deleteEmptyCardState(G: GameState, cardId: string): void {
+  const state = G.cardStates?.[cardId];
+  if (!state) return;
+  if (
+    state.activeState === undefined
+    && state.exhausted === undefined
+    && state.actionTokens === undefined
+    && state.exhaustTokens === undefined
+    && Object.keys(state.resources ?? {}).length === 0
+    && (state.garrisonedCardIds?.length ?? 0) === 0
+  ) {
+    delete G.cardStates?.[cardId];
+  }
+}
+
 export function isRegionCard(G: GameState, cardId: string): boolean {
   const card = G.cardDb[cardId];
   const type = card?.cardType ?? card?.type;
@@ -28,8 +43,11 @@ export function garrisonCardOnRegion(G: GameState, playerId: string, hostCardId:
 }
 
 export function detachGarrisonedCards(G: GameState, hostCardId: string): string[] {
-  const garrisoned = G.cardStates?.[hostCardId]?.garrisonedCardIds ?? [];
-  delete G.cardStates?.[hostCardId];
+  const garrisoned = [...(G.cardStates?.[hostCardId]?.garrisonedCardIds ?? [])];
+  if (G.cardStates?.[hostCardId]) {
+    delete G.cardStates[hostCardId].garrisonedCardIds;
+    deleteEmptyCardState(G, hostCardId);
+  }
   return garrisoned;
 }
 
@@ -56,6 +74,10 @@ export function collectCardResourcesToPlayer(G: GameState, playerId: string, car
   const collected = normalizeResourceMap(state?.resources);
   for (const [resource, amount] of Object.entries(state?.resources ?? {}) as [ResourceName, number | undefined][]) {
     addResourceAmount(player.resources, resource, amount ?? 0);
+  }
+  if (state) {
+    delete state.resources;
+    deleteEmptyCardState(G, cardId);
   }
   return collected;
 }

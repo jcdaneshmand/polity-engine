@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { CampaignProgress } from "../../../../engine/src/options/gameOptions";
 import { SharedAreaRow } from "./SharedAreaRow";
 import { MarketRow } from "./MarketRow";
 import { PlayerArea } from "./PlayerArea";
@@ -8,28 +9,33 @@ import { GameLogPanel } from "./GameLogPanel";
 import { BotRow } from "./BotRow";
 import { ZoneDetailPanel } from "./ZoneDetailPanel";
 import { TurnStatusBar } from "./TurnStatusBar";
+import EndGameSummary from "./EndGameSummary";
 import { getActionHintsByCardId, getAvailableActionsForSelection, getMarketCardClickAction, getPendingUiState, getSelectedCard, type Selection } from "../controller/selectionModel";
 import { CONTROLLER_HINTS } from "../controller/controllerHints";
 import { handleBoardKeyDown } from "../controller/keyboardControls";
-import { getBotPiles, getCurrentPlayer, getInspectableLookedCards, getInspectableSharedPile, getInspectableZone, getMarketCards, getRecentLogEntries, getSharedPiles } from "./uiSelectors";
+import { getBotPiles, getCurrentPlayer, getInspectableLookedCards, getInspectableSharedPile, getInspectableZone, getMarketCards, getOwnerVisibleZoneIds, getPlayerZoneLabels, getRecentLogEntries, getSharedPiles } from "./uiSelectors";
 import { resourceLabelsForGame } from "./resourceDisplay";
 
-export default function BoardLayout({ G, ctx, moves }: any) {
+export default function BoardLayout({ G, ctx, moves, onCampaignProgress }: any & { onCampaignProgress?: (progress: CampaignProgress) => void }) {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [detailCardId, setDetailCardId] = useState<string | null>(null);
   const [zoomCardId, setZoomCardId] = useState<string | null>(null);
+  const [summaryDismissed, setSummaryDismissed] = useState(false);
   const player = getCurrentPlayer(G, ctx);
   const marketIds = getMarketCards(G);
   const marketCards = marketIds.map((id) => G.cardDb?.[id]).filter(Boolean);
   const shared = getSharedPiles(G);
   const resourceLabels = resourceLabelsForGame(G, ctx.currentPlayer);
+  const playerZoneLabels = getPlayerZoneLabels(G, ctx.currentPlayer);
   const selectedCard = getSelectedCard(selection, G);
+  const selectedZoneOwnerId = selection?.kind === "player_zone" ? (selection.playerId ?? ctx.currentPlayer) : undefined;
+  const ownerVisibleZoneIds = selectedZoneOwnerId ? getOwnerVisibleZoneIds(G, selectedZoneOwnerId) : undefined;
   const detailCard = selectedCard ?? G.cardDb?.[G.pendingChoice?.sourceCardId];
   const pinnedDetailCard = G.cardDb?.[detailCardId ?? ""];
   const visibleDetailCard = pinnedDetailCard ?? detailCard;
   const zoomCard = G.cardDb?.[zoomCardId ?? ""];
   const selectedZone = selection?.kind === "player_zone"
-    ? getInspectableZone(player, selection.id, { ownerPlayerId: selection.playerId, viewerPlayerId: ctx.currentPlayer })
+    ? getInspectableZone(player, selection.id, { ownerPlayerId: selectedZoneOwnerId, viewerPlayerId: ctx.currentPlayer, ownerVisibleZoneIds })
     : undefined;
   const selectedSharedPile = selection?.kind === "pile" ? getInspectableSharedPile(G, selection.id) : undefined;
   const selectedBotZone = selection?.kind === "bot_zone" ? getInspectableZone(G.solo?.bot, selection.id) : undefined;
@@ -81,6 +87,7 @@ export default function BoardLayout({ G, ctx, moves }: any) {
     if (a.action === "resolveTradeChoice") moves.resolveTradeChoice?.(a.cardId);
     if (a.action === "resolveDiscardChoice" && a.cardIds) moves.resolveDiscardChoice?.(a.cardIds);
     if (a.action === "resolveReturnUnrestChoice" && a.cardId) moves.resolveReturnUnrestChoice?.(a.cardId);
+    if (a.action === "resolveReturnFameChoice" && a.cardId) moves.resolveReturnFameChoice?.(a.cardId);
     if (a.action === "resolvePlaceOnDeckChoice" && a.cardId) moves.resolvePlaceOnDeckChoice?.(a.cardId);
     if (a.action === "resolveReturnExhaustTokenChoice" && a.cardId) moves.resolveReturnExhaustTokenChoice?.(a.cardId);
     if (a.action === "resolveGiveCardChoice" && a.cardId && a.recipientPlayerId) moves.resolveGiveCardChoice?.(a.cardId, a.recipientPlayerId);
@@ -89,11 +96,10 @@ export default function BoardLayout({ G, ctx, moves }: any) {
     if (a.action === "resolveSolsticeOrderChoice" && a.cardIds) moves.resolveSolsticeOrderChoice?.(a.cardIds);
     if (a.action === "resolveLookOrderChoice" && a.cardIds) moves.resolveLookOrderChoice?.(a.cardIds);
     if (a.action === "resolveCleanupMarketResource" && a.cardId) moves.resolveCleanupMarketResource?.(a.cardId);
-    if (a.action === "resolveCleanupDiscard") moves.resolveCleanupDiscard?.(a.cardId ? [a.cardId] : []);
+    if (a.action === "resolveCleanupDiscard") moves.resolveCleanupDiscard?.(a.cardIds ?? (a.cardId ? [a.cardId] : []));
+    if (a.action === "resolveReactiveExhaustChoice" && a.cardId) moves.resolveReactiveExhaustChoice?.(a.cardId);
+    if (a.action === "skipReactiveExhaustChoice") moves.skipReactiveExhaustChoice?.();
     if (a.action === "exhaust" && a.cardId) moves.exhaustCard?.(a.cardId);
-    if (a.action === "garrison" && a.hostCardId && a.cardId) moves.garrisonCard?.(a.hostCardId, a.cardId);
-    if (a.action === "recallRegion" && a.cardId) moves.recallRegion?.(a.cardId);
-    if (a.action === "abandonRegion" && a.cardId) moves.abandonRegion?.(a.cardId);
     if (a.action === "innovate" && a.suit && a.source) moves.innovateTurn?.({ suit: a.suit, source: a.source, cardId: a.cardId });
     if (a.action === "revolt" && a.cardIds) moves.revoltTurn?.(a.cardIds);
     if (a.action === "revolt" && a.cardId) moves.revoltTurn?.([a.cardId]);
@@ -116,7 +122,7 @@ export default function BoardLayout({ G, ctx, moves }: any) {
       <SharedAreaRow piles={shared} round={G.round ?? 1} selectedId={selection?.kind === "pile" ? selection.id : undefined} onSelectPile={(id)=>setSelection({kind:"pile",id})} />
       <MarketRow cards={marketCards} selectedId={selection?.id} resources={player?.resources} resourceLabels={resourceLabels} actionHintsByCardId={marketActionHintsByCardId} marketResources={G.marketResources ?? {}} onSelect={onMarketCardClick} />
       <BotRow bot={G.solo?.bot} cardDb={G.cardDb ?? {}} selectedId={selection?.kind === "bot_zone" ? selection.id : undefined} resourceLabels={resourceLabels} onSelectZone={(id)=>setSelection({kind:"bot_zone",id})} />
-      <PlayerArea player={player} cardDb={G.cardDb ?? {}} resourceLabels={resourceLabels} selectedId={selection?.id} selectedZoneId={selection?.kind === "player_zone" ? selection.id : undefined} actionHintsByCardId={handActionHintsByCardId} onSelectZone={(id:string)=>setSelection({kind:"player_zone",id,playerId:ctx.currentPlayer})} onSelect={(id:string)=>setSelection({kind:"hand_card",id,playerId:ctx.currentPlayer})} />
+      <PlayerArea player={player} cardDb={G.cardDb ?? {}} resourceLabels={resourceLabels} zoneLabels={playerZoneLabels} selectedId={selection?.id} selectedZoneId={selection?.kind === "player_zone" ? selection.id : undefined} actionHintsByCardId={handActionHintsByCardId} onSelectZone={(id:string)=>setSelection({kind:"player_zone",id,playerId:ctx.currentPlayer})} onSelect={(id:string)=>setSelection({kind:"hand_card",id,playerId:ctx.currentPlayer})} />
       <div className="panel hints">{CONTROLLER_HINTS.map((h)=> <div key={h}>{h}</div>)}</div>
     </div>
     <div className="right">
@@ -141,5 +147,8 @@ export default function BoardLayout({ G, ctx, moves }: any) {
       <GameLogPanel entries={getRecentLogEntries(G, 20)} />
     </div>
     <CardInspectionModal card={zoomCard} onClose={() => setZoomCardId(null)} />
+    {G.gameover && !summaryDismissed ? (
+      <EndGameSummary G={G} ctx={ctx} onReviewBoard={() => setSummaryDismissed(true)} onCampaignProgress={onCampaignProgress} />
+    ) : null}
   </div>;
 }

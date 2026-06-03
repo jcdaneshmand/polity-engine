@@ -36,7 +36,7 @@ When `lowered_aggression` is enabled, Commons deck construction sets aside cards
 
 ## Quick Setup alternate deck construction
 
-When `quick_setup` is enabled, setup skips suit-separated small deck construction and builds a combined market deck from eligible Commons cards. All selection, expansion, player-count, nation-conflict, and replacement filters still run before this alternate construction path.
+When `quick_setup` is enabled, setup skips suit-separated construction but still creates Small decks. Eligible Market cards are shuffled into one combined deck, dealt into the normal player-count-sized Region, Uncivilized, and Civilized deck positions, and the rest becomes the Main deck. Initial Market seeding still draws from the three Small deck positions and then the Main deck, so early card suits are no longer guaranteed by slot. All selection, expansion, player-count, nation-conflict, and replacement filters still run before this alternate construction path.
 
 ## Replacement policy
 

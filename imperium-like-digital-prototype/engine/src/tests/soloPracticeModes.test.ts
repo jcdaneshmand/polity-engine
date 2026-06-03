@@ -116,6 +116,27 @@ describe("solo/practice modes",()=>{
     expect(G.pausedSolstice).toBeUndefined();
     expect(G.pendingPracticeMarketExileBeforeCleanup).toEqual({ playerId: "0" });
   });
+  it("practice optional market Exile excludes market cards with card-state tokens",()=>{
+    const G=createInitialGameState({ options:{playerCount:1,mode:"practice",enabledExpansions:[],enabledVariants:[]} });
+    const ctx = { currentPlayer: "0", playOrder: ["0"] } as any;
+    const endTurn = () => onTurnEnd(G, ctx);
+    G.market = ["test_action_foundry_shift", "test_action_archive_survey", "test_action_scholars_circle", "test_action_risk_audit"];
+    G.marketResources = { test_action_archive_survey: { knowledge: 1 } };
+    G.cardStates = { test_action_scholars_circle: { actionTokens: 1 } };
+    G.players["0"].hand = [];
+
+    onTurnEnd(G, ctx);
+    resolveCleanupMarketResource({ G, ctx, events: { endTurn } }, "test_action_foundry_shift");
+
+    expect(G.pendingExileChoice).toEqual({
+      playerId: "0",
+      sourceCardId: "practice_market_churn",
+      source: "market",
+      cardIds: ["test_action_risk_audit"],
+      optional: true
+    });
+    expect(G.pendingPracticeMarketExileBeforeCleanup).toEqual({ playerId: "0" });
+  });
   it("practice market Exile choice resumes the cleanup handoff without ticking twice",()=>{
     const G=createInitialGameState({ options:{playerCount:1,mode:"practice",enabledExpansions:[],enabledVariants:[]} });
     const ctx = { currentPlayer: "0", playOrder: ["0"] } as any;
@@ -150,16 +171,30 @@ describe("solo/practice modes",()=>{
     expect(G.practiceClock).toEqual({ turnsRemaining: 11, progressTokens: 11 });
     expect(G.players["0"].exile).toEqual([]);
   });
-  it("practice triggers scoring when the twelfth turn has been played",()=>{
+  it("practice resolves the twelfth turn Solstice before final scoring",()=>{
     const G=createInitialGameState({ options:{playerCount:1,mode:"practice",enabledExpansions:[],enabledVariants:[]} });
     G.practiceClock = { turnsRemaining: 1, progressTokens: 1 };
     G.market = ["test_action_foundry_shift"];
+    G.players["0"].playArea = ["practice_final_solstice"];
     G.players["0"].hand = [];
+    G.players["0"].resources.knowledge = 0;
+    G.cardDb.practice_final_solstice = {
+      id: "practice_final_solstice",
+      displayName: "Practice Final Solstice",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_solstice", op: "gain_resource", resource: "knowledge", amount: 1 } as any]
+    };
 
     onTurnEnd(G, { currentPlayer: "0", playOrder: ["0"] } as any);
 
     expect(G.practiceClock).toEqual({ turnsRemaining: 0, progressTokens: 0 });
+    expect(G.players["0"].resources.knowledge).toBe(1);
     expect(G.gameover?.reason).toBe("normal_scoring:practice_turn_limit");
+    expect(G.gameover?.scores?.["0"]).toBeGreaterThanOrEqual(1);
     expect(G.scoring).toBeUndefined();
   });
   it("solo creates bot",()=>{ const G=createInitialGameState({ options:{playerCount:1,mode:"solo",enabledExpansions:[],enabledVariants:[],soloDifficulty:"chieftain"} }); expect(G.solo?.bot.botId).toBe("bot_0"); });

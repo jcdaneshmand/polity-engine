@@ -7,7 +7,7 @@ import { formatLogMessage } from "../../../app/src/ui/layout/GameLogPanel";
 import { marketResourceTokens } from "../../../app/src/ui/layout/MarketRow";
 
 describe("selection model", () => {
-  const G:any = { cardDb:{c1:{id:"c1",displayName:"Card1"},m1:{id:"m1",displayName:"Market1",cost:2}}, market:["m1"], players:{"0":{hand:["c1"],actionsRemaining:1,resources:{materials:3}}} };
+  const G:any = { cardDb:{c1:{id:"c1",displayName:"Card1"},m1:{id:"m1",displayName:"Market1",cost:2}}, market:["m1"], players:{"0":{hand:["c1"],actionsRemaining:1,actionTokensAvailable:1,resources:{materials:3}}} };
   const ctx:any = { currentPlayer:"0" };
   it("hand selection returns card",()=> expect(getSelectedCard({kind:"hand_card",id:"c1"},G)?.id).toBe("c1"));
   it("market selection returns card",()=> expect(getSelectedCard({kind:"market_slot",id:"m1"},G)?.id).toBe("m1"));
@@ -131,19 +131,19 @@ describe("selection model", () => {
     expect(clickAction).toEqual({ action:"resolveCleanupMarketResource", cardId:"m1", enabled:true });
     expect(getMarketCardClickAction({...G,pendingCleanupMarketResourceChoice:{playerId:"1",resource:"knowledge",amount:1,cardIds:["m1"]}},ctx,"m1")).toBeUndefined();
   });
-  it("clicking an eligible market card resolves practice churn Exile directly",()=> {
+  it("clicking an eligible market card resolves pending market Exile directly",()=> {
     const clickAction=getMarketCardClickAction({
       ...G,
-      pendingExileChoice:{playerId:"0",sourceCardId:"practice_market_churn",source:"market",cardIds:["m1"],optional:true}
+      pendingExileChoice:{playerId:"0",sourceCardId:"picker",source:"market",cardIds:["m1"],optional:true}
     },ctx,"m1");
     expect(clickAction).toEqual({ action:"resolveExileChoice", cardId:"m1", enabled:true });
     expect(getMarketCardClickAction({
       ...G,
-      pendingExileChoice:{playerId:"0",sourceCardId:"picker",source:"market",cardIds:["m1"],optional:true}
+      pendingExileChoice:{playerId:"0",sourceCardId:"picker",source:"hand",cardIds:["m1"],optional:true}
     },ctx,"m1")).toBeUndefined();
     expect(getMarketCardClickAction({
       ...G,
-      pendingExileChoice:{playerId:"1",sourceCardId:"practice_market_churn",source:"market",cardIds:["m1"],optional:true}
+      pendingExileChoice:{playerId:"1",sourceCardId:"picker",source:"market",cardIds:["m1"],optional:true}
     },ctx,"m1")).toBeUndefined();
   });
   it("clicking an eligible market card resolves pending Gain/Take directly",()=> {
@@ -157,16 +157,51 @@ describe("selection model", () => {
       pendingMarketCardChoice:{playerId:"1",sourceCardId:"picker",op:"take_card",cardIds:["m1"],destination:"hand"}
     },ctx,"m1")).toBeUndefined();
   });
-  it("scales order choices by first-card options instead of all permutations",()=> {
+  it("clicking an eligible market card resolves pending market Acquire directly",()=> {
+    const clickAction=getMarketCardClickAction({
+      ...G,
+      pendingAcquireChoice:{playerId:"0",sourceCardId:"picker",source:"market",cardIds:["m1"],destination:"hand"}
+    },ctx,"m1");
+    expect(clickAction).toEqual({ action:"resolveAcquireChoice", cardId:"m1", enabled:true });
+    expect(getMarketCardClickAction({
+      ...G,
+      pendingAcquireChoice:{playerId:"1",sourceCardId:"picker",source:"market",cardIds:["m1"],destination:"hand"}
+    },ctx,"m1")).toBeUndefined();
+    expect(getMarketCardClickAction({
+      ...G,
+      pendingAcquireChoice:{playerId:"0",sourceCardId:"picker",source:"exile",cardIds:["m1"],destination:"hand"}
+    },ctx,"m1")).toBeUndefined();
+  });
+  it("clicking an eligible market card resolves pending market Break Through directly",()=> {
+    const clickAction=getMarketCardClickAction({
+      ...G,
+      pendingBreakThroughChoice:{playerId:"0",sourceCardId:"breaker",source:"market",suit:"civilized",cardIds:["m1"]}
+    },ctx,"m1");
+    expect(clickAction).toEqual({ action:"resolveBreakThroughChoice", cardId:"m1", enabled:true });
+    expect(getMarketCardClickAction({
+      ...G,
+      pendingBreakThroughChoice:{playerId:"1",sourceCardId:"breaker",source:"market",suit:"civilized",cardIds:["m1"]}
+    },ctx,"m1")).toBeUndefined();
+    expect(getMarketCardClickAction({
+      ...G,
+      pendingBreakThroughChoice:{playerId:"0",sourceCardId:"breaker",source:"exile",suit:"civilized",cardIds:["m1"]}
+    },ctx,"m1")).toBeUndefined();
+  });
+  it("exposes every legal Look return order for three looked cards",()=> {
     const withLookOrder = {
       ...G,
       cardDb: {...G.cardDb, a:{id:"a",displayName:"A"},b:{id:"b",displayName:"B"},c:{id:"c",displayName:"C"}},
       pendingLookOrderChoice:{playerId:"0",source:"deck",cardIds:["a","b","c"]}
     };
     const acts=getAvailableActionsForSelection(null,withLookOrder,ctx);
-    expect(acts.filter((a)=>a.action==="resolveLookOrderChoice")).toHaveLength(3);
-    expect(acts[0]).toMatchObject({ label:"Return A first", cardIds:["a","b","c"] });
-    expect(acts[1]).toMatchObject({ label:"Return B first", cardIds:["b","a","c"] });
+    expect(acts.filter((a)=>a.action==="resolveLookOrderChoice")).toEqual([
+      expect.objectContaining({ label:"Return A then B then C", cardIds:["a","b","c"] }),
+      expect.objectContaining({ label:"Return A then C then B", cardIds:["a","c","b"] }),
+      expect.objectContaining({ label:"Return B then A then C", cardIds:["b","a","c"] }),
+      expect.objectContaining({ label:"Return B then C then A", cardIds:["b","c","a"] }),
+      expect.objectContaining({ label:"Return C then A then B", cardIds:["c","a","b"] }),
+      expect.objectContaining({ label:"Return C then B then A", cardIds:["c","b","a"] })
+    ]);
   });
   it("does not expose direct market Acquire as a normal player action",()=> {
     expect(getAvailableActionsForSelection({kind:"market_slot",id:"m1"},G,ctx).some(a=>a.action==="acquire")).toBe(false);
@@ -175,6 +210,29 @@ describe("selection model", () => {
     const source=fs.readFileSync(path.resolve(import.meta.dirname, "../../../app/src/ui/layout/BoardLayout.tsx"), "utf8");
     expect(source).not.toContain("moves.acquireCard");
     expect(source).not.toContain('a.action === "acquire"');
+  });
+  it("does not expose generic Garrison, Recall, or Abandon as normal player actions",()=> {
+    const withRegion = {
+      ...G,
+      cardDb: {...G.cardDb, r1:{id:"r1",displayName:"Region",type:"region",cardType:"region",suit:"region"}},
+      players:{"0":{...G.players["0"],hand:["c1"],playArea:["r1"]}}
+    };
+    const handActions=getAvailableActionsForSelection({kind:"hand_card",id:"c1"},withRegion,ctx);
+    const regionActions=getAvailableActionsForSelection({kind:"play_area_card",id:"r1"},withRegion,ctx);
+    expect(handActions.some((a)=>a.action==="garrison")).toBe(false);
+    expect(regionActions.some((a)=>a.action==="recallRegion")).toBe(false);
+    expect(regionActions.some((a)=>a.action==="abandonRegion")).toBe(false);
+  });
+  it("does not route UI actions through unpublished generic region/garrison moves",()=> {
+    const source=fs.readFileSync(path.resolve(import.meta.dirname, "../../../app/src/ui/layout/BoardLayout.tsx"), "utf8");
+    expect(source).not.toContain("moves.garrisonCard");
+    expect(source).not.toContain("moves.recallRegion");
+    expect(source).not.toContain("moves.abandonRegion");
+  });
+  it("routes reactive Exhaust pending actions through the published move map",()=> {
+    const source=fs.readFileSync(path.resolve(import.meta.dirname, "../../../app/src/ui/layout/BoardLayout.tsx"), "utf8");
+    expect(source).toContain("moves.resolveReactiveExhaustChoice");
+    expect(source).toContain("moves.skipReactiveExhaustChoice");
   });
   it("still hides direct market acquisition when no Action tokens are available",()=> {
     const noAction = {...G,players:{"0":{...G.players["0"],actionsRemaining:0,actionTokensAvailable:0,resources:{materials:3}}}};
@@ -197,6 +255,12 @@ describe("selection model", () => {
     expect(revolt).toMatchObject({ label:"Revolt Return", enabled:true, cardId:"u1" });
   });
   it("disabled action includes reason",()=> { const acts=getAvailableActionsForSelection({kind:"hand_card",id:"not"},G,ctx); const play=acts.find(a=>a.label==="Play Card"); expect(play?.enabled).toBe(false); expect(play?.reason).toBeTruthy(); });
+  it("disables normal play when no Action token is available",()=> {
+    const noToken = {...G,players:{"0":{...G.players["0"],actionsRemaining:1,actionTokensAvailable:0}}};
+    const play=getAvailableActionsForSelection({kind:"hand_card",id:"c1"},noToken,ctx).find(a=>a.action==="play");
+    expect(play?.enabled).toBe(false);
+    expect(play?.reason).toBe("Card is not in hand or no action tokens available");
+  });
   it("disables normal play outside Activate turns and does not expose direct market acquisition",()=> {
     const innovate = {...G,currentTurnType:"innovate"};
     const play=getAvailableActionsForSelection({kind:"hand_card",id:"c1"},innovate,ctx).find(a=>a.action==="play");
@@ -362,6 +426,21 @@ describe("selection model", () => {
     expect(acts[0]).toMatchObject({ label:"Return Unrest", enabled:true, cardId:"u1" });
     expect(acts[1].enabled).toBe(false);
   });
+  it("pending Return Fame choice actions expose eligible Fame cards",()=> {
+    const withFame = {
+      ...G,
+      cardDb: {...G.cardDb, f1:{id:"f1",displayName:"Fame",type:"fame",cardType:"fame",suit:"fame"}},
+      pendingReturnFameChoice:{playerId:"0",sourceCardId:"return_fame_source",cardIds:["f1"],sourceZones:["discard"]}
+    };
+    const acts=getAvailableActionsForSelection(null,withFame,ctx);
+    expect(getPendingUiState(withFame,ctx)).toMatchObject({
+      title:"Pending Return Fame",
+      detail:"Choose 1 card"
+    });
+    expect(acts.map((a)=>a.action)).toEqual(["resolveReturnFameChoice","endTurn"]);
+    expect(acts[0]).toMatchObject({ label:"Return Fame", enabled:true, cardId:"f1" });
+    expect(acts[1].enabled).toBe(false);
+  });
   it("pending selected discard-cost actions expose card combinations",()=> {
     const withDiscard = {
       ...G,
@@ -403,6 +482,22 @@ describe("selection model", () => {
     expect(acts.map((a)=>a.action)).toEqual(["resolveReturnExhaustTokenChoice","endTurn"]);
     expect(acts[0]).toMatchObject({ label:"Return Exhaust token from Spent Forum", enabled:true, cardId:"e1" });
     expect(acts[1].enabled).toBe(false);
+  });
+  it("pending reactive Exhaust choice actions expose eligible Exhaust cards and skip",()=> {
+    const withReactiveExhaust = {
+      ...G,
+      cardDb: {...G.cardDb, e1:{id:"e1",displayName:"Watchtower",type:"in_play",cardType:"in_play"}},
+      pendingReactiveExhaustChoice:{playerId:"0",resolvingPlayerId:"0",sourceCardId:"reactive_source",cardIds:["e1"],trigger:"after_gain_resource"}
+    };
+    const acts=getAvailableActionsForSelection(null,withReactiveExhaust,ctx);
+    expect(getPendingUiState(withReactiveExhaust,ctx)).toMatchObject({
+      title:"Pending Reactive Exhaust",
+      detail:"Choose 1 card, or skip"
+    });
+    expect(acts.map((a)=>a.action)).toEqual(["resolveReactiveExhaustChoice","skipReactiveExhaustChoice","endTurn"]);
+    expect(acts[0]).toMatchObject({ label:"Exhaust Watchtower", enabled:true, cardId:"e1" });
+    expect(acts[1]).toMatchObject({ label:"Skip Reactive Exhaust", enabled:true });
+    expect(acts[2].enabled).toBe(false);
   });
   it("pending Give Card choice actions expose card and recipient pairs",()=> {
     const acts=getAvailableActionsForSelection(null,{...G,pendingGiveCardChoice:{playerId:"0",sourceCardId:"give_source",cardIds:["c1"],recipientPlayerIds:["1","2"]}},ctx);
@@ -471,6 +566,24 @@ describe("selection model", () => {
     expect(acts[1]).toMatchObject({ label:"Keep Hand", enabled:true });
     expect(acts[2].enabled).toBe(false);
   });
+  it("pending cleanup discard exposes multi-card voluntary discard combinations",()=> {
+    const withCleanup = {
+      ...G,
+      cardDb: {...G.cardDb,c2:{id:"c2",displayName:"Card2"}},
+      pendingCleanupDiscardChoice:{playerId:"0",cardIds:["c1","c2"]}
+    };
+    const acts=getAvailableActionsForSelection(null, withCleanup, ctx);
+    expect(acts.filter((a)=>a.action==="resolveCleanupDiscard")).toEqual([
+      expect.objectContaining({ label:"Keep Hand", cardIds:[] }),
+      expect.objectContaining({ label:"Discard Card1", cardIds:["c1"] }),
+      expect.objectContaining({ label:"Discard Card2", cardIds:["c2"] }),
+      expect.objectContaining({ label:"Discard Card1, Card2", cardIds:["c1","c2"] })
+    ]);
+  });
+  it("routes cleanup discard choices through the published cardIds move payload",()=> {
+    const source=fs.readFileSync(path.resolve(import.meta.dirname, "../../../app/src/ui/layout/BoardLayout.tsx"), "utf8");
+    expect(source).toContain("moves.resolveCleanupDiscard?.(a.cardIds");
+  });
   it("pending cleanup market resource exposes eligible market cards",()=> {
     const acts=getAvailableActionsForSelection(null, {...G,pendingCleanupMarketResourceChoice:{playerId:"0",cardIds:["m1"]}}, ctx);
     expect(acts.map((a)=>a.action)).toEqual(["resolveCleanupMarketResource","endTurn"]);
@@ -497,15 +610,15 @@ describe("selection model", () => {
     const acquire=getAvailableActionsForSelection({kind:"market_slot",id:"m2"},structured,ctx).find(a=>a.action==="acquire");
     expect(acquire).toBeUndefined();
   });
-  it("offers recall and abandon for a region in play",()=> {
+  it("does not offer generic recall or abandon for a region in play",()=> {
     const withRegion = {
       ...G,
       cardDb: {...G.cardDb, r1:{id:"r1",displayName:"Region",type:"region",cardType:"region",suit:"region"}},
       players:{"0":{...G.players["0"],playArea:["r1"]}}
     };
     const acts=getAvailableActionsForSelection({kind:"play_area_card",id:"r1"},withRegion,ctx);
-    expect(acts.some((a)=>a.action==="recallRegion" && a.enabled)).toBe(true);
-    expect(acts.some((a)=>a.action==="abandonRegion" && a.enabled)).toBe(true);
+    expect(acts.some((a)=>a.action==="recallRegion")).toBe(false);
+    expect(acts.some((a)=>a.action==="abandonRegion")).toBe(false);
   });
   it("offers exhaust for an exhaust ability in play when an Exhaust token is available",()=> {
     const withExhaust = {
@@ -522,10 +635,21 @@ describe("selection model", () => {
       options: { enabledExpansions: ["trade_routes"] },
       cardDb: {...G.cardDb, tr1:{id:"tr1",displayName:"Route",type:"trade_route",cardType:"trade_route",suit:"trade_route",effects:[{trigger:"on_play",op:"profit",effects:[]}]}},
       cardStates: { tr1: { resources: { goods: 3 } } },
-      players:{"0":{...G.players["0"],playArea:["tr1"],actionsRemaining:1}}
+      players:{"0":{...G.players["0"],playArea:["tr1"],actionsRemaining:1,actionTokensAvailable:1}}
     };
     const profit=getAvailableActionsForSelection({kind:"play_area_card",id:"tr1"},withRoute,ctx).find(a=>a.action==="profit");
     expect(profit).toMatchObject({ label:"Profit", enabled:true, cardId:"tr1" });
+  });
+  it("disables Profit when no Action token is available",()=> {
+    const withRoute = {
+      ...G,
+      options: { enabledExpansions: ["trade_routes"] },
+      cardDb: {...G.cardDb, tr1:{id:"tr1",displayName:"Route",type:"trade_route",cardType:"trade_route",suit:"trade_route",effects:[{trigger:"on_play",op:"profit",effects:[]}]}},
+      cardStates: { tr1: { resources: { goods: 3 } } },
+      players:{"0":{...G.players["0"],playArea:["tr1"],actionsRemaining:1,actionTokensAvailable:0}}
+    };
+    const profit=getAvailableActionsForSelection({kind:"play_area_card",id:"tr1"},withRoute,ctx).find(a=>a.action==="profit");
+    expect(profit).toMatchObject({ label:"Profit", enabled:false, reason:"No Action tokens available", cardId:"tr1" });
   });
   it("does not offer Profit when Trade Routes is disabled",()=> {
     const withRoute = {
@@ -570,14 +694,13 @@ describe("selection model", () => {
     expect(exhaust?.enabled).toBe(false);
     expect(exhaust?.reason).toBe("Card already exhausted");
   });
-  it("offers garrison for a hand card when a region is in play",()=> {
+  it("does not offer generic garrison for a hand card when a region is in play",()=> {
     const withRegion = {
       ...G,
       cardDb: {...G.cardDb, r1:{id:"r1",displayName:"Region",type:"region",cardType:"region",suit:"region"}},
       players:{"0":{...G.players["0"],hand:["c1"],playArea:["r1"]}}
     };
     const acts=getAvailableActionsForSelection({kind:"hand_card",id:"c1"},withRegion,ctx);
-    expect(acts.find((a)=>a.action==="garrison")?.cardId).toBe("c1");
-    expect(acts.find((a)=>a.action==="garrison")?.hostCardId).toBe("r1");
+    expect(acts.some((a)=>a.action==="garrison")).toBe(false);
   });
 });

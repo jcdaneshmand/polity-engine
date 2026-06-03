@@ -1,5 +1,5 @@
-import type { GameState } from "./state";
-import type { GameOptions } from "../options/gameOptions";
+import type { GameState, ResourceName } from "./state";
+import type { CampaignGameOutcome, GameOptions } from "../options/gameOptions";
 import type { ScoringOverride } from "../nations/nationRulesetTypes";
 import { runEffects } from "../cards/effectRunner";
 import { runNationHooks } from "../nations/nationRulesetHooks";
@@ -17,6 +17,40 @@ function cloneOptions(options: GameOptions | undefined): GameOptions | undefined
 
 function activeScoringOptions(G: GameState): GameOptions | undefined {
   return G.scoringOptions ?? G.options;
+}
+
+function buildCampaignOutcome(args: {
+  G: GameState;
+  humanPlayerId: string;
+  won: boolean;
+  score: number;
+  scoreKind: CampaignGameOutcome["scoreKind"];
+  botScore?: number;
+}): CampaignGameOutcome | undefined {
+  const options = activeScoringOptions(args.G);
+  const mode = options?.campaignMode;
+  const bot = args.G.solo?.bot;
+  if (!mode || !bot) return undefined;
+  const requiresCampaignChoice = args.won
+    || (mode === "supreme_ruler" && (options.campaignProgress?.setAsideCommonsCardIds.length ?? 0) > 0);
+  return {
+    mode,
+    won: args.won,
+    humanPlayerId: args.humanPlayerId,
+    botId: bot.botId,
+    botNationId: bot.botNationId,
+    difficulty: bot.difficulty,
+    score: args.score,
+    scoreKind: args.scoreKind,
+    ...(typeof args.botScore === "number" ? { botScore: args.botScore } : {}),
+    requiresCampaignChoice,
+    result: {
+      won: args.won,
+      botNationId: bot.botNationId,
+      difficulty: bot.difficulty,
+      score: args.score
+    }
+  };
 }
 
 function getZoneCards(G: GameState, playerId: string, zoneId: string): string[] {
@@ -46,21 +80,49 @@ function isTradeRouteCard(G: GameState, cardId: string): boolean {
   return card?.type === "trade_route" || card?.cardType === "trade_route" || card?.suit === "trade_route";
 }
 
-function countVariableFormula(G: GameState, playerId: string, formula: { op?: string; tag?: unknown; suit?: unknown; zones?: unknown; amountEach?: unknown; cap?: unknown }): number | undefined {
-  if (formula.op !== "count_cards" || typeof formula.amountEach !== "number") return undefined;
-  const zoneIds = Array.isArray(formula.zones) ? formula.zones.filter((zone): zone is string => typeof zone === "string") : ["hand", "playArea", "deck", "discard", "powerArea", ...actualScoredHistoryZoneIds(G, playerId)];
-  const count = zoneIds
-    .flatMap((zoneId) => getZoneCards(G, playerId, zoneId).map((cardId) => ({ cardId, zoneId })))
-    .filter(({ cardId: matchedCardId, zoneId }) => {
-      if (zoneId === "playArea" && isTradeRouteCard(G, matchedCardId)) return false;
-      const card = G.cardDb[matchedCardId];
-      if (!card) return false;
-      if (typeof formula.tag === "string" && !card.tags.includes(formula.tag)) return false;
-      if (typeof formula.suit === "string" && !cardHasSuitIcon(card, formula.suit as any)) return false;
-      return true;
-    }).length;
-  const score = count * formula.amountEach;
-  return typeof formula.cap === "number" ? Math.min(score, formula.cap) : Math.min(score, 10);
+function zoneCardsWithGarrisoned(G: GameState, playerId: string, zoneId: string): Array<{ cardId: string; zoneId: string }> {
+  const cards = getZoneCards(G, playerId, zoneId);
+  const garrisonedCards = cards.flatMap((hostId) => G.cardStates?.[hostId]?.garrisonedCardIds ?? []);
+  return [...cards, ...garrisonedCards].map((cardId) => ({ cardId, zoneId }));
+}
+
+function formulaCap(score: number, cap: unknown): number {
+  return typeof cap === "number" ? Math.min(score, cap) : Math.min(score, 10);
+}
+
+function countVariableFormula(
+  G: GameState,
+  playerId: string,
+  formula: { op?: string; tag?: unknown; suit?: unknown; zones?: unknown; resource?: unknown; resources?: unknown; amountEach?: unknown; denominator?: unknown; cap?: unknown }
+): number | undefined {
+  if (typeof formula.amountEach !== "number") return undefined;
+  if (formula.op === "count_cards") {
+    const zoneIds = Array.isArray(formula.zones) ? formula.zones.filter((zone): zone is string => typeof zone === "string") : ["hand", "playArea", "deck", "discard", "powerArea", ...actualScoredHistoryZoneIds(G, playerId)];
+    const count = zoneIds
+      .flatMap((zoneId) => zoneCardsWithGarrisoned(G, playerId, zoneId))
+      .filter(({ cardId: matchedCardId, zoneId }) => {
+        if (zoneId === "playArea" && isTradeRouteCard(G, matchedCardId)) return false;
+        const card = G.cardDb[matchedCardId];
+        if (!card) return false;
+        if (typeof formula.tag === "string" && !card.tags.includes(formula.tag)) return false;
+        if (typeof formula.suit === "string" && !cardHasSuitIcon(card, formula.suit as any)) return false;
+        return true;
+      }).length;
+    return formulaCap(count * formula.amountEach, formula.cap);
+  }
+  if (formula.op === "count_resources") {
+    const resourceIds = Array.isArray(formula.resources)
+      ? formula.resources.filter((resource): resource is ResourceName => typeof resource === "string")
+      : typeof formula.resource === "string"
+        ? [formula.resource as ResourceName]
+        : [];
+    if (resourceIds.length === 0) return undefined;
+    const p = G.players[playerId];
+    const total = resourceIds.reduce((sum, resource) => sum + (p.resources[resource] ?? 0), 0);
+    const units = typeof formula.denominator === "number" && formula.denominator > 0 ? Math.floor(total / formula.denominator) : total;
+    return formulaCap(units * formula.amountEach, formula.cap);
+  }
+  return undefined;
 }
 
 function capPositiveCardVp(value: number): number {
@@ -75,7 +137,7 @@ function cardVp(G: GameState, playerId: string, cardId: string, zoneId?: string)
       mode?: string;
       value?: unknown;
       condition?: { op?: string; zoneId?: unknown };
-      formula?: { op?: string; tag?: unknown; suit?: unknown; zones?: unknown; amountEach?: unknown; cap?: unknown };
+      formula?: { op?: string; tag?: unknown; suit?: unknown; zones?: unknown; resource?: unknown; resources?: unknown; amountEach?: unknown; denominator?: unknown; cap?: unknown };
       trueValue?: unknown;
       falseValue?: unknown;
     };
@@ -223,6 +285,7 @@ function hasPendingInterruption(G: GameState): boolean {
     ?? G.pendingTradeChoice
     ?? G.pendingDiscardChoice
     ?? G.pendingReturnUnrestChoice
+    ?? G.pendingReturnFameChoice
     ?? G.pendingPlaceOnDeckChoice
     ?? G.pendingReturnExhaustTokenChoice
     ?? G.pendingGiveCardChoice
@@ -231,6 +294,24 @@ function hasPendingInterruption(G: GameState): boolean {
     ?? G.pendingUnrestAllocationChoice
     ?? G.pendingSolsticeOrderChoice
     ?? G.pendingReactiveExhaustChoice
+    ?? G.pendingPlayCardResolution
+    ?? G.pendingPlayedCardResolution
+    ?? G.pendingAcquireCardResolution
+    ?? G.pendingAcquireEffectResolution
+    ?? G.pendingMarketMoveEffectResolution
+    ?? G.pendingMarketUnrestHookContinuation
+    ?? G.pendingNationHookContinuation
+    ?? G.pendingUnrestTakeContinuation
+    ?? G.pendingUnrestAllocationResolution
+    ?? G.pendingPostDevelopmentResolution
+    ?? G.pendingReshuffleResolution
+    ?? G.pendingAfterReshuffleEffects
+    ?? G.pendingReshuffleDraw
+    ?? G.pendingTurnEndCleanup
+    ?? G.pendingSolsticeContinuation
+    ?? G.pendingSolsticeRoundEnd
+    ?? G.pendingPracticeMarketExileBeforeCleanup
+    ?? G.pausedSolstice
   );
 }
 
@@ -286,7 +367,7 @@ function expandScoringReturnUnrestSources(G: GameState, hook: NonNullable<GameSt
   };
 }
 
-function applyCollapseTieBreakReturnUnrestHooks(G: GameState, playerIds: string[]): void {
+function applyCollapseTieBreakReturnUnrestHooks(G: GameState, playerIds: string[], randomNumber?: () => number): void {
   for (const playerId of playerIds) {
     const ruleset = G.activeNationRulesets?.[playerId];
     if (!ruleset) continue;
@@ -297,7 +378,7 @@ function applyCollapseTieBreakReturnUnrestHooks(G: GameState, playerIds: string[
     const originalHooks = ruleset.hookRules;
     ruleset.hookRules = eligibleHooks;
     try {
-      runNationHooks({ G, playerId, trigger: "before_scoring" });
+      runNationHooks({ G, playerId, trigger: "before_scoring", randomNumber });
     } finally {
       ruleset.hookRules = originalHooks;
     }
@@ -336,7 +417,7 @@ export function applyCollapseWinChecks(G: GameState, playerId: string, randomNum
   return true;
 }
 
-export function applyScoringLifecycleOnce(G: GameState, playerId: string): boolean {
+export function applyScoringLifecycleOnce(G: GameState, playerId: string, randomNumber?: () => number): boolean {
   const ruleset = G.activeNationRulesets?.[playerId];
   if (!ruleset) return true;
   const key = `${playerId}:${ruleset.nationId}:scoring_lifecycle:${G.round}`;
@@ -350,7 +431,7 @@ export function applyScoringLifecycleOnce(G: GameState, playerId: string): boole
 
   if (!pending) {
     ruleset.hookRules = ruleset.hookRules.map((hook) => expandScoringReturnUnrestSources(G, hook, playerId));
-    if (!runNationHooks({ G, playerId, trigger: "before_scoring" })) return false;
+    if (!runNationHooks({ G, playerId, trigger: "before_scoring", randomNumber })) return false;
     if (G.gameover) return false;
     if (hasPendingInterruption(G)) {
       G.pendingScoringLifecycle = { playerId, stage: "overrides", overrideIndex: 0, lifecycleKey: key };
@@ -364,7 +445,7 @@ export function applyScoringLifecycleOnce(G: GameState, playerId: string): boole
       const ov = overrides[index];
       if (G.gameover) return false;
       logOverride(G, playerId, ruleset.nationId, "scoring", ov.op);
-      if (ov.op === "custom_scoring_effect") runEffects({ G, playerId, enabledExpansions: G.options?.enabledExpansions }, ov.effect as any);
+      if (ov.op === "custom_scoring_effect") runEffects({ G, playerId, enabledExpansions: G.options?.enabledExpansions, randomNumber }, ov.effect as any);
       if (hasPendingInterruption(G)) {
         G.pendingScoringLifecycle = { playerId, stage: "overrides", overrideIndex: index + 1, lifecycleKey: key };
         return false;
@@ -374,7 +455,7 @@ export function applyScoringLifecycleOnce(G: GameState, playerId: string): boole
   }
 
   if (stage === "collapse_checks") {
-    const collapseComplete = applyCollapseWinChecks(G, playerId);
+    const collapseComplete = applyCollapseWinChecks(G, playerId, randomNumber);
     if (G.gameover) return false;
     if (!collapseComplete || hasPendingInterruption(G)) {
       G.pendingScoringLifecycle = { playerId, stage: "collapse_checks", overrideIndex: 0, lifecycleKey: key };
@@ -384,7 +465,7 @@ export function applyScoringLifecycleOnce(G: GameState, playerId: string): boole
   }
 
   if (stage === "after_scoring") {
-    if (!runNationHooks({ G, playerId, trigger: "after_scoring" })) return false;
+    if (!runNationHooks({ G, playerId, trigger: "after_scoring", randomNumber })) return false;
     if (G.gameover) return false;
     if (hasPendingInterruption(G)) {
       G.pendingScoringLifecycle = { playerId, stage: "complete", overrideIndex: 0, lifecycleKey: key };
@@ -418,12 +499,21 @@ export function triggerCollapse(G: GameState, reason: string, triggeredBy?: stri
   }
   if (activeScoringOptions(G)?.mode === "solo" && G.solo) {
     const humanPlayerId = Object.keys(G.players)[0] ?? "0";
+    const humanCollapseScore = collapseUnrestCount(G, humanPlayerId);
     G.scoring = undefined;
     G.gameover = {
       winner: G.solo.bot.botId,
       reason: `collapse:${reason}`,
-      scores: { [humanPlayerId]: collapseUnrestCount(G, humanPlayerId) }
+      scores: { [humanPlayerId]: humanCollapseScore }
     };
+    const campaignOutcome = buildCampaignOutcome({
+      G,
+      humanPlayerId,
+      won: false,
+      score: humanCollapseScore,
+      scoreKind: "collapse_unrest"
+    });
+    if (campaignOutcome) G.gameover.campaignOutcome = campaignOutcome;
     G.log.push({ round: G.round, playerId: triggeredBy ?? "collapse", message: `CollapseTriggered(${reason})` });
     G.log.push({ round: G.round, playerId: "collapse", message: `CollapseFinalized(winner=${G.gameover.winner})` });
     return;
@@ -452,7 +542,7 @@ export function triggerCollapse(G: GameState, reason: string, triggeredBy?: stri
   G.log.push({ round: G.round, playerId: "collapse", message: `CollapseFinalized(winner=${G.gameover.winner})` });
 }
 
-export function finalizeNormalScoring(G: GameState): void {
+export function finalizeNormalScoring(G: GameState, randomNumber?: () => number): void {
   if (G.gameover || !G.scoring) return;
   const pending = G.pendingScoringFinalization;
   const playerIds = pending?.playerIds ?? Object.keys(G.players);
@@ -460,7 +550,7 @@ export function finalizeNormalScoring(G: GameState): void {
   G.pendingScoringFinalization = undefined;
   for (let index = pending?.nextPlayerIndex ?? 0; index < playerIds.length; index += 1) {
     const playerId = playerIds[index];
-    const score = scorePlayer(G, playerId);
+    const score = scorePlayer(G, playerId, randomNumber);
     if (G.gameover) return;
     if (hasPendingInterruption(G) || G.pendingScoringLifecycle) {
       G.pendingScoringFinalization = { playerIds, scores, nextPlayerIndex: index };
@@ -481,6 +571,15 @@ export function finalizeNormalScoring(G: GameState): void {
       reason: `normal_scoring:${reason}`,
       scores
     };
+    const campaignOutcome = buildCampaignOutcome({
+      G,
+      humanPlayerId,
+      won: humanScore > botScore,
+      score: humanScore,
+      scoreKind: "victory_points",
+      botScore
+    });
+    if (campaignOutcome) G.gameover.campaignOutcome = campaignOutcome;
     G.log.push({ round: G.round, playerId: "scoring", message: `ScoringFinalized(winner=${G.gameover.winner})` });
     return;
   }
@@ -497,17 +596,17 @@ export function finalizeNormalScoring(G: GameState): void {
   G.log.push({ round: G.round, playerId: "scoring", message: `ScoringFinalized(winner=${G.gameover.winner})` });
 }
 
-export function continuePendingScoringFinalization(G: GameState): void {
+export function continuePendingScoringFinalization(G: GameState, randomNumber?: () => number): void {
   if (!G.pendingScoringFinalization || hasPendingInterruption(G) || G.gameover) return;
-  finalizeNormalScoring(G);
+  finalizeNormalScoring(G, randomNumber);
 }
 
-export function advanceScoringAtRoundBoundary(G: GameState): void {
+export function advanceScoringAtRoundBoundary(G: GameState, randomNumber?: () => number): void {
   if (!G.scoring || G.gameover) return;
   const options = activeScoringOptions(G);
   if (G.scoring.phase === "finish_current_round") {
     if (options?.enabledVariants?.includes("short_game") || options?.mode === "practice") {
-      finalizeNormalScoring(G);
+      finalizeNormalScoring(G, randomNumber);
       return;
     }
     G.scoring = { ...G.scoring, phase: "final_round", finalRound: G.round };
@@ -515,12 +614,12 @@ export function advanceScoringAtRoundBoundary(G: GameState): void {
     return;
   }
   if (G.scoring.phase === "final_round" && G.scoring.finalRound !== undefined && G.round > G.scoring.finalRound) {
-    finalizeNormalScoring(G);
+    finalizeNormalScoring(G, randomNumber);
   }
 }
 
-export function scorePlayer(G: GameState, playerId: string): number {
-  if (!applyScoringLifecycleOnce(G, playerId)) return 0;
+export function scorePlayer(G: GameState, playerId: string, randomNumber?: () => number): number {
+  if (!applyScoringLifecycleOnce(G, playerId, randomNumber)) return 0;
   return calculatePlayerScore(G, playerId);
 }
 

@@ -77,6 +77,7 @@ function hasPendingInterruption(G: GameState): boolean {
     ?? G.pendingTradeChoice
     ?? G.pendingDiscardChoice
     ?? G.pendingReturnUnrestChoice
+    ?? G.pendingReturnFameChoice
     ?? G.pendingPlaceOnDeckChoice
     ?? G.pendingReturnExhaustTokenChoice
     ?? G.pendingGiveCardChoice
@@ -84,6 +85,21 @@ function hasPendingInterruption(G: GameState): boolean {
     ?? G.pendingLookOrderChoice
     ?? G.pendingUnrestAllocationChoice
     ?? G.pendingReactiveExhaustChoice
+    ?? G.pendingPlayCardResolution
+    ?? G.pendingPlayedCardResolution
+    ?? G.pendingAcquireCardResolution
+    ?? G.pendingAcquireEffectResolution
+    ?? G.pendingMarketMoveEffectResolution
+    ?? G.pendingMarketUnrestHookContinuation
+    ?? G.pendingUnrestTakeContinuation
+    ?? G.pendingUnrestAllocationResolution
+    ?? G.pendingScoringFinalization
+    ?? G.pendingScoringLifecycle
+    ?? G.pendingCollapseLifecycle
+    ?? G.pendingSolsticeContinuation
+    ?? G.pendingSolsticeRoundEnd
+    ?? G.pendingPracticeMarketExileBeforeCleanup
+    ?? G.pausedSolstice
   );
 }
 
@@ -134,9 +150,9 @@ function canPayDevelopmentCost(G: GameState, playerId: string, cardId: string): 
   return canPayResourceCosts(G, playerId, cost);
 }
 
-function payDevelopmentCost(G: GameState, playerId: string, cardId: string, payment?: ResourceCost): boolean {
+function payDevelopmentCost(G: GameState, playerId: string, cardId: string, payment?: ResourceCost, randomNumber?: () => number): boolean {
   const cost = G.cardDb[cardId]?.developmentCost ?? {};
-  return payResourceCosts(G, playerId, cost, payment);
+  return payResourceCosts(G, playerId, cost, payment, randomNumber);
 }
 
 function runAfterReshuffleEffects(G: GameState, playerId: string, randomNumber: (() => number) | undefined, resumeDrawCount: number, startOverrideIndex = 0): boolean {
@@ -321,14 +337,14 @@ export function resolvePendingDevelopmentChoice(G: GameState, playerId: string, 
   const snapshot = cloneGameState(G);
   const resumeDrawCount = pending.resumeDrawCount;
 
-  if (paysDevelopmentCost && !payDevelopmentCost(G, playerId, cardId, payment)) return false;
+  if (paysDevelopmentCost && !payDevelopmentCost(G, playerId, cardId, payment, randomNumber)) return false;
   G.pendingDevelopmentChoice = undefined;
   p.developmentArea.splice(index, 1);
   p.discard.push(cardId);
   if (usesProgressionToken) spendProgressionToken(p, "developmentArea");
   G.log.push({ round: G.round, playerId, message: `DevelopmentResolved(${cardId})` });
   if (p.developmentArea.length === 0) triggerScoring(G, "development_area_empty", playerId);
-  if (!runNationHooks({ G, playerId, trigger: "after_develop", payload: { cardId } })) return false;
+  if (!runNationHooks({ G, playerId, trigger: "after_develop", payload: { cardId }, randomNumber })) return false;
   if (G.gameover) return true;
   if (hasPendingInterruption(G)) {
     G.pendingPostDevelopmentResolution = { playerId, cardId, resumeDrawCount, resumeBehavior: pending.resumeBehavior, rollbackSnapshot: snapshot };
@@ -360,7 +376,17 @@ export function resolvePendingShortGameDevelopmentExileChoice(G: GameState, play
   p.exile.push(cardId);
   G.pendingShortGameDevelopmentExileChoice = undefined;
   G.log.push({ round: G.round, playerId, message: `ShortGameDevelopmentExiled(${cardId})` });
-  finishReshuffleAfterDevelopmentDecision(G, playerId, randomNumber, pending.resumeDrawCount);
+  if (pending.resumeBehavior !== "none") finishReshuffleAfterDevelopmentDecision(G, playerId, randomNumber, pending.resumeDrawCount);
+  return true;
+}
+
+export function continuePendingShortGameDevelopmentExileQueue(G: GameState): boolean {
+  if (G.pendingShortGameDevelopmentExileChoice) return false;
+  const next = G.pendingShortGameDevelopmentExileQueue?.shift();
+  if (!next) return false;
+  G.pendingShortGameDevelopmentExileChoice = next;
+  G.log.push({ round: G.round, playerId: next.playerId, message: `ShortGameDevelopmentExilePending(options=${next.cardIds.length})` });
+  if (G.pendingShortGameDevelopmentExileQueue?.length === 0) G.pendingShortGameDevelopmentExileQueue = undefined;
   return true;
 }
 

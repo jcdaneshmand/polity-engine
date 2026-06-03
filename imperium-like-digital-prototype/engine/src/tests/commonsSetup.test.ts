@@ -61,6 +61,34 @@ describe("commons setup", () => {
     expect(G.cardDb.multiplayer_only).toBeUndefined();
   });
 
+  it("Supreme Ruler campaign setup includes campaign-extra solo Commons cards", () => {
+    const cards = cardDb([
+      card({ id: "solo_base", allowedModes: ["solo"] }),
+      card({ id: "supreme_extra", allowedModes: ["solo"], tags: ["supreme_ruler_campaign_extra"] }),
+      card({ id: "starter", ownership: "nation", startingLocation: "draw_deck" }),
+      card({ id: "bot_region", suit: "region", cardType: "attack", ownership: "bot", startingLocation: "bot_deck" })
+    ]);
+    const commonArgs = {
+      playerNationIds: { "0": "test_nation_alpha" },
+      soloBotNationId: "test_nation_alpha",
+      cardDb: cards,
+      nationDb
+    };
+
+    const normal = createInitialGameStateFromPipeline({
+      ...commonArgs,
+      options: { playerCount: 1, mode: "solo", enabledExpansions: [], enabledVariants: [], soloDifficulty: "chieftain", commonsSetId: "classics", replacementPolicy: "none" }
+    });
+    const supreme = createInitialGameStateFromPipeline({
+      ...commonArgs,
+      options: { playerCount: 1, mode: "solo", enabledExpansions: [], enabledVariants: [], soloDifficulty: "chieftain", campaignMode: "supreme_ruler", commonsSetId: "classics", replacementPolicy: "none" }
+    });
+
+    expect(normal.setupReport?.commonsSetup?.selectedCommonsCards).toEqual(["solo_base"]);
+    expect(normal.setupReport?.commonsSetup?.removedForVariant).toEqual(["supreme_extra"]);
+    expect(supreme.setupReport?.commonsSetup?.selectedCommonsCards).toEqual(["solo_base", "supreme_extra"]);
+  });
+
   it("practice mode uses effective count 2", () => {
     const G = createInitialGameStateFromPipeline({
       options: { playerCount: 1, mode: "practice", enabledExpansions: [], enabledVariants: [], commonsSetId: "classics", replacementPolicy: "none" },

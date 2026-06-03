@@ -1,13 +1,35 @@
 import type { GameState } from "../game/state";
 import { placeMarketResource } from "../game/marketResources";
 import { runBotCleanup } from "./botCleanup";
-import { applyBotEffect, resolveBotCard } from "./botStateTableResolver";
-import { resolveBotTradeRoutesEndOfTurn } from "./botTradeRoutesResolver";
+import { applyBotEffect, continuePendingBotRowContinuation, resolveBotCard } from "./botStateTableResolver";
+import { continuePendingBotTradeRouteContinuation, resolveBotTradeRoutesEndOfTurn } from "./botTradeRoutesResolver";
 import { getResolvableBotSlots, revealSlotCard, rollAndBlockSlot } from "./botSlots";
-import type { BotSlot } from "./botTypes";
+import type { BotSlot, BotState } from "./botTypes";
 import type { BotEffectOp } from "./botEffectOps";
 
-function finishBotTurn(G: GameState, randomNumber?: () => number): void {
+function executeBotCustomCleanupEffects(G: GameState, bot: BotState, effects: BotEffectOp[], startIndex: number, randomNumber?: () => number): void {
+  const table = G.solo?.botStateTables[bot.botStateTableId];
+  if (!G.solo || !table) return;
+  for (let index = startIndex; index < effects.length; index += 1) {
+    applyBotEffect(G, bot, table, "bot_cleanup", effects[index], { randomNumber });
+    if (G.gameover) return;
+    if (hasPendingInterruption(G)) {
+      G.solo.pendingBotCustomCleanupContinuation = { effects, nextEffectIndex: index + 1 };
+      G.solo.pausedBotTurn = { remainingSlotNumbers: [], finishAfterCustomCleanup: true };
+      G.log.push({ round: G.round, playerId: bot.botId, message: "BotTurnPaused(pending_choice/remaining=0)" });
+      return;
+    }
+  }
+}
+
+function continuePendingBotCustomCleanupContinuation(G: GameState, bot: BotState, randomNumber?: () => number): void {
+  const pending = G.solo?.pendingBotCustomCleanupContinuation;
+  if (!G.solo || !pending || G.gameover || hasPendingInterruption(G)) return;
+  G.solo.pendingBotCustomCleanupContinuation = undefined;
+  executeBotCustomCleanupEffects(G, bot, pending.effects, pending.nextEffectIndex, randomNumber);
+}
+
+function finishBotTurn(G: GameState, randomNumber?: () => number, options?: { skipTradeRoutes?: boolean }): void {
   if (!G.solo) return;
   const bot = G.solo.bot;
   const marketCardId = bot.unresolvedSlot ? G.market[bot.unresolvedSlot - 1] : undefined;
@@ -15,15 +37,17 @@ function finishBotTurn(G: GameState, randomNumber?: () => number): void {
   if (marketCardId && cleanupResource.count > 0) {
     placeMarketResource(G, { playerId: bot.botId, cardId: marketCardId, resource: cleanupResource.resource, amount: cleanupResource.count });
   }
-  if (G.options?.enabledExpansions.includes("trade_routes")) resolveBotTradeRoutesEndOfTurn(G, bot);
-  runBotCleanup(bot, { G, randomNumber });
-  const table = G.solo.botStateTables[bot.botStateTableId];
-  if (table) {
-    for (const effect of bot.customCleanupEffects ?? []) {
-      applyBotEffect(G, bot, table, "bot_cleanup", effect as BotEffectOp, { randomNumber });
-      if (G.gameover) break;
+  if (!options?.skipTradeRoutes && G.options?.enabledExpansions.includes("trade_routes")) {
+    resolveBotTradeRoutesEndOfTurn(G, bot, randomNumber);
+    if (hasPendingInterruption(G)) {
+      G.solo.pausedBotTurn = { remainingSlotNumbers: [], finishAfterTradeRoutes: true };
+      G.log.push({ round: G.round, playerId: bot.botId, message: "BotTurnPaused(pending_choice/remaining=0)" });
+      return;
     }
   }
+  runBotCleanup(bot, { G, randomNumber });
+  executeBotCustomCleanupEffects(G, bot, (bot.customCleanupEffects ?? []) as BotEffectOp[], 0, randomNumber);
+  if (G.gameover || hasPendingInterruption(G)) return;
   G.log.push(...bot.botLog.splice(0));
 }
 
@@ -43,14 +67,38 @@ function hasPendingInterruption(G: GameState): boolean {
     ?? G.pendingTradeChoice
     ?? G.pendingDiscardChoice
     ?? G.pendingReturnUnrestChoice
+    ?? G.pendingReturnFameChoice
     ?? G.pendingPlaceOnDeckChoice
+    ?? G.pendingReturnExhaustTokenChoice
     ?? G.pendingGiveCardChoice
     ?? G.pendingSwapChoice
+    ?? G.pendingLookOrderChoice
     ?? G.pendingUnrestAllocationChoice
     ?? G.pendingSolsticeOrderChoice
     ?? G.pendingCleanupMarketResourceChoice
     ?? G.pendingCleanupDiscardChoice
     ?? G.pendingReactiveExhaustChoice
+    ?? G.pendingPlayCardResolution
+    ?? G.pendingPlayedCardResolution
+    ?? G.pendingAcquireCardResolution
+    ?? G.pendingAcquireEffectResolution
+    ?? G.pendingMarketMoveEffectResolution
+    ?? G.pendingMarketUnrestHookContinuation
+    ?? G.pendingNationHookContinuation
+    ?? G.pendingUnrestTakeContinuation
+    ?? G.pendingUnrestAllocationResolution
+    ?? G.pendingPostDevelopmentResolution
+    ?? G.pendingReshuffleResolution
+    ?? G.pendingAfterReshuffleEffects
+    ?? G.pendingReshuffleDraw
+    ?? G.pendingTurnEndCleanup
+    ?? G.pendingScoringFinalization
+    ?? G.pendingScoringLifecycle
+    ?? G.pendingCollapseLifecycle
+    ?? G.pendingSolsticeContinuation
+    ?? G.pendingSolsticeRoundEnd
+    ?? G.pendingPracticeMarketExileBeforeCleanup
+    ?? G.pausedSolstice
   );
 }
 
@@ -101,8 +149,33 @@ export function runBotTurn(args: { G: GameState; rollDie?: () => number; randomN
 
 export function continuePausedBotTurn(G: GameState, randomNumber?: () => number): void {
   const paused = G.solo?.pausedBotTurn;
-  if (!G.solo || !paused || hasPendingInterruption(G)) return;
+  if (!G.solo || hasPendingInterruption(G)) return;
   const bot = G.solo.bot;
+  if (G.solo.pendingBotTradeRouteContinuation) {
+    continuePendingBotTradeRouteContinuation(G, bot, randomNumber);
+    if (G.gameover || hasPendingInterruption(G) || G.solo.pendingBotTradeRouteContinuation) return;
+  }
+  if (!paused) return;
+  if (G.solo.pendingBotRowContinuation) {
+    continuePendingBotRowContinuation(G, bot, randomNumber);
+    if (G.gameover || hasPendingInterruption(G) || G.solo.pendingBotRowContinuation) return;
+  }
+  if (G.solo.pendingBotCustomCleanupContinuation) {
+    continuePendingBotCustomCleanupContinuation(G, bot, randomNumber);
+    if (G.gameover || hasPendingInterruption(G) || G.solo.pendingBotCustomCleanupContinuation) return;
+  }
+  if (paused.finishAfterCustomCleanup) {
+    G.solo.pausedBotTurn = undefined;
+    G.log.push({ round: G.round, playerId: bot.botId, message: "BotTurnResumed" });
+    G.log.push(...bot.botLog.splice(0));
+    return;
+  }
+  if (paused.finishAfterTradeRoutes) {
+    G.solo.pausedBotTurn = undefined;
+    G.log.push({ round: G.round, playerId: bot.botId, message: "BotTurnResumed" });
+    finishBotTurn(G, randomNumber, { skipTradeRoutes: true });
+    return;
+  }
   const slots = paused.remainingSlotNumbers
     .map((slotNumber) => bot.slots[slotNumber])
     .filter((slot): slot is BotSlot => Boolean(slot?.cardId && !slot.blockedByDie));

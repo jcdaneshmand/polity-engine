@@ -56,7 +56,7 @@ export const csvColumns = [
 
 export const suitOptions = ["", "region", "uncivilized", "civilized", "tributary", "fame", "unrest", "power", "trade_route", "none", "multi"];
 export const suitIconOptions = ["region", "uncivilized", "civilized", "tributary", "fame", "unrest", "power", "trade_route"];
-export const cardTypeOptions = ["", "action", "in_play", "attack", "power", "state", "development", "accession", "nation", "region", "unrest", "fame", "trade_route", "bot_state", "other"];
+export const cardTypeOptions = ["", "action", "unit", "technology", "legacy", "in_play", "attack", "power", "state", "development", "accession", "nation", "region", "unrest", "fame", "trade_route", "bot_state", "other"];
 export const startOptions = ["draw_deck", "nation_deck", "accession", "development_area", "in_play", "supply", "market", "fame_deck", "unrest_pile", "bot_deck", "box", "other"];
 export const playerCountOptions: Array<{ value: CardEntryDraft["playerCountRequirement"]; label: string }> = [
   { value: "", label: "Any" },

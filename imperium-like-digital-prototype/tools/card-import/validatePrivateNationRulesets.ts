@@ -1,5 +1,7 @@
 import { parseCsvFile } from "./csvParser";
 import type { NationRulesetImportReport, PrivateNationRulesetCsvRow } from "./nationRulesetCsvTypes";
+import { normalizeNationRuleset } from "./normalizeNationRuleset";
+import { validateNationRuleset } from "../../engine/src/nations/nationRulesetValidation";
 
 export function validatePrivateNationRulesetsRows(rows: PrivateNationRulesetCsvRow[]): NationRulesetImportReport {
   const errors: NationRulesetImportReport["errors"] = [];
@@ -10,6 +12,24 @@ export function validatePrivateNationRulesetsRows(rows: PrivateNationRulesetCsvR
     if (!r.public_placeholder_name?.trim()) errors.push({level:"fatal",row,field:"public_placeholder_name",message:"public_placeholder_name is required"});
     if (seen.has(r.nation_id)) errors.push({level:"fatal",row,field:"nation_id",message:"duplicate nation_id"});
     seen.add(r.nation_id);
+    try {
+      const normalized = normalizeNationRuleset(r);
+      validateNationRuleset(normalized).forEach((issue) => {
+        errors.push({
+          level: "fatal",
+          row,
+          field: issue.field,
+          message: `[${issue.nationId}] ${issue.reason}`,
+        });
+      });
+    } catch (err) {
+      errors.push({
+        level: "fatal",
+        row,
+        field: "*_json",
+        message: `normalization failed: ${(err as Error).message}`,
+      });
+    }
     if ((r.implemented||"").toLowerCase()==="true" && (r.tested||"").toLowerCase()!=="true") errors.push({level:"warning",row,field:"tested",message:"implemented=true but tested=false"});
   });
   return { errors, counts:{ rows:rows.length, fatal:errors.filter(e=>e.level==='fatal').length, warnings:errors.filter(e=>e.level==='warning').length } };

@@ -1,4 +1,4 @@
-import type { GameState, ResourceName, Suit } from "./state";
+import type { GameState, ResourceGainSource, ResourceName, Suit } from "./state";
 import { collectMarketResources, returnMarketUnrest } from "./marketResources";
 import { deckForSuit, drawMarketDeckCard, refillMarketSlot } from "./marketRefill";
 import { gainPlayerResource } from "./resources";
@@ -12,6 +12,7 @@ export interface BreakThroughResult {
   gainedCardIds: string[];
   fallbackResourceGains: Partial<Record<ResourceName, number>>;
   marketResourceGains: Partial<Record<ResourceName, number>>;
+  marketResourceGainSources: ResourceGainSource[];
 }
 
 function cardMatchesSuit(G: GameState, playerId: string, cardId: string, suit: Suit): boolean {
@@ -35,7 +36,12 @@ function addResourceGains(target: Partial<Record<ResourceName, number>>, gained:
   }
 }
 
-function breakThroughFromMarket(G: GameState, playerId: string, suit: Suit, marketResourceGains: Partial<Record<ResourceName, number>>, cardId?: string): string | undefined {
+function addResourceGainSource(target: ResourceGainSource[], sourceCardId: string, gained: Partial<Record<ResourceName, number>>): void {
+  if (Object.values(gained).every((amount) => (amount ?? 0) <= 0)) return;
+  target.push({ sourceCardId, sourceWasInPlay: true, gains: gained });
+}
+
+function breakThroughFromMarket(G: GameState, playerId: string, suit: Suit, result: BreakThroughResult, cardId?: string): string | undefined {
   const slotIndex = cardId
     ? G.market.findIndex((marketCardId) => marketCardId === cardId && cardMatchesSuit(G, playerId, marketCardId, suit))
     : G.market.findIndex((marketCardId) => cardMatchesSuit(G, playerId, marketCardId, suit));
@@ -43,7 +49,9 @@ function breakThroughFromMarket(G: GameState, playerId: string, suit: Suit, mark
 
   const [acquiredCardId] = G.market.splice(slotIndex, 1);
   if (!acquiredCardId) return undefined;
-  addResourceGains(marketResourceGains, collectMarketResources(G, playerId, acquiredCardId));
+  const collected = collectMarketResources(G, playerId, acquiredCardId);
+  addResourceGains(result.marketResourceGains, collected);
+  addResourceGainSource(result.marketResourceGainSources, acquiredCardId, collected);
   G.players[playerId].hand.push(acquiredCardId);
   returnMarketUnrest(G, playerId, acquiredCardId);
   refillMarketSlot(G, { playerId, slotIndex, acquiredCardId });
@@ -83,12 +91,21 @@ function takeVisibleTributaryBottom(G: GameState, playerId: string, cardId?: str
   return undefined;
 }
 
-function breakThroughFromDeck(G: GameState, playerId: string, suit: Suit, fallbackResourceGains: Partial<Record<ResourceName, number>>, randomNumber?: () => number): string | undefined {
-  const visibleTributaryCardId = suit === "tributary" ? takeVisibleTributaryBottom(G, playerId) : undefined;
+function drawableDeckTop(G: GameState, deckName: NonNullable<ReturnType<typeof deckForSuit>>): string | undefined {
+  const deck = G.marketDecks?.[deckName];
+  if (!deck || deck.length === 0) return undefined;
+  if (deck.length === 1 && G.marketDeckBottomCards?.[deckName] === deck[0]) return undefined;
+  return deck[0];
+}
+
+function breakThroughFromDeck(G: GameState, playerId: string, suit: Suit, fallbackResourceGains: Partial<Record<ResourceName, number>>, randomNumber?: () => number, cardId?: string): string | undefined {
+  const visibleTributaryCardId = suit === "tributary" ? takeVisibleTributaryBottom(G, playerId, cardId) : undefined;
   if (visibleTributaryCardId) return visibleTributaryCardId;
 
   const sourceDeck = suit === "tributary" ? undefined : deckForSuit(suit);
-  const smallDeckCard = sourceDeck ? drawMarketDeckCard(G, sourceDeck) : undefined;
+  const smallDeckCard = sourceDeck && (!cardId || drawableDeckTop(G, sourceDeck) === cardId)
+    ? drawMarketDeckCard(G, sourceDeck)
+    : undefined;
   if (smallDeckCard) {
     G.players[playerId].hand.push(smallDeckCard);
     G.log.push({ round: G.round, playerId, message: `BreakThroughDeck(${smallDeckCard}/${sourceDeck})` });
@@ -97,24 +114,26 @@ function breakThroughFromDeck(G: GameState, playerId: string, suit: Suit, fallba
 
   const mainDeck = G.marketDecks?.mainDeck;
   if (!mainDeck) {
+    if (cardId) return undefined;
     const gained = gainBreakThroughFallback(G, playerId, suit);
     if (gained > 0) fallbackResourceGains.materials = (fallbackResourceGains.materials ?? 0) + gained;
     return undefined;
   }
   const revealed: string[] = [];
   while (mainDeck.length > 0) {
-    const cardId = mainDeck.shift();
-    if (!cardId) break;
-    if (cardMatchesSuit(G, playerId, cardId, suit)) {
-      G.players[playerId].hand.push(cardId);
+    const revealedCardId = mainDeck.shift();
+    if (!revealedCardId) break;
+    if ((!cardId || revealedCardId === cardId) && cardMatchesSuit(G, playerId, revealedCardId, suit)) {
+      G.players[playerId].hand.push(revealedCardId);
       mainDeck.splice(0, mainDeck.length, ...shuffleWithRandom([...mainDeck, ...revealed], randomNumber));
-      G.log.push({ round: G.round, playerId, message: `BreakThroughMainDeck(${cardId}/${suit}/revealed=${revealed.length})` });
+      G.log.push({ round: G.round, playerId, message: `BreakThroughMainDeck(${revealedCardId}/${suit}/revealed=${revealed.length})` });
       triggerScoringIfMainDeckEmpty(G, playerId);
-      return cardId;
+      return revealedCardId;
     }
-    revealed.push(cardId);
+    revealed.push(revealedCardId);
   }
   mainDeck.splice(0, mainDeck.length, ...shuffleWithRandom(revealed, randomNumber));
+  if (cardId) return undefined;
   const gained = gainBreakThroughFallback(G, playerId, suit);
   if (gained > 0) fallbackResourceGains.materials = (fallbackResourceGains.materials ?? 0) + gained;
   return undefined;
@@ -141,15 +160,13 @@ function breakThroughFromExile(G: GameState, playerId: string, suit: Suit, cardI
 }
 
 export function breakThrough(G: GameState, args: { playerId: string; suit: Suit; source: "market" | "deck" | "exile"; count: number; cardId?: string; randomNumber?: () => number }): BreakThroughResult {
-  const result: BreakThroughResult = { gainedCardIds: [], fallbackResourceGains: {}, marketResourceGains: {} };
+  const result: BreakThroughResult = { gainedCardIds: [], fallbackResourceGains: {}, marketResourceGains: {}, marketResourceGainSources: [] };
   for (let i = 0; i < args.count; i++) {
     const gainedCardId = args.source === "market"
-      ? breakThroughFromMarket(G, args.playerId, args.suit, result.marketResourceGains, args.cardId)
+      ? breakThroughFromMarket(G, args.playerId, args.suit, result, args.cardId)
       : args.source === "exile"
         ? breakThroughFromExile(G, args.playerId, args.suit, args.cardId)
-        : args.suit === "tributary" && args.cardId
-          ? takeVisibleTributaryBottom(G, args.playerId, args.cardId) || breakThroughFromDeck(G, args.playerId, args.suit, result.fallbackResourceGains, args.randomNumber)
-          : breakThroughFromDeck(G, args.playerId, args.suit, result.fallbackResourceGains, args.randomNumber);
+        : breakThroughFromDeck(G, args.playerId, args.suit, result.fallbackResourceGains, args.randomNumber, args.cardId);
     if (!gainedCardId) break;
     result.gainedCardIds.push(gainedCardId);
   }

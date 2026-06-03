@@ -74,6 +74,32 @@
 .card-inspection-modal .card-detail-panel { font-size:1rem; }
 .card-inspection-modal .detail-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }
 .card-inspection-modal .detail-effects li { line-height:1.35; }
+.end-game-backdrop { position:fixed; inset:0; z-index:18; display:flex; align-items:center; justify-content:center; box-sizing:border-box; padding:18px; background:rgba(18,16,14,.72); }
+.end-game-summary { width:min(820px,100%); max-height:min(720px,calc(100vh - 36px)); overflow:auto; box-sizing:border-box; border:2px solid #e6b86a; border-radius:8px; background:#2f2925; color:#f3ead8; box-shadow:0 20px 60px rgba(0,0,0,.45); padding:14px; }
+.end-game-heading { display:flex; justify-content:space-between; gap:14px; align-items:flex-start; border-bottom:1px solid #6e5f50; padding-bottom:12px; }
+.end-game-heading h2 { margin:2px 0 4px; font-size:1.45rem; line-height:1.1; }
+.end-game-heading p { margin:0; color:#d9c7a7; font-weight:700; }
+.end-game-heading button { min-height:38px; border:1px solid #7a6a57; border-radius:6px; background:#4a4038; color:#f3ead8; cursor:pointer; padding:0 12px; white-space:nowrap; }
+.end-game-heading button:hover { border-color:#e6b86a; background:#57493f; }
+.end-game-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px; margin-top:12px; }
+.end-game-section { border:1px solid #6e5f50; border-radius:8px; background:#3b342f; padding:10px; min-width:0; }
+.end-game-section h3 { margin:0 0 8px; font-size:1rem; }
+.end-game-score-table,.end-game-stats { display:flex; flex-direction:column; gap:5px; }
+.end-game-score-row,.end-game-stats div { display:grid; grid-template-columns:minmax(0,1fr) minmax(48px,auto) minmax(64px,auto); gap:8px; align-items:center; border-top:1px solid #55483d; padding-top:5px; }
+.end-game-score-row:first-child,.end-game-stats div:first-child { border-top:0; padding-top:0; }
+.end-game-score-header { color:#d9c7a7; font-size:.76rem; font-weight:700; text-transform:uppercase; }
+.end-game-score-row span:first-child,.end-game-stats span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.end-game-score-row strong,.end-game-stats strong { color:#f5d49a; font-variant-numeric:tabular-nums; text-align:right; }
+.end-game-stats div { grid-template-columns:minmax(0,1fr) minmax(48px,auto); }
+.end-game-current-player { margin-top:10px; color:#d9c7a7; font-size:.78rem; }
+.campaign-summary { display:flex; flex-direction:column; gap:8px; margin-top:12px; border:1px solid #6e5f50; border-radius:8px; background:#3b342f; padding:10px; }
+.campaign-choice-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:6px; }
+.campaign-choice-list button,.campaign-summary > button { min-height:38px; border:1px solid #7a6a57; border-radius:6px; background:#4a4038; color:#f3ead8; cursor:pointer; padding:6px 8px; text-align:left; }
+.campaign-choice-list button:hover,.campaign-summary > button:hover { border-color:#e6b86a; background:#57493f; }
+.campaign-choice-list button.is-selected { border-color:#e6b86a; background:#493a2f; color:#ffe0a3; }
+.campaign-summary > button[disabled] { opacity:.58; cursor:not-allowed; }
+.campaign-export { display:flex; flex-direction:column; gap:5px; }
+.campaign-export textarea { box-sizing:border-box; width:100%; min-height:130px; resize:vertical; border:1px solid #7a6a57; border-radius:6px; background:#27231f; color:#f3ead8; padding:8px; font-family:ui-monospace,SFMono-Regular,Consolas,monospace; font-size:.78rem; line-height:1.35; }
 .log-panel { max-height:180px; overflow:auto; }
 .badge { display:inline-flex; justify-content:space-between; gap:6px; padding:4px 7px; border:1px solid #7a6a57; border-radius:8px; margin:2px; }
 .badge.is-gain { animation: resource-gain-pulse .9s ease-out; border-color:#a8d977; color:#f0ffd8; }
@@ -138,6 +164,9 @@
   .zones { grid-template-columns:1fr; }
   .zone-grid { grid-template-columns: repeat(3,minmax(72px,1fr)); }
   .right { grid-template-columns:1fr; }
+  .end-game-heading,.end-game-grid { grid-template-columns:1fr; }
+  .end-game-heading { flex-direction:column; }
+  .end-game-heading button { width:100%; }
 }
 @media (max-height: 760px) {
   .board-layout { --market-card-h:112px; --hand-card-h:124px; --gap:6px; --pad:6px; --tile-pad:5px; }

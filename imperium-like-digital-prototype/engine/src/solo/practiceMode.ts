@@ -1,9 +1,6 @@
 import type { GameState } from "../game/state";
 import { triggerScoring } from "../game/scoring";
-
-function marketCardHasTokens(G: GameState, cardId: string): boolean {
-  return Object.values(G.marketResources?.[cardId] ?? {}).some((amount) => (amount ?? 0) > 0);
-}
+import { marketCardHasTokens } from "../game/exile";
 
 export function startPracticeMarketExileChoice(G: GameState, playerId: string): boolean {
   if (G.options?.mode !== "practice" || G.pendingExileChoice) return false;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getBotPiles, getCurrentPlayer, getInspectableLookedCards, getInspectableSharedPile, getInspectableZone, getMarketCards, getPlayerZoneCounts, getRecentLogEntries, getSharedPiles, getZoneCards } from "../../../app/src/ui/layout/uiSelectors";
+import { getBotPiles, getCurrentPlayer, getInspectableLookedCards, getInspectableSharedPile, getInspectableZone, getMarketCards, getOwnerVisibleZoneIds, getPlayerZoneCounts, getPlayerZoneLabels, getRecentLogEntries, getSharedPiles, getZoneCards } from "../../../app/src/ui/layout/uiSelectors";
 
 describe("ui selectors",()=>{
   it("handles missing market",()=> expect(getMarketCards({market:null} as any)).toEqual([]));
@@ -72,6 +72,19 @@ describe("ui selectors",()=>{
     expect(getZoneCards(player,"nationDeck")).toEqual(["n1"]);
     expect(getZoneCards(player,"vault")).toEqual(["v1"]);
   });
+  it("includes side areas in player zone chrome metadata",()=> {
+    const G:any={
+      activeNationRulesets:{
+        "0":{
+          zoneOverrides:[{ op:"replace_history_with_zone", zoneId:"sunken", displayName:"Sunken", cardsScore:true }]
+        }
+      }
+    };
+    const player:any={deck:[],discard:[],hand:[],playArea:[],history:[],developmentArea:[],nationDeck:[],sideAreas:{sunken:["s1","s2"]}};
+
+    expect(getPlayerZoneCounts(player)).toMatchObject({ sunken:2 });
+    expect(getPlayerZoneLabels(G,"0")).toEqual({ sunken:"Sunken" });
+  });
   it("masks hidden player zones for inspection",()=> {
     const player:any={deck:["a"],nationDeck:["n1"],discard:["d1"],hand:["h1"],developmentArea:["dev1"]};
     expect(getInspectableZone(player,"deck")).toEqual({ hidden: true, cardIds: [], count: 1 });
@@ -84,6 +97,20 @@ describe("ui selectors",()=>{
     const player:any={history:["hist1","hist2"]};
     expect(getInspectableZone(player,"history",{ ownerPlayerId:"0", viewerPlayerId:"0" })).toEqual({ hidden: false, cardIds: ["hist1","hist2"], count: 2 });
     expect(getInspectableZone(player,"history",{ ownerPlayerId:"0", viewerPlayerId:"1" })).toEqual({ hidden: true, cardIds: [], count: 2 });
+  });
+  it("treats History replacement zones as owner-visible zones",()=> {
+    const G:any={
+      activeNationRulesets:{
+        "0":{
+          zoneOverrides:[{ op:"replace_history_with_zone", zoneId:"sunken", displayName:"Sunken", cardsScore:true }]
+        }
+      }
+    };
+    const player:any={sideAreas:{sunken:["hist1","hist2"]}};
+    const ownerVisibleZoneIds = getOwnerVisibleZoneIds(G,"0");
+
+    expect(getInspectableZone(player,"sunken",{ ownerPlayerId:"0", viewerPlayerId:"0", ownerVisibleZoneIds })).toEqual({ hidden:false, cardIds:["hist1","hist2"], count:2 });
+    expect(getInspectableZone(player,"sunken",{ ownerPlayerId:"0", viewerPlayerId:"1", ownerVisibleZoneIds })).toEqual({ hidden:true, cardIds:[], count:2 });
   });
   it("exposes a separately tracked Accession as the public bottom Nation deck card",()=> {
     const player:any={deck:[],nationDeck:["n1","n2"],accessionCardId:"acc"};

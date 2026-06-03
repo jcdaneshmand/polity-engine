@@ -22,6 +22,20 @@ describe("private nation import",()=>{
   });
   it("missing card refs fatal by default",()=>expect(validatePrivateNationsRows([row],new Set(),false).counts.fatal).toBeGreaterThan(0));
   it("missing card refs warning when allowed",()=>expect(validatePrivateNationsRows([row],new Set(),true).counts.warnings).toBeGreaterThan(0));
+  it("rejects unknown expansion gates before normalization drops them",()=> {
+    expect(validatePrivateNationsRows([{...row,required_expansions:"trade_routes"}],known,false).counts.fatal).toBe(0);
+
+    const report = validatePrivateNationsRows([
+      {...row,nation_id:"bad_required_expansion",required_expansions:"trade_routes|unknown_expansion"},
+      {...row,nation_id:"bad_excluded_expansion",excluded_expansions:"unknown_expansion"}
+    ],known,false);
+
+    expect(report.counts.fatal).toBe(2);
+    expect(report.errors.map((e)=>e.message)).toEqual(expect.arrayContaining([
+      "Invalid required_expansions: unknown_expansion",
+      "Invalid excluded_expansions: unknown_expansion"
+    ]));
+  });
   it("setup rules apply",()=>{ const n=normalizeNation({...row,special_setup_json:'[{"op":"gain_resource","resource":"materials","count":2},{"op":"create_side_area","areaId":"vault","displayName":"Vault"}]'}); const p=setupPlayerFromNation({nation:n,cardDb:{c1:{} as any,c2:{} as any,c3:{} as any},playerId:"0",shuffle:(x)=>x}); expect(p.resources.materials).toBe(5); expect(p.sideAreas?.vault).toEqual([]); });
   it("normalizes rulebook resource names in setup and passive rules",()=> {
     const n=normalizeNation({
@@ -56,5 +70,37 @@ describe("private nation import",()=>{
     }],known,false);
     expect(passiveReport.counts.fatal).toBeGreaterThan(0);
     expect(passiveReport.errors.some((e)=>e.field==="passive_rules_json" && e.message.includes("science"))).toBe(true);
+  });
+  it("rejects unsupported setup and passive rule metadata before runtime",()=> {
+    const report = validatePrivateNationsRows([
+      {
+        ...row,
+        nation_id:"setup_unknown_op",
+        special_setup_json:'[{"op":"gain_bonus","count":1}]'
+      },
+      {
+        ...row,
+        nation_id:"setup_extra_field",
+        special_setup_json:'[{"op":"gain_resource","resource":"materials","count":1,"bonus":1}]'
+      },
+      {
+        ...row,
+        nation_id:"setup_bad_area",
+        special_setup_json:'[{"op":"place_card_in_area","cardId":"c1","area":"vault"}]'
+      },
+      {
+        ...row,
+        nation_id:"passive_extra_field",
+        passive_rules_json:'[{"trigger":"after_reshuffle","effects":[{"trigger":"on_play","op":"gain_resource","resource":"materials","amount":1,"bonus":1}]}]'
+      }
+    ],known,false);
+
+    expect(report.counts.fatal).toBe(4);
+    expect(report.errors.map((e)=>e.message)).toEqual(expect.arrayContaining([
+      "Unsupported setup rule op: gain_bonus",
+      "Unsupported setup rule field: bonus",
+      "Invalid setup area: vault",
+      "[passive_extra_field] unsupported field 'bonus'"
+    ]));
   });
 });

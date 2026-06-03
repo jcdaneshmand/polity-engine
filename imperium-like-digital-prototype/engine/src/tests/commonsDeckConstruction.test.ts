@@ -23,17 +23,42 @@ describe("commons deck construction", () => {
   it("quick_setup uses combined deck path", () => {
     const result = buildCommonsDecks({ cards: [card({ id: "combined_a", setupBannerSuit: "region" })], options: options({ enabledVariants: ["quick_setup"] }) });
     expect(result.constructionPath).toBe("quick");
-    expect(result.regionDeck).toEqual([]);
   });
 
-  it("quick_setup removes initial market cards from the remaining main deck", () => {
+  it("quick_setup still creates Small decks from the combined market deck", () => {
     const result = buildCommonsDecks({
-      cards: Array.from({ length: 6 }, (_, i) => card({ id: `quick_${i}` })),
-      options: options({ enabledVariants: ["quick_setup"] })
+      cards: Array.from({ length: 24 }, (_, i) => card({ id: `quick_${i}`, setupBannerSuit: i % 3 === 0 ? "region" : i % 3 === 1 ? "uncivilized" : "civilized" })),
+      options: options({ enabledVariants: ["quick_setup"], playerCount: 2, effectiveCommonsPlayerCount: 2 })
+    });
+    const visibleCards = result.initialMarket.map((slot) => slot.cardId).filter(Boolean);
+    const remainingDeckCards = [
+      ...result.regionDeck,
+      ...result.uncivilizedDeck,
+      ...result.civilizedDeck,
+      ...result.mainDeck
+    ];
+
+    expect(result.regionDeck).toHaveLength(5);
+    expect(result.uncivilizedDeck).toHaveLength(5);
+    expect(result.civilizedDeck).toHaveLength(5);
+    expect(visibleCards).toHaveLength(5);
+    expect(new Set([...visibleCards, ...remainingDeckCards]).size).toBe(24);
+  });
+
+  it("quick_setup removes initial market cards from the remaining decks", () => {
+    const result = buildCommonsDecks({
+      cards: Array.from({ length: 24 }, (_, i) => card({ id: `quick_${i}` })),
+      options: options({ enabledVariants: ["quick_setup"], playerCount: 2, effectiveCommonsPlayerCount: 2 })
     });
     const initialMarketCards = new Set(result.initialMarket.map((slot) => slot.cardId).filter(Boolean));
+    const remainingDeckCards = [
+      ...result.regionDeck,
+      ...result.uncivilizedDeck,
+      ...result.civilizedDeck,
+      ...result.mainDeck
+    ];
     expect(initialMarketCards.size).toBe(5);
-    expect(result.mainDeck).toEqual(["quick_5"]);
+    remainingDeckCards.forEach((cardId) => expect(initialMarketCards.has(cardId)).toBe(false));
   });
 
   it("does not treat non-market starting locations as market eligible by default", () => {
@@ -48,6 +73,9 @@ describe("commons deck construction", () => {
     });
     const visibleOrDeckCards = [
       ...result.initialMarket.map((slot) => slot.cardId).filter(Boolean),
+      ...result.regionDeck,
+      ...result.uncivilizedDeck,
+      ...result.civilizedDeck,
       ...result.mainDeck
     ];
     expect(visibleOrDeckCards).toContain("market_card");

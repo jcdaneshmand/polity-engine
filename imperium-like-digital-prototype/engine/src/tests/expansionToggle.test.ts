@@ -5,6 +5,7 @@ import { runEffects } from "../cards/effectRunner";
 import fs from "node:fs";
 import { loadCardDbWithOptionalPrivateData } from "../cards/privateCardLoader";
 import { playCard } from "../game/moves";
+import { activateState } from "../game/stateMatching";
 
 const fakeCardDb = {
   c1: { id: "c1", displayName: "C1", type: "action", cost: 1, tags: [], effects: [] },
@@ -72,6 +73,39 @@ describe("trade_routes expansion toggle", () => {
     const off = createInitialGameState({ options: { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: [] } });
     const on = createInitialGameState({ options: { playerCount: 2, mode: "multiplayer", enabledExpansions: ["trade_routes"], enabledVariants: [] } });
     expect(on.players["0"].exhaustTokensBase).toBe(off.players["0"].exhaustTokensBase + 1);
+  });
+
+  it("preserves the Trade Routes extra Exhaust token when state card stats refresh", () => {
+    const G = {
+      options: { playerCount: 2, mode: "multiplayer", enabledExpansions: ["trade_routes"], enabledVariants: [] },
+      cardDb: {
+        state_card: {
+          id: "state_card",
+          displayName: "State Card",
+          tags: ["barbarian", "civilized"],
+          stateActionTokens: 3,
+          stateExhaustTokens: 5,
+          stateHandSize: 5
+        }
+      },
+      cardStates: {},
+      players: {
+        "0": {
+          stateArea: ["state_card"],
+          actionTokensBase: 3,
+          actionTokensAvailable: 3,
+          actionsRemaining: 3,
+          exhaustTokensBase: 6,
+          exhaustTokensAvailable: 6,
+          handSize: 5
+        }
+      }
+    } as any;
+
+    activateState(G, "0", "civilized");
+
+    expect(G.players["0"].exhaustTokensBase).toBe(6);
+    expect(G.players["0"].exhaustTokensAvailable).toBe(6);
   });
 
   it("trade effect option ignored when trade_routes disabled", () => {

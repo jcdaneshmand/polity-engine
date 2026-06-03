@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createInitialState } from "../game/initialState";
-import { gainFameCardsForBot, peekFameCards, resolveBotKingOfKings, returnFameCardToTop, takeFameCard } from "../game/fame";
+import { drawFameCard, gainFameCardsForBot, peekFameCards, resolveBotKingOfKings, returnFameCardToTop, takeFameCard } from "../game/fame";
 import { resolveDevelopmentChoice } from "../game/moves";
 
 function addSoloBot(G: ReturnType<typeof createInitialState>, overrides: Record<string, unknown> = {}) {
@@ -74,6 +74,41 @@ describe("Fame deck", () => {
       resolvedSpecialByPlayer: { "0": true }
     });
     expect(G.players["0"].discard).not.toContain("fame_bottom");
+    expect(G.scoring).toBeUndefined();
+  });
+
+  it("draws the special bottom Fame card by resolving it without moving it to hand", () => {
+    const G = createInitialState();
+    G.cardDb.uncivilized_state = {
+      id: "uncivilized_state",
+      displayName: "Barbarian",
+      type: "state",
+      cardType: "state",
+      suit: "uncivilized",
+      cost: 0,
+      tags: ["barbarian"],
+      effects: []
+    };
+    G.players["0"].hand = [];
+    G.players["0"].stateArea = ["uncivilized_state"];
+    G.fameDeck = {
+      available: [],
+      specialBottomCardId: "king_of_kings",
+      specialBottomSide: "A",
+      resolvedSpecialByPlayer: {}
+    };
+
+    expect(drawFameCard(G, "0")).toBe("king_of_kings");
+
+    expect(G.players["0"].resources.knowledge).toBe(6);
+    expect(G.players["0"].hand).toEqual([]);
+    expect(G.players["0"].discard).not.toContain("king_of_kings");
+    expect(G.fameDeck).toEqual({
+      available: [],
+      specialBottomCardId: "king_of_kings",
+      specialBottomSide: "B",
+      resolvedSpecialByPlayer: { "0": true }
+    });
     expect(G.scoring).toBeUndefined();
   });
 

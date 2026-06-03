@@ -1,9 +1,10 @@
-import type { GameState } from "./state";
+import type { GameState, ReturnFameSourceZone } from "./state";
 import type { BotState } from "../solo/botTypes";
 import { gainPlayerResource, takeResourceFromSupply } from "./resources";
 import { createCardDrivenDevelopmentChoice } from "./zones";
 import { triggerScoring } from "./scoring";
 import { currentStateMatches } from "./stateMatching";
+import { actualHistorySourceZoneIds } from "./history";
 
 function ensureFameDeck(G: GameState): NonNullable<GameState["fameDeck"]> {
   G.fameDeck ??= { available: [], resolvedSpecialByPlayer: {} };
@@ -156,4 +157,71 @@ export function drawFameCard(G: GameState, playerId: string): string | undefined
 export function returnFameCardToTop(G: GameState, cardId: string): void {
   const fameDeck = ensureFameDeck(G);
   fameDeck.available.unshift(cardId);
+}
+
+export function isFameCard(G: GameState, cardId: string): boolean {
+  const card = G.cardDb[cardId];
+  return card?.suit === "fame" || card?.cardType === "fame" || card?.type === "fame";
+}
+
+function directZoneCardsForReturnFame(G: GameState, playerId: string, zoneId: string): string[] | undefined {
+  if (zoneId === "history") {
+    const zones = actualHistorySourceZoneIds(G, playerId);
+    if (zones.length !== 1 || zones[0] !== "history") return zones.flatMap((zone) => zoneCardsForReturnFame(G, playerId, zone as ReturnFameSourceZone));
+  }
+  const player = G.players[playerId];
+  if (!player) return undefined;
+  const direct = (player as unknown as Record<string, unknown>)[zoneId];
+  if (Array.isArray(direct)) return direct as string[];
+  if (player.sideAreas?.[zoneId]) return player.sideAreas[zoneId];
+  if (G.specialZones?.[playerId]?.[zoneId]?.cardIds) return G.specialZones[playerId][zoneId].cardIds;
+  if (G.globalSpecialZones?.[zoneId]?.cardIds) return G.globalSpecialZones[zoneId].cardIds;
+  return undefined;
+}
+
+export function zoneCardsForReturnFame(G: GameState, playerId: string, zoneId: ReturnFameSourceZone): string[] {
+  if (zoneId === "exile") {
+    const player = G.players[playerId];
+    if (!player) return [];
+    return [...player.exile, ...(G.globalSpecialZones?.exile?.cardIds ?? [])];
+  }
+  return directZoneCardsForReturnFame(G, playerId, zoneId) ?? [];
+}
+
+function removeFromReturnFameZone(G: GameState, playerId: string, zoneId: ReturnFameSourceZone, cardId: string): boolean {
+  if (zoneId === "exile") {
+    const playerExile = G.players[playerId]?.exile;
+    const playerIndex = playerExile?.indexOf(cardId) ?? -1;
+    if (playerIndex >= 0) {
+      playerExile?.splice(playerIndex, 1);
+      return true;
+    }
+    const publicExile = G.globalSpecialZones?.exile?.cardIds;
+    const publicIndex = publicExile?.indexOf(cardId) ?? -1;
+    if (publicIndex >= 0) {
+      publicExile?.splice(publicIndex, 1);
+      return true;
+    }
+    return false;
+  }
+  const cards = directZoneCardsForReturnFame(G, playerId, zoneId);
+  if (!cards) return false;
+  const index = cards.indexOf(cardId);
+  if (index < 0) return false;
+  cards.splice(index, 1);
+  return true;
+}
+
+export function returnFameCard(G: GameState, playerId: string, cardId: string, sourceZones: ReturnFameSourceZone[]): ReturnFameSourceZone | undefined {
+  if (!G.players[playerId] || !isFameCard(G, cardId)) return undefined;
+  for (const zone of sourceZones) {
+    const resolvedZones = zone === "history" ? actualHistorySourceZoneIds(G, playerId) : [zone];
+    for (const resolvedZone of resolvedZones) {
+      if (!removeFromReturnFameZone(G, playerId, resolvedZone as ReturnFameSourceZone, cardId)) continue;
+      returnFameCardToTop(G, cardId);
+      G.log.push({ round: G.round, playerId, message: `FameReturned(${cardId}/${resolvedZone})` });
+      return resolvedZone as ReturnFameSourceZone;
+    }
+  }
+  return undefined;
 }

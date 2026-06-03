@@ -3,12 +3,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { onTurnEnd } from "../game/turn";
-import { resolveRegionChoice } from "../game/moves";
+import { resolveChoice, resolveLookOrderChoice, resolveReactiveExhaustChoice, resolveRegionChoice, resolveReturnExhaustTokenChoice } from "../game/moves";
 import type { GameOptions } from "../options/gameOptions";
 import { runBotCleanup } from "../solo/botCleanup";
 import { loadBotStateTables } from "../solo/botStateTableLoader";
 import { loadBotTradeRoutesTables } from "../solo/botTradeRoutesTableLoader";
-import { runBotTurn } from "../solo/botTurn";
+import { continuePausedBotTurn, runBotTurn } from "../solo/botTurn";
 import { createInitialGameStateFromPipeline } from "../setup/setupPipeline";
 import { applyBotEffect, resolveBotCard } from "../solo/botStateTableResolver";
 import { setupSoloBot } from "../solo/botSetup";
@@ -531,6 +531,42 @@ describe("solo bot setup from imported cards", () => {
     expect(bot.botDiscard).toContain("bot_region");
   });
 
+  it("gains 2 Materials when resolving the top Dynasty deck but it is empty", () => {
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    bot.botDynastyDeck = [];
+
+    const result = resolveBotCard({
+      G,
+      bot,
+      revealedCardId: "bot_region",
+      source: "slot",
+      table: {
+        id: "test_table",
+        botNationId: "test_nation_sun_coast",
+        displayName: "Test Table",
+        side: "S",
+        rows: [
+          { id: "resolve_dynasty", priority: 1, trigger: { kind: "suit", suit: "region" }, effects: [{ op: "bot_resolve_top_dynasty_deck" }], implemented: true, tested: true }
+        ]
+      }
+    });
+
+    expect(result.warnings).toEqual([]);
+    expect(bot.resources.materials).toBe(2);
+    expect(bot.botDynastyDeck).toEqual([]);
+    expect(bot.botDiscard).toContain("bot_region");
+    expect(G.log).toContainEqual(expect.objectContaining({ message: "BotResolveTopCardFallback(dynasty_deck/gained=2 materials)" }));
+  });
+
   it("does not trigger Scoring when a Bot discard-Dynasty effect finds the Dynasty deck already empty", () => {
     const G = createInitialGameStateFromPipeline({
       options,
@@ -1016,6 +1052,80 @@ describe("solo bot setup from imported cards", () => {
     expect(G.players["0"].hand).toContain("unrest_two");
     expect(G.unrestPile).toEqual([]);
     expect(bot.botDiscard).toContain("bot_region");
+  });
+
+  it("pauses a Bot row after human_take_unrest opens a reactive Exhaust window", () => {
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" }),
+        human_reactive: card({
+          id: "human_reactive",
+          displayName: "Human Reactive",
+          suit: "none",
+          cardType: "in_play",
+          effects: [{
+            trigger: "on_exhaust",
+            op: "gain_resource",
+            resource: "knowledge",
+            amount: 1,
+            reactive: { trigger: "after_take_unrest", target: "self" }
+          }]
+        }),
+        unrest_one: card({ id: "unrest_one", displayName: "Unrest", suit: "unrest", cardType: "unrest" })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    G.currentTurnType = "activate";
+    G.players["0"].playArea = ["human_reactive"];
+    G.players["0"].hand = [];
+    G.players["0"].resources.knowledge = 0;
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.unrestPile = ["unrest_one"];
+    G.solo!.botStateTables = {
+      test_table: {
+        id: "test_table",
+        botNationId: "test_nation_sun_coast",
+        displayName: "Test Table",
+        side: "S",
+        rows: [{
+          id: "human_unrest",
+          priority: 1,
+          trigger: { kind: "card_id", cardId: "bot_region" },
+          effects: [
+            { op: "human_take_unrest", count: 1 },
+            { op: "bot_gain_resource", resource: "goods", count: 2 }
+          ],
+          implemented: true,
+          tested: true
+        }]
+      }
+    };
+    bot.botStateTableId = "test_table";
+    Object.values(bot.slots).forEach((slot) => { slot.cardId = undefined; });
+    bot.slots[1].cardId = "bot_region";
+
+    runBotTurn({ G, rollDie: () => 6 });
+
+    expect(G.players["0"].hand).toEqual(["unrest_one"]);
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: ["human_reactive"],
+      resolvingPlayerId: bot.botId,
+      sourceCardId: "bot_region",
+      trigger: "after_take_unrest",
+      targetPlayerId: "0"
+    });
+    expect(bot.resources.goods).toBeUndefined();
+
+    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "0" } as any }, "human_reactive");
+
+    expect(G.pendingReactiveExhaustChoice).toBeUndefined();
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(bot.resources.goods).toBe(2);
   });
 
   it("moves Bot resources onto the current Cultists state card or uses the fallback", () => {
@@ -1738,6 +1848,40 @@ describe("solo bot setup from imported cards", () => {
     expect(G.players["0"].resources.goods).toBe(2);
   });
 
+  it("Bot Trade does not trigger a human Trade Route when supply cannot place the Goods token", () => {
+    const G = createInitialGameStateFromPipeline({
+      options: { ...options, enabledExpansions: ["trade_routes"] },
+      cardDb: {
+        starter: card({}),
+        human_route: card({ id: "human_route", displayName: "Human Route", suit: "trade_route", cardType: "trade_route" })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    G.players["0"].playArea = ["human_route"];
+    G.players["0"].resources.goods = 0;
+    bot.resources.knowledge = 0;
+    G.resourceSupply = { goods: 0, knowledge: 1 };
+    G.cardStates = { human_route: { resources: { goods: 1 } } };
+    G.solo!.botTradeRoutesTables = {
+      test_routes: {
+        id: "test_routes",
+        rows: [
+          { tradeRouteId: "human_route", publicPlaceholderName: "Human Route", commerceEffects: [{ op: "human_gain_resource", resource: "goods", count: 1 }], profitEffects: [] }
+        ],
+        endOfTurnRows: []
+      }
+    };
+
+    const resolved = resolveBotTrade(G, bot);
+
+    expect(resolved).toBe(false);
+    expect(G.cardStates.human_route.resources?.goods).toBe(1);
+    expect(bot.resources.knowledge).toBe(0);
+    expect(G.players["0"].resources.goods).toBe(0);
+  });
+
   it("Bot Trade adds supply Goods to its own route without spending Bot Goods", () => {
     const G = createInitialGameStateFromPipeline({
       options: { ...options, enabledExpansions: ["trade_routes"] },
@@ -1842,6 +1986,392 @@ describe("solo bot setup from imported cards", () => {
     expect(bot.resources.knowledge).toBe(3);
     expect(bot.resources.materials).toBeUndefined();
     expect(bot.resources.goods).toBeUndefined();
+  });
+
+  it("does not resume a paused Bot turn while a Return Exhaust token choice is pending", () => {
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        bot_after: card({ id: "bot_after", displayName: "Bot After", suit: "civilized", cardType: "action", startingLocation: "bot_deck" }),
+        spent_card: card({ id: "spent_card", displayName: "Spent Card", suit: "region", cardType: "region" })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    G.solo!.botStateTables = {
+      test_table: {
+        id: "test_table",
+        botNationId: "test_nation_sun_coast",
+        displayName: "Test Table",
+        side: "S",
+        rows: [
+          { id: "after", priority: 1, trigger: { kind: "card_id", cardId: "bot_after" }, effects: [{ op: "bot_gain_resource", resource: "goods", count: 2 }], implemented: true, tested: true }
+        ]
+      }
+    };
+    bot.botStateTableId = "test_table";
+    Object.values(bot.slots).forEach((slot) => { slot.cardId = undefined; });
+    bot.slots[2].cardId = "bot_after";
+    G.solo!.pausedBotTurn = { remainingSlotNumbers: [2], effectsRemaining: 3 };
+    G.pendingReturnExhaustTokenChoice = { playerId: "0", sourceCardId: "human_prompt", cardIds: ["spent_card"] };
+
+    continuePausedBotTurn(G);
+
+    expect(G.solo?.pausedBotTurn).toEqual({ remainingSlotNumbers: [2], effectsRemaining: 3 });
+    expect(bot.resources.goods).toBeUndefined();
+    expect(bot.slots[2].cardId).toBe("bot_after");
+  });
+
+  it("does not resume a paused Bot turn while a Look order choice is pending", () => {
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        bot_after: card({ id: "bot_after", displayName: "Bot After", suit: "civilized", cardType: "action", startingLocation: "bot_deck" }),
+        looked_a: card({ id: "looked_a", displayName: "Looked A", suit: "region", cardType: "action" }),
+        looked_b: card({ id: "looked_b", displayName: "Looked B", suit: "civilized", cardType: "action" })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    G.solo!.botStateTables = {
+      test_table: {
+        id: "test_table",
+        botNationId: "test_nation_sun_coast",
+        displayName: "Test Table",
+        side: "S",
+        rows: [
+          { id: "after", priority: 1, trigger: { kind: "card_id", cardId: "bot_after" }, effects: [{ op: "bot_gain_resource", resource: "goods", count: 2 }], implemented: true, tested: true }
+        ]
+      }
+    };
+    bot.botStateTableId = "test_table";
+    Object.values(bot.slots).forEach((slot) => { slot.cardId = undefined; });
+    bot.slots[2].cardId = "bot_after";
+    G.solo!.pausedBotTurn = { remainingSlotNumbers: [2], effectsRemaining: 3 };
+    G.pendingLookOrderChoice = { playerId: "0", sourceCardId: "human_prompt", source: "deck", cardIds: ["looked_a", "looked_b"] };
+
+    continuePausedBotTurn(G);
+
+    expect(G.solo?.pausedBotTurn).toEqual({ remainingSlotNumbers: [2], effectsRemaining: 3 });
+    expect(bot.resources.goods).toBeUndefined();
+    expect(bot.slots[2].cardId).toBe("bot_after");
+  });
+
+  it("resumes a paused Bot turn after a Return Exhaust token choice resolves", () => {
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        bot_after: card({ id: "bot_after", displayName: "Bot After", suit: "civilized", cardType: "action", startingLocation: "bot_deck" }),
+        spent_card: card({ id: "spent_card", displayName: "Spent Card", suit: "region", cardType: "region" })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    G.players["0"].playArea = ["spent_card"];
+    G.players["0"].exhaustTokensAvailable = 0;
+    G.cardStates = { spent_card: { exhausted: true, exhaustTokens: 1 } };
+    G.solo!.botStateTables = {
+      test_table: {
+        id: "test_table",
+        botNationId: "test_nation_sun_coast",
+        displayName: "Test Table",
+        side: "S",
+        rows: [
+          { id: "after", priority: 1, trigger: { kind: "card_id", cardId: "bot_after" }, effects: [{ op: "bot_gain_resource", resource: "goods", count: 2 }], implemented: true, tested: true }
+        ]
+      }
+    };
+    bot.botStateTableId = "test_table";
+    Object.values(bot.slots).forEach((slot) => { slot.cardId = undefined; });
+    bot.slots[2].cardId = "bot_after";
+    G.solo!.pausedBotTurn = { remainingSlotNumbers: [2], effectsRemaining: 3 };
+    G.pendingReturnExhaustTokenChoice = { playerId: "0", sourceCardId: "human_prompt", cardIds: ["spent_card"] };
+
+    resolveReturnExhaustTokenChoice({ G, ctx: { currentPlayer: "0" } as any }, "spent_card");
+
+    expect(G.pendingReturnExhaustTokenChoice).toBeUndefined();
+    expect(G.solo?.pausedBotTurn).toBeUndefined();
+    expect(bot.resources.goods).toBe(2);
+    expect(bot.slots[2].cardId).toBeUndefined();
+  });
+
+  it("resumes a paused Bot turn after a Look order choice resolves", () => {
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        bot_after: card({ id: "bot_after", displayName: "Bot After", suit: "civilized", cardType: "action", startingLocation: "bot_deck" }),
+        looked_a: card({ id: "looked_a", displayName: "Looked A", suit: "region", cardType: "action" }),
+        looked_b: card({ id: "looked_b", displayName: "Looked B", suit: "civilized", cardType: "action" })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    G.players["0"].deck = ["looked_a", "looked_b"];
+    G.solo!.botStateTables = {
+      test_table: {
+        id: "test_table",
+        botNationId: "test_nation_sun_coast",
+        displayName: "Test Table",
+        side: "S",
+        rows: [
+          { id: "after", priority: 1, trigger: { kind: "card_id", cardId: "bot_after" }, effects: [{ op: "bot_gain_resource", resource: "goods", count: 2 }], implemented: true, tested: true }
+        ]
+      }
+    };
+    bot.botStateTableId = "test_table";
+    Object.values(bot.slots).forEach((slot) => { slot.cardId = undefined; });
+    bot.slots[2].cardId = "bot_after";
+    G.solo!.pausedBotTurn = { remainingSlotNumbers: [2], effectsRemaining: 3 };
+    G.pendingLookOrderChoice = { playerId: "0", sourceCardId: "human_prompt", source: "deck", cardIds: ["looked_a", "looked_b"] };
+
+    resolveLookOrderChoice({ G, ctx: { currentPlayer: "0" } as any }, ["looked_b", "looked_a"]);
+
+    expect(G.pendingLookOrderChoice).toBeUndefined();
+    expect(G.solo?.pausedBotTurn).toBeUndefined();
+    expect(bot.resources.goods).toBe(2);
+    expect(G.players["0"].deck).toEqual(["looked_b", "looked_a"]);
+    expect(bot.slots[2].cardId).toBeUndefined();
+  });
+
+  it("does not resume a paused Bot turn before a Bot-triggered Unrest take continuation finishes", () => {
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        unrest_a: card({ id: "unrest_a", displayName: "Unrest A", suit: "unrest", cardType: "unrest", startingLocation: "unrest_pile" }),
+        unrest_b: card({ id: "unrest_b", displayName: "Unrest B", suit: "unrest", cardType: "unrest", startingLocation: "unrest_pile" }),
+        bot_after: card({ id: "bot_after", displayName: "Bot After", suit: "civilized", cardType: "action", startingLocation: "bot_deck" })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    G.activeNationRulesets = {
+      "0": {
+        nationId: "test_nation_sun_coast",
+        displayName: "Unrest Choice Nation",
+        rulesetTags: [],
+        requiredExpansions: [],
+        setupOverrides: [],
+        zoneOverrides: [],
+        stateOverrides: [],
+        reshuffleOverrides: [],
+        cleanupOverrides: [],
+        solsticeOverrides: [],
+        scoringOverrides: [],
+        collapseOverrides: [],
+        botOverrides: [],
+        shortGameOverrides: [],
+        hookRules: [{
+          trigger: "after_gain_unrest",
+          effects: [{
+            trigger: "on_play",
+            op: "choose_one",
+            choices: [[{ trigger: "on_play", op: "gain_resource", resource: "goods", amount: 1 }]]
+          } as any]
+        }],
+        implemented: true,
+        tested: true
+      }
+    };
+    G.solo!.botStateTables = {
+      test_table: {
+        id: "test_table",
+        botNationId: "test_nation_sun_coast",
+        displayName: "Test Table",
+        side: "S",
+        rows: [
+          { id: "after", priority: 1, trigger: { kind: "card_id", cardId: "bot_after" }, effects: [{ op: "bot_gain_resource", resource: "goods", count: 2 }], implemented: true, tested: true }
+        ]
+      }
+    };
+    bot.botStateTableId = "test_table";
+    G.unrestPile = ["unrest_b"];
+    G.players["0"].hand = ["unrest_a"];
+    G.pendingChoice = {
+      playerId: "0",
+      choices: [[{ trigger: "on_play", op: "gain_resource", resource: "goods", amount: 1 } as any]]
+    };
+    G.pendingUnrestTakeContinuation = {
+      playerId: bot.botId,
+      recipientPlayerIds: ["0"],
+      countPerPlayer: 2,
+      recipientIndex: 0,
+      cardIndex: 1,
+      taken: 1
+    };
+    Object.values(bot.slots).forEach((slot) => { slot.cardId = undefined; });
+    bot.slots[2].cardId = "bot_after";
+    G.solo!.pausedBotTurn = { remainingSlotNumbers: [2], effectsRemaining: 3 };
+
+    resolveChoice({ G, ctx: { currentPlayer: "0" } as any }, 0);
+
+    expect(G.players["0"].resources.goods).toBe(1);
+    expect(G.players["0"].hand).toEqual(["unrest_a", "unrest_b"]);
+    expect(G.pendingChoice).toBeDefined();
+    expect(G.solo?.pausedBotTurn).toEqual({ remainingSlotNumbers: [2], effectsRemaining: 3 });
+    expect(bot.resources.goods).toBeUndefined();
+    expect(bot.slots[2].cardId).toBe("bot_after");
+
+    resolveChoice({ G, ctx: { currentPlayer: "0" } as any }, 0);
+
+    expect(G.pendingChoice).toBeUndefined();
+    expect(G.pendingUnrestTakeContinuation).toBeUndefined();
+    expect(G.solo?.pausedBotTurn).toBeUndefined();
+    expect(bot.resources.goods).toBe(2);
+    expect(bot.slots[2].cardId).toBeUndefined();
+  });
+
+  it("pauses a Bot turn for human reactive Exhaust after Bot-given resources", () => {
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        bot_prompt: card({ id: "bot_prompt", displayName: "Bot Prompt", suit: "region", cardType: "action", startingLocation: "bot_deck" }),
+        bot_after: card({ id: "bot_after", displayName: "Bot After", suit: "civilized", cardType: "action", startingLocation: "bot_deck" }),
+        human_reactive: card({
+          id: "human_reactive",
+          displayName: "Human Reactive",
+          suit: "none",
+          cardType: "in_play",
+          effects: [{
+            trigger: "on_exhaust",
+            op: "gain_resource",
+            resource: "goods",
+            amount: 1,
+            reactive: { trigger: "after_gain_resource", resource: "knowledge" }
+          }]
+        })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    G.players["0"].playArea = ["human_reactive"];
+    G.players["0"].resources.knowledge = 0;
+    G.players["0"].resources.goods = 0;
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.currentTurnType = "activate";
+    G.solo!.botStateTables = {
+      test_table: {
+        id: "test_table",
+        botNationId: "test_nation_sun_coast",
+        displayName: "Test Table",
+        side: "S",
+        rows: [
+          { id: "prompt", priority: 1, trigger: { kind: "card_id", cardId: "bot_prompt" }, effects: [{ op: "human_gain_resource", resource: "knowledge", count: 1 }], implemented: true, tested: true },
+          { id: "after", priority: 1, trigger: { kind: "card_id", cardId: "bot_after" }, effects: [{ op: "bot_gain_resource", resource: "goods", count: 2 }], implemented: true, tested: true }
+        ]
+      }
+    };
+    bot.botStateTableId = "test_table";
+    Object.values(bot.slots).forEach((slot) => { slot.cardId = undefined; });
+    bot.slots[1].cardId = "bot_prompt";
+    bot.slots[2].cardId = "bot_after";
+
+    runBotTurn({ G, rollDie: () => 6 });
+
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: ["human_reactive"],
+      resolvingPlayerId: bot.botId,
+      sourceCardId: "bot_prompt",
+      trigger: "after_gain_resource",
+      resource: "knowledge"
+    });
+    expect(G.solo?.pausedBotTurn).toEqual({ remainingSlotNumbers: [2], effectsRemaining: 3 });
+    expect(bot.resources.goods).toBeUndefined();
+    expect(bot.slots[2].cardId).toBe("bot_after");
+
+    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "0" } as any }, "human_reactive");
+
+    expect(G.pendingReactiveExhaustChoice).toBeUndefined();
+    expect(G.solo?.pausedBotTurn).toBeUndefined();
+    expect(G.players["0"].resources.goods).toBe(1);
+    expect(bot.resources.goods).toBe(2);
+  });
+
+  it("does not resolve later Bot row effects while a human reactive Exhaust is pending", () => {
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        bot_prompt: card({ id: "bot_prompt", displayName: "Bot Prompt", suit: "region", cardType: "action", startingLocation: "bot_deck" }),
+        human_reactive: card({
+          id: "human_reactive",
+          displayName: "Human Reactive",
+          suit: "none",
+          cardType: "in_play",
+          effects: [{
+            trigger: "on_exhaust",
+            op: "gain_resource",
+            resource: "goods",
+            amount: 1,
+            reactive: { trigger: "after_gain_resource", resource: "knowledge" }
+          }]
+        })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    G.players["0"].playArea = ["human_reactive"];
+    G.players["0"].resources.knowledge = 0;
+    G.players["0"].resources.goods = 0;
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.currentTurnType = "activate";
+    G.solo!.botStateTables = {
+      test_table: {
+        id: "test_table",
+        botNationId: "test_nation_sun_coast",
+        displayName: "Test Table",
+        side: "S",
+        rows: [{
+          id: "prompt",
+          priority: 1,
+          trigger: { kind: "card_id", cardId: "bot_prompt" },
+          effects: [
+            { op: "human_gain_resource", resource: "knowledge", count: 1 },
+            { op: "bot_gain_resource", resource: "goods", count: 2 }
+          ],
+          implemented: true,
+          tested: true
+        }]
+      }
+    };
+    bot.botStateTableId = "test_table";
+    Object.values(bot.slots).forEach((slot) => { slot.cardId = undefined; });
+    bot.slots[1].cardId = "bot_prompt";
+
+    runBotTurn({ G, rollDie: () => 6 });
+
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: ["human_reactive"],
+      resolvingPlayerId: bot.botId,
+      sourceCardId: "bot_prompt",
+      trigger: "after_gain_resource",
+      resource: "knowledge"
+    });
+    expect(bot.resources.goods).toBeUndefined();
+
+    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "0" } as any }, "human_reactive");
+
+    expect(G.pendingReactiveExhaustChoice).toBeUndefined();
+    expect(G.solo?.pendingBotRowContinuation).toBeUndefined();
+    expect(G.solo?.pausedBotTurn).toBeUndefined();
+    expect(G.players["0"].resources.goods).toBe(1);
+    expect(bot.resources.goods).toBe(2);
   });
 
   it("Bot Trade Routes end-of-turn falls through rows that cannot resolve", () => {
@@ -2084,6 +2614,54 @@ describe("solo bot setup from imported cards", () => {
     expect(bot.botDeck).not.toContain("civilized");
   });
 
+  it("refunds paid Bot Trade Routes costs and rolls back partial follow-up effects when a later paid effect cannot resolve", () => {
+    const G = createInitialGameStateFromPipeline({
+      options: { ...options, enabledExpansions: ["trade_routes"] },
+      cardDb: {
+        starter: card({}),
+        civilized: card({ id: "civilized", displayName: "Civilized", suit: "civilized", cardType: "action" })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    bot.merchantState = "merchant_empire";
+    bot.resources.goods = 3;
+    bot.resources.materials = 0;
+    bot.resources.knowledge = 0;
+    G.market = ["civilized"];
+    G.solo!.botTradeRoutesTables = {
+      test_routes: {
+        id: "test_routes",
+        rows: [],
+        endOfTurnRows: [
+          {
+            merchantState: "merchant_empire",
+            priority: 1,
+            effects: [{
+              op: "bot_pay_resource_then",
+              resource: "goods",
+              count: 3,
+              effects: [
+                { op: "bot_gain_resource", resource: "materials", count: 1 },
+                { op: "bot_acquire", filter: { suits: ["tributary", "uncivilized"] } }
+              ]
+            }]
+          },
+          { merchantState: "merchant_empire", priority: 2, effects: [{ op: "bot_gain_resource", resource: "knowledge", count: 1 }] }
+        ]
+      }
+    };
+
+    resolveBotTradeRoutesEndOfTurn(G, bot);
+
+    expect(bot.resources.goods).toBe(3);
+    expect(bot.resources.materials).toBe(0);
+    expect(bot.resources.knowledge).toBe(1);
+    expect(bot.botDeck).not.toContain("civilized");
+    expect(G.market).toEqual(["civilized"]);
+  });
+
   it("bot_trade in a Bot table row resolves Trade Route selection and commerce", () => {
     const G = createInitialGameStateFromPipeline({
       options: { ...options, enabledExpansions: ["trade_routes"] },
@@ -2129,6 +2707,256 @@ describe("solo bot setup from imported cards", () => {
     expect(bot.resources.knowledge).toBe(1);
     expect(G.players["0"].resources.goods).toBe(2);
     expect(bot.botDiscard).toContain("bot_prompt");
+  });
+
+  it("pauses Bot Trade Route commerce before later effects while a human reactive Exhaust is pending", () => {
+    const G = createInitialGameStateFromPipeline({
+      options: { ...options, enabledExpansions: ["trade_routes"] },
+      cardDb: {
+        starter: card({}),
+        bot_prompt: card({ id: "bot_prompt", displayName: "Bot Prompt", suit: "region", cardType: "attack", startingLocation: "bot_deck" }),
+        human_route: card({ id: "human_route", displayName: "Human Route", suit: "trade_route", cardType: "trade_route" }),
+        human_reactive: card({
+          id: "human_reactive",
+          displayName: "Human Reactive",
+          suit: "none",
+          cardType: "in_play",
+          effects: [{
+            trigger: "on_exhaust",
+            op: "gain_resource",
+            resource: "goods",
+            amount: 1,
+            reactive: { trigger: "after_gain_resource", resource: "knowledge" }
+          }]
+        })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    G.currentTurnType = "activate";
+    G.players["0"].playArea = ["human_route", "human_reactive"];
+    G.players["0"].resources.knowledge = 0;
+    G.players["0"].resources.goods = 0;
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.cardStates = { human_route: { resources: { goods: 1 } } };
+    G.solo!.botTradeRoutesTables = {
+      test_routes: {
+        id: "test_routes",
+        rows: [
+          {
+            tradeRouteId: "human_route",
+            publicPlaceholderName: "Human Route",
+            commerceEffects: [
+              { op: "human_gain_resource", resource: "knowledge", count: 1 },
+              { op: "bot_gain_resource", resource: "goods", count: 2 }
+            ],
+            profitEffects: []
+          }
+        ],
+        endOfTurnRows: []
+      }
+    };
+    G.solo!.botStateTables = {
+      test_table: {
+        id: "test_table",
+        botNationId: "test_nation_sun_coast",
+        displayName: "Test Table",
+        side: "S",
+        rows: [
+          { id: "trade", priority: 1, trigger: { kind: "card_id", cardId: "bot_prompt" }, effects: [{ op: "bot_trade" }], implemented: true, tested: true }
+        ]
+      }
+    };
+    bot.botStateTableId = "test_table";
+    Object.values(bot.slots).forEach((slot) => {
+      slot.cardId = undefined;
+    });
+    bot.slots[1].cardId = "bot_prompt";
+
+    runBotTurn({ G, rollDie: () => 6 });
+
+    expect(G.cardStates.human_route.resources?.goods).toBe(2);
+    expect(bot.resources.knowledge).toBe(1);
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.pendingReactiveExhaustChoice).toEqual({
+      playerId: "0",
+      cardIds: ["human_reactive"],
+      resolvingPlayerId: bot.botId,
+      sourceCardId: "human_route",
+      trigger: "after_gain_resource",
+      resource: "knowledge"
+    });
+    expect(bot.resources.goods).toBeUndefined();
+
+    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "0" } as any }, "human_reactive");
+
+    expect(G.pendingReactiveExhaustChoice).toBeUndefined();
+    expect(G.solo?.pendingBotTradeRouteContinuation).toBeUndefined();
+    expect(G.solo?.pendingBotRowContinuation).toBeUndefined();
+    expect(G.solo?.pausedBotTurn).toBeUndefined();
+    expect(G.players["0"].resources.goods).toBe(1);
+    expect(bot.resources.goods).toBe(2);
+  });
+
+  it("matches source-suited human reactive Exhausts against the Bot-triggered Trade Route source", () => {
+    const G = createInitialGameStateFromPipeline({
+      options: { ...options, enabledExpansions: ["trade_routes"] },
+      cardDb: {
+        starter: card({}),
+        bot_prompt: card({ id: "bot_prompt", displayName: "Bot Prompt", suit: "region", cardType: "attack", startingLocation: "bot_deck" }),
+        human_route: card({ id: "human_route", displayName: "Human Route", suit: "trade_route", cardType: "trade_route" }),
+        human_reactive: card({
+          id: "human_reactive",
+          displayName: "Human Reactive",
+          suit: "none",
+          cardType: "in_play",
+          effects: [{
+            trigger: "on_exhaust",
+            op: "gain_resource",
+            resource: "goods",
+            amount: 1,
+            reactive: { trigger: "after_gain_resource", resource: "knowledge", sourceSuit: "trade_route" }
+          }]
+        })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    G.currentTurnType = "activate";
+    G.players["0"].playArea = ["human_route", "human_reactive"];
+    G.players["0"].resources.knowledge = 0;
+    G.players["0"].resources.goods = 0;
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.cardStates = { human_route: { resources: { goods: 1 } } };
+    G.solo!.botTradeRoutesTables = {
+      test_routes: {
+        id: "test_routes",
+        rows: [
+          {
+            tradeRouteId: "human_route",
+            publicPlaceholderName: "Human Route",
+            commerceEffects: [
+              { op: "human_gain_resource", resource: "knowledge", count: 1 },
+              { op: "bot_gain_resource", resource: "goods", count: 2 }
+            ],
+            profitEffects: []
+          }
+        ],
+        endOfTurnRows: []
+      }
+    };
+
+    resolveBotTriggerTradeRoute(G, bot, "human_route");
+
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: ["human_reactive"],
+      resolvingPlayerId: bot.botId,
+      sourceCardId: "human_route",
+      trigger: "after_gain_resource",
+      resource: "knowledge"
+    });
+    expect(bot.resources.goods).toBeUndefined();
+  });
+
+  it("pauses Bot Trade Routes end-of-turn cleanup while a human reactive Exhaust is pending", () => {
+    const G = createInitialGameStateFromPipeline({
+      options: { ...options, enabledExpansions: ["trade_routes"] },
+      cardDb: {
+        starter: card({}),
+        bot_cleanup_fill: card({ id: "bot_cleanup_fill", displayName: "Bot Cleanup Fill", suit: "region", cardType: "action", startingLocation: "bot_deck" }),
+        human_reactive: card({
+          id: "human_reactive",
+          displayName: "Human Reactive",
+          suit: "none",
+          cardType: "in_play",
+          effects: [{
+            trigger: "on_exhaust",
+            op: "gain_resource",
+            resource: "goods",
+            amount: 1,
+            reactive: { trigger: "after_gain_resource", resource: "knowledge" }
+          }]
+        })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    G.currentTurnType = "activate";
+    G.players["0"].playArea = ["human_reactive"];
+    G.players["0"].resources.knowledge = 0;
+    G.players["0"].resources.goods = 0;
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.solo!.botTradeRoutesTables = {
+      test_routes: {
+        id: "test_routes",
+        rows: [],
+        endOfTurnRows: [{
+          merchantState: "merchants",
+          priority: 1,
+          effects: [
+            { op: "human_gain_resource", resource: "knowledge", count: 1 },
+            { op: "bot_gain_resource", resource: "goods", count: 2 }
+          ]
+        }]
+      }
+    };
+    Object.values(bot.slots).forEach((slot) => {
+      slot.cardId = undefined;
+    });
+    bot.botDeck = ["bot_cleanup_fill"];
+
+    runBotTurn({ G, rollDie: () => 6 });
+
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: ["human_reactive"],
+      resolvingPlayerId: bot.botId,
+      sourceCardId: "trade_routes_eot:merchants",
+      trigger: "after_gain_resource",
+      resource: "knowledge"
+    });
+    expect(bot.resources.goods).toBeUndefined();
+    expect(bot.slots[1].cardId).toBeUndefined();
+
+    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "0" } as any }, "human_reactive");
+
+    expect(G.pendingReactiveExhaustChoice).toBeUndefined();
+    expect(G.solo?.pendingBotTradeRouteContinuation).toBeUndefined();
+    expect(G.solo?.pausedBotTurn).toBeUndefined();
+    expect(G.players["0"].resources.goods).toBe(1);
+    expect(bot.resources.goods).toBe(2);
+    expect(bot.slots[1].cardId).toBe("bot_cleanup_fill");
+  });
+
+  it("does not resume a paused Bot turn while an internal Market-Unrest hook continuation is pending", () => {
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        bot_resume: card({ id: "bot_resume", displayName: "Bot Resume", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    Object.values(bot.slots).forEach((slot) => {
+      slot.cardId = undefined;
+      slot.blockedByDie = false;
+    });
+    bot.slots[2].cardId = "bot_resume";
+    G.solo!.pausedBotTurn = { remainingSlotNumbers: [2], effectsRemaining: 1 };
+    G.pendingMarketUnrestHookContinuation = { playerId: "0", cardIds: ["unrest_a"], nextIndex: 0 };
+
+    continuePausedBotTurn(G);
+
+    expect(G.solo?.pausedBotTurn).toEqual({ remainingSlotNumbers: [2], effectsRemaining: 1 });
+    expect(bot.slots[2].cardId).toBe("bot_resume");
   });
 
   it("falls through from bot_trade when the Bot has no route or Goods fallback", () => {
@@ -2254,6 +3082,41 @@ describe("solo bot setup from imported cards", () => {
     expect(bot.resources.knowledge ?? 0).toBe(0);
     expect(G.players["0"].resources.goods ?? 0).toBe(0);
     expect(bot.resources.materials).toBe(1);
+  });
+
+  it("falls through from bot_trigger_trade_route when no route row can resolve", () => {
+    const G = createInitialGameStateFromPipeline({
+      options: { ...options, enabledExpansions: ["trade_routes"] },
+      cardDb: {
+        starter: card({}),
+        bot_prompt: card({ id: "bot_prompt", displayName: "Bot Prompt", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    G.solo!.botTradeRoutesTables = { test_routes: { id: "test_routes", rows: [], endOfTurnRows: [] } };
+
+    const result = resolveBotCard({
+      G,
+      bot,
+      revealedCardId: "bot_prompt",
+      source: "slot",
+      table: {
+        id: "test_table",
+        botNationId: "test_nation_sun_coast",
+        displayName: "Test Table",
+        side: "S",
+        rows: [
+          { id: "trigger_route", priority: 1, trigger: { kind: "card_id", cardId: "bot_prompt" }, effects: [{ op: "bot_trigger_trade_route", cardId: "missing_route" }], implemented: true, tested: true },
+          { id: "fallback", priority: 2, trigger: { kind: "card_id", cardId: "bot_prompt" }, effects: [{ op: "bot_gain_resource", resource: "materials", count: 1 }], implemented: true, tested: true }
+        ]
+      }
+    });
+
+    expect(result.resolvedRowId).toBe("fallback");
+    expect(bot.resources.materials).toBe(1);
+    expect(bot.botDiscard).toContain("bot_prompt");
   });
 
   it("can put a resolved Bot table card on the bottom of the Bot deck", () => {
@@ -2724,6 +3587,92 @@ describe("solo bot setup from imported cards", () => {
     expect(bot.botPlayArea).toEqual(["region_one", "tagged_route"]);
   });
 
+  it("pauses Bot Trade Route Profit before later completed routes while a human reactive Exhaust is pending", () => {
+    const G = createInitialGameStateFromPipeline({
+      options: { ...options, enabledExpansions: ["trade_routes"] },
+      cardDb: {
+        starter: card({}),
+        route_later: card({ id: "route_later", displayName: "Later Route", suit: "trade_route", cardType: "trade_route" }),
+        route_pause: card({ id: "route_pause", displayName: "Pause Route", suit: "trade_route", cardType: "trade_route" }),
+        human_reactive: card({
+          id: "human_reactive",
+          displayName: "Human Reactive",
+          suit: "none",
+          cardType: "in_play",
+          effects: [{
+            trigger: "on_exhaust",
+            op: "gain_resource",
+            resource: "goods",
+            amount: 1,
+            reactive: { trigger: "after_gain_resource", resource: "knowledge" }
+          }]
+        })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    G.currentTurnType = "activate";
+    G.players["0"].playArea = ["human_reactive"];
+    G.players["0"].resources.knowledge = 0;
+    G.players["0"].resources.goods = 0;
+    G.players["0"].exhaustTokensAvailable = 1;
+    bot.botPlayArea = ["route_later", "route_pause"];
+    G.cardStates = {
+      route_later: { resources: { goods: 3 } },
+      route_pause: { resources: { goods: 3 } }
+    };
+    G.solo!.botTradeRoutesTables = {
+      test_routes: {
+        id: "test_routes",
+        rows: [
+          {
+            tradeRouteId: "route_later",
+            publicPlaceholderName: "Later Route",
+            commerceEffects: [],
+            profitEffects: [{ op: "bot_gain_resource", resource: "materials", count: 1 }]
+          },
+          {
+            tradeRouteId: "route_pause",
+            publicPlaceholderName: "Pause Route",
+            commerceEffects: [],
+            profitEffects: [
+              { op: "human_gain_resource", resource: "knowledge", count: 1 },
+              { op: "bot_gain_resource", resource: "goods", count: 2 }
+            ]
+          }
+        ],
+        endOfTurnRows: []
+      }
+    };
+
+    resolveBotProfitsWhereAble(G, bot);
+
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: ["human_reactive"],
+      resolvingPlayerId: bot.botId,
+      sourceCardId: "route_pause",
+      trigger: "after_gain_resource",
+      resource: "knowledge"
+    });
+    expect(bot.resources.goods).toBe(3);
+    expect(bot.resources.materials).toBeUndefined();
+    expect(bot.botHistory).toEqual(["route_pause"]);
+    expect(bot.botPlayArea).toEqual(["route_later"]);
+
+    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "0" } as any }, "human_reactive");
+
+    expect(G.pendingReactiveExhaustChoice).toBeUndefined();
+    expect(G.solo?.pendingBotTradeRouteContinuation).toBeUndefined();
+    expect(G.players["0"].resources.goods).toBe(1);
+    expect(bot.resources.goods).toBe(8);
+    expect(bot.resources.materials).toBe(1);
+    expect(bot.botHistory).toEqual(["route_pause", "route_later"]);
+    expect(bot.botPlayArea).toEqual([]);
+  });
+
   it("bot_add_resource_to_market_slot puts resources on a numbered market card", () => {
     const G = createInitialGameStateFromPipeline({
       options,
@@ -3165,6 +4114,49 @@ describe("solo bot setup from imported cards", () => {
     expect(result.resolvedAny).toBe(false);
     expect(G.globalSpecialZones?.exile?.cardIds).toBeUndefined();
     expect(G.market).toEqual(["market_a", "market_b"]);
+  });
+
+  it("bot Exile skips Market cards with generic card-state tokens", () => {
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" }),
+        action_tokened: card({ id: "action_tokened", displayName: "Action Tokened", suit: "civilized", cardType: "action" }),
+        resource_tokened: card({ id: "resource_tokened", displayName: "Resource Tokened", suit: "civilized", cardType: "action" }),
+        target: card({ id: "target", displayName: "Target", suit: "civilized", cardType: "action" }),
+        refill: card({ id: "refill", displayName: "Refill", suit: "civilized", cardType: "action" })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    G.market = ["action_tokened", "resource_tokened", "target"];
+    G.cardStates = {
+      action_tokened: { actionTokens: 1 },
+      resource_tokened: { resources: { goods: 1 } }
+    };
+    G.marketDecks = { mainDeck: [], regionDeck: [], uncivilizedDeck: [], civilizedDeck: ["refill"], tributaryDeck: [] };
+
+    const result = resolveBotCard({
+      G,
+      bot,
+      revealedCardId: "bot_region",
+      source: "slot",
+      table: {
+        id: "test_table",
+        botNationId: "test_nation_sun_coast",
+        displayName: "Test Table",
+        side: "S",
+        rows: [
+          { id: "bot_exile", priority: 1, trigger: { kind: "suit", suit: "region" }, effects: [{ op: "bot_exile_market" }], implemented: true, tested: true }
+        ]
+      }
+    });
+
+    expect(result.warnings).toEqual([]);
+    expect(G.globalSpecialZones?.exile?.cardIds).toEqual(["target"]);
+    expect(G.market).toEqual(["action_tokened", "resource_tokened", "refill"]);
   });
 
   it("bot Acquire from Exile does not finish when required Unrest causes Collapse", () => {
@@ -3795,6 +4787,41 @@ describe("solo bot setup from imported cards", () => {
     expect(bot.slots[2].cardId).toBe("dynasty_top");
   });
 
+  it("uses injected randomness for Bot Trade Routes effects reached through the Bot turn", () => {
+    const G = createInitialGameStateFromPipeline({
+      options: { ...options, enabledExpansions: ["trade_routes"] },
+      cardDb: {
+        starter: card({}),
+        miss_a: card({ id: "miss_a", displayName: "Miss A", suit: "region", cardType: "action" }),
+        hit: card({ id: "hit", displayName: "Hit", suit: "uncivilized", cardType: "action" }),
+        tail_a: card({ id: "tail_a", displayName: "Tail A", suit: "civilized", cardType: "action" }),
+        tail_b: card({ id: "tail_b", displayName: "Tail B", suit: "region", cardType: "action" })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    G.market = [];
+    G.marketDecks = { mainDeck: ["miss_a", "hit", "tail_a", "tail_b"], regionDeck: [], uncivilizedDeck: [], civilizedDeck: [], tributaryDeck: [] };
+    Object.values(bot.slots).forEach((slot) => { slot.cardId = undefined; });
+    bot.botDeck = [];
+    G.solo!.botTradeRoutesTables = {
+      test_routes: {
+        id: "test_routes",
+        rows: [],
+        endOfTurnRows: [{
+          merchantState: "merchants",
+          priority: 1,
+          effects: [{ op: "bot_break_through", filter: { suits: ["uncivilized"] } }]
+        }]
+      }
+    };
+
+    runBotTurn({ G, rollDie: () => 6, randomNumber: () => 0.99 });
+
+    expect(G.marketDecks.mainDeck).toEqual(["tail_a", "tail_b", "miss_a"]);
+  });
+
   it("Warlord cleanup discards the top Bot deck card after refilling slots", () => {
     const G = createInitialGameStateFromPipeline({
       options: { ...options, soloDifficulty: "warlord" },
@@ -3880,6 +4907,75 @@ describe("solo bot setup from imported cards", () => {
     }
   });
 
+  it("pauses Bot custom cleanup effects while a human reactive Exhaust is pending", () => {
+    const G = createInitialGameStateFromPipeline({
+      options,
+      cardDb: {
+        starter: card({}),
+        human_reactive: card({
+          id: "human_reactive",
+          displayName: "Human Reactive",
+          suit: "none",
+          cardType: "in_play",
+          effects: [{
+            trigger: "on_exhaust",
+            op: "gain_resource",
+            resource: "goods",
+            amount: 1,
+            reactive: { trigger: "after_gain_resource", resource: "knowledge" }
+          }]
+        })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    const bot = G.solo!.bot;
+    G.currentTurnType = "activate";
+    G.players["0"].playArea = ["human_reactive"];
+    G.players["0"].resources.knowledge = 0;
+    G.players["0"].resources.goods = 0;
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.solo!.botStateTables = {
+      placeholder: {
+        id: "placeholder",
+        botNationId: "test_nation_sun_coast",
+        displayName: "Placeholder",
+        side: "S",
+        rows: [{ id: "history", priority: 1, trigger: { kind: "other" }, effects: [{ op: "bot_put_revealed_card_into_history" }], implemented: true, tested: true }]
+      }
+    };
+    bot.botStateTableId = "placeholder";
+    bot.customCleanupEffects = [
+      { op: "human_gain_resource", resource: "knowledge", count: 1 } as any,
+      { op: "bot_gain_resource", resource: "goods", count: 2 } as any
+    ];
+    Object.values(bot.slots).forEach((slot) => {
+      slot.cardId = undefined;
+    });
+    bot.botDeck = [];
+
+    runBotTurn({ G, rollDie: () => 6 });
+
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: ["human_reactive"],
+      resolvingPlayerId: bot.botId,
+      sourceCardId: "bot_cleanup",
+      trigger: "after_gain_resource",
+      resource: "knowledge"
+    });
+    expect(bot.resources.goods).toBeUndefined();
+
+    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "0" } as any }, "human_reactive");
+
+    expect(G.pendingReactiveExhaustChoice).toBeUndefined();
+    expect(G.solo?.pendingBotCustomCleanupContinuation).toBeUndefined();
+    expect(G.solo?.pausedBotTurn).toBeUndefined();
+    expect(G.players["0"].resources.goods).toBe(1);
+    expect(bot.resources.goods).toBe(2);
+  });
+
   it("difficulty effect limits allow all unblocked slots to resolve", () => {
     const cases = [
       { soloDifficulty: "chieftain" as const, expectedResolved: 4 },
@@ -3917,6 +5013,41 @@ describe("solo bot setup from imported cards", () => {
 
       expect(G.solo?.bot.botHistory.length).toBe(expectedResolved);
     }
+  });
+
+  it("resolves one fewer Bot card when the die blocks a populated slot", () => {
+    const G = createInitialGameStateFromPipeline({
+      options: { ...options, soloDifficulty: "chieftain" },
+      cardDb: {
+        starter: card({}),
+        bot_1: card({ id: "bot_1", displayName: "Bot 1", startingLocation: "bot_deck" }),
+        bot_2: card({ id: "bot_2", displayName: "Bot 2", startingLocation: "bot_deck" }),
+        bot_3: card({ id: "bot_3", displayName: "Bot 3", startingLocation: "bot_deck" }),
+        bot_4: card({ id: "bot_4", displayName: "Bot 4", startingLocation: "bot_deck" }),
+        market_1: card({ id: "market_1", displayName: "Market 1" }),
+        market_2: card({ id: "market_2", displayName: "Market 2" })
+      } as any,
+      nationDb: { test_nation_sun_coast: nation },
+      playerNationIds: { "0": "test_nation_sun_coast" }
+    });
+    G.market = ["market_1", "market_2"];
+    G.solo!.botStateTables = {
+      placeholder: {
+        id: "placeholder",
+        botNationId: "test_nation_sun_coast",
+        displayName: "Placeholder",
+        side: "S",
+        rows: [{ id: "history", priority: 1, trigger: { kind: "other" }, effects: [{ op: "bot_put_revealed_card_into_history" }], implemented: true, tested: true }]
+      }
+    };
+    G.solo!.bot.botStateTableId = "placeholder";
+
+    runBotTurn({ G, rollDie: () => 2 });
+
+    expect(G.solo?.bot.botHistory).toEqual(["bot_1", "bot_3", "bot_4"]);
+    expect(G.solo?.bot.slots[1].cardId).toBe("bot_2");
+    expect(G.solo?.bot.slots[2].cardId).toBeUndefined();
+    expect(G.marketResources?.market_2?.knowledge).toBe(1);
   });
 
   it("Bot cleanup places a Progress token on the market card above the unresolved slot but not on a roll of 6", () => {
@@ -4331,6 +5462,42 @@ describe("solo bot setup from imported cards", () => {
       ...(G.solo?.bot.botDiscard ?? []),
       ...(G.solo?.bot.botDynastyDeck ?? [])
     ]).not.toContain("dynasty_low");
+  });
+
+  it("short-game solo bot setup removes the bottom Dynasty card before discarding the top card", () => {
+    const bot = setupSoloBot({
+      botNation: { ...nation, nationDeckCardIds: [], developmentCardIds: [], startingDeckCardIds: [] },
+      botRuleset: {
+        nationId: "test_nation_sun_coast",
+        displayName: "Custom Short Bot",
+        rulesetTags: ["solo_bot_custom_dynasty"],
+        requiredExpansions: [],
+        setupOverrides: [],
+        zoneOverrides: [],
+        stateOverrides: [],
+        reshuffleOverrides: [],
+        cleanupOverrides: [],
+        solsticeOverrides: [],
+        scoringOverrides: [],
+        collapseOverrides: [],
+        botOverrides: [{ op: "custom_dynasty_setup", config: { cardIds: ["dynasty_low", "dynasty_high", "dynasty_bottom"] } }],
+        shortGameOverrides: [],
+        hookRules: [],
+        implemented: true,
+        tested: true
+      } as any,
+      cardDb: {
+        dynasty_low: card({ id: "dynasty_low", displayName: "Dynasty Low", vp: { mode: "fixed", value: 1 } }),
+        dynasty_high: card({ id: "dynasty_high", displayName: "Dynasty High", vp: { mode: "fixed", value: 7 } }),
+        dynasty_bottom: card({ id: "dynasty_bottom", displayName: "Dynasty Bottom", vp: { mode: "fixed", value: 3 } })
+      } as any,
+      botStateTables: {},
+      options: { ...options, enabledVariants: ["short_game"] },
+      shuffle: (items) => [...items]
+    });
+
+    expect(bot.botDiscard).toEqual(["dynasty_low"]);
+    expect(bot.botDynastyDeck).toEqual(["dynasty_high"]);
   });
 
   it("sorts the default solo Bot Dynasty deck from highest to lowest Bot VP value", () => {

@@ -87,4 +87,18 @@ describe("commons selection", () => {
     expect(result.selectedCards.map((c) => c.id)).toEqual(["solo_ok"]);
     expect(result.removedForVariant).toEqual(["multiplayer_only", "solo_disallowed"]);
   });
+
+  it("includes Supreme Ruler campaign extra Commons only in Supreme Ruler campaign mode", () => {
+    const cards = [
+      card({ id: "solo_base", allowedModes: ["solo"] }),
+      card({ id: "supreme_extra", allowedModes: ["solo"], tags: ["supreme_ruler_campaign_extra"] })
+    ];
+
+    const normal = selectCommonsCards(cards, options({ mode: "solo" }));
+    const supreme = selectCommonsCards(cards, options({ mode: "solo", campaignMode: "supreme_ruler" }));
+
+    expect(normal.selectedCards.map((c) => c.id)).toEqual(["solo_base"]);
+    expect(normal.removedForVariant).toEqual(["supreme_extra"]);
+    expect(supreme.selectedCards.map((c) => c.id)).toEqual(["solo_base", "supreme_extra"]);
+  });
 });

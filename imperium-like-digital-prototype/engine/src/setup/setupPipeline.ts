@@ -1,4 +1,4 @@
-import type { Card, GameState, ResourceName } from "../game/state";
+import type { Card, GameState, PlayerState, ResourceName } from "../game/state";
 import type { GameOptions } from "../options/gameOptions";
 import { validateGameOptions } from "../options/optionValidation";
 import { getEnabledRulesModules } from "../options/rulesModuleRegistry";
@@ -20,6 +20,8 @@ import { runNationHooks } from "../nations/nationRulesetHooks";
 import type { NationHookTrigger, NationRuleset, NationRulesetApplicationReport } from "../nations/nationRulesetTypes";
 import { activateState } from "../game/stateMatching";
 import { moveCardsToHistoryDestination } from "../game/history";
+import { isAccessionCard } from "../game/nationDeck";
+import { campaignStartingResourceOverride } from "../game/campaign";
 import { resourceAmount, setResourceAmount } from "../game/resources";
 import type { PrivateDataBundle } from "./privateDataBundle";
 import { recordById } from "./privateDataBundle";
@@ -155,6 +157,133 @@ function exileSetupMainDeckCards(game: GameState, cardIds: string[]): void {
   game.globalSpecialZones.exile.cardIds.push(...cardIds);
 }
 
+function takeNextSetupNationCard(player: PlayerState): string | undefined {
+  const cardId = player.nationDeck.shift();
+  if (cardId) return cardId;
+  const accessionCardId = player.accessionCardId;
+  if (!accessionCardId) return undefined;
+  player.accessionCardId = undefined;
+  return accessionCardId;
+}
+
+function takeSetupNationCards(player: PlayerState, count: number): string[] {
+  const cardIds: string[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const cardId = takeNextSetupNationCard(player);
+    if (!cardId) break;
+    cardIds.push(cardId);
+  }
+  return cardIds;
+}
+
+function maybeExileDevelopmentForShortGameAccession(args: {
+  game: GameState;
+  player: PlayerState;
+  playerId: string;
+  ruleset: NationRuleset;
+  advancedNationCards: string[];
+}): void {
+  if (args.advancedNationCards.length === 0) return;
+  if (!args.advancedNationCards.some((cardId) => isAccessionCard(args.game, args.player, cardId))) return;
+  if (args.ruleset.shortGameOverrides.some((ov) => ov.op === "skip_accession_development_exile")) return;
+  const cardIds = [...args.player.developmentArea];
+  if (cardIds.length === 0) return;
+  const pending = { playerId: args.playerId, cardIds, resumeDrawCount: 0, resumeBehavior: "none" as const };
+  if (!args.game.pendingShortGameDevelopmentExileChoice) {
+    args.game.pendingShortGameDevelopmentExileChoice = pending;
+    args.game.log.push({ round: args.game.round, playerId: args.playerId, message: `ShortGameDevelopmentExilePending(options=${cardIds.length})` });
+    return;
+  }
+  args.game.pendingShortGameDevelopmentExileQueue ??= [];
+  args.game.pendingShortGameDevelopmentExileQueue.push(pending);
+}
+
+function applyShortGamePlayerSetup(args: {
+  game: GameState;
+  player: PlayerState;
+  playerId: string;
+  ruleset: NationRuleset;
+  setupReport: NonNullable<GameState["setupReport"]>;
+  randomSeed?: string;
+}): void {
+  let advancedNationCards: string[] = [];
+  for (const ov of args.ruleset.shortGameOverrides) {
+    if (ov.op === "add_nation_cards_to_discard") {
+      advancedNationCards = takeSetupNationCards(args.player, ov.count);
+      args.player.discard.push(...advancedNationCards);
+      args.setupReport.shortGameNationAdvanced += advancedNationCards.length;
+    }
+    if (ov.op === "remove_starting_resource") {
+      setResourceAmount(args.player.resources, ov.resource, Math.max(0, resourceAmount(args.player.resources, ov.resource) - ov.count));
+    }
+    if (ov.op === "remove_starting_resources") {
+      ov.resources.forEach((resource) => {
+        setResourceAmount(args.player.resources, resource, 0);
+      });
+    }
+    if (ov.op === "develop_one_remove_one_development") {
+      const developIndex = args.player.developmentArea.indexOf(ov.developCardId);
+      if (developIndex >= 0) {
+        args.player.developmentArea.splice(developIndex, 1);
+        args.player.discard.push(ov.developCardId);
+      }
+      const removeIndex = args.player.developmentArea.indexOf(ov.removeCardId);
+      if (removeIndex >= 0) {
+        args.player.developmentArea.splice(removeIndex, 1);
+        args.player.exile.push(ov.removeCardId);
+      }
+    }
+    if (ov.op === "move_development_cards_to_discard") {
+      for (const cardId of ov.cardIds) {
+        const index = args.player.developmentArea.indexOf(cardId);
+        if (index >= 0) {
+          args.player.developmentArea.splice(index, 1);
+          args.player.discard.push(cardId);
+        }
+      }
+    }
+  }
+  if (!args.ruleset.shortGameOverrides.some((ov) => ov.op === "add_nation_cards_to_discard")) {
+    advancedNationCards = takeSetupNationCards(args.player, 2);
+    args.player.discard.push(...advancedNationCards);
+    args.setupReport.shortGameNationAdvanced += advancedNationCards.length;
+  }
+  maybeExileDevelopmentForShortGameAccession({
+    game: args.game,
+    player: args.player,
+    playerId: args.playerId,
+    ruleset: args.ruleset,
+    advancedNationCards
+  });
+  for (const ov of args.ruleset.shortGameOverrides) {
+    if (ov.op === "move_one_advanced_nation_card_to_side_area") {
+      const cardId = advancedNationCards[ov.selection === "random" ? seededIndex(args.randomSeed, advancedNationCards.length) : 0];
+      if (cardId) {
+        args.player.sideAreas ??= {};
+        args.player.sideAreas[ov.areaId] ??= [];
+        const discardIndex = args.player.discard.indexOf(cardId);
+        if (discardIndex >= 0) args.player.discard.splice(discardIndex, 1);
+        args.player.sideAreas[ov.areaId].push(cardId);
+      }
+    }
+    if (ov.op === "garrison_development_and_add_nation_to_starting_deck") {
+      const developmentIndex = args.player.developmentArea.indexOf(ov.developmentCardId);
+      if (developmentIndex >= 0 && args.player.powerArea.includes(ov.hostCardId)) {
+        args.player.developmentArea.splice(developmentIndex, 1);
+        args.game.cardStates ??= {};
+        args.game.cardStates[ov.hostCardId] ??= {};
+        const hostState = args.game.cardStates[ov.hostCardId];
+        hostState.garrisonedCardIds ??= [];
+        if (!hostState.garrisonedCardIds.includes(ov.developmentCardId)) {
+          hostState.garrisonedCardIds.push(ov.developmentCardId);
+        }
+      }
+      const nextNationCard = takeNextSetupNationCard(args.player);
+      if (nextNationCard) args.player.deck.push(nextNationCard);
+    }
+  }
+}
+
 function cloneMarketSlots(slots: NonNullable<GameState["marketSlots"]>): NonNullable<GameState["marketSlots"]> {
   return slots.map((slot) => ({
     ...slot,
@@ -278,9 +407,30 @@ function mergeImportedPassiveRules(nation: NationDefinition, ruleset: NationRule
 }
 
 function isNationCompatibleWithOptions(nation: NationDefinition, options: GameOptions): boolean {
-  return !nation.requiredExpansions.some((e) => !options.enabledExpansions.includes(e))
+  const allowedModes = nation.allowedModes ?? ["multiplayer", "solo", "practice"];
+  return allowedModes.includes(options.mode)
+    && !nation.requiredExpansions.some((e) => !options.enabledExpansions.includes(e))
     && !(nation.excludedExpansions ?? []).some((e) => options.enabledExpansions.includes(e))
     && !nation.disallowedModes?.includes(options.mode);
+}
+
+function applyCampaignStartingResourceBonus(game: GameState, playerId: string, player: PlayerState): void {
+  const bonus = campaignStartingResourceOverride(game.options?.campaignProgress, game.options?.enabledExpansions ?? []);
+  if (!bonus) return;
+  setResourceAmount(player.resources, "materials", bonus.materials);
+  setResourceAmount(player.resources, "influence", bonus.influence);
+  setResourceAmount(player.resources, "knowledge", bonus.knowledge);
+  setResourceAmount(player.resources, "goods", bonus.goods);
+  game.log.push({ round: game.round, playerId, message: "CampaignStartingResourceBonusApplied" });
+}
+
+function campaignStartingDeckCarryover(options: GameOptions, nationId: string): { additions: string[]; removals: string[] } {
+  const progress = options.campaignProgress;
+  if (!progress || progress.playerNationId !== nationId) return { additions: [], removals: [] };
+  return {
+    additions: [...progress.startingDeckAdditions],
+    removals: [...progress.startingDeckRemovals]
+  };
 }
 
 function defaultNationRuleset(nation: NationDefinition): NationRuleset {
@@ -365,6 +515,8 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   for (const [pid, nid] of Object.entries(selected)) {
     const nation = args.nationDb[nid];
     if (!nation) throw new Error(`Nation not found: ${nid}`);
+    const allowedModes = nation.allowedModes ?? ["multiplayer", "solo", "practice"];
+    if (!allowedModes.includes(options.mode)) throw new Error(`Nation ${nid} not allowed in mode ${options.mode}.`);
     if (nation.requiredExpansions.some((e)=>!options.enabledExpansions.includes(e))) throw new Error(`Nation ${nid} requires disabled expansion.`);
     if ((nation.excludedExpansions??[]).some((e)=>options.enabledExpansions.includes(e))) throw new Error(`Nation ${nid} excluded by enabled expansion.`);
     if (nation.disallowedModes?.includes(options.mode)) throw new Error(`Nation ${nid} disallows mode ${options.mode}.`);
@@ -374,8 +526,20 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
     );
     const compat = validateNationRulesetCompatibility(nation, ruleset, options);
     if (compat.length) throw new Error(`Ruleset incompatibility for ${nid}: ${compat.join(", ")}`);
-    const player = setupPlayerFromNation({ nation, cardDb: args.cardDb, playerId: pid, shuffle: (x)=>shuffleWithRandom(x, setupRandom), enabledExpansions: options.enabledExpansions });
+    const campaignCarryover = campaignStartingDeckCarryover(options, nid);
+    const player = setupPlayerFromNation({
+      nation,
+      cardDb: args.cardDb,
+      playerId: pid,
+      shuffle: (x)=>shuffleWithRandom(x, setupRandom),
+      enabledExpansions: options.enabledExpansions,
+      extraStartingDeckCardIds: campaignCarryover.additions,
+      removedStartingDeckCardIds: campaignCarryover.removals
+    });
     players[pid] = player;
+    if (campaignCarryover.additions.length > 0 || campaignCarryover.removals.length > 0) {
+      game.log.push({ round: game.round, playerId: pid, message: `CampaignStartingDeckCarryoverApplied(add=${campaignCarryover.additions.length}/remove=${campaignCarryover.removals.length})` });
+    }
     activeNationRulesets[pid] = ruleset;
     if (strategyDb[nid]) activeNationStrategyProfiles[pid] = strategyDb[nid];
     initializeDefaultStateSide(game, pid, ruleset);
@@ -396,83 +560,15 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
     for (const ov of ruleset.stateOverrides) {
       if (ov.op === "start_as_state") activateState(game, pid, ov.state);
     }
-    if (options.enabledVariants.includes("short_game")) {
-      let advancedNationCards: string[] = [];
-      for (const ov of ruleset.shortGameOverrides) {
-        if (ov.op === "add_nation_cards_to_discard") {
-          advancedNationCards = player.nationDeck.splice(0, ov.count);
-          player.discard.push(...advancedNationCards);
-          setupReport.shortGameNationAdvanced += advancedNationCards.length;
-        }
-        if (ov.op === "remove_starting_resource") {
-          setResourceAmount(player.resources, ov.resource, Math.max(0, resourceAmount(player.resources, ov.resource) - ov.count));
-        }
-        if (ov.op === "remove_starting_resources") {
-          ov.resources.forEach((resource) => {
-            setResourceAmount(player.resources, resource, 0);
-          });
-        }
-        if (ov.op === "develop_one_remove_one_development") {
-          const developIndex = player.developmentArea.indexOf(ov.developCardId);
-          if (developIndex >= 0) {
-            player.developmentArea.splice(developIndex, 1);
-            player.discard.push(ov.developCardId);
-          }
-          const removeIndex = player.developmentArea.indexOf(ov.removeCardId);
-          if (removeIndex >= 0) {
-            player.developmentArea.splice(removeIndex, 1);
-            player.exile.push(ov.removeCardId);
-          }
-        }
-        if (ov.op === "move_development_cards_to_discard") {
-          for (const cardId of ov.cardIds) {
-            const index = player.developmentArea.indexOf(cardId);
-            if (index >= 0) {
-              player.developmentArea.splice(index, 1);
-              player.discard.push(cardId);
-            }
-          }
-        }
-      }
-      if (!ruleset.shortGameOverrides.some((ov) => ov.op === "add_nation_cards_to_discard")) {
-        advancedNationCards = player.nationDeck.splice(0, 2);
-        player.discard.push(...advancedNationCards);
-        setupReport.shortGameNationAdvanced += advancedNationCards.length;
-      }
-      for (const ov of ruleset.shortGameOverrides) {
-        if (ov.op === "move_one_advanced_nation_card_to_side_area") {
-          const cardId = advancedNationCards[ov.selection === "random" ? seededIndex(args.randomSeed, advancedNationCards.length) : 0];
-          if (cardId) {
-            player.sideAreas ??= {};
-            player.sideAreas[ov.areaId] ??= [];
-            const discardIndex = player.discard.indexOf(cardId);
-            if (discardIndex >= 0) player.discard.splice(discardIndex, 1);
-            player.sideAreas[ov.areaId].push(cardId);
-          }
-        }
-        if (ov.op === "garrison_development_and_add_nation_to_starting_deck") {
-          const developmentIndex = player.developmentArea.indexOf(ov.developmentCardId);
-          if (developmentIndex >= 0 && player.powerArea.includes(ov.hostCardId)) {
-            player.developmentArea.splice(developmentIndex, 1);
-            game.cardStates ??= {};
-            game.cardStates[ov.hostCardId] ??= {};
-            const hostState = game.cardStates[ov.hostCardId];
-            hostState.garrisonedCardIds ??= [];
-            if (!hostState.garrisonedCardIds.includes(ov.developmentCardId)) {
-              hostState.garrisonedCardIds.push(ov.developmentCardId);
-            }
-          }
-          const nextNationCard = player.nationDeck.shift();
-          if (nextNationCard) player.deck.push(nextNationCard);
-        }
-      }
-    }
     for (const ov of ruleset.setupOverrides) {
       if (ov.op === "move_cards_to_unrest_supply") extraUnrestSupplyCardIds.push(...ov.cardIds);
     }
     runNationHooks({ G: game, playerId: pid, trigger: "after_setup_player" });
+    applyCampaignStartingResourceBonus(game, pid, player);
     rulesetReports.push({ playerId: pid, nationId: nid, appliedTags: ruleset.rulesetTags, appliedOverrides: ruleset.setupOverrides.map((x:any)=>x.op), warnings: [] });
   }
+
+  Object.values(players).forEach(drawOpeningHand);
 
   const ctx = { options, players, cards: filteredCards, setupReport };
   modules.forEach((m)=>m.modifyDeckConstruction?.(ctx as any));
@@ -491,6 +587,7 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
       effectiveCommonsPlayerCount: effectiveCommonsPlayerCount as 2 | 3 | 4,
       enabledExpansions: options.enabledExpansions,
       enabledVariants: options.enabledVariants,
+      campaignMode: options.campaignMode,
       mode: options.mode,
       selectedNationIds,
       replacementPolicy: options.replacementPolicy ?? "use_replacements"
@@ -528,6 +625,16 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
     const exiledMainCards = game.marketDecks.mainDeck.splice(0, 10);
     setupReport.shortGameExiled = exiledMainCards.length;
     exileSetupMainDeckCards(game, exiledMainCards);
+    for (const [playerId, player] of Object.entries(players)) {
+      applyShortGamePlayerSetup({
+        game,
+        player,
+        playerId,
+        ruleset: activeNationRulesets[playerId],
+        setupReport,
+        randomSeed: args.randomSeed
+      });
+    }
   }
   if (options.mode === "practice") {
     const exiledMainCards = game.marketDecks.mainDeck.splice(0, 15);
@@ -538,7 +645,6 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   game.fameDeck = buildFameDeckState(commonsSetup, options.playerCount, options.enabledExpansions.includes("trade_routes"));
   modules.forEach((m)=>m.modifyFameSetup?.(ctx as any));
   modules.forEach((m)=>m.modifyPlayerSetup?.(ctx as any));
-  Object.values(players).forEach(drawOpeningHand);
   game.cardDb = buildRuntimeCardDb({
     filteredCards,
     sourceCards: args.cardDb,

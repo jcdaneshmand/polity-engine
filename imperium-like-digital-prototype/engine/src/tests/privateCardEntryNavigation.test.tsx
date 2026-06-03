@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import NewGameSetup from "../../../app/src/ui/setup/NewGameSetup";
 import PrivateCardEntry from "../../../app/src/ui/privateData/PrivateCardEntry";
+import { cardTypeOptions } from "../../../app/src/ui/privateData/privateEntryOptions";
 import { PlayerZonesPanel } from "../../../app/src/ui/layout/PlayerZonesPanel";
 
 describe("private card entry navigation", () => {
@@ -38,6 +39,10 @@ describe("private card entry navigation", () => {
     expect(html).not.toContain("Private Name <input");
   });
 
+  it("offers every runtime card type in the private card entry selector", () => {
+    expect(cardTypeOptions).toEqual(expect.arrayContaining(["unit", "technology", "legacy"]));
+  });
+
   it("labels the private nation name as the nation name", () => {
     const source = fs.readFileSync(path.resolve(import.meta.dirname, "../../../app/src/ui/privateData/PrivateCardEntry.tsx"), "utf8");
 
@@ -64,5 +69,19 @@ describe("private card entry navigation", () => {
 
     expect(html).toContain("Nation Deck");
     expect(html).not.toContain("secret_accession");
+  });
+
+  it("renders side-area zone tiles for History replacement zones", () => {
+    const html = renderToStaticMarkup(
+      <PlayerZonesPanel
+        player={{ deck: [], discard: [], hand: [], playArea: [], history: [], developmentArea: [], nationDeck: [], sideAreas: { sunken: ["secret_history_card"] } }}
+        zoneLabels={{ sunken: "Sunken" }}
+        onSelectZone={() => {}}
+      />
+    );
+
+    expect(html).toContain("Sunken");
+    expect(html).toContain("1");
+    expect(html).not.toContain("secret_history_card");
   });
 });

@@ -24,6 +24,7 @@ function hasPendingInterruption(G: GameState): boolean {
     ?? G.pendingTradeChoice
     ?? G.pendingDiscardChoice
     ?? G.pendingReturnUnrestChoice
+    ?? G.pendingReturnFameChoice
     ?? G.pendingPlaceOnDeckChoice
     ?? G.pendingReturnExhaustTokenChoice
     ?? G.pendingGiveCardChoice
@@ -31,6 +32,22 @@ function hasPendingInterruption(G: GameState): boolean {
     ?? G.pendingLookOrderChoice
     ?? G.pendingUnrestAllocationChoice
     ?? G.pendingReactiveExhaustChoice
+    ?? G.pendingPlayCardResolution
+    ?? G.pendingPlayedCardResolution
+    ?? G.pendingAcquireCardResolution
+    ?? G.pendingAcquireEffectResolution
+    ?? G.pendingMarketMoveEffectResolution
+    ?? G.pendingMarketUnrestHookContinuation
+    ?? G.pendingNationHookContinuation
+    ?? G.pendingPostDevelopmentResolution
+    ?? G.pendingReshuffleResolution
+    ?? G.pendingAfterReshuffleEffects
+    ?? G.pendingReshuffleDraw
+    ?? G.pendingTurnEndCleanup
+    ?? G.pendingScoringFinalization
+    ?? G.pendingScoringLifecycle
+    ?? G.pendingCollapseLifecycle
+    ?? G.pendingPracticeMarketExileBeforeCleanup
   );
 }
 
@@ -42,9 +59,10 @@ function nextUnrestTakePosition(args: { recipientIndex: number; cardIndex: numbe
 
 function takeUnrestFromPosition(
   G: GameState,
-  args: { playerId: string; recipientPlayerIds: string[]; countPerPlayer: number; recipientIndex: number; cardIndex: number; taken: number }
+  args: { playerId: string; recipientPlayerIds: string[]; countPerPlayer: number; recipientIndex: number; cardIndex: number; taken: number; reactiveTargetPlayerIds?: string[]; randomNumber?: () => number }
 ): boolean {
   let taken = args.taken;
+  const reactiveTargetPlayerIds = args.reactiveTargetPlayerIds ?? [];
   for (let recipientIndex = args.recipientIndex; recipientIndex < args.recipientPlayerIds.length; recipientIndex += 1) {
     const playerId = args.recipientPlayerIds[recipientIndex];
     const player = G.players[playerId];
@@ -58,7 +76,8 @@ function takeUnrestFromPosition(
       }
       player.hand.push(unrestCardId);
       taken += 1;
-      runNationHooks({ G, playerId, trigger: "after_gain_unrest", payload: { cardId: unrestCardId, triggeredBy: args.playerId } });
+      if (!reactiveTargetPlayerIds.includes(playerId)) reactiveTargetPlayerIds.push(playerId);
+      runNationHooks({ G, playerId, trigger: "after_gain_unrest", payload: { cardId: unrestCardId, triggeredBy: args.playerId }, randomNumber: args.randomNumber });
       if (G.gameover) return false;
       if (hasPendingInterruption(G)) {
         const nextPosition = nextUnrestTakePosition({ recipientIndex, cardIndex, countPerPlayer: args.countPerPlayer });
@@ -68,7 +87,8 @@ function takeUnrestFromPosition(
           countPerPlayer: args.countPerPlayer,
           recipientIndex: nextPosition.recipientIndex,
           cardIndex: nextPosition.cardIndex,
-          taken
+          taken,
+          reactiveTargetPlayerIds
         };
         return true;
       }
@@ -78,7 +98,7 @@ function takeUnrestFromPosition(
   return true;
 }
 
-export function takeUnrest(G: GameState, args: { playerIds: string[]; count: number; triggeredBy: string }): boolean {
+export function takeUnrest(G: GameState, args: { playerIds: string[]; count: number; triggeredBy: string; randomNumber?: () => number }): boolean {
   const recipients = activeRecipients(G, args.playerIds);
   const totalNeeded = recipients.length * args.count;
   const available = G.unrestPile?.length ?? 0;
@@ -101,15 +121,24 @@ export function takeUnrest(G: GameState, args: { playerIds: string[]; count: num
     countPerPlayer: args.count,
     recipientIndex: 0,
     cardIndex: 0,
-    taken: 0
+    taken: 0,
+    reactiveTargetPlayerIds: [],
+    randomNumber: args.randomNumber
   });
 }
 
-export function continuePendingUnrestTake(G: GameState, playerId: string): boolean {
+export function continuePendingUnrestTake(G: GameState, playerId: string, randomNumber?: () => number): { resolved: boolean; completed: boolean; playerId: string; reactiveTargetPlayerIds: string[] } | undefined {
   const pending = G.pendingUnrestTakeContinuation;
-  if (!pending || pending.playerId !== playerId || hasPendingInterruption(G) || G.gameover) return false;
+  if (!pending || pending.playerId !== playerId || hasPendingInterruption(G) || G.gameover) return undefined;
+  const reactiveTargetPlayerIds = [...(pending.reactiveTargetPlayerIds ?? [])];
   G.pendingUnrestTakeContinuation = undefined;
-  return takeUnrestFromPosition(G, pending);
+  const resolved = takeUnrestFromPosition(G, { ...pending, reactiveTargetPlayerIds, randomNumber });
+  return {
+    resolved,
+    completed: !G.pendingUnrestTakeContinuation,
+    playerId: pending.playerId,
+    reactiveTargetPlayerIds
+  };
 }
 
 export function isUnrestCard(G: GameState, cardId: string): boolean {
@@ -142,7 +171,6 @@ export function zoneCardsForReturnUnrest(G: GameState, playerId: string, zoneId:
   }
   const cards = directZoneCardsForReturnUnrest(G, playerId, zoneId);
   if (!cards) return undefined;
-  if (zoneId !== "playArea") return cards;
   const garrisonedCardIds = cards.flatMap((hostCardId) => G.cardStates?.[hostCardId]?.garrisonedCardIds ?? []);
   return [...cards, ...garrisonedCardIds];
 }
@@ -170,9 +198,14 @@ function removeFromReturnUnrestZone(G: GameState, playerId: string, zoneId: stri
     cards.splice(index, 1);
     return true;
   }
-  if (zoneId !== "playArea") return false;
-  const hostCardId = detachGarrisonedCard(G, playerId, cardId);
-  return Boolean(hostCardId && cards.includes(hostCardId));
+  for (const hostCardId of cards) {
+    const garrisoned = G.cardStates?.[hostCardId]?.garrisonedCardIds;
+    const garrisonedIndex = garrisoned?.indexOf(cardId) ?? -1;
+    if (!garrisoned || garrisonedIndex < 0) continue;
+    garrisoned.splice(garrisonedIndex, 1);
+    return true;
+  }
+  return Boolean(zoneId === "playArea" && detachGarrisonedCard(G, playerId, cardId));
 }
 
 export function returnUnrestCard(G: GameState, playerId: string, cardId: string, sourceZones: ReturnUnrestSourceZone[]): ReturnUnrestSourceZone | undefined {
@@ -191,7 +224,7 @@ export function returnUnrestCard(G: GameState, playerId: string, cardId: string,
   return undefined;
 }
 
-export function resolvePendingUnrestAllocationChoice(G: GameState, playerId: string, recipientPlayerIds: string[]): boolean {
+export function resolvePendingUnrestAllocationChoice(G: GameState, playerId: string, recipientPlayerIds: string[], randomNumber?: () => number): boolean {
   const pending = G.pendingUnrestAllocationChoice;
   if (!pending || pending.playerId !== playerId) return false;
   if (recipientPlayerIds.length !== pending.availableUnrestCardIds.length) return false;
@@ -208,19 +241,20 @@ export function resolvePendingUnrestAllocationChoice(G: GameState, playerId: str
     playerId,
     recipientPlayerIds,
     availableUnrestCardIds: pending.availableUnrestCardIds,
-    nextIndex: 0
+    nextIndex: 0,
+    randomNumber
   });
 }
 
 function resolveUnrestAllocationFromIndex(
   G: GameState,
-  args: { playerId: string; recipientPlayerIds: string[]; availableUnrestCardIds: string[]; nextIndex: number }
+  args: { playerId: string; recipientPlayerIds: string[]; availableUnrestCardIds: string[]; nextIndex: number; randomNumber?: () => number }
 ): boolean {
   for (let index = args.nextIndex; index < args.availableUnrestCardIds.length; index += 1) {
     const recipientPlayerId = args.recipientPlayerIds[index];
     const unrestCardId = args.availableUnrestCardIds[index];
     G.players[recipientPlayerId].hand.push(unrestCardId);
-    runNationHooks({ G, playerId: recipientPlayerId, trigger: "after_gain_unrest", payload: { cardId: unrestCardId, triggeredBy: args.playerId } });
+    runNationHooks({ G, playerId: recipientPlayerId, trigger: "after_gain_unrest", payload: { cardId: unrestCardId, triggeredBy: args.playerId }, randomNumber: args.randomNumber });
     if (G.gameover) return true;
     if (hasPendingInterruption(G)) {
       G.pendingUnrestAllocationResolution = { ...args, nextIndex: index + 1 };
@@ -232,9 +266,9 @@ function resolveUnrestAllocationFromIndex(
   return true;
 }
 
-export function continuePendingUnrestAllocationResolution(G: GameState, playerId: string): boolean {
+export function continuePendingUnrestAllocationResolution(G: GameState, playerId: string, randomNumber?: () => number): boolean {
   const pending = G.pendingUnrestAllocationResolution;
   if (!pending || pending.playerId !== playerId || hasPendingInterruption(G) || G.gameover) return false;
   G.pendingUnrestAllocationResolution = undefined;
-  return resolveUnrestAllocationFromIndex(G, pending);
+  return resolveUnrestAllocationFromIndex(G, { ...pending, randomNumber });
 }

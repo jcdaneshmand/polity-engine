@@ -1,11 +1,11 @@
 import type { Ctx } from "boardgame.io";
 import { createReactiveExhaustChoice, resolvePendingTradeChoice, runAcquireTriggers, runEffects, runTriggeredEffects } from "../cards/effectRunner";
-import type { DrawSourceZone, Effect, EffectTrigger, FindSourceZone, GameState, LookSourceZone, PlaceOnDeckSourceZone, PlayerExileSource, ResourceName, ReturnUnrestSourceZone, Suit, SwapSourceZone, ZoneName } from "./state";
+import type { DrawSourceZone, Effect, EffectTrigger, FindSourceZone, GameState, LookSourceZone, PlaceOnDeckSourceZone, PlayerExileSource, ResourceGainSource, ResourceName, ReturnFameSourceZone, ReturnUnrestSourceZone, Suit, SwapSourceZone, ZoneName } from "./state";
 import { continuePendingNationHooks, runNationHooks } from "../nations/nationRulesetHooks";
 import { continuePausedBotTurn } from "../solo/botTurn";
-import { canUseDevelopmentArea, continuePendingReshuffleLifecycle, resolvePendingDevelopmentChoice, resolvePendingShortGameDevelopmentExileChoice, skipPendingDevelopmentChoice } from "./zones";
+import { canUseDevelopmentArea, continuePendingReshuffleLifecycle, continuePendingShortGameDevelopmentExileQueue, resolvePendingDevelopmentChoice, resolvePendingShortGameDevelopmentExileChoice, skipPendingDevelopmentChoice } from "./zones";
 import { continuePendingUnrestAllocationResolution, continuePendingUnrestTake } from "./unrest";
-import { collectMarketResources, collectMarketUnrest, resolveCleanupMarketResourceChoice, startCleanupMarketResourceChoice } from "./marketResources";
+import { collectMarketResources, collectMarketUnrest, continuePendingMarketUnrestHooks, resolveCleanupMarketResourceChoice, startCleanupMarketResourceChoice } from "./marketResources";
 import { deckForSuit, refillMarketSlot } from "./marketRefill";
 import { availableForResourceCost, canPayResourceCost, canPayResourceCosts, describeResourceCost, normalizeResourceCost, payResourceCost, payResourceCosts, type ResourceCost } from "./payments";
 import { continuePendingScoringFinalization } from "./scoring";
@@ -22,7 +22,7 @@ import {
   recallRegionToHand
 } from "./regions";
 import { breakThrough, type BreakThroughResult, visibleTributaryBreakThroughCards } from "./breakThrough";
-import { acquireFromExile, availableExileCards, exileMarketCard, exilePlayerCard, playerCardOrGarrisonHasTokens, playerExileSourceCards } from "./exile";
+import { acquireFromExile, availableExileCards, canAcquireExileCard, exileMarketCard, exilePlayerCard, marketCardHasTokens, playerCardOrGarrisonHasTokens, playerExileSourceCards } from "./exile";
 import { acquireMarketCard, gainMarketCard, takeMarketCard } from "./marketAcquire";
 import { resolvePendingUnrestAllocationChoice, returnUnrestCard, zoneCardsForReturnUnrest } from "./unrest";
 import { currentStateMatches, currentStateMatchesAny } from "./stateMatching";
@@ -32,7 +32,7 @@ import { giveCardToPlayer } from "./giveCard";
 import { availableSwapChoices, swapCardWithMarket } from "./swap";
 import { cardHasSuitIconForPlayer } from "./suitIcons";
 import { startPracticeMarketExileChoice } from "../solo/practiceMode";
-import { peekFameCards } from "./fame";
+import { isFameCard, peekFameCards, returnFameCard, zoneCardsForReturnFame } from "./fame";
 import { isAccessionCard, lookableNationDeckCards } from "./nationDeck";
 import { actualHistorySourceZoneIds, moveCardsToHistoryDestination } from "./history";
 import { canonicalResourceName, resourceAmount } from "./resources";
@@ -149,6 +149,7 @@ function blockingPendingChoice(G: GameState): string | undefined {
   if (G.pendingTradeChoice) return "pending_trade_choice";
   if (G.pendingDiscardChoice) return "pending_discard_choice";
   if (G.pendingReturnUnrestChoice) return "pending_return_unrest_choice";
+  if (G.pendingReturnFameChoice) return "pending_return_fame_choice";
   if (G.pendingPlaceOnDeckChoice) return "pending_place_on_deck_choice";
   if (G.pendingReturnExhaustTokenChoice) return "pending_return_exhaust_token_choice";
   if (G.pendingGiveCardChoice) return "pending_give_card_choice";
@@ -165,6 +166,20 @@ function blockingPendingChoice(G: GameState): string | undefined {
   if (G.pendingCollapseLifecycle) return "pending_collapse_lifecycle";
   if (G.pendingSolsticeContinuation) return "pending_solstice_continuation";
   if (G.pendingSolsticeRoundEnd) return "pending_solstice_round_end";
+  if (G.pendingPlayCardResolution) return "pending_play_card_resolution";
+  if (G.pendingPlayedCardResolution) return "pending_played_card_resolution";
+  if (G.pendingAcquireCardResolution) return "pending_acquire_card_resolution";
+  if (G.pendingAcquireEffectResolution) return "pending_acquire_effect_resolution";
+  if (G.pendingMarketMoveEffectResolution) return "pending_market_move_effect_resolution";
+  if (G.pendingMarketUnrestHookContinuation) return "pending_market_unrest_hook_continuation";
+  if (G.pendingNationHookContinuation) return "pending_nation_hook_continuation";
+  if (G.pendingUnrestTakeContinuation) return "pending_unrest_take_continuation";
+  if (G.pendingUnrestAllocationResolution) return "pending_unrest_allocation_resolution";
+  if (G.pendingPostDevelopmentResolution) return "pending_post_development_resolution";
+  if (G.pendingReshuffleResolution) return "pending_reshuffle_resolution";
+  if (G.pendingAfterReshuffleEffects) return "pending_after_reshuffle_effects";
+  if (G.pendingReshuffleDraw) return "pending_reshuffle_draw";
+  if (G.pendingPracticeMarketExileBeforeCleanup) return "pending_practice_market_exile_before_cleanup";
   if (G.pausedSolstice) return "paused_solstice";
   return undefined;
 }
@@ -184,6 +199,7 @@ type ResumablePendingChoice =
   | NonNullable<GameState["pendingTradeChoice"]>
   | NonNullable<GameState["pendingDiscardChoice"]>
   | NonNullable<GameState["pendingReturnUnrestChoice"]>
+  | NonNullable<GameState["pendingReturnFameChoice"]>
   | NonNullable<GameState["pendingPlaceOnDeckChoice"]>
   | NonNullable<GameState["pendingReturnExhaustTokenChoice"]>
   | NonNullable<GameState["pendingGiveCardChoice"]>
@@ -207,6 +223,7 @@ function pendingEffectInterruption(G: GameState): ResumablePendingChoice | undef
     ?? G.pendingTradeChoice
     ?? G.pendingDiscardChoice
     ?? G.pendingReturnUnrestChoice
+    ?? G.pendingReturnFameChoice
     ?? G.pendingPlaceOnDeckChoice
     ?? G.pendingReturnExhaustTokenChoice
     ?? G.pendingGiveCardChoice
@@ -219,7 +236,7 @@ function pendingEffectInterruption(G: GameState): ResumablePendingChoice | undef
 function sourceCardIsInPlay(G: GameState, playerId: string, cardId: string | undefined): boolean {
   if (!cardId) return false;
   const player = G.players[playerId];
-  return player.playArea.includes(cardId) || player.powerArea.includes(cardId);
+  return player.playArea.includes(cardId) || player.powerArea.includes(cardId) || garrisonedCardsInPlay(G, playerId).includes(cardId);
 }
 
 function createReactiveExhaustChoicesForResourceGains(ctx: { G: GameState; playerId: string; selfCardId?: string; randomNumber?: () => number; enabledExpansions?: string[] }, gains: Partial<Record<ResourceName, number>>, sourceCardId?: string, sourceWasInPlay = sourceCardIsInPlay(ctx.G, ctx.playerId, sourceCardId)): void {
@@ -227,6 +244,16 @@ function createReactiveExhaustChoicesForResourceGains(ctx: { G: GameState; playe
     if ((amount ?? 0) <= 0) continue;
     if (pendingEffectInterruption(ctx.G)) return;
     createReactiveExhaustChoice(ctx, { trigger: "after_gain_resource", resource, sourceCardId, sourceWasInPlay });
+  }
+}
+
+function createReactiveExhaustChoicesForResourceGainSources(ctx: { G: GameState; playerId: string; selfCardId?: string; randomNumber?: () => number; enabledExpansions?: string[] }, sources: ResourceGainSource[], fallbackGains: Partial<Record<ResourceName, number>> = {}): void {
+  if (sources.length === 0) {
+    createReactiveExhaustChoicesForResourceGains(ctx, fallbackGains);
+    return;
+  }
+  for (const source of sources) {
+    createReactiveExhaustChoicesForResourceGains(ctx, source.gains, source.sourceCardId, source.sourceWasInPlay);
   }
 }
 
@@ -259,8 +286,8 @@ function finishAcquireCardResolution({ G, ctx, random }: MoveCtx, cardId: string
   p.actionsRemaining -= 1;
   p.actionTokensAvailable -= 1;
   G.market.splice(idx, 1);
-  if (typeof rawCost === "number") payResourceCost(G, ctx.currentPlayer, "materials", rawCost);
-  else payResourceCosts(G, ctx.currentPlayer, cost);
+  if (typeof rawCost === "number") payResourceCost(G, ctx.currentPlayer, "materials", rawCost, random?.Number);
+  else payResourceCosts(G, ctx.currentPlayer, cost, undefined, random?.Number);
   collectMarketResources(G, ctx.currentPlayer, cardId);
   p.hand.push(cardId);
   collectMarketUnrest(G, ctx.currentPlayer, cardId);
@@ -293,6 +320,96 @@ function finishPendingAcquireCardResolution(moveCtx: MoveCtx): boolean {
   return finishAcquireCardResolution(moveCtx, pending.cardId);
 }
 
+function finishPendingAcquireEffectResolution(moveCtx: MoveCtx): boolean {
+  const { G, ctx, random } = moveCtx;
+  const pending = G.pendingAcquireEffectResolution;
+  if (!pending || pending.playerId !== ctx.currentPlayer || pendingEffectInterruption(G)) return true;
+  const resumeEffects = pending.resumeEffects ?? [];
+  G.pendingAcquireEffectResolution = undefined;
+  const continuationCtx = {
+    G,
+    playerId: ctx.currentPlayer,
+    selfCardId: pending.sourceCardId,
+    randomNumber: random?.Number,
+    enabledExpansions: G.options?.enabledExpansions
+  };
+  if (!runAcquireTriggers(continuationCtx, pending.cardId)) return false;
+  const triggerPending = pendingEffectInterruption(G);
+  if (triggerPending) {
+    triggerPending.resumeEffects = [...(triggerPending.resumeEffects ?? []), ...resumeEffects];
+    return true;
+  }
+  if (!runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "after_acquire", payload: { cardId: pending.cardId }, randomNumber: random?.Number })) return false;
+  const hookPending = pendingEffectInterruption(G);
+  if (hookPending) {
+    hookPending.resumeEffects = [...(hookPending.resumeEffects ?? []), ...resumeEffects];
+    return true;
+  }
+  createReactiveExhaustChoicesForResourceGainSources(
+    continuationCtx,
+    pending.collectedResourceSources ?? [],
+    pending.collectedResources ?? {}
+  );
+  const resourcePending = pendingEffectInterruption(G);
+  if (resourcePending) {
+    resourcePending.resumeEffects = [...(resourcePending.resumeEffects ?? []), ...resumeEffects];
+    return true;
+  }
+  for (const targetPlayerId of pending.takenUnrestPlayerIds ?? []) {
+    createReactiveExhaustChoice(continuationCtx, { trigger: "after_take_unrest", targetPlayerId });
+    if (pendingEffectInterruption(G)) break;
+  }
+  const unrestPending = pendingEffectInterruption(G);
+  if (unrestPending) {
+    unrestPending.resumeEffects = [...(unrestPending.resumeEffects ?? []), ...resumeEffects];
+    return true;
+  }
+  createReactiveExhaustChoice(continuationCtx, { trigger: "after_acquire_card", targetPlayerId: ctx.currentPlayer });
+  const acquirePending = pendingEffectInterruption(G);
+  if (acquirePending) {
+    acquirePending.resumeEffects = [...(acquirePending.resumeEffects ?? []), ...resumeEffects];
+    return true;
+  }
+  if (resumeEffects.length > 0) return resumeEffectsAfterPendingChoice(moveCtx, pending.sourceCardId, resumeEffects);
+  return true;
+}
+
+function finishPendingMarketMoveEffectResolution(moveCtx: MoveCtx): boolean {
+  const { G, ctx, random } = moveCtx;
+  const pending = G.pendingMarketMoveEffectResolution;
+  if (!pending || pending.playerId !== ctx.currentPlayer || pendingEffectInterruption(G)) return true;
+  const resumeEffects = pending.resumeEffects ?? [];
+  G.pendingMarketMoveEffectResolution = undefined;
+  const continuationCtx = {
+    G,
+    playerId: ctx.currentPlayer,
+    selfCardId: pending.sourceCardId,
+    randomNumber: random?.Number,
+    enabledExpansions: G.options?.enabledExpansions
+  };
+  createReactiveExhaustChoicesForResourceGainSources(
+    continuationCtx,
+    pending.collectedResourceSources ?? [],
+    pending.collectedResources ?? {}
+  );
+  const resourcePending = pendingEffectInterruption(G);
+  if (resourcePending) {
+    resourcePending.resumeEffects = [...(resourcePending.resumeEffects ?? []), ...resumeEffects];
+    return true;
+  }
+  for (const targetPlayerId of pending.takenUnrestPlayerIds ?? []) {
+    createReactiveExhaustChoice(continuationCtx, { trigger: "after_take_unrest", targetPlayerId });
+    if (pendingEffectInterruption(G)) break;
+  }
+  const unrestPending = pendingEffectInterruption(G);
+  if (unrestPending) {
+    unrestPending.resumeEffects = [...(unrestPending.resumeEffects ?? []), ...resumeEffects];
+    return true;
+  }
+  if (resumeEffects.length > 0) return resumeEffectsAfterPendingChoice(moveCtx, pending.sourceCardId, resumeEffects);
+  return true;
+}
+
 function runAfterBreakThroughHooks(G: GameState, playerId: string, result: BreakThroughResult, randomNumber?: () => number): boolean {
   if (result.gainedCardIds.length === 0) return true;
   for (const cardId of result.gainedCardIds) {
@@ -306,7 +423,7 @@ function runTriggeredEffectsWithPayment(ctx: { G: GameState; playerId: string; s
   const triggeredEffects = effects.filter((effect) => effect.trigger === trigger);
   const cost = explicitSpendCost(triggeredEffects);
   if (!resourceCostHasPositiveAmount(cost)) return runEffects(ctx, triggeredEffects);
-  if (!payResourceCosts(ctx.G, ctx.playerId, cost, payment)) return false;
+  if (!payResourceCosts(ctx.G, ctx.playerId, cost, payment, ctx.randomNumber)) return false;
   return runEffects(ctx, removeExplicitSpendEffects(triggeredEffects));
 }
 
@@ -328,6 +445,7 @@ function finishPlayCardResolution(moveCtx: MoveCtx, cardId: string, freePlay: bo
   }
   p.hand.splice(handIndex, 1);
   p.playArea.push(cardId);
+  if (!freePlay) markActionToken(G, cardId);
 
   const resolved = runTriggeredEffectsWithPayment(
     { G, playerId: ctx.currentPlayer, selfCardId: cardId, randomNumber: random?.Number, enabledExpansions: G.options?.enabledExpansions },
@@ -378,22 +496,30 @@ function finishPendingPlayedCardResolution({ G, ctx, random }: MoveCtx): boolean
   }
   G.pendingPlayedCardResolution = undefined;
   moveResolvedCardFromPlayToDiscard(G, ctx.currentPlayer, pending.cardId);
-  if (!pending.freePlay && G.players[ctx.currentPlayer].playArea.includes(pending.cardId)) markActionToken(G, pending.cardId);
   return true;
 }
 
 function resumeEffectsAfterPendingChoice(moveCtx: MoveCtx, sourceCardId?: string, resumeEffects: Effect[] = []): boolean {
   const { G, ctx, random } = moveCtx;
   if (resumeEffects.length === 0) {
+    const nationHookTrigger = G.pendingNationHookContinuation?.trigger;
     if (!continuePendingNationHooks({ G, playerId: ctx.currentPlayer, randomNumber: random?.Number })) {
-      rollbackPendingPlayedCardHookFailure(G, ctx.currentPlayer, "after_play_card")
-        || rollbackPendingPostDevelopmentHookFailure(G, ctx.currentPlayer);
+      if (nationHookTrigger !== "after_reshuffle") {
+        rollbackPendingPlayedCardHookFailure(G, ctx.currentPlayer, "after_play_card")
+          || rollbackPendingPostDevelopmentHookFailure(G, ctx.currentPlayer);
+      }
       return false;
     }
     if (pendingEffectInterruption(G)) return true;
-    continuePendingUnrestAllocationResolution(G, ctx.currentPlayer);
+    continuePendingMarketUnrestHooks(G, ctx.currentPlayer, random?.Number);
     if (pendingEffectInterruption(G)) return true;
-    continuePendingUnrestTake(G, ctx.currentPlayer);
+    if (!finishPendingAcquireEffectResolution(moveCtx) || pendingEffectInterruption(G)) return true;
+    if (pendingEffectInterruption(G)) return true;
+    if (!finishPendingMarketMoveEffectResolution(moveCtx) || pendingEffectInterruption(G)) return true;
+    if (pendingEffectInterruption(G)) return true;
+    continuePendingUnrestAllocationResolution(G, ctx.currentPlayer, random?.Number);
+    if (pendingEffectInterruption(G)) return true;
+    continuePendingUnrestTakeAndOpenReactive(G, ctx.currentPlayer, random?.Number);
     if (pendingEffectInterruption(G)) return true;
     continuePendingReshuffleLifecycle(G, ctx.currentPlayer, random?.Number);
     if (pendingEffectInterruption(G)) return true;
@@ -406,20 +532,66 @@ function resumeEffectsAfterPendingChoice(moveCtx: MoveCtx, sourceCardId?: string
     followupPendingChoice.resumeEffects = [...(followupPendingChoice.resumeEffects ?? []), ...resumeEffects];
     return true;
   }
+  if (G.pendingNationHookContinuation) {
+    const nationHookTrigger = G.pendingNationHookContinuation.trigger;
+    if (!continuePendingNationHooks({ G, playerId: ctx.currentPlayer, randomNumber: random?.Number })) {
+      if (nationHookTrigger !== "after_reshuffle") {
+        rollbackPendingPlayedCardHookFailure(G, ctx.currentPlayer, "after_play_card")
+          || rollbackPendingPostDevelopmentHookFailure(G, ctx.currentPlayer);
+      }
+      return false;
+    }
+    const nationHookPending = pendingEffectInterruption(G);
+    if (nationHookPending) {
+      nationHookPending.resumeEffects = [...(nationHookPending.resumeEffects ?? []), ...resumeEffects];
+      return true;
+    }
+  }
+  if (G.pendingMarketUnrestHookContinuation) {
+    continuePendingMarketUnrestHooks(G, ctx.currentPlayer, random?.Number);
+    const marketUnrestPending = pendingEffectInterruption(G);
+    if (marketUnrestPending) {
+      marketUnrestPending.resumeEffects = [...(marketUnrestPending.resumeEffects ?? []), ...resumeEffects];
+      return true;
+    }
+  }
+  if (G.pendingAcquireEffectResolution) {
+    G.pendingAcquireEffectResolution.resumeEffects = [
+      ...(G.pendingAcquireEffectResolution.resumeEffects ?? []),
+      ...resumeEffects
+    ];
+    return finishPendingAcquireEffectResolution(moveCtx);
+  }
+  if (G.pendingMarketMoveEffectResolution) {
+    G.pendingMarketMoveEffectResolution.resumeEffects = [
+      ...(G.pendingMarketMoveEffectResolution.resumeEffects ?? []),
+      ...resumeEffects
+    ];
+    return finishPendingMarketMoveEffectResolution(moveCtx);
+  }
   const resolved = runEffects(
     { G, playerId: ctx.currentPlayer, selfCardId: sourceCardId, randomNumber: random?.Number, enabledExpansions: G.options?.enabledExpansions },
     resumeEffects
   );
   if (!resolved || pendingEffectInterruption(G)) return resolved;
+  const nationHookTrigger = G.pendingNationHookContinuation?.trigger;
   if (!continuePendingNationHooks({ G, playerId: ctx.currentPlayer, randomNumber: random?.Number })) {
-    rollbackPendingPlayedCardHookFailure(G, ctx.currentPlayer, "after_play_card")
-      || rollbackPendingPostDevelopmentHookFailure(G, ctx.currentPlayer);
+    if (nationHookTrigger !== "after_reshuffle") {
+      rollbackPendingPlayedCardHookFailure(G, ctx.currentPlayer, "after_play_card")
+        || rollbackPendingPostDevelopmentHookFailure(G, ctx.currentPlayer);
+    }
     return false;
   }
   if (pendingEffectInterruption(G)) return true;
-  continuePendingUnrestAllocationResolution(G, ctx.currentPlayer);
+  continuePendingMarketUnrestHooks(G, ctx.currentPlayer, random?.Number);
   if (pendingEffectInterruption(G)) return true;
-  continuePendingUnrestTake(G, ctx.currentPlayer);
+  if (!finishPendingAcquireEffectResolution(moveCtx) || pendingEffectInterruption(G)) return true;
+  if (pendingEffectInterruption(G)) return true;
+  if (!finishPendingMarketMoveEffectResolution(moveCtx) || pendingEffectInterruption(G)) return true;
+  if (pendingEffectInterruption(G)) return true;
+  continuePendingUnrestAllocationResolution(G, ctx.currentPlayer, random?.Number);
+  if (pendingEffectInterruption(G)) return true;
+  continuePendingUnrestTakeAndOpenReactive(G, ctx.currentPlayer, random?.Number);
   if (pendingEffectInterruption(G)) return true;
   continuePendingReshuffleLifecycle(G, ctx.currentPlayer, random?.Number);
   if (pendingEffectInterruption(G)) return true;
@@ -435,10 +607,37 @@ function rejectIfPendingChoice(G: GameState, playerId: string, move: string): bo
   return true;
 }
 
+function continuePendingUnrestTakeAndOpenReactive(G: GameState, playerId: string, randomNumber?: () => number): void {
+  const continuationResult = continuePendingUnrestTake(G, playerId, randomNumber);
+  if (!continuationResult?.resolved || !continuationResult.completed || G.gameover || pendingEffectInterruption(G)) return;
+  for (const targetPlayerId of continuationResult.reactiveTargetPlayerIds) {
+    createReactiveExhaustChoice(
+      { G, playerId: continuationResult.playerId, enabledExpansions: G.options?.enabledExpansions },
+      { trigger: "after_take_unrest", targetPlayerId }
+    );
+    if (pendingEffectInterruption(G)) break;
+  }
+}
+
 function continuePausedRulesSequences(G: GameState, ctx: Ctx, randomNumber?: () => number): void {
+  const pendingUnrestPlayerId = G.pendingUnrestAllocationResolution?.playerId ?? G.pendingUnrestTakeContinuation?.playerId;
+  if (pendingUnrestPlayerId) {
+    continuePendingUnrestAllocationResolution(G, pendingUnrestPlayerId, randomNumber);
+    continuePendingUnrestTakeAndOpenReactive(G, pendingUnrestPlayerId, randomNumber);
+  }
+  if (pendingEffectInterruption(G)) return;
+  continuePendingMarketUnrestHooks(G, ctx.currentPlayer, randomNumber);
+  if (pendingEffectInterruption(G)) return;
+  finishPendingAcquireEffectResolution({ G, ctx, random: randomNumber ? { Number: randomNumber } : undefined });
+  if (pendingEffectInterruption(G)) return;
+  finishPendingMarketMoveEffectResolution({ G, ctx, random: randomNumber ? { Number: randomNumber } : undefined });
+  if (pendingEffectInterruption(G)) return;
+  continuePendingReshuffleLifecycle(G, ctx.currentPlayer, randomNumber);
+  if (pendingEffectInterruption(G)) return;
   continuePendingTurnEndCleanup(G, ctx.currentPlayer, randomNumber);
-  continuePendingScoringFinalization(G);
+  continuePendingScoringFinalization(G, randomNumber);
   continuePausedSolstice(G, ctx.currentPlayer, randomNumber);
+  continuePausedBotTurn(G, randomNumber);
 }
 
 function movePlayOrder(G: GameState, ctx: Ctx): string[] {
@@ -536,7 +735,12 @@ function canResolveTradeEffect(G: GameState, playerId: string): boolean {
   if (ownRouteAvailable || hasGoodsFallback) return true;
   return Object.entries(G.players).some(([candidatePlayerId, opponent]) =>
     candidatePlayerId !== playerId
-    && opponent.playArea.some((cardId) => isTradeRouteCard(G, cardId) && cardGoods(G, cardId) < 3)
+    && opponent.playArea.some((cardId) =>
+      isTradeRouteCard(G, cardId)
+      && cardGoods(G, cardId) < 3
+      && canGainResourceFromSupply(G, "goods", 1)
+      && canGainResourceFromSupply(G, "knowledge", 1)
+    )
   );
 }
 
@@ -559,7 +763,23 @@ function marketDeckHasDrawableCard(G: GameState, deckName: NonNullable<ReturnTyp
   return !(deck.length === 1 && G.marketDeckBottomCards?.[deckName] === deck[0]);
 }
 
-function canResolveDeckBreakThroughEffect(G: GameState, playerId: string, suit: Suit): boolean {
+function marketDeckDrawableTopCard(G: GameState, deckName: NonNullable<ReturnType<typeof deckForSuit>>): string | undefined {
+  const deck = G.marketDecks?.[deckName];
+  if (!deck || deck.length === 0) return undefined;
+  if (deck.length === 1 && G.marketDeckBottomCards?.[deckName] === deck[0]) return undefined;
+  return deck[0];
+}
+
+function canResolveExactDeckBreakThroughEffect(G: GameState, playerId: string, suit: Suit, cardId: string): boolean {
+  if (!cardHasSuitIconForPlayer(G, playerId, G.cardDb[cardId], suit)) return false;
+  if (suit === "tributary" && visibleTributaryBreakThroughCards(G, playerId).includes(cardId)) return true;
+  const sourceDeck = suit === "tributary" ? undefined : deckForSuit(suit);
+  if (sourceDeck && marketDeckDrawableTopCard(G, sourceDeck) === cardId) return true;
+  return (G.marketDecks?.mainDeck ?? []).includes(cardId);
+}
+
+function canResolveDeckBreakThroughEffect(G: GameState, playerId: string, suit: Suit, cardId?: string): boolean {
+  if (cardId) return canResolveExactDeckBreakThroughEffect(G, playerId, suit, cardId);
   if (suit === "tributary" && visibleTributaryBreakThroughCards(G, playerId).length > 0) return true;
   const sourceDeck = suit === "tributary" ? undefined : deckForSuit(suit);
   if (sourceDeck && marketDeckHasDrawableCard(G, sourceDeck)) return true;
@@ -599,6 +819,16 @@ function returnUnrestSourceZones(effect: Extract<Effect, { op: "return_unrest" }
 function canResolveReturnUnrestEffect(G: GameState, playerId: string, effect: Extract<Effect, { op: "return_unrest" }>): boolean {
   return returnUnrestSourceZones(effect).some((zone) => (zoneCardsForReturnUnrest(G, playerId, zone) ?? []).some((cardId) =>
     isUnrestCard(G, cardId) && (!effect.cardId || cardId === effect.cardId)
+  ));
+}
+
+function returnFameSourceZones(effect: Extract<Effect, { op: "return_fame" }>): ReturnFameSourceZone[] {
+  return effect.sourceZones?.length ? effect.sourceZones : ["hand"];
+}
+
+function canResolveReturnFameEffect(G: GameState, playerId: string, effect: Extract<Effect, { op: "return_fame" }>): boolean {
+  return returnFameSourceZones(effect).some((zone) => zoneCardsForReturnFame(G, playerId, zone).some((cardId) =>
+    isFameCard(G, cardId) && (!effect.cardId || cardId === effect.cardId)
   ));
 }
 
@@ -704,7 +934,7 @@ function regionActionCardIds(G: GameState, playerId: string): string[] {
 }
 
 function marketCardCanBeExiled(G: GameState, cardId: string): boolean {
-  return Object.values(G.marketResources?.[cardId] ?? {}).every((amount) => (amount ?? 0) <= 0);
+  return !marketCardHasTokens(G, cardId);
 }
 
 function marketCardMatchesExileEffect(G: GameState, playerId: string, cardId: string, effect: Extract<Effect, { op: "exile_card" }>): boolean {
@@ -778,7 +1008,7 @@ function canResolveChoiceEffectText(G: GameState, playerId: string, effect: Effe
 function choiceOptionIsLegal(G: GameState, playerId: string, effects: Effect[], selfCardId?: string): boolean {
   return effects.length > 0
     && canPayResourceCosts(G, playerId, explicitSpendCost(effects))
-    && effects.some((effect) => canResolveChoiceEffectText(G, playerId, effect, selfCardId));
+    && removeExplicitSpendEffects(effects).some((effect) => canResolveChoiceEffectText(G, playerId, effect, selfCardId));
 }
 
 function resourceCostHasPositiveAmount(cost: ResourceCost): boolean {
@@ -812,14 +1042,19 @@ function canResolveEffectText(G: GameState, playerId: string, effect: Effect, se
       return canPayResourceCost(G, playerId, effect.resource, effect.amount);
     case "remove_resource":
     case "return_resource":
+      if (effect.trigger === "on_exhaust") return true;
+      return effect.amount <= 0 || resourceAmount(p.resources, effect.resource) > 0;
     case "steal_resource":
-      return true;
+      if (effect.trigger === "on_exhaust") return true;
+      return effect.amount <= 0 || resourceAmount(G.players[effect.fromPlayerId]?.resources, effect.resource) > 0;
     case "discard_random":
       return p.hand.length > (effect.trigger === "on_play" ? 1 : 0);
     case "discard_cards":
       return effect.count > 0 && p.hand.filter((cardId) => cardId !== selfCardId).length >= effect.count;
     case "return_unrest":
       return canResolveReturnUnrestEffect(G, playerId, effect);
+    case "return_fame":
+      return canResolveReturnFameEffect(G, playerId, effect);
     case "place_card_on_deck":
       return canResolvePlaceOnDeckEffect(G, playerId, effect);
     case "return_exhaust_token":
@@ -857,17 +1092,23 @@ function canResolveEffectText(G: GameState, playerId: string, effect: Effect, se
         : playerExileSourceCards(G, playerId, effect.source).some((cardId) => playerCardMatchesExileEffect(G, playerId, cardId, effect));
     case "acquire_card":
       return effect.source === "exile"
-        ? availableExileCards(G, playerId).some((cardId) => (!effect.cardId || cardId === effect.cardId) && (!effect.suit || cardHasSuitIconForPlayer(G, playerId, G.cardDb[cardId], effect.suit)) && (!effect.cardType || (G.cardDb[cardId]?.cardType ?? G.cardDb[cardId]?.type) === effect.cardType))
+        ? availableExileCards(G, playerId).some((cardId) => canAcquireExileCard(G, cardId) && (!effect.cardId || cardId === effect.cardId) && (!effect.suit || cardHasSuitIconForPlayer(G, playerId, G.cardDb[cardId], effect.suit)) && (!effect.cardType || (G.cardDb[cardId]?.cardType ?? G.cardDb[cardId]?.type) === effect.cardType))
         : G.market.some((cardId) => (!effect.cardId || cardId === effect.cardId) && (!effect.suit || cardHasSuitIconForPlayer(G, playerId, G.cardDb[cardId], effect.suit)) && (!effect.cardType || (G.cardDb[cardId]?.cardType ?? G.cardDb[cardId]?.type) === effect.cardType));
     case "gain_card":
     case "take_card":
       return G.market.some((cardId) => marketCardMatchesMoveEffect(G, playerId, cardId, effect));
     case "break_through":
       return effect.source === "market"
-        ? G.market.some((cardId) => cardHasSuitIconForPlayer(G, playerId, G.cardDb[cardId], effect.suit))
+        ? G.market.some((cardId) =>
+          (!effect.cardId || cardId === effect.cardId)
+          && cardHasSuitIconForPlayer(G, playerId, G.cardDb[cardId], effect.suit)
+        )
         : effect.source === "exile"
-          ? availableExileCards(G, playerId).some((cardId) => cardHasSuitIconForPlayer(G, playerId, G.cardDb[cardId], effect.suit))
-          : canResolveDeckBreakThroughEffect(G, playerId, effect.suit);
+          ? availableExileCards(G, playerId).some((cardId) =>
+            (!effect.cardId || cardId === effect.cardId)
+            && cardHasSuitIconForPlayer(G, playerId, G.cardDb[cardId], effect.suit)
+          )
+          : canResolveDeckBreakThroughEffect(G, playerId, effect.suit, effect.cardId);
     case "find_card":
       return ((effect.sourceZones?.length ? effect.sourceZones : ["hand", "discard", "deck", "nationDeck"]) as FindSourceZone[]).some((zone) => searchableFindZoneCards(G, playerId, zone).some((cardId) =>
         (!effect.cardId || cardId === effect.cardId) && (!effect.suit || cardHasSuitIconForPlayer(G, playerId, G.cardDb[cardId], effect.suit)) && (!effect.cardType || (G.cardDb[cardId]?.cardType ?? G.cardDb[cardId]?.type) === effect.cardType)
@@ -1432,7 +1673,7 @@ export function resolveChoice({ G, ctx, random }: MoveCtx, choiceIndex: number, 
   G.pendingChoice = undefined;
   const cost = explicitSpendCost(choice);
   const choiceEffects = resourceCostHasPositiveAmount(cost) ? removeExplicitSpendEffects(choice) : choice;
-  if (resourceCostHasPositiveAmount(cost) && !payResourceCosts(G, ctx.currentPlayer, cost, payment)) {
+  if (resourceCostHasPositiveAmount(cost) && !payResourceCosts(G, ctx.currentPlayer, cost, payment, random?.Number)) {
     restoreGameState(G, snapshot);
     logInvalidMove(G, ctx.currentPlayer, "resolveChoice", `choice_effect_failed(index=${choiceIndex})`);
     return;
@@ -1571,19 +1812,34 @@ export function resolveAcquireChoice({ G, ctx, random }: MoveCtx, cardId: string
   const snapshot = cloneGameState(G);
   const resumeEffects = pending.resumeEffects ?? [];
   const collectedResources: Partial<Record<ResourceName, number>> = {};
+  const collectedResourceSources: ResourceGainSource[] = [];
+  const takenUnrestPlayerIds: string[] = [];
+  G.pendingAcquireChoice = undefined;
   const acquired = pending.source === "exile"
-    ? acquireFromExile(G, { playerId: ctx.currentPlayer, cardId, destination: pending.destination })
-    : acquireMarketCard(G, { playerId: ctx.currentPlayer, cardId, destination: pending.destination, collectedResources });
+    ? acquireFromExile(G, { playerId: ctx.currentPlayer, cardId, destination: pending.destination, takenUnrestPlayerIds, randomNumber: random?.Number })
+    : acquireMarketCard(G, { playerId: ctx.currentPlayer, cardId, destination: pending.destination, collectedResources, collectedResourceSources, takenUnrestPlayerIds, randomNumber: random?.Number });
   if (!acquired) {
     if (returnIfGameover(G)) {
       G.pendingAcquireChoice = undefined;
       return;
     }
+    G.pendingAcquireChoice = pending;
     logInvalidMove(G, ctx.currentPlayer, "resolveAcquireChoice", `acquire_choice_failed(${cardId})`);
     return;
   }
-  G.pendingAcquireChoice = undefined;
   if (returnIfGameover(G)) return;
+  if (pendingEffectInterruption(G)) {
+    G.pendingAcquireEffectResolution = {
+      playerId: ctx.currentPlayer,
+      cardId,
+      sourceCardId: pending.sourceCardId,
+      takenUnrestPlayerIds,
+      collectedResources,
+      collectedResourceSources,
+      resumeEffects
+    };
+    return;
+  }
   if (!runAcquireTriggers({ G, playerId: ctx.currentPlayer, randomNumber: random?.Number, enabledExpansions: G.options?.enabledExpansions }, cardId)) {
     if (returnIfGameover(G)) return;
     restoreGameState(G, snapshot);
@@ -1606,8 +1862,21 @@ export function resolveAcquireChoice({ G, ctx, random }: MoveCtx, cardId: string
     hookPending.resumeEffects = [...(hookPending.resumeEffects ?? []), ...resumeEffects];
     return;
   }
-  createReactiveExhaustChoicesForResourceGains(
+  for (const targetPlayerId of takenUnrestPlayerIds) {
+    createReactiveExhaustChoice(
+      { G, playerId: ctx.currentPlayer, selfCardId: pending.sourceCardId, randomNumber: random?.Number, enabledExpansions: G.options?.enabledExpansions },
+      { trigger: "after_take_unrest", targetPlayerId }
+    );
+    if (pendingEffectInterruption(G)) break;
+  }
+  const unrestPending = pendingEffectInterruption(G);
+  if (unrestPending) {
+    unrestPending.resumeEffects = [...(unrestPending.resumeEffects ?? []), ...resumeEffects];
+    return;
+  }
+  createReactiveExhaustChoicesForResourceGainSources(
     { G, playerId: ctx.currentPlayer, selfCardId: pending.sourceCardId, randomNumber: random?.Number, enabledExpansions: G.options?.enabledExpansions },
+    collectedResourceSources,
     collectedResources
   );
   const resourcePending = pendingEffectInterruption(G);
@@ -1652,22 +1921,49 @@ export function resolveMarketCardChoice({ G, ctx, random }: MoveCtx, cardId: str
   const snapshot = cloneGameState(G);
   const resumeEffects = pending.resumeEffects ?? [];
   const collectedResources: Partial<Record<ResourceName, number>> = {};
+  const collectedResourceSources: ResourceGainSource[] = [];
+  const takenUnrestPlayerIds: string[] = [];
+  G.pendingMarketCardChoice = undefined;
   const moved = pending.op === "gain_card"
-    ? gainMarketCard(G, { playerId: ctx.currentPlayer, cardId, destination: pending.destination, collectedResources })
-    : takeMarketCard(G, { playerId: ctx.currentPlayer, cardId, destination: pending.destination, collectedResources });
+    ? gainMarketCard(G, { playerId: ctx.currentPlayer, cardId, destination: pending.destination, collectedResources, collectedResourceSources, takenUnrestPlayerIds, randomNumber: random?.Number })
+    : takeMarketCard(G, { playerId: ctx.currentPlayer, cardId, destination: pending.destination, collectedResources, collectedResourceSources });
   if (!moved) {
+    G.pendingMarketCardChoice = pending;
     logInvalidMove(G, ctx.currentPlayer, "resolveMarketCardChoice", `market_card_choice_failed(${cardId})`);
     return;
   }
-  G.pendingMarketCardChoice = undefined;
   if (returnIfGameover(G)) return;
-  createReactiveExhaustChoicesForResourceGains(
+  if (pendingEffectInterruption(G)) {
+    G.pendingMarketMoveEffectResolution = {
+      playerId: ctx.currentPlayer,
+      sourceCardId: pending.sourceCardId,
+      takenUnrestPlayerIds,
+      collectedResources,
+      collectedResourceSources,
+      resumeEffects
+    };
+    return;
+  }
+  createReactiveExhaustChoicesForResourceGainSources(
     { G, playerId: ctx.currentPlayer, selfCardId: pending.sourceCardId, randomNumber: random?.Number, enabledExpansions: G.options?.enabledExpansions },
+    collectedResourceSources,
     collectedResources
   );
   const resourcePending = pendingEffectInterruption(G);
   if (resourcePending) {
     resourcePending.resumeEffects = [...(resourcePending.resumeEffects ?? []), ...resumeEffects];
+    return;
+  }
+  for (const targetPlayerId of takenUnrestPlayerIds) {
+    createReactiveExhaustChoice(
+      { G, playerId: ctx.currentPlayer, selfCardId: pending.sourceCardId, randomNumber: random?.Number, enabledExpansions: G.options?.enabledExpansions },
+      { trigger: "after_take_unrest", targetPlayerId }
+    );
+    if (pendingEffectInterruption(G)) break;
+  }
+  const unrestPending = pendingEffectInterruption(G);
+  if (unrestPending) {
+    unrestPending.resumeEffects = [...(unrestPending.resumeEffects ?? []), ...resumeEffects];
     return;
   }
   if (!resumeEffectsAfterPendingChoice({ G, ctx, random }, pending.sourceCardId, resumeEffects)) {
@@ -1780,8 +2076,9 @@ export function resolveBreakThroughChoice({ G, ctx, events, random }: MoveCtx, c
   const result = breakThrough(G, { playerId: ctx.currentPlayer, suit: pending.suit, source: pending.source, count: 1, cardId, randomNumber: random?.Number });
   G.pendingBreakThroughChoice = undefined;
   if (returnIfGameover(G)) return;
-  createReactiveExhaustChoicesForResourceGains(
+  createReactiveExhaustChoicesForResourceGainSources(
     { G, playerId: ctx.currentPlayer, selfCardId: pending.sourceCardId, randomNumber: random?.Number, enabledExpansions: G.options?.enabledExpansions },
+    result.marketResourceGainSources,
     result.marketResourceGains
   );
   const resourcePending = pendingEffectInterruption(G);
@@ -2033,6 +2330,7 @@ export function resolveShortGameDevelopmentExileChoice({ G, ctx, random }: MoveC
     logInvalidMove(G, ctx.currentPlayer, "resolveShortGameDevelopmentExileChoice", `resume_effect_failed(${cardId})`);
     return;
   }
+  continuePendingShortGameDevelopmentExileQueue(G);
   continuePendingReshuffleLifecycle(G, ctx.currentPlayer, random?.Number);
   continuePausedRulesSequences(G, ctx, random?.Number);
 }
@@ -2142,6 +2440,39 @@ export function resolveReturnUnrestChoice({ G, ctx, random }: MoveCtx, cardId: s
     return;
   }
   G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: `ReturnUnrestChoiceResolved(${pending.sourceCardId ?? "unknown"}/${cardId})` });
+  continuePausedRulesSequences(G, ctx, random?.Number);
+}
+
+export function resolveReturnFameChoice({ G, ctx, random }: MoveCtx, cardId: string): void {
+  const pending = G.pendingReturnFameChoice;
+  if (!pending) {
+    logInvalidMove(G, ctx.currentPlayer, "resolveReturnFameChoice", "no_pending_return_fame_choice");
+    return;
+  }
+  if (pending.playerId !== ctx.currentPlayer) {
+    logInvalidMove(G, ctx.currentPlayer, "resolveReturnFameChoice", `pending_return_fame_for_player(${pending.playerId})`);
+    return;
+  }
+  if (!pending.cardIds.includes(cardId)) {
+    logInvalidMove(G, ctx.currentPlayer, "resolveReturnFameChoice", `card_not_in_return_fame_options(${cardId})`);
+    return;
+  }
+  const snapshot = cloneGameState(G);
+  const resumeEffects = pending.resumeEffects ?? [];
+  if (!returnFameCard(G, ctx.currentPlayer, cardId, pending.sourceZones)) {
+    restoreGameState(G, snapshot);
+    logInvalidMove(G, ctx.currentPlayer, "resolveReturnFameChoice", `return_fame_failed(${cardId})`);
+    return;
+  }
+  G.pendingReturnFameChoice = undefined;
+  if (!resumeEffectsAfterPendingChoice({ G, ctx, random }, pending.sourceCardId, resumeEffects)) {
+    if (returnIfGameover(G)) return;
+    if (handleAfterReshuffleHookFailure(G, ctx.currentPlayer, "resolveReturnFameChoice")) return;
+    restoreGameState(G, snapshot);
+    logInvalidMove(G, ctx.currentPlayer, "resolveReturnFameChoice", `resume_effect_failed(${cardId})`);
+    return;
+  }
+  G.log.push({ round: G.round, playerId: ctx.currentPlayer, message: `ReturnFameChoiceResolved(${pending.sourceCardId ?? "unknown"}/${cardId})` });
   continuePausedRulesSequences(G, ctx, random?.Number);
 }
 
@@ -2349,7 +2680,7 @@ export function resolveLookOrderChoice({ G, ctx, random }: MoveCtx, cardIds: str
   continuePausedRulesSequences(G, ctx, random?.Number);
 }
 
-export function resolveUnrestAllocationChoice({ G, ctx }: MoveCtx, recipientPlayerIds: string[]): void {
+export function resolveUnrestAllocationChoice({ G, ctx, random }: MoveCtx, recipientPlayerIds: string[]): void {
   const pending = G.pendingUnrestAllocationChoice;
   if (!pending) {
     logInvalidMove(G, ctx.currentPlayer, "resolveUnrestAllocationChoice", "no_pending_unrest_allocation_choice");
@@ -2359,9 +2690,11 @@ export function resolveUnrestAllocationChoice({ G, ctx }: MoveCtx, recipientPlay
     logInvalidMove(G, ctx.currentPlayer, "resolveUnrestAllocationChoice", `pending_unrest_allocation_for_player(${pending.playerId})`);
     return;
   }
-  if (!resolvePendingUnrestAllocationChoice(G, ctx.currentPlayer, recipientPlayerIds)) {
+  if (!resolvePendingUnrestAllocationChoice(G, ctx.currentPlayer, recipientPlayerIds, random?.Number)) {
     logInvalidMove(G, ctx.currentPlayer, "resolveUnrestAllocationChoice", "unrest_allocation_failed");
+    return;
   }
+  continuePausedRulesSequences(G, ctx, random?.Number);
 }
 
 export function resolveSolsticeOrderChoice({ G, ctx, random }: MoveCtx, cardIds: string[]): void {

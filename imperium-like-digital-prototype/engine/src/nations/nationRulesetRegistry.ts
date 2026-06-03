@@ -12,6 +12,8 @@ export function validateNationRulesetCompatibility(nation: NationDefinition, rul
   for (const v of ruleset.requiredVariants ?? []) if (!options.enabledVariants.includes(v)) errs.push(`Ruleset requires disabled variant ${v}`);
   for (const v of ruleset.excludedVariants ?? []) if (options.enabledVariants.includes(v)) errs.push(`Ruleset excluded by enabled variant ${v}`);
   if (options.enabledVariants.includes("short_game") && ruleset.shortGameOverrides.some((ov) => ov.op === "excluded_from_short_game")) errs.push("Ruleset excluded by enabled variant short_game");
+  const allowedModes = ruleset.allowedModes ?? ["multiplayer", "solo", "practice"];
+  if (!allowedModes.includes(options.mode)) errs.push(`Ruleset not allowed in mode ${options.mode}`);
   if (ruleset.disallowedModes?.includes(options.mode)) errs.push(`Ruleset disallows mode ${options.mode}`);
   return errs;
 }

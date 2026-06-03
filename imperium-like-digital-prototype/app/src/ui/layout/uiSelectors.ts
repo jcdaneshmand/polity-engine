@@ -30,12 +30,30 @@ function zoneCount(owner: any, zoneId: string): number {
   return base;
 }
 export function getPlayerZoneCounts(player: any) {
-  if (!player) return { deck: 0, discard: 0, hand: 0, playArea: 0, history: 0, developmentArea: 0, nationDeck: 0 };
-  return {
-    deck: player.deck?.length ?? 0, discard: player.discard?.length ?? 0, hand: player.hand?.length ?? 0,
-    playArea: player.playArea?.length ?? 0, history: player.history?.length ?? 0,
-    developmentArea: player.developmentArea?.length ?? 0, nationDeck: zoneCount(player, "nationDeck")
+  const baseCounts = {
+    deck: player?.deck?.length ?? 0,
+    discard: player?.discard?.length ?? 0,
+    hand: player?.hand?.length ?? 0,
+    playArea: player?.playArea?.length ?? 0,
+    history: player?.history?.length ?? 0,
+    developmentArea: player?.developmentArea?.length ?? 0,
+    nationDeck: zoneCount(player, "nationDeck")
   };
+  if (!player) return baseCounts;
+  return {
+    ...baseCounts,
+    ...Object.fromEntries(Object.entries(player.sideAreas ?? {}).map(([zoneId, cards]) => [zoneId, Array.isArray(cards) ? cards.length : 0]))
+  };
+}
+export function getPlayerZoneLabels(G: GameState, playerId: string): Record<string, string> {
+  const labels: Record<string, string> = {};
+  const ruleset = G.activeNationRulesets?.[playerId];
+  for (const override of ruleset?.zoneOverrides ?? []) {
+    if ((override.op === "replace_history_with_zone" || override.op === "create_zone") && "displayName" in override && typeof override.displayName === "string") {
+      labels[override.zoneId] = override.displayName;
+    }
+  }
+  return labels;
 }
 export function getZoneCards(player: any, zoneId: string): string[] {
   const direct = player?.[zoneId];
@@ -43,6 +61,15 @@ export function getZoneCards(player: any, zoneId: string): string[] {
   const sideArea = player?.sideAreas?.[zoneId];
   if (Array.isArray(sideArea)) return sideArea;
   return [];
+}
+export function getOwnerVisibleZoneIds(G: GameState, playerId: string): Set<string> {
+  const zoneIds = new Set<string>(["hand", "history"]);
+  const ruleset = G.activeNationRulesets?.[playerId];
+  for (const override of ruleset?.zoneOverrides ?? []) {
+    if (override.op === "replace_history_with_zone") zoneIds.add(override.zoneId);
+    if (override.op === "create_zone" && override.visibility === "private") zoneIds.add(override.zoneId);
+  }
+  return zoneIds;
 }
 export function getInspectableSharedPile(G: GameState, pileId: string): { hidden: boolean; cardIds: string[]; count: number } {
   if (pileId === "fame") {
@@ -91,7 +118,7 @@ export function getInspectableSharedPile(G: GameState, pileId: string): { hidden
 export function getInspectableZone(
   owner: any,
   zoneId: string,
-  viewer?: { ownerPlayerId?: string; viewerPlayerId?: string }
+  viewer?: { ownerPlayerId?: string; viewerPlayerId?: string; ownerVisibleZoneIds?: Iterable<string> }
 ): { hidden: boolean; cardIds: string[]; count: number } {
   if (zoneId === "botSlots") {
     const slots = Object.values(owner?.slots ?? {}) as any[];
@@ -115,7 +142,7 @@ export function getInspectableZone(
   }
   const hiddenZones = new Set(["deck", "nationDeck", "botDeck", "botDynastyDeck"]);
   if (hiddenZones.has(zoneId)) return { hidden: true, cardIds: [], count: zoneCount(owner, zoneId) };
-  const ownerVisibleZones = new Set(["hand", "history"]);
+  const ownerVisibleZones = new Set(viewer?.ownerVisibleZoneIds ?? ["hand", "history"]);
   if (
     ownerVisibleZones.has(zoneId) &&
     viewer?.ownerPlayerId !== undefined &&

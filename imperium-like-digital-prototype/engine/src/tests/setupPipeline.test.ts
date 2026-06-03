@@ -54,6 +54,95 @@ describe("setup pipeline",()=>{
     expect(G.players["1"].hand).toContain("uploaded_starter");
     expect(G.market).toEqual(["uploaded_market_1","uploaded_market_2","uploaded_market_3","uploaded_market_4","uploaded_market_5"]);
   });
+  it("rejects a selected nation outside its allowed modes",()=> {
+    const commons = Array.from({ length: 5 }, (_, index) =>
+      card({id:`mode_market_${index + 1}`,displayName:`Mode Market ${index + 1}`,ownership:"commons",startingLocation:"market",commonsSetId:"custom"})
+    );
+
+    expect(() => createInitialGameState({
+      options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[],commonsSetId:"custom"},
+      playerNationIds:{"0":"solo_only_nation","1":"solo_only_nation"},
+      privateData:{
+        cards:[
+          card({id:"solo_starter",ownership:"nation",startingLocation:"draw_deck"}),
+          ...commons
+        ],
+        nations:[{
+          id:"solo_only_nation",
+          displayName:"Solo Only Nation",
+          powerCardIds:[],
+          stateCardIds:[],
+          startingDeckCardIds:["solo_starter"],
+          nationDeckCardIds:[],
+          developmentCardIds:[],
+          setupRules:[],
+          passiveRules:[],
+          actionTokensBase:3,
+          exhaustTokensBase:5,
+          requiredExpansions:[],
+          allowedModes:["solo"],
+          implemented:true,
+          tested:true
+        }]
+      }
+    } as any)).toThrow("Nation solo_only_nation not allowed in mode multiplayer.");
+  });
+  it("ignores Bot-only ruleset overrides in multiplayer setup",()=> {
+    const commons = Array.from({ length: 5 }, (_, index) =>
+      card({id:`multiplayer_market_${index + 1}`,displayName:`Multiplayer Market ${index + 1}`,ownership:"commons",startingLocation:"market",commonsSetId:"custom"})
+    );
+    const G=createInitialGameState({
+      options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[],commonsSetId:"custom"},
+      playerNationIds:{"0":"uploaded_nation","1":"uploaded_nation"},
+      privateData:{
+        cards:[
+          card({id:"uploaded_starter",ownership:"nation",startingLocation:"draw_deck"}),
+          ...commons
+        ],
+        nations:[{
+          id:"uploaded_nation",
+          displayName:"Uploaded Nation",
+          powerCardIds:[],
+          stateCardIds:[],
+          startingDeckCardIds:["uploaded_starter"],
+          nationDeckCardIds:[],
+          developmentCardIds:[],
+          setupRules:[],
+          passiveRules:[],
+          actionTokensBase:3,
+          exhaustTokensBase:5,
+          requiredExpansions:[],
+          implemented:true,
+          tested:true
+        }],
+        nationRulesets:[{
+          nationId:"uploaded_nation",
+          displayName:"Uploaded Ruleset",
+          rulesetTags:["default_nation_deck"],
+          requiredExpansions:[],
+          setupOverrides:[],
+          zoneOverrides:[],
+          stateOverrides:[],
+          reshuffleOverrides:[],
+          cleanupOverrides:[],
+          solsticeOverrides:[],
+          scoringOverrides:[],
+          collapseOverrides:[],
+          botOverrides:[
+            { op:"custom_bot_state_stack", cardIds:["bot_state_a","bot_state_b"] },
+            { op:"bot_cleanup_market_resource", resource:"goods", count:2 }
+          ],
+          shortGameOverrides:[],
+          hookRules:[],
+          implemented:true,
+          tested:true
+        }]
+      }
+    } as any);
+
+    expect(G.solo).toBeUndefined();
+    expect(G.log.some((entry) => entry.message.includes("/bot/"))).toBe(false);
+  });
   it("short game setup exiles the top ten remaining Main deck cards into a public Exile zone",()=> {
     const cards = Array.from({ length: 15 }, (_, index) =>
       card({ id: `main_${index + 1}`, startingLocation: "market", setupBannerSuit: "none", smallDeckEligible: false, mainDeckEligible: true })
@@ -123,6 +212,103 @@ describe("setup pipeline",()=>{
       playerNationIds:{"0":"test_nation_river_court","1":"test_nation_sun_coast"}
     });
     expect(tradeRoutes.players["0"].resources).toMatchObject({ materials:3, influence:2, knowledge:0, goods:1 });
+  });
+  it("applies the campaign loss carryover resource bonus to the next solo setup",()=>{
+    const baseOptions: GameOptions = {
+      playerCount:1,
+      mode:"solo",
+      enabledExpansions:[],
+      enabledVariants:[],
+      soloDifficulty:"chieftain",
+      campaignMode:"standard",
+      commonsSetId:"classics",
+      replacementPolicy:"none",
+      campaignProgress:{
+        mode:"standard",
+        playerNationId:"human_nation",
+        wins:0,
+        losses:1,
+        currentDifficulty:"chieftain",
+        defeatedBotNationIds:[],
+        startingDeckAdditions:[],
+        startingDeckRemovals:[],
+        setAsideCommonsCardIds:[],
+        doubleStartingResourcesForNextGame:true
+      }
+    };
+    const G=createInitialGameStateFromPipeline({
+      options:baseOptions,
+      cardDb: cardDb([
+        card({ id:"starter", ownership:"nation", startingLocation:"draw_deck" }),
+        card({ id:"bot_region", suit:"region", cardType:"attack", ownership:"bot", startingLocation:"bot_deck" })
+      ]),
+      nationDb:{
+        human_nation:{ ...nationDb.test_nation_alpha, id:"human_nation", displayName:"Human Nation" },
+        requested_bot:{ ...nationDb.test_nation_alpha, id:"requested_bot", displayName:"Requested Bot" }
+      },
+      playerNationIds:{"0":"human_nation"},
+      soloBotNationId:"requested_bot"
+    });
+
+    expect(G.players["0"].resources).toMatchObject({ materials:6, influence:4, knowledge:2, goods:0 });
+    expect(G.log.some((entry) => entry.message === "CampaignStartingResourceBonusApplied")).toBe(true);
+  });
+  it("applies campaign starting-deck additions and removals before the opening hand is drawn",()=>{
+    const options: GameOptions = {
+      playerCount:1,
+      mode:"solo",
+      enabledExpansions:[],
+      enabledVariants:[],
+      soloDifficulty:"warlord",
+      campaignMode:"standard",
+      commonsSetId:"classics",
+      replacementPolicy:"none",
+      campaignProgress:{
+        mode:"standard",
+        playerNationId:"human_nation",
+        wins:1,
+        losses:0,
+        currentDifficulty:"warlord",
+        defeatedBotNationIds:["first_bot"],
+        startingDeckAdditions:["campaign_commons"],
+        startingDeckRemovals:["starter_removed"],
+        setAsideCommonsCardIds:[],
+        doubleStartingResourcesForNextGame:false
+      }
+    };
+    const G=createInitialGameStateFromPipeline({
+      options,
+      cardDb: cardDb([
+        card({ id:"starter_keep_1", ownership:"nation", startingLocation:"draw_deck" }),
+        card({ id:"starter_keep_2", ownership:"nation", startingLocation:"draw_deck" }),
+        card({ id:"starter_removed", ownership:"nation", startingLocation:"draw_deck" }),
+        card({ id:"campaign_commons", ownership:"commons", startingLocation:"market", smallDeckEligible:false }),
+        card({ id:"safe_market_1", suit:"none", smallDeckEligible:false }),
+        card({ id:"safe_market_2", suit:"none", smallDeckEligible:false }),
+        card({ id:"safe_market_3", suit:"none", smallDeckEligible:false }),
+        card({ id:"safe_market_4", suit:"none", smallDeckEligible:false }),
+        card({ id:"safe_market_5", suit:"none", smallDeckEligible:false }),
+        card({ id:"bot_region", suit:"region", cardType:"attack", ownership:"bot", startingLocation:"bot_deck" })
+      ]),
+      nationDb:{
+        human_nation:{ ...nationDb.test_nation_alpha, id:"human_nation", displayName:"Human Nation", startingDeckCardIds:["starter_keep_1","starter_keep_2","starter_removed"] },
+        requested_bot:{ ...nationDb.test_nation_alpha, id:"requested_bot", displayName:"Requested Bot" }
+      },
+      playerNationIds:{"0":"human_nation"},
+      soloBotNationId:"requested_bot"
+    });
+    const playerZones = [
+      ...G.players["0"].hand,
+      ...G.players["0"].deck,
+      ...G.players["0"].discard,
+      ...G.players["0"].playArea,
+      ...G.players["0"].history,
+      ...G.players["0"].exile
+    ];
+
+    expect(playerZones).toContain("campaign_commons");
+    expect(playerZones).not.toContain("starter_removed");
+    expect(G.log.some((entry) => entry.message === "CampaignStartingDeckCarryoverApplied(add=1/remove=1)")).toBe(true);
   });
   it("applies setup and short-game resource overrides using rulebook resource names",()=>{
     const G=createInitialGameStateFromPipeline({
@@ -432,6 +618,25 @@ describe("setup pipeline",()=>{
     });
 
     expect(G.solo?.bot.botNationId).toBe("requested_bot");
+  });
+  it("stores campaign-normalized Supreme Ruler difficulty in setup state",()=>{
+    const G=createInitialGameStateFromPipeline({
+      options:{playerCount:1,mode:"solo",enabledExpansions:[],enabledVariants:[],soloDifficulty:"chieftain",campaignMode:"supreme_ruler",commonsSetId:"classics",replacementPolicy:"none"},
+      cardDb: cardDb([
+        card({ id:"starter", ownership:"nation", startingLocation:"draw_deck" }),
+        card({ id:"bot_region", suit:"region", cardType:"attack", ownership:"bot", startingLocation:"bot_deck" })
+      ]),
+      nationDb:{
+        human_nation:{ ...nationDb.test_nation_alpha, id:"human_nation", displayName:"Human Nation" },
+        requested_bot:{ ...nationDb.test_nation_alpha, id:"requested_bot", displayName:"Requested Bot" }
+      },
+      playerNationIds:{"0":"human_nation"},
+      soloBotNationId:"requested_bot"
+    });
+
+    expect(G.options?.campaignMode).toBe("supreme_ruler");
+    expect(G.options?.soloDifficulty).toBe("supreme_ruler");
+    expect(G.solo?.bot.difficulty).toBe("supreme_ruler");
   });
   it("random solo bot setup skips nations excluded by the active ruleset options",()=>{
     const G=createInitialGameStateFromPipeline({

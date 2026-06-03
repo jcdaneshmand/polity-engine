@@ -92,11 +92,6 @@ function freePlayAlreadyUsed(G: any, ctx: any, cardId: string): boolean {
   return (G.freePlayedThisTurn?.[ctx.currentPlayer] ?? []).includes(cardId);
 }
 
-function isRegionCard(G: any, cardId: string): boolean {
-  const card = getCardById(G, cardId);
-  return (card?.cardType ?? card?.type) === "region" || card?.suit === "region";
-}
-
 function isTradeRouteCard(G: any, cardId: string): boolean {
   const card = getCardById(G, cardId);
   return (card?.cardType ?? card?.type) === "trade_route" || card?.suit === "trade_route";
@@ -200,7 +195,6 @@ function allocationOptions(recipients: string[], countPerPlayer: number, slots: 
 
 function orderedPermutations(cardIds: string[]): string[][] {
   if (cardIds.length <= 1) return [cardIds];
-  if (cardIds.length > 2) return cardIds.map((cardId, index) => [cardId, ...cardIds.filter((_, candidateIndex) => candidateIndex !== index)]);
   return cardIds.flatMap((cardId, index) => {
     const remaining = cardIds.filter((_, candidateIndex) => candidateIndex !== index);
     return orderedPermutations(remaining).map((order) => [cardId, ...order]);
@@ -251,13 +245,15 @@ export function getPendingUiState(G: any, ctx: any): { title: string; detail: st
     G.pendingTradeChoice ? { title: "Pending Trade", detail: plural((G.pendingTradeChoice.routeCardIds?.length ?? 0) + (G.pendingTradeChoice.allowGoodsForProgress ? 1 : 0), "option"), playerId: G.pendingTradeChoice.playerId } :
     G.pendingDiscardChoice ? { title: "Pending Discard", detail: `Choose ${G.pendingDiscardChoice.count ?? 0} ${(G.pendingDiscardChoice.count ?? 0) === 1 ? "card" : "cards"} from ${plural(G.pendingDiscardChoice.cardIds?.length ?? 0, "option")}`, playerId: G.pendingDiscardChoice.playerId } :
     G.pendingReturnUnrestChoice ? { title: "Pending Return Unrest", detail: `Choose ${plural(G.pendingReturnUnrestChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingReturnUnrestChoice.playerId } :
+    G.pendingReturnFameChoice ? { title: "Pending Return Fame", detail: `Choose ${plural(G.pendingReturnFameChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingReturnFameChoice.playerId } :
     G.pendingPlaceOnDeckChoice ? { title: "Pending Deck Placement", detail: `Choose ${plural(G.pendingPlaceOnDeckChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingPlaceOnDeckChoice.playerId } :
     G.pendingReturnExhaustTokenChoice ? { title: "Pending Return Exhaust", detail: `Choose ${plural(G.pendingReturnExhaustTokenChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingReturnExhaustTokenChoice.playerId } :
     G.pendingGiveCardChoice ? { title: "Pending Give Card", detail: `${plural(G.pendingGiveCardChoice.cardIds?.length ?? 0, "card")} / ${plural(G.pendingGiveCardChoice.recipientPlayerIds?.length ?? 0, "recipient")}`, playerId: G.pendingGiveCardChoice.playerId } :
     G.pendingSwapChoice ? { title: "Pending Swap", detail: plural(G.pendingSwapChoice.choices?.length ?? 0, "option"), playerId: G.pendingSwapChoice.playerId } :
+    G.pendingReactiveExhaustChoice ? { title: "Pending Reactive Exhaust", detail: `Choose ${plural(G.pendingReactiveExhaustChoice.cardIds?.length ?? 0, "card")}, or skip`, playerId: G.pendingReactiveExhaustChoice.playerId } :
     G.pendingUnrestAllocationChoice ? { title: "Pending Unrest Allocation", detail: plural(G.pendingUnrestAllocationChoice.availableUnrestCardIds?.length ?? 0, "Unrest"), playerId: G.pendingUnrestAllocationChoice.playerId } :
-    G.pendingSolsticeOrderChoice ? { title: "Pending Solstice Order", detail: `Choose first of ${plural(G.pendingSolsticeOrderChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingSolsticeOrderChoice.playerId } :
-    G.pendingLookOrderChoice ? { title: "Pending Look Order", detail: `Choose first of ${plural(G.pendingLookOrderChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingLookOrderChoice.playerId } :
+    G.pendingSolsticeOrderChoice ? { title: "Pending Solstice Order", detail: `Choose order for ${plural(G.pendingSolsticeOrderChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingSolsticeOrderChoice.playerId } :
+    G.pendingLookOrderChoice ? { title: "Pending Look Order", detail: `Choose order for ${plural(G.pendingLookOrderChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingLookOrderChoice.playerId } :
     G.pendingCleanupMarketResourceChoice ? {
       title: "Pending Cleanup Resource",
       detail: `Choose a market card for ${plural(G.pendingCleanupMarketResourceChoice.amount ?? 1, "cleanup resource")}`,
@@ -300,11 +296,20 @@ export function getActionHintsByCardId(actions: any[], zone?: HintZone): Record<
   return hints;
 }
 
-export function getMarketCardClickAction(G: any, ctx: any, cardId: string): { action: "resolveCleanupMarketResource" | "resolveExileChoice" | "resolveMarketCardChoice"; cardId: string; enabled: true } | undefined {
+export function getMarketCardClickAction(G: any, ctx: any, cardId: string): { action: "resolveCleanupMarketResource" | "resolveExileChoice" | "resolveAcquireChoice" | "resolveMarketCardChoice" | "resolveBreakThroughChoice"; cardId: string; enabled: true } | undefined {
   const pending = G.pendingCleanupMarketResourceChoice;
   if (pending?.playerId === ctx.currentPlayer) {
     const eligibleCardIds = pending.cardIds ?? G.market ?? [];
     if (eligibleCardIds.includes(cardId)) return { action: "resolveCleanupMarketResource", cardId, enabled: true };
+  }
+
+  const pendingAcquireChoice = G.pendingAcquireChoice;
+  if (
+    pendingAcquireChoice?.playerId === ctx.currentPlayer
+    && pendingAcquireChoice.source === "market"
+    && (pendingAcquireChoice.cardIds ?? []).includes(cardId)
+  ) {
+    return { action: "resolveAcquireChoice", cardId, enabled: true };
   }
 
   const pendingMarketCardChoice = G.pendingMarketCardChoice;
@@ -315,11 +320,19 @@ export function getMarketCardClickAction(G: any, ctx: any, cardId: string): { ac
     return { action: "resolveMarketCardChoice", cardId, enabled: true };
   }
 
+  const pendingBreakThroughChoice = G.pendingBreakThroughChoice;
+  if (
+    pendingBreakThroughChoice?.playerId === ctx.currentPlayer
+    && pendingBreakThroughChoice.source === "market"
+    && (pendingBreakThroughChoice.cardIds ?? []).includes(cardId)
+  ) {
+    return { action: "resolveBreakThroughChoice", cardId, enabled: true };
+  }
+
   const pendingExile = G.pendingExileChoice;
   if (
     pendingExile?.playerId === ctx.currentPlayer
     && pendingExile.source === "market"
-    && pendingExile.sourceCardId === "practice_market_churn"
     && (pendingExile.cardIds ?? []).includes(cardId)
   ) {
     return { action: "resolveExileChoice", cardId, enabled: true };
@@ -342,12 +355,33 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
         reason: isCurrentPlayer ? undefined : `Waiting for player ${pendingCleanupDiscard.playerId}`,
         cardId: s?.id
       });
+    } else {
+      actions.push({
+        label: "Keep Hand",
+        action: "resolveCleanupDiscard",
+        enabled: isCurrentPlayer,
+        reason: isCurrentPlayer ? undefined : `Waiting for player ${pendingCleanupDiscard.playerId}`,
+        cardIds: []
+      });
+      for (let count = 1; count <= (pendingCleanupDiscard.cardIds?.length ?? 0); count += 1) {
+        cardCombinations(pendingCleanupDiscard.cardIds ?? [], count).forEach((cardIds) => {
+          const labels = cardIds.map((cardId) => getCardById(G, cardId)?.displayName ?? cardId);
+          actions.push({
+            label: `Discard ${labels.join(", ")}`,
+            action: "resolveCleanupDiscard",
+            enabled: isCurrentPlayer,
+            reason: isCurrentPlayer ? undefined : `Waiting for player ${pendingCleanupDiscard.playerId}`,
+            cardIds
+          });
+        });
+      }
     }
-    actions.push({
+    if (card) actions.push({
       label: "Keep Hand",
       action: "resolveCleanupDiscard",
       enabled: isCurrentPlayer,
-      reason: isCurrentPlayer ? undefined : `Waiting for player ${pendingCleanupDiscard.playerId}`
+      reason: isCurrentPlayer ? undefined : `Waiting for player ${pendingCleanupDiscard.playerId}`,
+      cardIds: []
     });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve cleanup discard first" });
     return actions;
@@ -606,6 +640,22 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Return Unrest choice first" });
     return actions;
   }
+  const pendingReturnFameChoice = G.pendingReturnFameChoice;
+  if (pendingReturnFameChoice) {
+    const isCurrentPlayer = pendingReturnFameChoice.playerId === ctx.currentPlayer;
+    (pendingReturnFameChoice.cardIds ?? []).forEach((cardId: string) => {
+      const card = getCardById(G, cardId);
+      actions.push({
+        label: `Return ${card?.displayName ?? cardId}`,
+        action: "resolveReturnFameChoice",
+        enabled: isCurrentPlayer,
+        reason: isCurrentPlayer ? undefined : `Waiting for player ${pendingReturnFameChoice.playerId}`,
+        cardId
+      });
+    });
+    actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Return Fame choice first" });
+    return actions;
+  }
   const pendingPlaceOnDeckChoice = G.pendingPlaceOnDeckChoice;
   if (pendingPlaceOnDeckChoice) {
     const isCurrentPlayer = pendingPlaceOnDeckChoice.playerId === ctx.currentPlayer;
@@ -675,6 +725,28 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Swap choice first" });
     return actions;
   }
+  const pendingReactiveExhaustChoice = G.pendingReactiveExhaustChoice;
+  if (pendingReactiveExhaustChoice) {
+    const isCurrentPlayer = pendingReactiveExhaustChoice.playerId === ctx.currentPlayer;
+    (pendingReactiveExhaustChoice.cardIds ?? []).forEach((cardId: string) => {
+      const card = getCardById(G, cardId);
+      actions.push({
+        label: `Exhaust ${card?.displayName ?? cardId}`,
+        action: "resolveReactiveExhaustChoice",
+        enabled: isCurrentPlayer,
+        reason: isCurrentPlayer ? undefined : `Waiting for player ${pendingReactiveExhaustChoice.playerId}`,
+        cardId
+      });
+    });
+    actions.push({
+      label: "Skip Reactive Exhaust",
+      action: "skipReactiveExhaustChoice",
+      enabled: isCurrentPlayer,
+      reason: isCurrentPlayer ? undefined : `Waiting for player ${pendingReactiveExhaustChoice.playerId}`
+    });
+    actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Reactive Exhaust choice first" });
+    return actions;
+  }
   const pendingUnrestAllocationChoice = G.pendingUnrestAllocationChoice;
   if (pendingUnrestAllocationChoice) {
     const isCurrentPlayer = pendingUnrestAllocationChoice.playerId === ctx.currentPlayer;
@@ -700,7 +772,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
     orderedPermutations(pendingSolsticeOrderChoice.cardIds ?? []).forEach((cardIds) => {
       const names = cardIds.map((cardId) => getCardById(G, cardId)?.displayName ?? cardId);
       actions.push({
-        label: cardIds.length > 2 ? `Resolve ${names[0]} first` : `Resolve ${names.join(" then ")}`,
+        label: `Resolve ${names.join(" then ")}`,
         action: "resolveSolsticeOrderChoice",
         enabled: isCurrentPlayer,
         reason: isCurrentPlayer ? undefined : `Waiting for player ${pendingSolsticeOrderChoice.playerId}`,
@@ -716,7 +788,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
     orderedPermutations(pendingLookOrderChoice.cardIds ?? []).forEach((cardIds) => {
       const names = cardIds.map((cardId) => getCardById(G, cardId)?.displayName ?? cardId);
       actions.push({
-        label: cardIds.length > 2 ? `Return ${names[0]} first` : `Return ${names.join(" then ")}`,
+        label: `Return ${names.join(" then ")}`,
         action: "resolveLookOrderChoice",
         enabled: isCurrentPlayer,
         reason: isCurrentPlayer ? undefined : `Waiting for player ${pendingLookOrderChoice.playerId}`,
@@ -786,7 +858,8 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
     const freePlay = isFreePlayCard(G, s.id);
     const freePlayUsed = freePlayAlreadyUsed(G, ctx, s.id);
     const hasAction = (p?.actionsRemaining ?? 0) > 0;
-    const ok = canUseNormalActions && meetsStateRequirement && !freePlayUsed && (p?.hand ?? []).includes(s.id) && (freePlay || hasAction);
+    const hasActionToken = (p?.actionTokensAvailable ?? 0) > 0;
+    const ok = canUseNormalActions && meetsStateRequirement && !freePlayUsed && (p?.hand ?? []).includes(s.id) && (freePlay || (hasAction && hasActionToken));
     actions.push({
       label:"Play Card",
       action:"play",
@@ -795,18 +868,13 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       cardId: s.id
     });
     if (isUnrestCard(getCardById(G, s.id))) actions.push({ label:"Revolt Return", action:"revolt", enabled:canUseNormalActions, reason:canUseNormalActions ? undefined : "Revolt requires starting from an Activate turn", cardId: s.id });
-    const hostCardId = (p?.playArea ?? []).find((cardId: string) => isRegionCard(G, cardId));
-    if (hostCardId) actions.push({ label:"Garrison", action:"garrison", enabled:true, cardId: s.id, hostCardId });
-  }
-  if (s.kind === "play_area_card" && isRegionCard(G, s.id)) {
-    actions.push({ label:"Recall Region", action:"recallRegion", enabled:true, cardId: s.id });
-    actions.push({ label:"Abandon Region", action:"abandonRegion", enabled:true, cardId: s.id });
   }
   if (s.kind === "play_area_card" && tradeRoutesEnabled(G) && isTradeRouteCard(G, s.id) && hasProfitAbility(G, s.id)) {
     const p = G.players?.[ctx.currentPlayer];
     const hasAction = (p?.actionsRemaining ?? 0) > 0;
+    const hasActionToken = (p?.actionTokensAvailable ?? 0) > 0;
     const complete = cardGoods(G, s.id) >= 3;
-    const ok = canUseNormalActions && hasAction && complete;
+    const ok = canUseNormalActions && hasAction && hasActionToken && complete;
     actions.push({
       label:"Profit",
       action:"profit",

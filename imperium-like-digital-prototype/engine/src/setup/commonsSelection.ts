@@ -32,7 +32,9 @@ export function satisfiesCommonsModeRules(card: NormalizedCardRecord, options: C
   if (!options.mode) return true;
   const allowedModes = card.allowedModes ?? ["multiplayer", "solo", "practice"];
   const disallowedModes = card.disallowedModes ?? [];
-  return allowedModes.includes(options.mode) && !disallowedModes.includes(options.mode);
+  if (!allowedModes.includes(options.mode) || disallowedModes.includes(options.mode)) return false;
+  if ((card.tags ?? []).includes("supreme_ruler_campaign_extra") && options.campaignMode !== "supreme_ruler") return false;
+  return true;
 }
 
 export function selectCommonsCards(cards: NormalizedCardRecord[], options: CommonsSetupOptions): CommonsSelectionReport {

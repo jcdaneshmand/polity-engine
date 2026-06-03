@@ -26,6 +26,10 @@ function stateCardTokens(G: GameState, cardId: string): string[] {
   ].map(normalizeStateToken).filter(Boolean) as string[];
 }
 
+function tradeRoutesExhaustTokenBonus(G: GameState): number {
+  return G.options?.enabledExpansions?.includes("trade_routes") ? 1 : 0;
+}
+
 export function stateCardSupports(G: GameState, cardId: string, state: string | undefined): boolean {
   const expected = normalizeStateToken(state);
   return !!expected && stateCardTokens(G, cardId).includes(expected);
@@ -65,8 +69,9 @@ export function syncPlayerStateCardStats(G: GameState, playerId: string): void {
     player.actionTokensAvailable = player.actionTokensAvailable === previousActionBase ? stateCard.stateActionTokens : Math.min(player.actionTokensAvailable, stateCard.stateActionTokens);
   }
   if (typeof stateCard.stateExhaustTokens === "number") {
-    player.exhaustTokensBase = stateCard.stateExhaustTokens;
-    player.exhaustTokensAvailable = player.exhaustTokensAvailable === previousExhaustBase ? stateCard.stateExhaustTokens : Math.min(player.exhaustTokensAvailable, stateCard.stateExhaustTokens);
+    const exhaustTokensBase = stateCard.stateExhaustTokens + tradeRoutesExhaustTokenBonus(G);
+    player.exhaustTokensBase = exhaustTokensBase;
+    player.exhaustTokensAvailable = player.exhaustTokensAvailable === previousExhaustBase ? exhaustTokensBase : Math.min(player.exhaustTokensAvailable, exhaustTokensBase);
   }
   if (typeof stateCard.stateHandSize === "number") {
     player.handSize = stateCard.stateHandSize;

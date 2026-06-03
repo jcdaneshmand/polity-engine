@@ -1,6 +1,7 @@
 import type { GameLogEntry, ResourceName } from "../game/state";
 import type { SoloDifficulty } from "../options/gameOptions";
 import type { BotOverride } from "../nations/nationRulesetTypes";
+import type { BotEffectOp } from "./botEffectOps";
 import type { SoloDifficultyConfig } from "./botDifficulty";
 import type { BotStateTable } from "./botStateTableTypes";
 import type { BotTradeRoutesTable } from "./botTradeRoutesTypes";
@@ -46,5 +47,23 @@ export type SoloState = {
   bot: BotState;
   botStateTables: Record<string, BotStateTable>;
   botTradeRoutesTables?: Record<string, BotTradeRoutesTable>;
-  pausedBotTurn?: { remainingSlotNumbers: SlotNumber[]; effectsRemaining?: number };
+  pausedBotTurn?: { remainingSlotNumbers: SlotNumber[]; effectsRemaining?: number; finishAfterTradeRoutes?: boolean; finishAfterCustomCleanup?: boolean };
+  pendingBotTradeRouteContinuation?: {
+    sourceCardId: string;
+    effects: BotEffectOp[];
+    nextEffectIndex: number;
+    remainingProfitCardIds?: string[];
+  };
+  pendingBotCustomCleanupContinuation?: {
+    effects: BotEffectOp[];
+    nextEffectIndex: number;
+  };
+  pendingBotRowContinuation?: {
+    revealedCardId: string;
+    source: "slot" | "bot_deck" | "dynasty_deck" | "discard" | "effect";
+    tableId: string;
+    effects: BotEffectOp[];
+    nextEffectIndex: number;
+    destination: "discard" | "history" | "play" | "unrest" | "bottom_deck";
+  };
 };

@@ -50,13 +50,7 @@ function defaultDynastyCards(args: { botNation: NationDefinition; cardDb: Record
 function applyShortGameDynastySetup(dynasty: string[], cardDb: Record<string, Card>): { deck: string[]; discard: string[] } {
   const deck = [...dynasty];
   const discard: string[] = [];
-  if (deck.length > 0) {
-    let lowestIndex = 0;
-    for (let index = 1; index < deck.length; index += 1) {
-      if (cardVpValue(cardDb[deck[index]]) <= cardVpValue(cardDb[deck[lowestIndex]])) lowestIndex = index;
-    }
-    deck.splice(lowestIndex, 1);
-  }
+  deck.pop();
   const topCard = deck.shift();
   if (topCard) discard.push(topCard);
   return { deck, discard };

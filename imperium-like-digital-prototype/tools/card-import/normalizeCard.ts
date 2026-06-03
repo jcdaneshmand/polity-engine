@@ -11,7 +11,7 @@ function normalizeVp(row: PrivateCardCsvRow): VpValue {
   const vp: VpValue = { mode: row.vp_mode as VpMode, value: row.vp_value.trim()===""?null:Number(row.vp_value) };
   const details = row.vp_details_json?.trim();
   if (!details) return vp;
-  const parsed = JSON.parse(details) as Partial<VpValue>;
+  const parsed = normalizeResourceNames(JSON.parse(details)) as Partial<VpValue>;
   return {
     ...vp,
     ...(parsed.condition ? { condition: parsed.condition } : {}),

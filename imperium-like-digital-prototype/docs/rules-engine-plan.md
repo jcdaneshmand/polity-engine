@@ -25,7 +25,7 @@ Persist full `GameState` snapshots (including log and round) to local storage or
 ## Canonical turn lifecycle contract
 The engine follows a fixed turn sequencing contract to avoid undefined transitions:
 1. **Action execution** (`playCard`) resolves action token spend and card effects.
-2. **Acquire resolution** (`acquireCard`) resolves market acquisition and explicit market status logging.
+2. **Effect-driven acquisition** resolves Acquire keywords and pending Acquire choices from card text. Direct Market-row acquisition is not exposed as a public boardgame.io move.
 3. **Cleanup** (`onTurnEnd`) places the cleanup market resource, resets Action/Exhaust markers and State token pools, resolves the optional hand discard, and draws up. Cards already in persistent play stay in play unless a card/rule moves them.
 4. **Reshuffle as needed** (draw lifecycle via `drawCardWithReshuffleLifecycle`) resolves ordered top-card Nation progression or pending Development choice before shuffling through the injected RNG path.
 5. **Turn handoff** (end-turn completion) advances round/log lifecycle for the next player.

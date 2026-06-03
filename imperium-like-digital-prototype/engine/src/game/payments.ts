@@ -32,7 +32,7 @@ export function canPayResourceCost(G: GameState, playerId: string, resource: Res
   return canPayResourceCosts(G, playerId, { [canonicalResourceName(resource)]: amount });
 }
 
-export function payResourceCost(G: GameState, playerId: string, resource: ResourceName, amount: number): boolean {
+export function payResourceCost(G: GameState, playerId: string, resource: ResourceName, amount: number, randomNumber?: () => number): boolean {
   const canonical = canonicalResourceName(resource);
   if (!canPayResourceCost(G, playerId, canonical, amount)) {
     G.log.push({
@@ -43,7 +43,7 @@ export function payResourceCost(G: GameState, playerId: string, resource: Resour
     return false;
   }
 
-  if (!payResourceCosts(G, playerId, { [canonical]: amount })) {
+  if (!payResourceCosts(G, playerId, { [canonical]: amount }, undefined, randomNumber)) {
     return false;
   }
 
@@ -100,7 +100,7 @@ function selectedPaymentMatchesCost(payment: ResourceCost, cost: ResourceCost): 
     && extraProgress + extraGoods === Math.ceil(materialShortfall / 2) + influenceShortfall;
 }
 
-function applySpentResourceOverrides(G: GameState, playerId: string, spent: Partial<Record<ResourceName, number>>): void {
+function applySpentResourceOverrides(G: GameState, playerId: string, spent: Partial<Record<ResourceName, number>>, randomNumber?: () => number): void {
   const ruleset = G.activeNationRulesets?.[playerId];
   if (!ruleset) return;
   for (const override of ruleset.stateOverrides ?? []) {
@@ -108,13 +108,13 @@ function applySpentResourceOverrides(G: GameState, playerId: string, spent: Part
     if (override.state && !currentStateMatches(G, playerId, override.state)) continue;
     const amount = resourceAmount(spent, override.resource);
     if (amount <= 0) continue;
-    takeUnrest(G, { playerIds: [playerId], count: amount, triggeredBy: playerId });
+    takeUnrest(G, { playerIds: [playerId], count: amount, triggeredBy: playerId, randomNumber });
     G.log.push({ round: G.round, playerId, message: `SpentResourcePenalty(${override.resource}/unrest=${amount})` });
     if (G.gameover) return;
   }
 }
 
-export function payResourceCosts(G: GameState, playerId: string, cost: ResourceCost, payment?: ResourceCost): boolean {
+export function payResourceCosts(G: GameState, playerId: string, cost: ResourceCost, payment?: ResourceCost, randomNumber?: () => number): boolean {
   const normalizedCost = normalizeResourceMap(cost as Partial<Record<string, number | undefined>>);
   const normalizedPayment = payment ? normalizeResourceMap(payment as Partial<Record<string, number | undefined>>) : undefined;
   if (!canPayResourceCosts(G, playerId, normalizedCost, normalizedPayment)) {
@@ -140,7 +140,7 @@ export function payResourceCosts(G: GameState, playerId: string, cost: ResourceC
       spent[resource] = amount;
       returnResourceToSupply(G, resource, amount);
     }
-    applySpentResourceOverrides(G, playerId, spent);
+    applySpentResourceOverrides(G, playerId, spent, randomNumber);
     return true;
   }
 
@@ -182,6 +182,6 @@ export function payResourceCosts(G: GameState, playerId: string, cost: ResourceC
   for (const [resource, amount] of Object.entries(spent) as [ResourceName, number | undefined][]) {
     returnResourceToSupply(G, resource, amount ?? 0);
   }
-  applySpentResourceOverrides(G, playerId, spent);
+  applySpentResourceOverrides(G, playerId, spent, randomNumber);
   return true;
 }

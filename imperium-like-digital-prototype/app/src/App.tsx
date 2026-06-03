@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Client } from "boardgame.io/react";
 import { PrototypeGame } from "../../engine/src/game/game";
+import type { CampaignProgress } from "../../engine/src/options/gameOptions";
 import AboutPage from "./AboutPage";
 import Board from "./Board";
 import PrivateCardEntry from "./ui/privateData/PrivateCardEntry";
@@ -28,9 +29,17 @@ export default function App() {
         })
     };
 
+    const SessionBoard = (props: Parameters<typeof Board>[0]) => <Board
+      {...props}
+      onCampaignProgress={(campaignProgress: CampaignProgress) => setSession((current) => current
+        ? { ...current, options: { ...current.options, campaignProgress, campaignMode: campaignProgress.mode } }
+        : current
+      )}
+    />;
+
     return Client({
       game: configuredGame as typeof PrototypeGame & { setup: NonNullable<typeof PrototypeGame.setup> },
-      board: Board,
+      board: SessionBoard,
       numPlayers: session.options.playerCount,
       debug: false
     });

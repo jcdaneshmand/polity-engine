@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createInitialState } from "../game/initialState";
-import { finalizeNormalScoring, scoreBot, scorePlayer, triggerCollapse, triggerScoring } from "../game/scoring";
+import { continuePendingScoringFinalization, finalizeNormalScoring, scoreBot, scorePlayer, triggerCollapse, triggerScoring } from "../game/scoring";
 import { resolveChoice, resolveExileChoice, resolveGiveCardChoice, resolveMarketCardChoice, resolvePlaceOnDeckChoice, resolveReactiveExhaustChoice, resolveReturnUnrestChoice, resolveSwapChoice } from "../game/moves";
 import { onTurnEnd } from "../game/turn";
 
@@ -87,6 +87,18 @@ describe("scoring", () => {
     expect(scorePlayer(G, "0")).toBe(4);
   });
 
+  it("scores player Progress resources with rulebook resource aliases", () => {
+    const G = createInitialState();
+    G.players["0"].resources = {
+      progress: 4,
+      population: 7,
+      materials: 5,
+      goods: 3
+    } as any;
+
+    expect(scorePlayer(G, "0")).toBe(4);
+  });
+
   it("can score Progress resources at a reduced state-gated nation ratio", () => {
     const G = createInitialState();
     G.players["0"].resources.knowledge = 8;
@@ -105,6 +117,31 @@ describe("scoring", () => {
     G.activeNationRulesets!["0"].scoringOverrides = [
       { op: "score_resource_ratio", resource: "knowledge", denominator: 3, state: "alien" } as any
     ];
+
+    expect(scorePlayer(G, "0")).toBe(2);
+  });
+
+  it("matches state-gated Progress scoring overrides with rulebook resource aliases", () => {
+    const G = createInitialState();
+    G.players["0"].resources = { progress: 8 } as any;
+    G.players["0"].stateArea = ["alien_state"];
+    G.cardDb.alien_state = {
+      id: "alien_state",
+      displayName: "Alien / Gone Native",
+      type: "state",
+      cardType: "state",
+      suit: "none",
+      cost: 0,
+      tags: ["alien", "native"],
+      effects: []
+    };
+    G.cardStates = { alien_state: { activeState: "alien" } };
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      scoringOverrides: [
+        { op: "score_resource_ratio", resource: "progress", denominator: 3, state: "alien" } as any
+      ]
+    };
 
     expect(scorePlayer(G, "0")).toBe(2);
   });
@@ -205,6 +242,23 @@ describe("scoring", () => {
     expect(scorePlayer(G, "0")).toBe(6);
   });
 
+  it("treats missing imported card tags as non-matches for structured variable victory points", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      variable_counter: vpCard("variable_counter", {
+        mode: "variable",
+        formula: { op: "count_cards", tag: "region", zones: ["playArea"], amountEach: 2, cap: 10 }
+      }),
+      untagged_region: { ...vpCard("untagged_region", 0), tags: undefined },
+      tagged_region: { ...vpCard("tagged_region", 0), tags: ["region"] }
+    };
+    G.players["0"].discard = ["variable_counter"];
+    G.players["0"].playArea = ["untagged_region", "tagged_region"];
+
+    expect(scorePlayer(G, "0")).toBe(2);
+  });
+
   it("counts garrisoned cards attached to counted scoring zones for structured variable victory points", () => {
     const G = createInitialState();
     G.cardDb = {
@@ -246,6 +300,27 @@ describe("scoring", () => {
     expect(scorePlayer(G, "0")).toBe(2);
   });
 
+  it("does not count imported Trade Route suit icons as in-play cards for structured variable victory points", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      variable_counter: vpCard("variable_counter", {
+        mode: "variable",
+        formula: { op: "count_cards", tag: "region", zones: ["playArea"], amountEach: 2, cap: 10 }
+      }),
+      play_region: { ...vpCard("play_region", 0), tags: ["region"] },
+      imported_route_with_region_tag: {
+        ...vpCard("imported_route_with_region_tag", 0),
+        suit: "civilized",
+        tags: ["region", "suit:trade_route"]
+      }
+    };
+    G.players["0"].discard = ["variable_counter"];
+    G.players["0"].playArea = ["play_region", "imported_route_with_region_tag"];
+
+    expect(scorePlayer(G, "0")).toBe(2);
+  });
+
   it("scores structured variable victory points from resource pools without counting resources on cards", () => {
     const G = createInitialState();
     G.cardDb = {
@@ -263,6 +338,94 @@ describe("scoring", () => {
     G.cardStates = { resource_host: { resources: { materials: 5, influence: 5 } } };
 
     expect(scorePlayer(G, "0")).toBe(2);
+  });
+
+  it("scores structured variable resource formulas with rulebook resource aliases", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      resource_counter: vpCard("resource_counter", {
+        mode: "variable",
+        formula: { op: "count_resources", resources: ["progress", "population"], amountEach: 1, denominator: 2, cap: 10 }
+      })
+    };
+    G.players["0"].discard = ["resource_counter"];
+    G.players["0"].resources.knowledge = 3;
+    G.players["0"].resources.influence = 2;
+
+    expect(scorePlayer(G, "0")).toBe(5);
+  });
+
+  it("scores structured variable victory points from card resources when formula names scored zones", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      resource_counter: vpCard("resource_counter", {
+        mode: "variable",
+        formula: { op: "count_resources", resource: "materials", resourceZones: ["playArea"], amountEach: 1, denominator: 2, cap: 10 }
+      }),
+      play_host: vpCard("play_host", 0),
+      garrisoned_child: vpCard("garrisoned_child", 0),
+      discard_host: vpCard("discard_host", 0)
+    };
+    G.players["0"].discard = ["resource_counter", "discard_host"];
+    G.players["0"].playArea = ["play_host"];
+    G.players["0"].resources.materials = 0;
+    G.cardStates = {
+      play_host: { resources: { materials: 3 }, garrisonedCardIds: ["garrisoned_child"] },
+      garrisoned_child: { resources: { materials: 1 } },
+      discard_host: { resources: { materials: 6 } }
+    };
+
+    expect(scorePlayer(G, "0")).toBe(2);
+  });
+
+  it("does not count card resources in unscored Nation or Development zones for structured variable victory points", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      resource_counter: vpCard("resource_counter", {
+        mode: "variable",
+        formula: { op: "count_resources", resource: "materials", resourceZones: ["playArea", "nationDeck", "developmentArea"], amountEach: 1, cap: 10 }
+      }),
+      play_host: vpCard("play_host", 0),
+      nation_host: vpCard("nation_host", 0),
+      development_host: vpCard("development_host", 0),
+      nation_child: vpCard("nation_child", 0),
+      development_child: vpCard("development_child", 0)
+    };
+    G.players["0"].discard = ["resource_counter"];
+    G.players["0"].playArea = ["play_host"];
+    G.players["0"].nationDeck = ["nation_host"];
+    G.players["0"].developmentArea = ["development_host"];
+    G.cardStates = {
+      play_host: { resources: { materials: 2 } },
+      nation_host: { resources: { materials: 5 }, garrisonedCardIds: ["nation_child"] },
+      development_host: { resources: { materials: 5 }, garrisonedCardIds: ["development_child"] },
+      nation_child: { resources: { materials: 5 } },
+      development_child: { resources: { materials: 5 } }
+    };
+
+    expect(scorePlayer(G, "0")).toBe(2);
+  });
+
+  it("scores structured variable card-resource formulas with rulebook resource aliases", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      resource_counter: vpCard("resource_counter", {
+        mode: "variable",
+        formula: { op: "count_resources", resources: ["progress", "population"], resourceZones: ["playArea"], amountEach: 1, cap: 10 }
+      }),
+      play_host: vpCard("play_host", 0)
+    };
+    G.players["0"].discard = ["resource_counter"];
+    G.players["0"].playArea = ["play_host"];
+    G.cardStates = {
+      play_host: { resources: { progress: 2, population: 1 } as any }
+    };
+
+    expect(scorePlayer(G, "0")).toBe(3);
   });
 
   it("treats scored History replacement zones as History for structured VP rules", () => {
@@ -293,6 +456,33 @@ describe("scoring", () => {
     };
 
     expect(scorePlayer(G, "0")).toBe(10);
+  });
+
+  it("applies History scoring exclusions to structured variable victory point formulas", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      variable_counter: vpCard("variable_counter", {
+        mode: "variable",
+        formula: { op: "count_cards", tag: "region", zones: ["history"], amountEach: 2, cap: 10 }
+      }),
+      sunken_region: { ...vpCard("sunken_region", 0), tags: ["region"] },
+      play_vp: vpCard("play_vp", 3)
+    };
+    G.players["0"].hand = ["variable_counter"];
+    G.players["0"].playArea = ["play_vp"];
+    G.players["0"].history = [];
+    G.players["0"].sideAreas = { sunken: ["sunken_region"] };
+    G.activeNationRulesets = {
+      ...G.activeNationRulesets,
+      "0": {
+        ...G.activeNationRulesets!["0"],
+        zoneOverrides: [{ op: "replace_history_with_zone", zoneId: "sunken", displayName: "Sunken", cardsScore: true } as any],
+        scoringOverrides: [{ op: "exclude_zone_from_scoring", zoneId: "history" } as any]
+      }
+    };
+
+    expect(scorePlayer(G, "0")).toBe(3);
   });
 
   it("honors scoring zone exclusions", () => {
@@ -446,6 +636,54 @@ describe("scoring", () => {
     });
   });
 
+  it("keeps short-game scoring timing when later option mutations remove the variant", () => {
+    const G = createInitialState({
+      options: {
+        playerCount: 2,
+        mode: "multiplayer",
+        enabledExpansions: [],
+        enabledVariants: ["short_game"]
+      }
+    });
+    G.market = [];
+    G.players["0"].hand = [];
+    G.players["1"].hand = [];
+    G.cardDb = {
+      ...G.cardDb,
+      p0_vp: vpCard("p0_vp", 3),
+      p1_vp: vpCard("p1_vp", 5)
+    };
+    G.players["0"].powerArea = ["p0_vp"];
+    G.players["1"].powerArea = ["p1_vp"];
+    const playOrder = ["0", "1"];
+
+    triggerScoring(G, "test_trigger", "0");
+    G.options = {
+      playerCount: 2,
+      mode: "multiplayer",
+      enabledExpansions: [],
+      enabledVariants: []
+    };
+
+    onTurnEnd(G, { currentPlayer: "0", playOrder } as any);
+    expect(G.gameover).toBeUndefined();
+
+    onTurnEnd(G, { currentPlayer: "1", playOrder } as any);
+
+    expect(G.scoring).toBeUndefined();
+    expect(G.gameover).toEqual({
+      winner: "1",
+      reason: "normal_scoring:test_trigger",
+      scores: { "0": 3, "1": 5 }
+    });
+    expect(G.scoringOptions).toMatchObject({
+      playerCount: 2,
+      mode: "multiplayer",
+      enabledExpansions: [],
+      enabledVariants: ["short_game"]
+    });
+  });
+
   it("clears the active scoring lifecycle when normal scoring finalizes", () => {
     const G = createInitialState();
     G.cardDb = {
@@ -462,6 +700,45 @@ describe("scoring", () => {
     expect(G.gameover).toEqual({
       winner: "1",
       reason: "normal_scoring:test_trigger",
+      scores: { "0": 3, "1": 5 }
+    });
+    expect(G.scoring).toBeUndefined();
+  });
+
+  it("finalizes normal scoring when imported rulesets omit lifecycle arrays", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      p0_vp: vpCard("p0_vp", 3),
+      p1_vp: vpCard("p1_vp", 5)
+    };
+    G.players["0"].hand = ["p0_vp"];
+    G.players["1"].hand = ["p1_vp"];
+    G.activeNationRulesets = {
+      "0": {
+        nationId: "minimal_scoring_nation_0",
+        displayName: "Minimal Scoring Nation 0",
+        rulesetTags: [],
+        scoringOverrides: undefined,
+        collapseOverrides: undefined,
+        hookRules: undefined
+      } as any,
+      "1": {
+        nationId: "minimal_scoring_nation_1",
+        displayName: "Minimal Scoring Nation 1",
+        rulesetTags: [],
+        scoringOverrides: undefined,
+        collapseOverrides: undefined,
+        hookRules: undefined
+      } as any
+    };
+    G.scoring = { reason: "minimal_ruleset", triggeredBy: "0", phase: "final_round", finalRound: 1 };
+
+    finalizeNormalScoring(G);
+
+    expect(G.gameover).toEqual({
+      winner: "1",
+      reason: "normal_scoring:minimal_ruleset",
       scores: { "0": 3, "1": 5 }
     });
     expect(G.scoring).toBeUndefined();
@@ -626,6 +903,49 @@ describe("scoring", () => {
     });
   });
 
+  it("keeps multiplayer scoring finalization when later option mutations switch to solo", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      p0_vp: vpCard("p0_vp", 3),
+      p1_vp: vpCard("p1_vp", 5),
+      bot_vp: vpCard("bot_vp", 12)
+    };
+    G.players["0"].hand = ["p0_vp"];
+    G.players["1"].hand = ["p1_vp"];
+
+    triggerScoring(G, "multiplayer_test", "0");
+    G.scoring = { ...G.scoring!, phase: "final_round", finalRound: 1 };
+    G.options = { playerCount: 1, mode: "solo", enabledExpansions: [], enabledVariants: [], soloDifficulty: "chieftain" };
+    G.solo = {
+      bot: {
+        botId: "bot_0",
+        difficulty: "chieftain",
+        botDeck: ["bot_vp"],
+        botDiscard: [],
+        botHistory: [],
+        botPlayArea: [],
+        botDynastyDeck: [],
+        resources: {},
+        slots: {}
+      }
+    } as any;
+
+    finalizeNormalScoring(G);
+
+    expect(G.gameover).toEqual({
+      winner: "1",
+      reason: "normal_scoring:multiplayer_test",
+      scores: { "0": 3, "1": 5 }
+    });
+    expect(G.scoringOptions).toMatchObject({
+      playerCount: 2,
+      mode: "multiplayer",
+      enabledExpansions: [],
+      enabledVariants: []
+    });
+  });
+
   it("scores Bot resources with the solo difficulty resource formulas", () => {
     const normal = createInitialState({
       options: { playerCount: 1, mode: "solo", enabledExpansions: [], enabledVariants: [], soloDifficulty: "imperator" }
@@ -638,6 +958,22 @@ describe("scoring", () => {
       options: { playerCount: 1, mode: "solo", enabledExpansions: [], enabledVariants: [], soloDifficulty: "sovereign" }
     });
     sovereign.solo!.bot.resources = { knowledge: 2, materials: 4, influence: 1, goods: 1 };
+
+    expect(scoreBot(sovereign)).toBe(4);
+  });
+
+  it("scores Bot resources with rulebook resource aliases", () => {
+    const normal = createInitialState({
+      options: { playerCount: 1, mode: "solo", enabledExpansions: [], enabledVariants: [], soloDifficulty: "imperator" }
+    });
+    normal.solo!.bot.resources = { progress: 2, materials: 4, population: 1, goods: 1 } as any;
+
+    expect(scoreBot(normal)).toBe(3);
+
+    const sovereign = createInitialState({
+      options: { playerCount: 1, mode: "solo", enabledExpansions: [], enabledVariants: [], soloDifficulty: "sovereign" }
+    });
+    sovereign.solo!.bot.resources = { progress: 2, materials: 4, population: 1, goods: 1 } as any;
 
     expect(scoreBot(sovereign)).toBe(4);
   });
@@ -735,6 +1071,25 @@ describe("scoring", () => {
     expect(scoreBot(supremeRuler)).toBe(4);
   });
 
+  it("scores imported Cultist Bot cards with an Unrest suit icon using the difficulty exception", () => {
+    const G = createInitialState({
+      options: { playerCount: 1, mode: "solo", enabledExpansions: [], enabledVariants: [], soloDifficulty: "imperator" }
+    });
+    G.cardDb = {
+      ...G.cardDb,
+      imported_bot_unrest: {
+        ...vpCard("imported_bot_unrest", { mode: "fixed", value: 10 }),
+        suit: "multi",
+        tags: ["suit:unrest"]
+      }
+    };
+    G.solo!.bot.botNationId = "cultists";
+    G.solo!.bot.botDeck = ["imported_bot_unrest"];
+    G.solo!.bot.resources = {};
+
+    expect(scoreBot(G)).toBe(1);
+  });
+
   it("scores Bot structured conditional victory points at the best imported value", () => {
     const G = createInitialState({
       options: { playerCount: 1, mode: "solo", enabledExpansions: [], enabledVariants: [], soloDifficulty: "imperator" }
@@ -790,6 +1145,22 @@ describe("scoring", () => {
     expect(scoreBot(G)).toBe(3);
   });
 
+  it("does not score imported Bot cards with a Power suit icon", () => {
+    const G = createInitialState({
+      options: { playerCount: 1, mode: "solo", enabledExpansions: [], enabledVariants: [], soloDifficulty: "imperator" }
+    });
+    G.cardDb = {
+      ...G.cardDb,
+      imported_bot_power: { ...vpCard("imported_bot_power", { mode: "fixed", value: 10 }), suit: "multi", tags: ["suit:power"] },
+      bot_action: vpCard("bot_action", { mode: "fixed", value: 3 })
+    };
+    G.solo!.bot.botPlayArea = ["imported_bot_power"];
+    G.solo!.bot.botDeck = ["bot_action"];
+    G.solo!.bot.resources = {};
+
+    expect(scoreBot(G)).toBe(3);
+  });
+
   it("collapse scoring ends immediately and uses lowest Unrest instead of VP", () => {
     const G = createInitialState();
     G.cardDb = {
@@ -827,6 +1198,34 @@ describe("scoring", () => {
       reason: "collapse:test_collapse",
       scores: { "0": 0, "1": 0 },
       tieBreakScores: { "0": 0, "1": 0 }
+    });
+  });
+
+  it("collapse scoring counts imported cards with an Unrest suit icon as Unrest", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      p0_vp: vpCard("p0_vp", 5),
+      p1_vp: vpCard("p1_vp", 1),
+      p0_unrest: unrestCard("p0_unrest"),
+      imported_unrest: {
+        ...vpCard("imported_unrest", 0),
+        suit: "multi",
+        tags: ["suit:unrest"]
+      }
+    };
+    G.players["0"].powerArea = ["p0_vp"];
+    G.players["0"].discard = ["p0_unrest"];
+    G.players["1"].powerArea = ["p1_vp"];
+    G.players["1"].discard = ["imported_unrest"];
+
+    triggerCollapse(G, "test_collapse");
+
+    expect(G.gameover).toEqual({
+      winner: "0",
+      reason: "collapse:test_collapse",
+      scores: { "0": 1, "1": 1 },
+      tieBreakScores: { "0": 5, "1": 1 }
     });
   });
 
@@ -1040,6 +1439,42 @@ describe("scoring", () => {
       reason: "collapse:test_collapse",
       scores: { "0": 1, "1": 1 },
       tieBreakScores: { "0": 2, "1": 2 }
+    });
+  });
+
+  it("collapse tie-break scoring ignores missing imported ruleset hook arrays", () => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      p0_vp: vpCard("p0_vp", 2),
+      p1_vp: vpCard("p1_vp", 5)
+    };
+    G.players["0"].powerArea = ["p0_vp"];
+    G.players["1"].powerArea = ["p1_vp"];
+    G.activeNationRulesets = {
+      "0": {
+        nationId: "minimal_collapse_nation_0",
+        displayName: "Minimal Collapse Nation 0",
+        rulesetTags: [],
+        hookRules: undefined,
+        collapseOverrides: undefined
+      } as any,
+      "1": {
+        nationId: "minimal_collapse_nation_1",
+        displayName: "Minimal Collapse Nation 1",
+        rulesetTags: [],
+        hookRules: undefined,
+        collapseOverrides: undefined
+      } as any
+    };
+
+    triggerCollapse(G, "test_collapse");
+
+    expect(G.gameover).toEqual({
+      winner: "1",
+      reason: "collapse:test_collapse",
+      scores: { "0": 0, "1": 0 },
+      tieBreakScores: { "0": 2, "1": 5 }
     });
   });
 
@@ -1475,11 +1910,12 @@ describe("scoring", () => {
       p0_vp: vpCard("p0_vp", 5),
       p1_vp: vpCard("p1_vp", 2),
       market_civilized: { ...vpCard("market_civilized", 0), suit: "civilized" },
+      market_civilized_b: { ...vpCard("market_civilized_b", 0), suit: "civilized" },
       market_refill: { ...vpCard("market_refill", 0), suit: "civilized" }
     };
     G.players["0"].hand = ["p0_vp"];
     G.players["1"].hand = ["p1_vp"];
-    G.market = ["market_civilized"];
+    G.market = ["market_civilized", "market_civilized_b"];
     G.marketRefillPool = ["market_refill"];
     G.marketDecks = undefined;
     G.unrestPile = ["test_unrest_1"];
@@ -1497,7 +1933,7 @@ describe("scoring", () => {
     expect(G.pendingExileChoice).toEqual({
       playerId: "0",
       source: "market",
-      cardIds: ["market_civilized"]
+      cardIds: ["market_civilized", "market_civilized_b"]
     });
     expect(G.gameover).toBeUndefined();
 
@@ -1762,5 +2198,40 @@ describe("scoring", () => {
       expect((G as any)[scenario.expectedKey]).toBeUndefined();
       expect(G.gameover?.reason).toBe(`normal_scoring:${scenario.expectedKey}`);
     }
+  });
+
+  it.each([
+    {
+      name: "cleanup Market-resource choice",
+      setPending(G: ReturnType<typeof createInitialState>) {
+        G.pendingCleanupMarketResourceChoice = { playerId: "0", resource: "knowledge", amount: 1, cardIds: ["market_card"] };
+      }
+    },
+    {
+      name: "cleanup discard choice",
+      setPending(G: ReturnType<typeof createInitialState>) {
+        G.pendingCleanupDiscardChoice = { playerId: "0", cardIds: ["discard_option"] };
+      }
+    }
+  ])("keeps scoring finalization parked behind a pending $name", ({ setPending }) => {
+    const G = createInitialState();
+    G.cardDb = {
+      ...G.cardDb,
+      p0_vp: vpCard("p0_vp", 5),
+      p1_vp: vpCard("p1_vp", 2),
+      market_card: vpCard("market_card", 0),
+      discard_option: vpCard("discard_option", 0)
+    };
+    G.players["0"].hand = ["p0_vp", "discard_option"];
+    G.players["1"].hand = ["p1_vp"];
+    G.scoring = { reason: "cleanup_pause", triggeredBy: "0", phase: "final_round", finalRound: 1 };
+    G.pendingScoringFinalization = { playerIds: ["0", "1"], scores: {}, nextPlayerIndex: 0 };
+    setPending(G);
+
+    continuePendingScoringFinalization(G);
+
+    expect(G.gameover).toBeUndefined();
+    expect(G.pendingScoringFinalization).toEqual({ playerIds: ["0", "1"], scores: {}, nextPlayerIndex: 0 });
+    expect(G.log.some((entry) => entry.message.startsWith("ScoringFinalized"))).toBe(false);
   });
 });

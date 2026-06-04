@@ -10,6 +10,56 @@ import { card, cardDb, nationDb } from "./commonsTestFixtures";
 
 describe("setup pipeline",()=>{
   it("default creates playable 2p",()=>{ const G=createInitialGameState(); expect(Object.keys(G.players).length).toBe(2); });
+  it("records setup options independently from later caller mutations",()=>{
+    const options: GameOptions = {
+      playerCount:1,
+      mode:"solo",
+      enabledExpansions:["trade_routes"],
+      enabledVariants:["short_game"],
+      soloDifficulty:"chieftain",
+      campaignMode:"standard",
+      commonsSetId:"classics",
+      replacementPolicy:"none",
+      campaignProgress:{
+        mode:"standard",
+        playerNationId:"test_nation_sun_coast",
+        wins:0,
+        losses:0,
+        currentDifficulty:"chieftain",
+        defeatedBotNationIds:[],
+        startingDeckAdditions:[],
+        startingDeckRemovals:[],
+        setAsideCommonsCardIds:[],
+        doubleStartingResourcesForNextGame:false
+      }
+    };
+    const G=createInitialGameStateFromPipeline({
+      options,
+      cardDb:cardDb([
+        card({ id:"starter", ownership:"nation", startingLocation:"draw_deck" }),
+        card({ id:"bot_region", suit:"region", cardType:"attack", ownership:"bot", startingLocation:"bot_deck" })
+      ]),
+      nationDb:{
+        human_before_setup:{ ...nationDb.test_nation_alpha, id:"human_before_setup", displayName:"Human Before Setup" },
+        bot_before_setup:{ ...nationDb.test_nation_alpha, id:"bot_before_setup", displayName:"Bot Before Setup" },
+        bot_after_setup:{ ...nationDb.test_nation_alpha, id:"bot_after_setup", displayName:"Bot After Setup" }
+      },
+      playerNationIds:{"0":"human_before_setup"},
+      soloBotNationId:"bot_before_setup"
+    });
+
+    options.enabledExpansions.push("trade_routes");
+    options.enabledVariants.push("precious_cards");
+    options.campaignProgress!.defeatedBotNationIds.push("bot_after_setup");
+    options.campaignProgress!.startingDeckAdditions.push("late_addition");
+
+    expect(G.options).toBeDefined();
+    const snapshot = G.options!;
+    expect(snapshot.enabledExpansions).toEqual(["trade_routes"]);
+    expect(snapshot.enabledVariants).toEqual(["short_game"]);
+    expect(snapshot.campaignProgress?.defeatedBotNationIds).toEqual([]);
+    expect(snapshot.campaignProgress?.startingDeckAdditions).toEqual([]);
+  });
   it("uses explicitly provided player ids without creating player 0",()=> {
     const G=createInitialGameState({
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[]},
@@ -53,6 +103,61 @@ describe("setup pipeline",()=>{
     expect(Object.keys(G.players)).toEqual(["1"]);
     expect(G.players["1"].hand).toContain("uploaded_starter");
     expect(G.market).toEqual(["uploaded_market_1","uploaded_market_2","uploaded_market_3","uploaded_market_4","uploaded_market_5"]);
+  });
+  it("defaults missing imported nation and ruleset compatibility arrays during setup",()=> {
+    const G=createInitialGameState({
+      options:{playerCount:1,mode:"practice",enabledExpansions:[],enabledVariants:[],commonsSetId:"custom"},
+      playerNationIds:{"1":"minimal_uploaded_nation"},
+      privateData:{
+        cards:[
+          card({id:"minimal_starter",ownership:"nation",startingLocation:"draw_deck"}),
+          card({id:"minimal_market_1",displayName:"Minimal Market 1",ownership:"commons",startingLocation:"market",commonsSetId:"custom"}),
+          card({id:"minimal_market_2",displayName:"Minimal Market 2",ownership:"commons",startingLocation:"market",commonsSetId:"custom"}),
+          card({id:"minimal_market_3",displayName:"Minimal Market 3",ownership:"commons",startingLocation:"market",commonsSetId:"custom"}),
+          card({id:"minimal_market_4",displayName:"Minimal Market 4",ownership:"commons",startingLocation:"market",commonsSetId:"custom"}),
+          card({id:"minimal_market_5",displayName:"Minimal Market 5",ownership:"commons",startingLocation:"market",commonsSetId:"custom"})
+        ],
+        nations:[{
+          id:"minimal_uploaded_nation",
+          displayName:"Minimal Uploaded Nation",
+          powerCardIds:[],
+          stateCardIds:[],
+          startingDeckCardIds:["minimal_starter"],
+          nationDeckCardIds:[],
+          developmentCardIds:[],
+          setupRules:[],
+          passiveRules:[],
+          actionTokensBase:3,
+          exhaustTokensBase:5,
+          requiredExpansions:undefined,
+          excludedExpansions:undefined,
+          implemented:true,
+          tested:true
+        }],
+        nationRulesets:[{
+          nationId:"minimal_uploaded_nation",
+          displayName:"Minimal Uploaded Ruleset",
+          rulesetTags:undefined,
+          requiredExpansions:undefined,
+          excludedExpansions:undefined,
+          setupOverrides:undefined,
+          zoneOverrides:undefined,
+          stateOverrides:undefined,
+          reshuffleOverrides:undefined,
+          cleanupOverrides:undefined,
+          solsticeOverrides:undefined,
+          scoringOverrides:undefined,
+          collapseOverrides:undefined,
+          botOverrides:undefined,
+          shortGameOverrides:undefined,
+          hookRules:undefined,
+          implemented:true,
+          tested:true
+        }]
+      }
+    } as any);
+
+    expect(G.players["1"].hand).toContain("minimal_starter");
   });
   it("rejects a selected nation outside its allowed modes",()=> {
     const commons = Array.from({ length: 5 }, (_, index) =>
@@ -142,6 +247,248 @@ describe("setup pipeline",()=>{
 
     expect(G.solo).toBeUndefined();
     expect(G.log.some((entry) => entry.message.includes("/bot/"))).toBe(false);
+    expect(G.activeNationRulesets?.["0"].botOverrides).toEqual([]);
+    expect(G.activeNationRulesets?.["1"].botOverrides).toEqual([]);
+  });
+  it("records setup-created side area metadata on game state",()=> {
+    const commons = Array.from({ length: 5 }, (_, index) =>
+      card({id:`side_area_market_${index + 1}`,displayName:`Side Area Market ${index + 1}`,ownership:"commons",startingLocation:"market",commonsSetId:"custom"})
+    );
+    const G=createInitialGameState({
+      options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[],commonsSetId:"custom"},
+      playerNationIds:{"0":"side_area_nation","1":"side_area_nation"},
+      privateData:{
+        cards:[
+          card({id:"side_starter",ownership:"nation",startingLocation:"draw_deck"}),
+          ...commons
+        ],
+        nations:[{
+          id:"side_area_nation",
+          displayName:"Side Area Nation",
+          powerCardIds:[],
+          stateCardIds:[],
+          startingDeckCardIds:["side_starter"],
+          nationDeckCardIds:[],
+          developmentCardIds:[],
+          setupRules:[],
+          passiveRules:[],
+          actionTokensBase:3,
+          exhaustTokensBase:5,
+          requiredExpansions:[],
+          implemented:true,
+          tested:true
+        }],
+        nationRulesets:[{
+          nationId:"side_area_nation",
+          displayName:"Side Area Ruleset",
+          rulesetTags:["special_side_area"],
+          requiredExpansions:[],
+          setupOverrides:[
+            { op:"create_side_area", areaId:"public_track", displayName:"Public Track", public:true },
+            { op:"create_side_area", areaId:"private_track", displayName:"Private Track", public:false }
+          ],
+          zoneOverrides:[],
+          stateOverrides:[],
+          reshuffleOverrides:[],
+          cleanupOverrides:[],
+          solsticeOverrides:[],
+          scoringOverrides:[],
+          collapseOverrides:[],
+          botOverrides:[],
+          shortGameOverrides:[],
+          hookRules:[],
+          implemented:true,
+          tested:true
+        }]
+      }
+    } as any);
+
+    expect(G.players["0"].sideAreas?.public_track).toEqual([]);
+    expect(G.sideAreas?.["0"]?.public_track).toMatchObject({
+      id:"public_track",
+      displayName:"Public Track",
+      visibility:"public",
+      cardIds:[]
+    });
+    expect(G.sideAreas?.["0"]?.private_track).toMatchObject({
+      id:"private_track",
+      displayName:"Private Track",
+      visibility:"private",
+      cardIds:[]
+    });
+  });
+  it("does not create a Development area for no-Development-area rulesets",()=> {
+    const commons = Array.from({ length: 5 }, (_, index) =>
+      card({id:`no_dev_market_${index + 1}`,displayName:`No Dev Market ${index + 1}`,ownership:"commons",startingLocation:"market",commonsSetId:"custom"})
+    );
+    const G=createInitialGameState({
+      options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[],commonsSetId:"custom"},
+      playerNationIds:{"0":"no_dev_nation","1":"no_dev_nation"},
+      privateData:{
+        cards:[
+          card({id:"no_dev_starter",ownership:"nation",startingLocation:"draw_deck"}),
+          card({id:"suppressed_dev_a",ownership:"nation",startingLocation:"development_area",cardType:"development"}),
+          card({id:"suppressed_dev_b",ownership:"nation",startingLocation:"development_area",cardType:"development"}),
+          ...commons
+        ],
+        nations:[{
+          id:"no_dev_nation",
+          displayName:"No Development Nation",
+          powerCardIds:[],
+          stateCardIds:[],
+          startingDeckCardIds:["no_dev_starter"],
+          nationDeckCardIds:[],
+          developmentCardIds:["suppressed_dev_a","suppressed_dev_b"],
+          setupRules:[],
+          passiveRules:[],
+          actionTokensBase:3,
+          exhaustTokensBase:5,
+          requiredExpansions:[],
+          implemented:true,
+          tested:true
+        }],
+        nationRulesets:[{
+          nationId:"no_dev_nation",
+          displayName:"No Development Ruleset",
+          rulesetTags:["no_development_area"],
+          requiredExpansions:[],
+          setupOverrides:[],
+          zoneOverrides:[],
+          stateOverrides:[],
+          reshuffleOverrides:[],
+          cleanupOverrides:[],
+          solsticeOverrides:[],
+          scoringOverrides:[],
+          collapseOverrides:[],
+          botOverrides:[],
+          shortGameOverrides:[],
+          hookRules:[],
+          implemented:true,
+          tested:true
+        }]
+      }
+    } as any);
+
+    expect(G.players["0"].developmentArea).toEqual([]);
+    expect(G.players["1"].developmentArea).toEqual([]);
+    expect(G.players["0"].deck).toEqual([]);
+    expect(G.players["0"].hand).toEqual(["no_dev_starter"]);
+  });
+  it("folds no-Accession cards into the hidden Nation deck during setup",()=> {
+    const commons = Array.from({ length: 5 }, (_, index) =>
+      card({id:`no_accession_market_${index + 1}`,displayName:`No Accession Market ${index + 1}`,ownership:"commons",startingLocation:"market",commonsSetId:"custom"})
+    );
+    const G=createInitialGameState({
+      options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[],commonsSetId:"custom"},
+      playerNationIds:{"0":"no_accession_nation","1":"no_accession_nation"},
+      privateData:{
+        cards:[
+          card({id:"no_accession_starter",ownership:"nation",startingLocation:"draw_deck"}),
+          card({id:"regular_nation_card",ownership:"nation",startingLocation:"nation_deck",cardType:"nation"}),
+          card({id:"suppressed_accession",ownership:"nation",startingLocation:"nation_deck",cardType:"accession",tags:["accession"]}),
+          ...commons
+        ],
+        nations:[{
+          id:"no_accession_nation",
+          displayName:"No Accession Nation",
+          powerCardIds:[],
+          stateCardIds:[],
+          startingDeckCardIds:["no_accession_starter"],
+          nationDeckCardIds:["regular_nation_card"],
+          accessionCardId:"suppressed_accession",
+          developmentCardIds:[],
+          setupRules:[],
+          passiveRules:[],
+          actionTokensBase:3,
+          exhaustTokensBase:5,
+          requiredExpansions:[],
+          implemented:true,
+          tested:true
+        }],
+        nationRulesets:[{
+          nationId:"no_accession_nation",
+          displayName:"No Accession Ruleset",
+          rulesetTags:["no_accession"],
+          requiredExpansions:[],
+          setupOverrides:[],
+          zoneOverrides:[],
+          stateOverrides:[],
+          reshuffleOverrides:[],
+          cleanupOverrides:[],
+          solsticeOverrides:[],
+          scoringOverrides:[],
+          collapseOverrides:[],
+          botOverrides:[],
+          shortGameOverrides:[],
+          hookRules:[],
+          implemented:true,
+          tested:true
+        }]
+      }
+    } as any);
+
+    expect(G.players["0"].accessionCardId).toBeUndefined();
+    expect(G.players["0"].nationDeck).toEqual(expect.arrayContaining(["regular_nation_card","suppressed_accession"]));
+    expect(G.players["0"].nationDeck).toHaveLength(2);
+    expect(G.players["1"].accessionCardId).toBeUndefined();
+    expect(G.players["1"].nationDeck).toEqual(expect.arrayContaining(["regular_nation_card","suppressed_accession"]));
+    expect(G.players["1"].nationDeck).toHaveLength(2);
+  });
+  it("folds setup-rule Accession placements for no-Accession rulesets",()=> {
+    const commons = Array.from({ length: 5 }, (_, index) =>
+      card({id:`setup_no_accession_market_${index + 1}`,displayName:`Setup No Accession Market ${index + 1}`,ownership:"commons",startingLocation:"market",commonsSetId:"custom"})
+    );
+    const G=createInitialGameState({
+      options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[],commonsSetId:"custom"},
+      playerNationIds:{"0":"setup_no_accession_nation","1":"setup_no_accession_nation"},
+      privateData:{
+        cards:[
+          card({id:"setup_no_accession_starter",ownership:"nation",startingLocation:"draw_deck"}),
+          card({id:"setup_rule_accession",ownership:"nation",startingLocation:"accession",cardType:"accession",tags:["accession"]}),
+          ...commons
+        ],
+        nations:[{
+          id:"setup_no_accession_nation",
+          displayName:"Setup No Accession Nation",
+          powerCardIds:[],
+          stateCardIds:[],
+          startingDeckCardIds:["setup_no_accession_starter"],
+          nationDeckCardIds:[],
+          developmentCardIds:[],
+          setupRules:[{ op:"place_card_in_area", cardId:"setup_rule_accession", area:"accession" }],
+          passiveRules:[],
+          actionTokensBase:3,
+          exhaustTokensBase:5,
+          requiredExpansions:[],
+          implemented:true,
+          tested:true
+        }],
+        nationRulesets:[{
+          nationId:"setup_no_accession_nation",
+          displayName:"Setup No Accession Ruleset",
+          rulesetTags:["no_accession"],
+          requiredExpansions:[],
+          setupOverrides:[],
+          zoneOverrides:[],
+          stateOverrides:[],
+          reshuffleOverrides:[],
+          cleanupOverrides:[],
+          solsticeOverrides:[],
+          scoringOverrides:[],
+          collapseOverrides:[],
+          botOverrides:[],
+          shortGameOverrides:[],
+          hookRules:[],
+          implemented:true,
+          tested:true
+        }]
+      }
+    } as any);
+
+    expect(G.players["0"].accessionCardId).toBeUndefined();
+    expect(G.players["0"].nationDeck).toEqual(["setup_rule_accession"]);
+    expect(G.players["1"].accessionCardId).toBeUndefined();
+    expect(G.players["1"].nationDeck).toEqual(["setup_rule_accession"]);
   });
   it("short game setup exiles the top ten remaining Main deck cards into a public Exile zone",()=> {
     const cards = Array.from({ length: 15 }, (_, index) =>
@@ -409,6 +756,123 @@ describe("setup pipeline",()=>{
     expect(currentStateMatches(G,"0","barbarian")).toBe(true);
     expect(currentStateMatches(G,"0","empire")).toBe(false);
   });
+  it("preserves explicit setup Action-token overrides when starting as a non-default State",()=>{
+    const G=createInitialGameStateFromPipeline({
+      options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[]},
+      playerNationIds:{"0":"state_token_override_nation","1":"state_token_override_nation"},
+      cardDb:cardDb([
+        card({id:"native_state",ownership:"nation",startingLocation:"box",cardType:"state",tags:["native"],stateActionTokens:3}),
+        card({id:"alien_state",ownership:"nation",startingLocation:"box",cardType:"state",tags:["alien"],stateActionTokens:4}),
+        card({id:"market_1"}),
+        card({id:"market_2"}),
+        card({id:"market_3"}),
+        card({id:"market_4"}),
+        card({id:"market_5"})
+      ]),
+      nationDb:{
+        state_token_override_nation:{
+          id:"state_token_override_nation",
+          displayName:"State Token Override Nation",
+          powerCardIds:[],
+          stateCardIds:["native_state","alien_state"],
+          startingDeckCardIds:[],
+          nationDeckCardIds:[],
+          developmentCardIds:[],
+          setupRules:[],
+          passiveRules:[],
+          actionTokensBase:3,
+          exhaustTokensBase:5,
+          requiredExpansions:[],
+          implemented:true,
+          tested:true
+        }
+      },
+      privateData:{
+        nationRulesets:[{
+          nationId:"state_token_override_nation",
+          displayName:"State Token Override Rules",
+          rulesetTags:["alternate_starting_state"],
+          requiredExpansions:[],
+          setupOverrides:[{ op:"set_action_tokens_base", count:2 }],
+          zoneOverrides:[],
+          stateOverrides:[{ op:"start_as_state", state:"alien" }],
+          reshuffleOverrides:[],
+          cleanupOverrides:[],
+          solsticeOverrides:[],
+          scoringOverrides:[],
+          collapseOverrides:[],
+          botOverrides:[],
+          shortGameOverrides:[],
+          hookRules:[],
+          implemented:true,
+          tested:true
+        }]
+      }
+    } as any);
+
+    expect(G.players["0"].stateArea[0]).toBe("alien_state");
+    expect(G.players["0"].actionTokensBase).toBe(2);
+    expect(G.players["0"].actionsRemaining).toBe(2);
+    expect(G.players["0"].actionTokensAvailable).toBe(2);
+  });
+  it("starts as empire when the ruleset tag requests it",()=>{
+    const G=createInitialGameStateFromPipeline({
+      options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[]},
+      playerNationIds:{"0":"empire_start_nation","1":"empire_start_nation"},
+      cardDb:cardDb([
+        card({id:"barbarian_state",ownership:"nation",startingLocation:"box",cardType:"state",tags:["barbarian"],stateActionTokens:3}),
+        card({id:"empire_state",ownership:"nation",startingLocation:"box",cardType:"state",tags:["empire"],stateActionTokens:2}),
+        card({id:"market_1"}),
+        card({id:"market_2"}),
+        card({id:"market_3"}),
+        card({id:"market_4"}),
+        card({id:"market_5"})
+      ]),
+      nationDb:{
+        empire_start_nation:{
+          id:"empire_start_nation",
+          displayName:"Empire Start Nation",
+          powerCardIds:[],
+          stateCardIds:["barbarian_state","empire_state"],
+          startingDeckCardIds:[],
+          nationDeckCardIds:[],
+          developmentCardIds:[],
+          setupRules:[],
+          passiveRules:[],
+          actionTokensBase:3,
+          exhaustTokensBase:5,
+          requiredExpansions:[],
+          implemented:true,
+          tested:true
+        }
+      },
+      privateData:{
+        nationRulesets:[{
+          nationId:"empire_start_nation",
+          displayName:"Empire Start Rules",
+          rulesetTags:["starts_as_empire"],
+          requiredExpansions:[],
+          setupOverrides:[],
+          zoneOverrides:[],
+          stateOverrides:[],
+          reshuffleOverrides:[],
+          cleanupOverrides:[],
+          solsticeOverrides:[],
+          scoringOverrides:[],
+          collapseOverrides:[],
+          botOverrides:[],
+          shortGameOverrides:[],
+          hookRules:[],
+          implemented:true,
+          tested:true
+        }]
+      }
+    } as any);
+
+    expect(G.players["0"].stateArea[0]).toBe("empire_state");
+    expect(G.players["0"].actionTokensBase).toBe(2);
+    expect(currentStateMatches(G,"0","empire")).toBe(true);
+  });
   it("routes setup History placements through a nation History replacement zone",()=>{
     const G=createInitialGameStateFromPipeline({
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[]},
@@ -464,6 +928,76 @@ describe("setup pipeline",()=>{
 
     expect(G.players["0"].history).toEqual([]);
     expect(G.players["0"].sideAreas?.sunken).toEqual(["setup_history_card"]);
+    expect(G.specialZones?.["0"]?.sunken).toMatchObject({
+      id:"sunken",
+      displayName:"Sunken",
+      visibility:"private",
+      scoresAsOwned:true,
+      cardIds:["setup_history_card"]
+    });
+  });
+  it("records metadata for alternate History zones created by disabled History",()=>{
+    const G=createInitialGameStateFromPipeline({
+      options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[]},
+      playerNationIds:{"0":"alternate_history_nation","1":"alternate_history_nation"},
+      cardDb:cardDb([
+        card({id:"alternate_history_card",ownership:"nation",startingLocation:"box"}),
+        card({id:"market_1"}),
+        card({id:"market_2"}),
+        card({id:"market_3"}),
+        card({id:"market_4"}),
+        card({id:"market_5"})
+      ]),
+      nationDb:{
+        alternate_history_nation:{
+          id:"alternate_history_nation",
+          displayName:"Alternate History Nation",
+          powerCardIds:[],
+          stateCardIds:[],
+          startingDeckCardIds:[],
+          nationDeckCardIds:[],
+          developmentCardIds:[],
+          setupRules:[{op:"place_card_in_area",area:"history",cardId:"alternate_history_card"}],
+          passiveRules:[],
+          actionTokensBase:3,
+          exhaustTokensBase:5,
+          requiredExpansions:[],
+          implemented:true,
+          tested:true
+        } as any
+      },
+      privateData:{
+        nationRulesets:[{
+          nationId:"alternate_history_nation",
+          displayName:"Alternate History Rules",
+          rulesetTags:["alternate_history_zone"],
+          requiredExpansions:[],
+          setupOverrides:[],
+          zoneOverrides:[{op:"disable_history",replacementBehavior:"alternate_zone"}],
+          stateOverrides:[],
+          reshuffleOverrides:[],
+          cleanupOverrides:[],
+          solsticeOverrides:[],
+          scoringOverrides:[],
+          collapseOverrides:[],
+          botOverrides:[],
+          shortGameOverrides:[],
+          hookRules:[],
+          implemented:true,
+          tested:true
+        }]
+      }
+    } as any);
+
+    expect(G.players["0"].history).toEqual([]);
+    expect(G.players["0"].sideAreas?.alternate_history).toEqual(["alternate_history_card"]);
+    expect(G.specialZones?.["0"]?.alternate_history).toMatchObject({
+      id:"alternate_history",
+      displayName:"Alternate History",
+      visibility:"private",
+      scoresAsOwned:true,
+      cardIds:["alternate_history_card"]
+    });
   });
   it("preserves imported suit icon metadata in the runtime card database",()=>{
     const G=createInitialGameStateFromPipeline({
@@ -544,6 +1078,33 @@ describe("setup pipeline",()=>{
       tributaryDeck: expect.any(Array)
     });
     expect(G.marketRefillPool).toEqual([]);
+  });
+  it("preserves visible Tributary bottom-card metadata through full setup",()=>{
+    const G=createInitialGameStateFromPipeline({
+      options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[],commonsSetId:"classics",replacementPolicy:"none"},
+      playerNationIds:{"0":"test_nation_alpha","1":"test_nation_alpha"},
+      cardDb:cardDb([
+        card({id:"region_0",setupBannerSuit:"region"}),
+        card({id:"region_1",setupBannerSuit:"region"}),
+        card({id:"uncivilized_0",setupBannerSuit:"uncivilized"}),
+        card({id:"uncivilized_1",setupBannerSuit:"uncivilized"}),
+        card({id:"civilized_0",setupBannerSuit:"civilized"}),
+        card({id:"civilized_1",setupBannerSuit:"civilized"}),
+        card({id:"tributary_region_bottom",setupBannerSuit:"tributary"}),
+        card({id:"tributary_uncivilized_bottom",setupBannerSuit:"tributary"}),
+        card({id:"tributary_civilized_bottom",setupBannerSuit:"tributary"}),
+        card({id:"main_0",setupBannerSuit:"none",smallDeckEligible:false}),
+        card({id:"main_1",setupBannerSuit:"none",smallDeckEligible:false})
+      ]),
+      nationDb
+    });
+
+    expect(G.market).toEqual(["region_0","uncivilized_0","civilized_0","main_0","main_1"]);
+    expect(G.marketDeckBottomCards).toEqual({
+      regionDeck:"tributary_region_bottom",
+      uncivilizedDeck:"tributary_uncivilized_bottom",
+      civilizedDeck:"tributary_civilized_bottom"
+    });
   });
   it("sets up the Fame deck with its special bottom card unavailable",()=>{
     const G=createInitialGameState();

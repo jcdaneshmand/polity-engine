@@ -234,6 +234,10 @@ describe("selection model", () => {
     expect(source).toContain("moves.resolveReactiveExhaustChoice");
     expect(source).toContain("moves.skipReactiveExhaustChoice");
   });
+  it("uses data-driven player zone labels for selected zone details",()=> {
+    const source=fs.readFileSync(path.resolve(import.meta.dirname, "../../../app/src/ui/layout/BoardLayout.tsx"), "utf8");
+    expect(source).toContain("title={playerZoneLabels[selection.id] ?? selection.id}");
+  });
   it("still hides direct market acquisition when no Action tokens are available",()=> {
     const noAction = {...G,players:{"0":{...G.players["0"],actionsRemaining:0,actionTokensAvailable:0,resources:{materials:3}}}};
     const acquire=getAvailableActionsForSelection({kind:"market_slot",id:"m1"},noAction,ctx).find(a=>a.action==="acquire");

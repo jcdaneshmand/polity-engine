@@ -1,5 +1,6 @@
-import type { GameState, ResourceName } from "./state";
+import type { GameState, ResourceGainSource, ResourceName } from "./state";
 import { addResourceAmount, normalizeResourceMap } from "./resources";
+import { cardHasSuitIcon } from "./suitIcons";
 
 function removeOne(cards: string[], cardId: string): boolean {
   const index = cards.indexOf(cardId);
@@ -26,7 +27,7 @@ function deleteEmptyCardState(G: GameState, cardId: string): void {
 export function isRegionCard(G: GameState, cardId: string): boolean {
   const card = G.cardDb[cardId];
   const type = card?.cardType ?? card?.type;
-  return type === "region" || card?.suit === "region";
+  return type === "region" || card?.suit === "region" || cardHasSuitIcon(card, "region");
 }
 
 export function garrisonCardOnRegion(G: GameState, playerId: string, hostCardId: string, cardId: string): boolean {
@@ -96,32 +97,56 @@ function addCollectedResources(target: Partial<Record<ResourceName, number>> | u
   }
 }
 
-export function recallRegionToHand(G: GameState, playerId: string, regionCardId: string, collectedResources?: Partial<Record<ResourceName, number>>): boolean {
+function recordCollectedResources(
+  collectedResources: Partial<Record<ResourceName, number>> | undefined,
+  collectedResourceSources: ResourceGainSource[] | undefined,
+  sourceCardId: string,
+  collected: Partial<Record<ResourceName, number>>
+): void {
+  addCollectedResources(collectedResources, collected);
+  if (collectedResourceSources && Object.values(collected).some((amount) => (amount ?? 0) > 0)) {
+    collectedResourceSources.push({ sourceCardId, sourceWasInPlay: true, gains: collected });
+  }
+}
+
+export function recallRegionToHand(
+  G: GameState,
+  playerId: string,
+  regionCardId: string,
+  collectedResources?: Partial<Record<ResourceName, number>>,
+  collectedResourceSources?: ResourceGainSource[]
+): boolean {
   const player = G.players[playerId];
   if (!isRegionCard(G, regionCardId)) return false;
   const wasInPlay = removeOne(player.playArea, regionCardId);
   const garrisonHostCardId = wasInPlay ? undefined : detachGarrisonedCard(G, playerId, regionCardId);
   if (!wasInPlay && !garrisonHostCardId) return false;
 
-  addCollectedResources(collectedResources, collectCardResourcesToPlayer(G, playerId, regionCardId));
+  recordCollectedResources(collectedResources, collectedResourceSources, regionCardId, collectCardResourcesToPlayer(G, playerId, regionCardId));
   const garrisoned = detachGarrisonedCards(G, regionCardId);
-  garrisoned.forEach((cardId) => addCollectedResources(collectedResources, collectAndClearCardStateToPlayer(G, playerId, cardId)));
+  garrisoned.forEach((cardId) => recordCollectedResources(collectedResources, collectedResourceSources, cardId, collectAndClearCardStateToPlayer(G, playerId, cardId)));
 
   player.hand.push(regionCardId, ...garrisoned);
   G.log.push({ round: G.round, playerId, message: `RegionRecalled(${regionCardId}/garrisoned=${garrisoned.length})` });
   return true;
 }
 
-export function abandonRegionToDiscard(G: GameState, playerId: string, regionCardId: string, collectedResources?: Partial<Record<ResourceName, number>>): boolean {
+export function abandonRegionToDiscard(
+  G: GameState,
+  playerId: string,
+  regionCardId: string,
+  collectedResources?: Partial<Record<ResourceName, number>>,
+  collectedResourceSources?: ResourceGainSource[]
+): boolean {
   const player = G.players[playerId];
   if (!isRegionCard(G, regionCardId)) return false;
   const wasInPlay = removeOne(player.playArea, regionCardId);
   const garrisonHostCardId = wasInPlay ? undefined : detachGarrisonedCard(G, playerId, regionCardId);
   if (!wasInPlay && !garrisonHostCardId) return false;
 
-  addCollectedResources(collectedResources, collectCardResourcesToPlayer(G, playerId, regionCardId));
+  recordCollectedResources(collectedResources, collectedResourceSources, regionCardId, collectCardResourcesToPlayer(G, playerId, regionCardId));
   const garrisoned = detachGarrisonedCards(G, regionCardId);
-  garrisoned.forEach((cardId) => addCollectedResources(collectedResources, collectAndClearCardStateToPlayer(G, playerId, cardId)));
+  garrisoned.forEach((cardId) => recordCollectedResources(collectedResources, collectedResourceSources, cardId, collectAndClearCardStateToPlayer(G, playerId, cardId)));
   player.discard.push(regionCardId, ...garrisoned);
   G.log.push({ round: G.round, playerId, message: `RegionAbandoned(${regionCardId}/garrisoned=${garrisoned.length})` });
   return true;

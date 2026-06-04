@@ -48,6 +48,7 @@ export function buildCommonsSetup(args: CommonsSetupArgs): CommonsSetupResult {
     uncivilizedDeck: deckSetup.uncivilizedDeck,
     civilizedDeck: deckSetup.civilizedDeck,
     tributaryDeck: deckSetup.tributaryDeck,
+    smallDeckBottomCards: deckSetup.smallDeckBottomCards,
     mainDeck: deckSetup.mainDeck,
     delayedCards: deckSetup.delayedCards,
     initialMarket: deckSetup.initialMarket,

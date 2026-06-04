@@ -9,9 +9,20 @@ function historyReplacementZone(override: ZoneOverride): override is Extract<Zon
   return override.op === "replace_history_with_zone";
 }
 
+function effectiveDisableHistoryOverride(G: GameState, playerId: string): Extract<ZoneOverride, { op: "disable_history" }> | undefined {
+  const ruleset = G.activeNationRulesets?.[playerId];
+  const explicitOverride = ruleset?.zoneOverrides?.find(isDisableHistoryOverride);
+  if (explicitOverride) return explicitOverride;
+  const tags = ruleset?.rulesetTags ?? [];
+  if (tags.includes("no_history") && tags.includes("discard_instead_of_history")) {
+    return { op: "disable_history", replacementBehavior: "discard" };
+  }
+  return undefined;
+}
+
 export function moveCardsToHistoryDestination(G: GameState, playerId: string, cardIds: string[]): string {
   const player = G.players[playerId];
-  const disableHistory = G.activeNationRulesets?.[playerId]?.zoneOverrides?.find(isDisableHistoryOverride);
+  const disableHistory = effectiveDisableHistoryOverride(G, playerId);
   if (disableHistory?.replacementBehavior === "discard") {
     player.discard.push(...cardIds);
     return "discard";
@@ -38,7 +49,7 @@ export function moveCardsToHistoryDestination(G: GameState, playerId: string, ca
 }
 
 export function actualHistorySourceZoneIds(G: GameState, playerId: string): string[] {
-  const disableHistory = G.activeNationRulesets?.[playerId]?.zoneOverrides?.find(isDisableHistoryOverride);
+  const disableHistory = effectiveDisableHistoryOverride(G, playerId);
   if (disableHistory?.replacementBehavior === "discard") return ["discard"];
   if (disableHistory?.replacementBehavior === "exile") return ["exile"];
   if (disableHistory?.replacementBehavior === "alternate_zone") return ["alternate_history"];
@@ -47,7 +58,7 @@ export function actualHistorySourceZoneIds(G: GameState, playerId: string): stri
 }
 
 export function actualScoredHistoryZoneIds(G: GameState, playerId: string): string[] {
-  const disableHistory = G.activeNationRulesets?.[playerId]?.zoneOverrides?.find(isDisableHistoryOverride);
+  const disableHistory = effectiveDisableHistoryOverride(G, playerId);
   if (disableHistory?.replacementBehavior === "alternate_zone") return ["alternate_history"];
   if (disableHistory) return [];
   const replacementZone = G.activeNationRulesets?.[playerId]?.zoneOverrides?.find(historyReplacementZone);

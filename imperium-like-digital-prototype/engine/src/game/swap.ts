@@ -1,5 +1,6 @@
 import type { GameState, ResourceName, SwapSourceZone } from "./state";
 import { returnMarketUnrest, tuckUnrestUnderMarketCard } from "./marketResources";
+import { normalizeResourceMap } from "./resources";
 import { cardMarketSuitIconsForPlayer } from "./suitIcons";
 
 export interface SwapChoice {
@@ -38,6 +39,16 @@ function updateMarketSlot(G: GameState, marketIndex: number, previousMarketCardI
   slot.attachedUnrestCardIds = [...(G.marketUnrest?.[incomingCardId] ?? [])];
 }
 
+function marketResourceMarkers(G: GameState, cardId: string): Partial<Record<ResourceName, number>> {
+  const legacy = normalizeResourceMap(G.marketResources?.[cardId]);
+  const slot = normalizeResourceMap(G.marketSlots?.find((candidate) => candidate.cardId === cardId)?.resourceMarkers);
+  const merged: Partial<Record<ResourceName, number>> = { ...legacy };
+  for (const [resource, amount] of Object.entries(slot) as [ResourceName, number | undefined][]) {
+    merged[resource] = Math.max(merged[resource] ?? 0, amount ?? 0);
+  }
+  return merged;
+}
+
 export function swapCardWithMarket(G: GameState, args: { playerId: string; sourceZone: SwapSourceZone; cardId: string; marketCardId: string }): boolean {
   const cards = sourceCards(G, args.playerId, args.sourceZone);
   if (!cards) return false;
@@ -46,7 +57,7 @@ export function swapCardWithMarket(G: GameState, args: { playerId: string; sourc
   if (sourceIndex < 0 || marketIndex < 0) return false;
   if (!cardCanSwapWithMarket(G, args.playerId, args.cardId, args.marketCardId)) return false;
 
-  const marketResources = { ...(G.marketResources?.[args.marketCardId] ?? {}) } as Partial<Record<ResourceName, number>>;
+  const marketResources = marketResourceMarkers(G, args.marketCardId);
   if (G.marketResources) delete G.marketResources[args.marketCardId];
   returnMarketUnrest(G, args.playerId, args.marketCardId);
 

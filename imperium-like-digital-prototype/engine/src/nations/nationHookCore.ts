@@ -41,8 +41,8 @@ export function evaluateNationHookCondition(G: GameState, playerId: string, cond
   if (condition.op === "zone_empty") return getZoneCards(G, playerId, p, condition.zoneId).length === 0;
   if (condition.op === "zone_has_at_least") return getZoneCards(G, playerId, p, condition.zoneId).length >= condition.count;
   if (condition.op === "card_in_zone") return getZoneCards(G, playerId, p, condition.zoneId).includes(condition.cardId);
-  if (condition.op === "expansion_enabled") return !!G.options?.enabledExpansions.includes(condition.expansion);
-  if (condition.op === "variant_enabled") return !!G.options?.enabledVariants.includes(condition.variant);
+  if (condition.op === "expansion_enabled") return Boolean(G.options?.enabledExpansions?.includes(condition.expansion));
+  if (condition.op === "variant_enabled") return Boolean(G.options?.enabledVariants?.includes(condition.variant));
   if (condition.op === "mode_is") return G.options?.mode === condition.mode;
   if (condition.op === "payload_card_is") return getPayloadCardId(payload, condition.payloadKey) === condition.cardId;
   if (condition.op === "payload_card_suit_is") return cardHasSuitIconForPlayer(G, playerId, getPayloadCard(G, payload, condition.payloadKey), condition.suit);
@@ -50,7 +50,7 @@ export function evaluateNationHookCondition(G: GameState, playerId: string, cond
     const card = getPayloadCard(G, payload, condition.payloadKey);
     return (card?.cardType ?? card?.type) === condition.cardType;
   }
-  if (condition.op === "payload_card_has_tag") return !!getPayloadCard(G, payload, condition.payloadKey)?.tags.includes(condition.tag);
+  if (condition.op === "payload_card_has_tag") return Boolean((getPayloadCard(G, payload, condition.payloadKey)?.tags ?? []).includes(condition.tag));
   return false;
 }
 
@@ -65,6 +65,7 @@ export function hasNationHookInterruption(G: GameState): boolean {
     ?? G.pendingBreakThroughChoice
     ?? G.pendingGarrisonChoice
     ?? G.pendingRegionChoice
+    ?? G.pendingRegionChoiceContinuation
     ?? G.pendingDevelopmentChoice
     ?? G.pendingShortGameDevelopmentExileChoice
     ?? G.pendingTradeChoice
@@ -91,7 +92,7 @@ export function runNationHooksWithEffectRunner(args: {
 }): boolean {
   const ruleset = args.G.activeNationRulesets?.[args.playerId];
   if (!ruleset) return true;
-  const hooks = [...ruleset.hookRules.filter((h) => h.trigger === args.trigger)].sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
+  const hooks = [...(ruleset.hookRules ?? []).filter((h) => h.trigger === args.trigger)].sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
   for (let index = args.startIndex ?? 0; index < hooks.length; index += 1) {
     const hook = hooks[index];
     if (args.G.gameover || hasNationHookInterruption(args.G)) return true;

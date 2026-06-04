@@ -9,12 +9,14 @@ export function canonicalResourceName(resource: ResourceName | string): Resource
 }
 
 export function resourceAmount(resources: ResourceBag | undefined, resource: ResourceName | string): number {
-  return resources?.[canonicalResourceName(resource)] ?? 0;
+  return normalizeResourceMap(resources)[canonicalResourceName(resource)] ?? 0;
 }
 
 export function setResourceAmount(resources: ResourceBag, resource: ResourceName | string, amount: number): void {
   const canonical = canonicalResourceName(resource);
   resources[canonical] = amount;
+  if (canonical === "knowledge") delete resources.progress;
+  if (canonical === "influence") delete resources.population;
   if (resource !== canonical) delete resources[resource];
 }
 
@@ -78,5 +80,7 @@ export function gainMarketResource(G: GameState, cardId: string, resource: Resou
   G.marketResources ??= {};
   G.marketResources[cardId] ??= {};
   G.marketResources[cardId][canonical] = (G.marketResources[cardId][canonical] ?? 0) + gained;
+  const slot = G.marketSlots?.find((candidate) => candidate.cardId === cardId);
+  if (slot) slot.resourceMarkers[canonical] = (slot.resourceMarkers[canonical] ?? 0) + gained;
   return gained;
 }

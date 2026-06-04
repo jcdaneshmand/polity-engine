@@ -17,6 +17,6 @@ export function loadNationDb(opts?: { usePrivate?: boolean; privatePath?: string
       { id: "test_nation_river_court", displayName: "River Court Forum", powerCardIds: ["test_action_market_pull"], stateCardIds: ["test_action_foundry_shift"], startingDeckCardIds: placeholder[1].startingDeck, nationDeckCardIds:["test_action_lineage_record"], developmentCardIds:["test_action_scholars_circle"], setupRules:[{op:"require_expansion", expansionId:"trade_routes"}], passiveRules:[], actionTokensBase:DEFAULT_ACTION_TOKENS, exhaustTokensBase:DEFAULT_EXHAUST_TOKENS, requiredExpansions:["trade_routes"], excludedExpansions:[], implemented:false, tested:false }
     ];
   const enabled = opts?.enabledExpansions ?? [];
-  const filtered = list.filter((n) => !n.requiredExpansions.some((e) => !enabled.includes(e)) && !(n.excludedExpansions ?? []).some((e) => enabled.includes(e)));
+  const filtered = list.filter((n) => !(n.requiredExpansions ?? []).some((e) => !enabled.includes(e)) && !(n.excludedExpansions ?? []).some((e) => enabled.includes(e)));
   return Object.fromEntries(filtered.map((n) => [n.id, n]));
 }

@@ -108,6 +108,33 @@ describe("nation ruleset validation", () => {
     expect(issues).toContain("Ruleset not allowed in mode multiplayer");
   });
 
+  it("treats trade_routes_required ruleset tags as a Trade Routes expansion requirement", () => {
+    const issues = validateNationRulesetCompatibility(
+      { id: "test_nation", displayName: "Test Nation", powerCardIds: [], stateCardIds: [], startingDeckCardIds: [], nationDeckCardIds: [], developmentCardIds: [], setupRules: [], passiveRules: [], actionTokensBase: 3, exhaustTokensBase: 5, requiredExpansions: [], implemented: false, tested: false } as any,
+      ruleset({ rulesetTags: ["trade_routes_required"] }),
+      { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: [] }
+    );
+
+    expect(issues).toContain("Ruleset requires disabled expansion trade_routes");
+  });
+
+  it("treats missing imported ruleset compatibility arrays as empty", () => {
+    const issues = validateNationRulesetCompatibility(
+      { id: "test_nation", displayName: "Test Nation", powerCardIds: [], stateCardIds: [], startingDeckCardIds: [], nationDeckCardIds: [], developmentCardIds: [], setupRules: [], passiveRules: [], actionTokensBase: 3, exhaustTokensBase: 5, requiredExpansions: [], implemented: false, tested: false } as any,
+      ruleset({
+        rulesetTags: undefined as any,
+        requiredExpansions: undefined as any,
+        excludedExpansions: undefined,
+        requiredVariants: undefined,
+        excludedVariants: undefined,
+        shortGameOverrides: undefined as any
+      }),
+      { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: ["short_game"] }
+    );
+
+    expect(issues).toEqual([]);
+  });
+
   it("rejects empty nation ruleset effect payloads before runtime", () => {
     const issues = validateNationRuleset(ruleset({
       reshuffleOverrides: [{ op: "custom_reshuffle_effect", effect: [] }],
@@ -722,6 +749,40 @@ describe("nation ruleset validation", () => {
       field: "hookRules[0].effects[0].cardId",
       reason: "invalid cardId 'specific_development'",
     });
+  });
+
+  it("accepts free Develop effects in rulesets", () => {
+    const issues = validateNationRuleset(ruleset({
+      hookRules: [{
+        trigger: "after_reshuffle",
+        effects: [
+          { trigger: "on_play", op: "develop", free: true } as any,
+        ],
+      }],
+    }));
+
+    expect(issues).not.toContainEqual(expect.objectContaining({
+      field: "hookRules[0].effects[0].free",
+    }));
+  });
+
+  it("accepts counted Recall and Abandon Region effects in rulesets", () => {
+    const issues = validateNationRuleset(ruleset({
+      hookRules: [{
+        trigger: "after_reshuffle",
+        effects: [
+          { trigger: "on_play", op: "recall_region", count: 2 } as any,
+          { trigger: "on_play", op: "abandon_region", count: 2 } as any,
+        ],
+      }],
+    }));
+
+    expect(issues).not.toContainEqual(expect.objectContaining({
+      field: "hookRules[0].effects[0].count",
+    }));
+    expect(issues).not.toContainEqual(expect.objectContaining({
+      field: "hookRules[0].effects[1].count",
+    }));
   });
 
   it("rejects unsupported targeted Move-self-to-history effects in rulesets before runtime", () => {

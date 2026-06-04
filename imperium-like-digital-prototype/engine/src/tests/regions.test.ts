@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { abandonRegion, garrisonCard, recallRegion } from "../game/moves";
+import { abandonRegion, garrisonCard, recallRegion, resolveReactiveExhaustChoice } from "../game/moves";
 import { createInitialState } from "../game/initialState";
 
 const ctx = { currentPlayer: "0" } as any;
@@ -37,6 +37,25 @@ describe("regions, garrison, and recall", () => {
     expect(G.players["0"].resources.knowledge).toBe(1);
     expect(G.cardStates?.test_region).toBeUndefined();
     expect(G.log.at(-1)?.message).toBe("RegionRecalled(test_region/garrisoned=1)");
+  });
+
+  it("recalls imported cards with a Region suit icon as Regions", () => {
+    const G = createInitialState();
+    G.cardDb.imported_region = { id: "imported_region", displayName: "Imported Region", type: "action", cardType: "action", suit: "multi", cost: 0, tags: ["suit:region"], effects: [] };
+    G.players["0"].playArea = ["imported_region"];
+    G.cardStates = {
+      imported_region: {
+        resources: { materials: 1 }
+      }
+    };
+
+    recallRegion({ G, ctx }, "imported_region");
+
+    expect(G.players["0"].playArea).toEqual([]);
+    expect(G.players["0"].hand).toEqual(["imported_region"]);
+    expect(G.players["0"].resources.materials).toBe(1);
+    expect(G.cardStates?.imported_region).toBeUndefined();
+    expect(G.log.at(-1)?.message).toBe("RegionRecalled(imported_region/garrisoned=0)");
   });
 
   it("abandons a region and moves its garrisoned cards with it to discard", () => {
@@ -116,6 +135,53 @@ describe("regions, garrison, and recall", () => {
     expect(G.players["0"].resources.knowledge).toBe(2);
     expect(G.cardStates?.test_region).toBeUndefined();
     expect(G.cardStates?.test_action_archive_survey).toBeUndefined();
+  });
+
+  it("opens source-suited reactive Exhaust windows after recalling garrisoned resources", () => {
+    const G = createInitialState();
+    G.cardDb.test_region = { id: "test_region", displayName: "Test Region", type: "region", cardType: "region", suit: "region", cost: 0, tags: [], effects: [] };
+    G.cardDb.civilized_child = { id: "civilized_child", displayName: "Civilized Child", type: "action", cardType: "action", suit: "civilized", cost: 0, tags: [], effects: [] };
+    G.cardDb.reactive_exhaust = {
+      id: "reactive_exhaust",
+      displayName: "Reactive Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_exhaust",
+        op: "gain_resource",
+        resource: "influence",
+        amount: 1,
+        reactive: { trigger: "after_gain_resource", resource: "knowledge", sourceSuit: "civilized" }
+      } as any]
+    };
+    G.players["0"].playArea = ["test_region", "reactive_exhaust"];
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.cardStates = {
+      test_region: { garrisonedCardIds: ["civilized_child"] },
+      civilized_child: { resources: { knowledge: 1 } }
+    };
+
+    recallRegion({ G, ctx }, "test_region");
+
+    expect(G.players["0"].hand).toEqual(["test_region", "civilized_child"]);
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: ["reactive_exhaust"],
+      resolvingPlayerId: "0",
+      trigger: "after_gain_resource",
+      resource: "knowledge",
+      eventSourceCardId: "civilized_child",
+      eventSourceWasInPlay: true
+    });
+
+    resolveReactiveExhaustChoice({ G, ctx }, "reactive_exhaust");
+
+    expect(G.pendingReactiveExhaustChoice).toBeUndefined();
+    expect(G.players["0"].resources.influence).toBe(1);
   });
 
   it("recalls a targeted garrisoned region without moving its host", () => {

@@ -2,11 +2,17 @@ import { describe, expect, it } from "vitest";
 import { createInitialGameState } from "../game/initialState";
 import { endTurnMove, resolveCleanupMarketResource, resolveExileChoice, skipExileChoice } from "../game/moves";
 import { onTurnEnd } from "../game/turn";
+import { practiceMarketChurn } from "../solo/practiceMode";
 
 describe("solo/practice modes",()=>{
   it("practice creates a 12-turn market churn clock and finite Progress pool",()=>{
     const G=createInitialGameState({ options:{playerCount:1,mode:"practice",enabledExpansions:[],enabledVariants:[]} });
     expect(G.practiceClock).toEqual({ turnsRemaining: 12, progressTokens: 12 });
+  });
+  it("practice is feature-flagged separately from full solo Bot setup",()=>{
+    const G=createInitialGameState({ options:{playerCount:1,mode:"practice",enabledExpansions:[],enabledVariants:[]} });
+    expect(G.practiceClock).toEqual({ turnsRemaining: 12, progressTokens: 12 });
+    expect(G.solo).toBeUndefined();
   });
   it("practice cleanup spends one churn Progress token onto the market and ticks the clock",()=>{
     const G=createInitialGameState({ options:{playerCount:1,mode:"practice",enabledExpansions:[],enabledVariants:[]} });
@@ -18,6 +24,23 @@ describe("solo/practice modes",()=>{
     expect(G.practiceClock).toEqual({ turnsRemaining: 11, progressTokens: 11 });
     expect(G.marketResources?.test_action_foundry_shift?.knowledge).toBe(1);
     expect(G.log.some((entry) => entry.message === "PracticeMarketChurn(test_action_foundry_shift/knowledge/1)")).toBe(true);
+  });
+  it("practice market churn mirrors Progress tokens into structured Market slots",()=>{
+    const G=createInitialGameState({ options:{playerCount:1,mode:"practice",enabledExpansions:[],enabledVariants:[]} });
+    G.market = ["test_action_foundry_shift"];
+    G.marketResources = {};
+    G.marketSlots = [{
+      index: 0,
+      cardId: "test_action_foundry_shift",
+      resourceMarkers: {},
+      attachedUnrestCardIds: []
+    }];
+
+    practiceMarketChurn(G);
+
+    expect(G.practiceClock).toEqual({ turnsRemaining: 12, progressTokens: 11 });
+    expect(G.marketResources?.test_action_foundry_shift?.knowledge).toBe(1);
+    expect(G.marketSlots![0]?.resourceMarkers.knowledge).toBe(1);
   });
   it("practice cleanup uses the chosen cleanup market card as the single churn Progress placement",()=>{
     const G=createInitialGameState({ options:{playerCount:1,mode:"practice",enabledExpansions:[],enabledVariants:[]} });
@@ -94,6 +117,21 @@ describe("solo/practice modes",()=>{
     expect(G.pendingExileChoice).toBeUndefined();
     expect(G.pendingCleanupDiscardChoice).toBeUndefined();
     expect(G.practiceClock).toEqual({ turnsRemaining: 11, progressTokens: 11 });
+  });
+  it("practice cleanup skips the churn choice when no Progress tokens remain",()=>{
+    const G=createInitialGameState({ options:{playerCount:1,mode:"practice",enabledExpansions:[],enabledVariants:[]} });
+    G.practiceClock = { turnsRemaining: 1, progressTokens: 0 };
+    G.market = ["test_action_foundry_shift", "test_action_archive_survey"];
+    G.marketResources = {};
+    G.players["0"].hand = [];
+
+    onTurnEnd(G, { currentPlayer: "0", playOrder: ["0"] } as any);
+
+    expect(G.pendingCleanupMarketResourceChoice).toBeUndefined();
+    expect(G.pendingExileChoice).toBeUndefined();
+    expect(G.marketResources).toEqual({});
+    expect(G.practiceClock).toEqual({ turnsRemaining: 0, progressTokens: 0 });
+    expect(G.gameover?.reason).toBe("normal_scoring:practice_turn_limit");
   });
   it("practice cleanup pauses for an optional market Exile choice after churn",()=>{
     const G=createInitialGameState({ options:{playerCount:1,mode:"practice",enabledExpansions:[],enabledVariants:[]} });

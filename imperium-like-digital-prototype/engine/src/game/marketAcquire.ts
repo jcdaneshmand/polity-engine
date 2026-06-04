@@ -32,7 +32,7 @@ export function acquireMarketCard(G: GameState, args: { playerId: string; cardId
   addCollectedResources(args.collectedResources, collected);
   addCollectedResourceSource(args.collectedResourceSources, acquiredCardId, collected);
   G.players[args.playerId][args.destination ?? "hand"].push(acquiredCardId);
-  collectMarketUnrest(G, args.playerId, acquiredCardId, { takenUnrestPlayerIds: args.takenUnrestPlayerIds, randomNumber: args.randomNumber });
+  if (!collectMarketUnrest(G, args.playerId, acquiredCardId, { takenUnrestPlayerIds: args.takenUnrestPlayerIds, randomNumber: args.randomNumber })) return false;
   refillMarketSlot(G, { playerId: args.playerId, slotIndex: removed.slotIndex, acquiredCardId });
   if (G.gameover) return true;
   G.log.push({ round: G.round, playerId: args.playerId, message: `AcquiredFromMarket(${acquiredCardId}/destination=${args.destination ?? "hand"})` });
@@ -48,7 +48,7 @@ export function gainMarketCard(G: GameState, args: { playerId: string; cardId: s
   addCollectedResources(args.collectedResources, collected);
   addCollectedResourceSource(args.collectedResourceSources, gainedCardId, collected);
   G.players[args.playerId][args.destination ?? "hand"].push(gainedCardId);
-  collectMarketUnrest(G, args.playerId, gainedCardId, { takenUnrestPlayerIds: args.takenUnrestPlayerIds, randomNumber: args.randomNumber });
+  if (!collectMarketUnrest(G, args.playerId, gainedCardId, { takenUnrestPlayerIds: args.takenUnrestPlayerIds, randomNumber: args.randomNumber })) return false;
   refillMarketSlot(G, { playerId: args.playerId, slotIndex: removed.slotIndex, acquiredCardId: gainedCardId });
   if (G.gameover) return true;
   G.log.push({ round: G.round, playerId: args.playerId, message: `CardGainedFromMarket(${gainedCardId}/destination=${args.destination ?? "hand"})` });

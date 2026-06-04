@@ -14,15 +14,17 @@ import { loadBotTradeRoutesTables } from "../solo/botTradeRoutesTableLoader";
 import { loadNationRulesets } from "../nations/nationRulesetLoader";
 import { loadNationStrategyProfiles } from "../nations/nationStrategyLoader";
 import { getNationRuleset, validateNationRulesetCompatibility } from "../nations/nationRulesetRegistry";
-import { applySetupOverrides } from "../nations/nationSetupOverrides";
+import { applySetupActionTokenOverrides, applySetupOverrides } from "../nations/nationSetupOverrides";
 import { runEffects } from "../cards/effectRunner";
 import { runNationHooks } from "../nations/nationRulesetHooks";
-import type { NationHookTrigger, NationRuleset, NationRulesetApplicationReport } from "../nations/nationRulesetTypes";
+import type { NationHookTrigger, NationRuleset, NationRulesetApplicationReport, ZoneOverride } from "../nations/nationRulesetTypes";
+import { skipsShortGameAccessionDevelopmentExile } from "../nations/shortGameRules";
 import { activateState } from "../game/stateMatching";
 import { moveCardsToHistoryDestination } from "../game/history";
 import { isAccessionCard } from "../game/nationDeck";
 import { campaignStartingResourceOverride } from "../game/campaign";
 import { resourceAmount, setResourceAmount } from "../game/resources";
+import { exileShortGameDevelopmentCard } from "../game/zones";
 import type { PrivateDataBundle } from "./privateDataBundle";
 import { recordById } from "./privateDataBundle";
 
@@ -185,9 +187,13 @@ function maybeExileDevelopmentForShortGameAccession(args: {
 }): void {
   if (args.advancedNationCards.length === 0) return;
   if (!args.advancedNationCards.some((cardId) => isAccessionCard(args.game, args.player, cardId))) return;
-  if (args.ruleset.shortGameOverrides.some((ov) => ov.op === "skip_accession_development_exile")) return;
+  if (skipsShortGameAccessionDevelopmentExile(args.ruleset)) return;
   const cardIds = [...args.player.developmentArea];
   if (cardIds.length === 0) return;
+  if (cardIds.length === 1) {
+    exileShortGameDevelopmentCard(args.game, args.playerId, cardIds[0]);
+    return;
+  }
   const pending = { playerId: args.playerId, cardIds, resumeDrawCount: 0, resumeBehavior: "none" as const };
   if (!args.game.pendingShortGameDevelopmentExileChoice) {
     args.game.pendingShortGameDevelopmentExileChoice = pending;
@@ -207,7 +213,8 @@ function applyShortGamePlayerSetup(args: {
   randomSeed?: string;
 }): void {
   let advancedNationCards: string[] = [];
-  for (const ov of args.ruleset.shortGameOverrides) {
+  const shortGameOverrides = args.ruleset.shortGameOverrides ?? [];
+  for (const ov of shortGameOverrides) {
     if (ov.op === "add_nation_cards_to_discard") {
       advancedNationCards = takeSetupNationCards(args.player, ov.count);
       args.player.discard.push(...advancedNationCards);
@@ -243,7 +250,7 @@ function applyShortGamePlayerSetup(args: {
       }
     }
   }
-  if (!args.ruleset.shortGameOverrides.some((ov) => ov.op === "add_nation_cards_to_discard")) {
+  if (!shortGameOverrides.some((ov) => ov.op === "add_nation_cards_to_discard")) {
     advancedNationCards = takeSetupNationCards(args.player, 2);
     args.player.discard.push(...advancedNationCards);
     args.setupReport.shortGameNationAdvanced += advancedNationCards.length;
@@ -255,7 +262,7 @@ function applyShortGamePlayerSetup(args: {
     ruleset: args.ruleset,
     advancedNationCards
   });
-  for (const ov of args.ruleset.shortGameOverrides) {
+  for (const ov of shortGameOverrides) {
     if (ov.op === "move_one_advanced_nation_card_to_side_area") {
       const cardId = advancedNationCards[ov.selection === "random" ? seededIndex(args.randomSeed, advancedNationCards.length) : 0];
       if (cardId) {
@@ -379,7 +386,17 @@ function passiveRuleHookTrigger(trigger: NationDefinition["passiveRules"][number
 
 function initializeDefaultStateSide(game: GameState, playerId: string, ruleset: NationRuleset): void {
   if ((ruleset.stateOverrides ?? []).some((ov) => ov.op === "start_as_state")) return;
+  if ((ruleset.rulesetTags ?? []).includes("starts_as_empire")) {
+    activateState(game, playerId, "empire");
+    return;
+  }
   activateState(game, playerId, "barbarian");
+}
+
+function applyRulesetZoneSuppression(player: PlayerState, ruleset: NationRuleset): void {
+  if ((ruleset.rulesetTags ?? []).includes("no_development_area")) {
+    player.developmentArea = [];
+  }
 }
 
 function routeSetupHistoryCards(game: GameState, playerId: string): void {
@@ -390,6 +407,23 @@ function routeSetupHistoryCards(game: GameState, playerId: string): void {
   if (destination !== "history") {
     game.log.push({ round: game.round, playerId, message: `SetupHistoryRouted(destination=${destination}/count=${cardIds.length})` });
   }
+}
+
+function applyZoneOverrideMetadata(game: GameState, playerId: string, player: PlayerState, override: ZoneOverride): void {
+  if (override.op === "disable_history" && override.replacementBehavior !== "alternate_zone") return;
+  if (override.op !== "create_zone" && override.op !== "replace_history_with_zone" && override.op !== "disable_history") return;
+  const zoneId = override.op === "disable_history" ? "alternate_history" : override.zoneId;
+  player.sideAreas ??= {};
+  player.sideAreas[zoneId] ??= [];
+  game.specialZones ??= {};
+  game.specialZones[playerId] ??= {};
+  game.specialZones[playerId][zoneId] = {
+    id: zoneId,
+    displayName: override.op === "disable_history" ? "Alternate History" : override.displayName,
+    cardIds: player.sideAreas[zoneId],
+    visibility: override.op === "create_zone" ? override.visibility : "private",
+    scoresAsOwned: override.op === "create_zone" ? false : true
+  };
 }
 
 function mergeImportedPassiveRules(nation: NationDefinition, ruleset: NationRuleset): NationRuleset {
@@ -409,7 +443,7 @@ function mergeImportedPassiveRules(nation: NationDefinition, ruleset: NationRule
 function isNationCompatibleWithOptions(nation: NationDefinition, options: GameOptions): boolean {
   const allowedModes = nation.allowedModes ?? ["multiplayer", "solo", "practice"];
   return allowedModes.includes(options.mode)
-    && !nation.requiredExpansions.some((e) => !options.enabledExpansions.includes(e))
+    && !(nation.requiredExpansions ?? []).some((e) => !options.enabledExpansions.includes(e))
     && !(nation.excludedExpansions ?? []).some((e) => options.enabledExpansions.includes(e))
     && !nation.disallowedModes?.includes(options.mode);
 }
@@ -435,6 +469,10 @@ function campaignStartingDeckCarryover(options: GameOptions, nationId: string): 
 
 function defaultNationRuleset(nation: NationDefinition): NationRuleset {
   return { nationId: nation.id, displayName: nation.displayName, rulesetTags:["default_nation_deck"], requiredExpansions:[], setupOverrides:[], zoneOverrides:[], stateOverrides:[], reshuffleOverrides:[], cleanupOverrides:[], solsticeOverrides:[], scoringOverrides:[], collapseOverrides:[], botOverrides:[], shortGameOverrides:[], hookRules:[], implemented:false, tested:false };
+}
+
+function activeRulesetForMode(ruleset: NationRuleset, options: GameOptions): NationRuleset {
+  return options.mode === "solo" ? ruleset : { ...ruleset, botOverrides: [] };
 }
 
 function isNationRulesetCompatibleWithOptions(nation: NationDefinition, rulesetDb: Record<string, NationRuleset>, options: GameOptions): boolean {
@@ -517,7 +555,7 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
     if (!nation) throw new Error(`Nation not found: ${nid}`);
     const allowedModes = nation.allowedModes ?? ["multiplayer", "solo", "practice"];
     if (!allowedModes.includes(options.mode)) throw new Error(`Nation ${nid} not allowed in mode ${options.mode}.`);
-    if (nation.requiredExpansions.some((e)=>!options.enabledExpansions.includes(e))) throw new Error(`Nation ${nid} requires disabled expansion.`);
+    if ((nation.requiredExpansions ?? []).some((e)=>!options.enabledExpansions.includes(e))) throw new Error(`Nation ${nid} requires disabled expansion.`);
     if ((nation.excludedExpansions??[]).some((e)=>options.enabledExpansions.includes(e))) throw new Error(`Nation ${nid} excluded by enabled expansion.`);
     if (nation.disallowedModes?.includes(options.mode)) throw new Error(`Nation ${nid} disallows mode ${options.mode}.`);
     const ruleset = mergeImportedPassiveRules(
@@ -534,38 +572,47 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
       shuffle: (x)=>shuffleWithRandom(x, setupRandom),
       enabledExpansions: options.enabledExpansions,
       extraStartingDeckCardIds: campaignCarryover.additions,
-      removedStartingDeckCardIds: campaignCarryover.removals
+      removedStartingDeckCardIds: campaignCarryover.removals,
+      disableAccession: (ruleset.rulesetTags ?? []).includes("no_accession")
     });
     players[pid] = player;
     if (campaignCarryover.additions.length > 0 || campaignCarryover.removals.length > 0) {
       game.log.push({ round: game.round, playerId: pid, message: `CampaignStartingDeckCarryoverApplied(add=${campaignCarryover.additions.length}/remove=${campaignCarryover.removals.length})` });
     }
-    activeNationRulesets[pid] = ruleset;
+    activeNationRulesets[pid] = activeRulesetForMode(ruleset, options);
     if (strategyDb[nid]) activeNationStrategyProfiles[pid] = strategyDb[nid];
+    applyRulesetZoneSuppression(player, ruleset);
     initializeDefaultStateSide(game, pid, ruleset);
 
     runNationHooks({ G: game, playerId: pid, trigger: "before_setup_player" });
-    applySetupOverrides(player, ruleset);
-    for (const ov of ruleset.zoneOverrides) {
+    const createdSideAreas = applySetupOverrides(player, ruleset);
+    if (Object.keys(createdSideAreas).length > 0) {
+      game.sideAreas ??= {};
+      game.sideAreas[pid] ??= {};
+      Object.assign(game.sideAreas[pid], createdSideAreas);
+    }
+    for (const ov of ruleset.zoneOverrides ?? []) {
       if (ov.op === "create_zone") {
-        player.sideAreas ??= {};
-        player.sideAreas[ov.zoneId] ??= [];
+        applyZoneOverrideMetadata(game, pid, player, ov);
       }
       if (ov.op === "replace_history_with_zone") {
-        player.sideAreas ??= {};
-        player.sideAreas[ov.zoneId] ??= [];
+        applyZoneOverrideMetadata(game, pid, player, ov);
+      }
+      if (ov.op === "disable_history") {
+        applyZoneOverrideMetadata(game, pid, player, ov);
       }
     }
     routeSetupHistoryCards(game, pid);
-    for (const ov of ruleset.stateOverrides) {
+    for (const ov of ruleset.stateOverrides ?? []) {
       if (ov.op === "start_as_state") activateState(game, pid, ov.state);
     }
-    for (const ov of ruleset.setupOverrides) {
+    applySetupActionTokenOverrides(player, ruleset);
+    for (const ov of ruleset.setupOverrides ?? []) {
       if (ov.op === "move_cards_to_unrest_supply") extraUnrestSupplyCardIds.push(...ov.cardIds);
     }
     runNationHooks({ G: game, playerId: pid, trigger: "after_setup_player" });
     applyCampaignStartingResourceBonus(game, pid, player);
-    rulesetReports.push({ playerId: pid, nationId: nid, appliedTags: ruleset.rulesetTags, appliedOverrides: ruleset.setupOverrides.map((x:any)=>x.op), warnings: [] });
+    rulesetReports.push({ playerId: pid, nationId: nid, appliedTags: ruleset.rulesetTags ?? [], appliedOverrides: (ruleset.setupOverrides ?? []).map((x:any)=>x.op), warnings: [] });
   }
 
   Object.values(players).forEach(drawOpeningHand);

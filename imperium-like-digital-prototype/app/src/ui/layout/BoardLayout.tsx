@@ -132,7 +132,7 @@ export default function BoardLayout({ G, ctx, moves, onCampaignProgress }: any &
         <strong>{pending.detail}</strong>
       </div> : null}
       {selection?.kind === "player_zone"
-        ? <ZoneDetailPanel title={selection.id} cardIds={selectedZone?.cardIds ?? []} hidden={selectedZone?.hidden} count={selectedZone?.count} cardDb={G.cardDb ?? {}} />
+        ? <ZoneDetailPanel title={playerZoneLabels[selection.id] ?? selection.id} cardIds={selectedZone?.cardIds ?? []} hidden={selectedZone?.hidden} count={selectedZone?.count} cardDb={G.cardDb ?? {}} />
         : selection?.kind === "pile"
           ? <ZoneDetailPanel title={(shared.find((p)=>p.id===selection.id)?.label) ?? selection.id} cardIds={selectedSharedPile?.cardIds ?? []} hidden={selectedSharedPile?.hidden} count={selectedSharedPile?.count} cardDb={G.cardDb ?? {}} />
         : selection?.kind === "bot_zone"

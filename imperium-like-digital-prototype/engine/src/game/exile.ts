@@ -5,6 +5,7 @@ import { collectAndClearCardStateToPlayer, collectCardResourcesToPlayer, detachG
 import { triggerCollapse } from "./scoring";
 import { actualHistorySourceZoneIds } from "./history";
 import { runNationHooks } from "../nations/nationRulesetHooks";
+import { cardHasSuitIcon } from "./suitIcons";
 
 function removeOne(cards: string[], cardId: string): boolean {
   const index = cards.indexOf(cardId);
@@ -15,7 +16,7 @@ function removeOne(cards: string[], cardId: string): boolean {
 
 function isUnrestCard(G: GameState, cardId: string): boolean {
   const card = G.cardDb[cardId];
-  return card?.suit === "unrest" || card?.cardType === "unrest" || card?.type === "unrest";
+  return card?.suit === "unrest" || card?.cardType === "unrest" || card?.type === "unrest" || (card?.tags ?? []).includes("unrest") || cardHasSuitIcon(card, "unrest");
 }
 
 export function acquireFromExile(G: GameState, args: { playerId: string; cardId: string; destination?: "hand" | "discard"; takenUnrestPlayerIds?: string[]; randomNumber?: () => number }): boolean {
@@ -38,7 +39,7 @@ export function acquireFromExile(G: GameState, args: { playerId: string; cardId:
     if (unrestCardId) {
       player.hand.push(unrestCardId);
       args.takenUnrestPlayerIds?.push(args.playerId);
-      runNationHooks({ G, playerId: args.playerId, trigger: "after_gain_unrest", payload: { cardId: unrestCardId, triggeredBy: args.playerId }, randomNumber: args.randomNumber });
+      if (!runNationHooks({ G, playerId: args.playerId, trigger: "after_gain_unrest", payload: { cardId: unrestCardId, triggeredBy: args.playerId }, randomNumber: args.randomNumber })) return false;
     }
   }
 
@@ -59,7 +60,9 @@ export function canAcquireExileCard(G: GameState, cardId: string): boolean {
 
 export function marketCardHasTokens(G: GameState, cardId: string): boolean {
   const resources = G.marketResources?.[cardId] ?? {};
+  const slotResources = G.marketSlots?.find((slot) => slot.cardId === cardId)?.resourceMarkers ?? {};
   return Object.values(resources).some((amount) => (amount ?? 0) > 0)
+    || Object.values(slotResources).some((amount) => (amount ?? 0) > 0)
     || playerCardHasTokens(G, cardId);
 }
 

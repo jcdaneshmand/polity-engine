@@ -3,6 +3,7 @@ import { addResourceAmount, normalizeResourceMap } from "./resources";
 import { gainMarketResource } from "./resources";
 import { triggerCollapse } from "./scoring";
 import { runNationHooks } from "../nations/nationRulesetHooks";
+import { cardHasSuitIcon } from "./suitIcons";
 
 export const DEFAULT_CLEANUP_MARKET_RESOURCE: ResourceName = "knowledge";
 
@@ -19,6 +20,10 @@ function cleanupMarketResourceSpec(G: GameState, playerId: string): { resource: 
     return { resource: normalizeCleanupResource(override.resource), amount: override.count };
   }
   return { resource: DEFAULT_CLEANUP_MARKET_RESOURCE, amount: 1 };
+}
+
+function hasPracticeCleanupProgressToken(G: GameState): boolean {
+  return G.options?.mode !== "practice" || (G.practiceClock?.progressTokens ?? 0) > 0;
 }
 
 function practiceCleanupAmount(G: GameState, args: { playerId: string; cardId: string; resource: ResourceName; amount: number; markCleanup?: boolean }): number | undefined {
@@ -41,6 +46,7 @@ export function placeMarketResource(G: GameState, args: { playerId: string; card
   const amount = practiceCleanupAmount(G, { playerId: args.playerId, cardId: args.cardId, resource, amount: requestedAmount, markCleanup: args.markCleanup }) ?? requestedAmount;
   if (amount <= 0) return false;
   const placed = gainMarketResource(G, args.cardId, resource, amount);
+  if (placed <= 0) return false;
   if (args.markCleanup) G.cleanupMarketResourcePlaced = { playerId: args.playerId, round: G.round };
   G.log.push({ round: G.round, playerId: args.playerId, message: `MarketResourceAdded(${args.cardId}/${resource}/${placed === requestedAmount ? requestedAmount : `${placed}/${requestedAmount}`})` });
   return true;
@@ -49,6 +55,7 @@ export function placeMarketResource(G: GameState, args: { playerId: string; card
 export function startCleanupMarketResourceChoice(G: GameState, playerId: string): boolean {
   if (G.market.length <= 1) return false;
   if (G.cleanupMarketResourcePlaced?.playerId === playerId && G.cleanupMarketResourcePlaced.round === G.round) return false;
+  if (!hasPracticeCleanupProgressToken(G)) return false;
   const spec = cleanupMarketResourceSpec(G, playerId);
   G.pendingCleanupMarketResourceChoice = {
     playerId,
@@ -84,14 +91,20 @@ export function ensureCleanupMarketResourcePlaced(G: GameState, playerId: string
 }
 
 export function collectMarketResources(G: GameState, playerId: string, cardId: string): Partial<Record<ResourceName, number>> {
-  const resources = G.marketResources?.[cardId];
-  if (!resources) return {};
-  const collected = normalizeResourceMap(resources);
+  const legacy = normalizeResourceMap(G.marketResources?.[cardId]);
+  const slot = G.marketSlots?.find((candidate) => candidate.cardId === cardId);
+  const slotResources = normalizeResourceMap(slot?.resourceMarkers);
+  const collected: Partial<Record<ResourceName, number>> = { ...legacy };
+  for (const [resource, amount] of Object.entries(slotResources) as [ResourceName, number | undefined][]) {
+    collected[resource] = Math.max(collected[resource] ?? 0, amount ?? 0);
+  }
+  if (Object.keys(collected).length === 0) return {};
   const player = G.players[playerId];
-  for (const [resource, amount] of Object.entries(resources) as [ResourceName, number | undefined][]) {
+  for (const [resource, amount] of Object.entries(collected) as [ResourceName, number | undefined][]) {
     addResourceAmount(player.resources, resource, amount ?? 0);
   }
   delete G.marketResources?.[cardId];
+  if (slot) slot.resourceMarkers = {};
   return collected;
 }
 
@@ -106,6 +119,7 @@ function hasMarketUnrestInterruption(G: GameState): boolean {
     ?? G.pendingExileChoice
     ?? G.pendingGarrisonChoice
     ?? G.pendingRegionChoice
+    ?? G.pendingRegionChoiceContinuation
     ?? G.pendingDevelopmentChoice
     ?? G.pendingShortGameDevelopmentExileChoice
     ?? G.pendingTradeChoice
@@ -137,15 +151,17 @@ function hasMarketUnrestInterruption(G: GameState): boolean {
   );
 }
 
-export function collectMarketUnrest(G: GameState, playerId: string, cardId: string, options?: { takenUnrestPlayerIds?: string[]; randomNumber?: () => number }): void {
-  const unrestCards = G.marketUnrest?.[cardId] ?? [];
-  if (unrestCards.length === 0) return;
+export function collectMarketUnrest(G: GameState, playerId: string, cardId: string, options?: { takenUnrestPlayerIds?: string[]; randomNumber?: () => number }): boolean {
+  const slot = G.marketSlots?.find((candidate) => candidate.cardId === cardId);
+  const unrestCards = [...new Set([...(G.marketUnrest?.[cardId] ?? []), ...(slot?.attachedUnrestCardIds ?? [])])];
+  if (unrestCards.length === 0) return true;
   G.players[playerId].hand.push(...unrestCards);
   delete G.marketUnrest?.[cardId];
+  if (slot) slot.attachedUnrestCardIds = [];
   options?.takenUnrestPlayerIds?.push(playerId);
   for (let index = 0; index < unrestCards.length; index += 1) {
     const unrestCardId = unrestCards[index];
-    runNationHooks({ G, playerId, trigger: "after_gain_unrest", payload: { cardId: unrestCardId, triggeredBy: playerId }, randomNumber: options?.randomNumber });
+    if (!runNationHooks({ G, playerId, trigger: "after_gain_unrest", payload: { cardId: unrestCardId, triggeredBy: playerId }, randomNumber: options?.randomNumber })) return false;
     if (G.gameover) break;
     if (hasMarketUnrestInterruption(G)) {
       if (index + 1 < unrestCards.length) G.pendingMarketUnrestHookContinuation = { playerId, cardIds: unrestCards, nextIndex: index + 1 };
@@ -153,37 +169,41 @@ export function collectMarketUnrest(G: GameState, playerId: string, cardId: stri
     }
   }
   G.log.push({ round: G.round, playerId, message: `MarketUnrestTaken(${cardId}/count=${unrestCards.length})` });
+  return true;
 }
 
-export function continuePendingMarketUnrestHooks(G: GameState, playerId: string, randomNumber?: () => number): void {
+export function continuePendingMarketUnrestHooks(G: GameState, playerId: string, randomNumber?: () => number): boolean {
   const pending = G.pendingMarketUnrestHookContinuation;
-  if (!pending || pending.playerId !== playerId || hasMarketUnrestInterruption(G) || G.gameover) return;
+  if (!pending || pending.playerId !== playerId || hasMarketUnrestInterruption(G) || G.gameover) return true;
   G.pendingMarketUnrestHookContinuation = undefined;
   for (let index = pending.nextIndex; index < pending.cardIds.length; index += 1) {
     const unrestCardId = pending.cardIds[index];
-    runNationHooks({ G, playerId, trigger: "after_gain_unrest", payload: { cardId: unrestCardId, triggeredBy: playerId }, randomNumber });
-    if (G.gameover) return;
+    if (!runNationHooks({ G, playerId, trigger: "after_gain_unrest", payload: { cardId: unrestCardId, triggeredBy: playerId }, randomNumber })) return false;
+    if (G.gameover) return true;
     if (hasMarketUnrestInterruption(G)) {
       if (index + 1 < pending.cardIds.length) G.pendingMarketUnrestHookContinuation = { playerId, cardIds: pending.cardIds, nextIndex: index + 1 };
-      return;
+      return true;
     }
   }
+  return true;
 }
 
 export function returnMarketUnrest(G: GameState, playerId: string, cardId: string): void {
-  const unrestCards = G.marketUnrest?.[cardId] ?? [];
+  const slot = G.marketSlots?.find((candidate) => candidate.cardId === cardId);
+  const unrestCards = [...new Set([...(G.marketUnrest?.[cardId] ?? []), ...(slot?.attachedUnrestCardIds ?? [])])];
   if (unrestCards.length === 0) return;
   G.unrestPile ??= [];
   G.unrestPile.push(...unrestCards);
   delete G.marketUnrest?.[cardId];
+  if (slot) slot.attachedUnrestCardIds = [];
   G.log.push({ round: G.round, playerId, message: `MarketUnrestReturned(${cardId}/count=${unrestCards.length})` });
 }
 
 export function tuckUnrestUnderMarketCard(G: GameState, playerId: string, cardId: string): void {
   const card = G.cardDb[cardId];
   const type = card?.cardType ?? card?.type;
-  if (type === "unrest" || card?.suit === "unrest" || card?.tags?.includes("unrest")) return;
-  if (type === "region" || card?.suit === "region") return;
+  if (type === "unrest" || card?.suit === "unrest" || card?.tags?.includes("unrest") || cardHasSuitIcon(card, "unrest")) return;
+  if (type === "region" || card?.suit === "region" || card?.setupBannerSuit === "region" || cardHasSuitIcon(card, "region")) return;
   const unrestCardId = G.unrestPile?.shift();
   if (!unrestCardId) {
     triggerCollapse(G, "unrest_pile_empty", playerId);
@@ -192,5 +212,7 @@ export function tuckUnrestUnderMarketCard(G: GameState, playerId: string, cardId
   G.marketUnrest ??= {};
   G.marketUnrest[cardId] ??= [];
   G.marketUnrest[cardId].push(unrestCardId);
+  const slot = G.marketSlots?.find((candidate) => candidate.cardId === cardId);
+  if (slot) slot.attachedUnrestCardIds.push(unrestCardId);
   G.log.push({ round: G.round, playerId, message: `MarketUnrestTucked(${cardId}/${unrestCardId})` });
 }

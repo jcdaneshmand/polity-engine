@@ -85,6 +85,20 @@ describe("ui selectors",()=>{
     expect(getPlayerZoneCounts(player)).toMatchObject({ sunken:2 });
     expect(getPlayerZoneLabels(G,"0")).toEqual({ sunken:"Sunken" });
   });
+  it("labels setup-created side areas from ruleset metadata",()=> {
+    const G:any={
+      activeNationRulesets:{
+        "0":{
+          setupOverrides:[{ op:"create_side_area", areaId:"ceremony_track", displayName:"Ceremony Track", public:true }],
+          zoneOverrides:[]
+        }
+      }
+    };
+    const player:any={deck:[],discard:[],hand:[],playArea:[],history:[],developmentArea:[],nationDeck:[],sideAreas:{ceremony_track:["marker"]}};
+
+    expect(getPlayerZoneCounts(player)).toMatchObject({ ceremony_track:1 });
+    expect(getPlayerZoneLabels(G,"0")).toEqual({ ceremony_track:"Ceremony Track" });
+  });
   it("masks hidden player zones for inspection",()=> {
     const player:any={deck:["a"],nationDeck:["n1"],discard:["d1"],hand:["h1"],developmentArea:["dev1"]};
     expect(getInspectableZone(player,"deck")).toEqual({ hidden: true, cardIds: [], count: 1 });
@@ -111,6 +125,21 @@ describe("ui selectors",()=>{
 
     expect(getInspectableZone(player,"sunken",{ ownerPlayerId:"0", viewerPlayerId:"0", ownerVisibleZoneIds })).toEqual({ hidden:false, cardIds:["hist1","hist2"], count:2 });
     expect(getInspectableZone(player,"sunken",{ ownerPlayerId:"0", viewerPlayerId:"1", ownerVisibleZoneIds })).toEqual({ hidden:true, cardIds:[], count:2 });
+  });
+  it("treats non-public setup-created side areas as owner-visible zones",()=> {
+    const G:any={
+      activeNationRulesets:{
+        "0":{
+          setupOverrides:[{ op:"create_side_area", areaId:"ceremony_track", displayName:"Ceremony Track", public:false }],
+          zoneOverrides:[]
+        }
+      }
+    };
+    const player:any={sideAreas:{ceremony_track:["secret_marker"]}};
+    const ownerVisibleZoneIds = getOwnerVisibleZoneIds(G,"0");
+
+    expect(getInspectableZone(player,"ceremony_track",{ ownerPlayerId:"0", viewerPlayerId:"0", ownerVisibleZoneIds })).toEqual({ hidden:false, cardIds:["secret_marker"], count:1 });
+    expect(getInspectableZone(player,"ceremony_track",{ ownerPlayerId:"0", viewerPlayerId:"1", ownerVisibleZoneIds })).toEqual({ hidden:true, cardIds:[], count:1 });
   });
   it("exposes a separately tracked Accession as the public bottom Nation deck card",()=> {
     const player:any={deck:[],nationDeck:["n1","n2"],accessionCardId:"acc"};

@@ -105,7 +105,7 @@ const DESTINATION_EFFECT_OPS = ["find_card", "acquire_card", "gain_card", "take_
 const SUIT_EFFECT_OPS = ["acquire_card", "gain_card", "take_card", "find_card", "exile_card", "break_through"];
 const CARD_TYPE_EFFECT_OPS = ["acquire_card", "gain_card", "take_card", "find_card", "exile_card", "break_through"];
 const RESOURCE_EFFECT_OPS = ["gain_resource", "spend_resource", "remove_resource", "return_resource", "steal_resource", "conditional_resource_at_least"];
-const COUNT_EFFECT_OPS = ["draw", "draw_if_able", "discard_random", "discard_cards", "take_unrest", "gain_fame", "exile_card", "acquire_card", "gain_card", "take_card", "break_through", "look_cards"];
+const COUNT_EFFECT_OPS = ["draw", "draw_if_able", "discard_random", "discard_cards", "take_unrest", "gain_fame", "recall_region", "abandon_region", "exile_card", "acquire_card", "gain_card", "take_card", "break_through", "look_cards"];
 const AMOUNT_EFFECT_OPS = ["gain_resource", "spend_resource", "remove_resource", "return_resource", "steal_resource", "gain_action", "spend_action"];
 const AT_LEAST_EFFECT_OPS = ["conditional_resource_at_least"];
 const EFFECT_FIELDS = [
@@ -135,6 +135,7 @@ const EFFECT_FIELDS = [
   "else",
   "state",
   "choices",
+  "free",
   "reactive",
 ];
 const CONDITION_OP_REQUIREMENTS: Record<EffectCondition["op"], string[]> = {
@@ -441,6 +442,12 @@ function validateHumanEffectShape(nationId: string, path: string, record: Record
   }
   if (record.atLeast !== undefined && !AT_LEAST_EFFECT_OPS.includes(op)) {
     issues.push({ nationId, field: `${path}.atLeast`, reason: `invalid atLeast '${String(record.atLeast)}'` });
+  }
+  if (record.free !== undefined && op !== "develop") {
+    issues.push({ nationId, field: `${path}.free`, reason: `invalid free '${String(record.free)}'` });
+  }
+  if (op === "develop" && record.free !== undefined && typeof record.free !== "boolean") {
+    issues.push({ nationId, field: `${path}.free`, reason: `invalid free '${String(record.free)}'` });
   }
   if (["acquire_card", "gain_card", "take_card", "find_card", "exile_card"].includes(op)) optionalEnum("cardType", CARD_TYPES);
   if (op === "treat_suit_as") {

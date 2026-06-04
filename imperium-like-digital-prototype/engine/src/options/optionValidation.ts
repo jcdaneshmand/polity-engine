@@ -7,7 +7,20 @@ const soloDifficulties = new Set<SoloDifficulty>(["chieftain", "warlord", "imper
 const campaignModes = new Set<CampaignMode>(["standard", "supreme_ruler"]);
 
 export function validateGameOptions(input: GameOptions): OptionValidationReport {
-  const options = { ...input, enabledExpansions: [...new Set(input.enabledExpansions)], enabledVariants: [...new Set(input.enabledVariants)], commonsSetId: input.commonsSetId ?? "classics", replacementPolicy: input.replacementPolicy ?? "use_replacements" };
+  const campaignProgress = input.campaignProgress
+    ? {
+      ...input.campaignProgress,
+      defeatedBotNationIds: [...input.campaignProgress.defeatedBotNationIds],
+      startingDeckAdditions: [...input.campaignProgress.startingDeckAdditions],
+      startingDeckRemovals: [...input.campaignProgress.startingDeckRemovals],
+      setAsideCommonsCardIds: [...input.campaignProgress.setAsideCommonsCardIds],
+      records: input.campaignProgress.records?.map((record) => ({
+        ...record,
+        choice: record.choice ? { ...record.choice } : undefined
+      }))
+    }
+    : undefined;
+  const options = { ...input, enabledExpansions: [...new Set(input.enabledExpansions)], enabledVariants: [...new Set(input.enabledVariants)], campaignProgress, commonsSetId: input.commonsSetId ?? "classics", replacementPolicy: input.replacementPolicy ?? "use_replacements" };
   const issues: OptionValidationIssue[] = [];
   if (input.enabledExpansions.length !== options.enabledExpansions.length) issues.push({ level: "warning", message: "Duplicate expansions were normalized." });
   if (input.enabledVariants.length !== options.enabledVariants.length) issues.push({ level: "warning", message: "Duplicate variants were normalized." });

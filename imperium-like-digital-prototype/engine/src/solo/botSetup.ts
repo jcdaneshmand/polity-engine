@@ -1,6 +1,6 @@
 import type { GameOptions } from "../options/gameOptions";
 import type { NationDefinition } from "../nations/nationTypes";
-import type { NationRuleset } from "../nations/nationRulesetTypes";
+import type { NationRuleset, ShortGameOverride } from "../nations/nationRulesetTypes";
 import type { Card, ResourceName } from "../game/state";
 import { SOLO_DIFFICULTY_CONFIG } from "./botDifficulty";
 import type { SoloDifficultyConfig } from "./botDifficulty";
@@ -44,15 +44,23 @@ function defaultDynastyCards(args: { botNation: NationDefinition; cardDb: Record
   const accession = args.botNation.accessionCardId && args.cardDb[args.botNation.accessionCardId] ? [args.botNation.accessionCardId] : [];
   const nation = args.shuffle(args.botNation.nationDeckCardIds.filter((id) => args.cardDb[id]));
   if (development.length || accession.length || nation.length) return [...nation, ...accession, ...development];
-  return sortDynastyCards(args.shuffle(Object.values(args.cardDb).map((c) => c.id).filter((id) => args.cardDb[id].tags.includes("bot_dynasty"))), args.cardDb);
+  return sortDynastyCards(args.shuffle(Object.values(args.cardDb).map((c) => c.id).filter((id) => (args.cardDb[id].tags ?? []).includes("bot_dynasty"))), args.cardDb);
 }
 
-function applyShortGameDynastySetup(dynasty: string[], cardDb: Record<string, Card>): { deck: string[]; discard: string[] } {
+function applyShortGameDynastySetup(dynasty: string[], shortGameOverrides: ShortGameOverride[] = []): { deck: string[]; discard: string[] } {
   const deck = [...dynasty];
   const discard: string[] = [];
   deck.pop();
   const topCard = deck.shift();
   if (topCard) discard.push(topCard);
+  for (const override of shortGameOverrides) {
+    if (override.op !== "add_nation_cards_to_discard") continue;
+    for (let i = 0; i < override.count; i += 1) {
+      const cardId = deck.shift();
+      if (!cardId) break;
+      discard.push(cardId);
+    }
+  }
   return { deck, discard };
 }
 
@@ -87,7 +95,7 @@ export function setupSoloBot(args: { botNation: NationDefinition; botRuleset?: N
   const all = Object.values(args.cardDb).map((c) => c.id);
   const botOverrides = args.botRuleset?.botOverrides ?? [];
   const skipDefaultDynastySetup = botOverrides.some((ov) => ov.op === "skip_default_dynasty_setup");
-  const start = skipDefaultDynastySetup ? [] : all.filter((id) => args.cardDb[id].startingLocation === "bot_deck" || args.cardDb[id].tags.includes("bot_starting"));
+  const start = skipDefaultDynastySetup ? [] : all.filter((id) => args.cardDb[id].startingLocation === "bot_deck" || (args.cardDb[id].tags ?? []).includes("bot_starting"));
   const customStateStack = botOverrides.find((ov) => ov.op === "custom_bot_state_stack");
   const customDynastySetup = botOverrides.find((ov) => ov.op === "custom_dynasty_setup");
   const customCleanupEffects = botOverrides.flatMap((ov) => ov.op === "bot_custom_cleanup" ? ov.effect : []);
@@ -97,7 +105,7 @@ export function setupSoloBot(args: { botNation: NationDefinition; botRuleset?: N
   const customDynastyCardIds = customDynastySetup?.config?.cardIds?.filter((id) => args.cardDb[id]) ?? [];
   const dynasty = customDynastyCardIds.length > 0 ? customDynastyCardIds : skipDefaultDynastySetup ? [] : defaultDynastyCards(args);
   const shortGameDynastySetup = args.options.enabledVariants.includes("short_game")
-    ? applyShortGameDynastySetup(dynasty, args.cardDb)
+    ? applyShortGameDynastySetup(dynasty, args.botRuleset?.shortGameOverrides ?? [])
     : { deck: dynasty, discard: [] };
   const deck = args.shuffle(start);
   if (customStateCardIds.length > 0) deck.unshift(...customStateCardIds);

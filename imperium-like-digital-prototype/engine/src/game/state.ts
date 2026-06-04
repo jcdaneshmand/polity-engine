@@ -70,9 +70,9 @@ export type Effect =
   | { trigger: EffectTrigger; op: "commerce"; effects: Effect[] }
   | { trigger: EffectTrigger; op: "profit"; destination?: "discard" | "history"; effects: Effect[] }
   | { trigger: EffectTrigger; op: "garrison_card"; hostCardId?: string; cardId?: string }
-  | { trigger: EffectTrigger; op: "recall_region"; cardId?: string }
-  | { trigger: EffectTrigger; op: "abandon_region"; cardId?: string }
-  | { trigger: EffectTrigger; op: "develop" }
+  | { trigger: EffectTrigger; op: "recall_region"; cardId?: string; count?: number }
+  | { trigger: EffectTrigger; op: "abandon_region"; cardId?: string; count?: number }
+  | { trigger: EffectTrigger; op: "develop"; free?: boolean; sourceCardId?: string }
   | { trigger: EffectTrigger; op: "move_self_to_history" }
   | { trigger: EffectTrigger; op: "exile_card"; source: "market" | PlayerExileSource; cardId?: string; suit?: Suit; cardType?: CardType; count?: number }
   | { trigger: EffectTrigger; op: "acquire_card"; count: number; source?: "market" | "exile"; cardId?: string; suit?: Suit; cardType?: CardType; destination?: "hand" | "discard" }
@@ -148,7 +148,8 @@ export interface GameState {
   pendingBreakThroughChoice?: { playerId: string; sourceCardId?: string; source: "market" | "deck" | "exile"; suit: Suit; cardIds: string[]; resumeEffects?: Effect[] };
   pendingExileChoice?: { playerId: string; sourceCardId?: string; source: "market" | PlayerExileSource; cardIds: string[]; optional?: boolean; resumeEffects?: Effect[] };
   pendingGarrisonChoice?: { playerId: string; sourceCardId?: string; hostCardIds: string[]; cardIds: string[]; resumeEffects?: Effect[] };
-  pendingRegionChoice?: { playerId: string; sourceCardId?: string; op: "recall_region" | "abandon_region"; cardIds: string[]; resumeEffects?: Effect[] };
+  pendingRegionChoice?: { playerId: string; sourceCardId?: string; op: "recall_region" | "abandon_region"; cardIds: string[]; count?: number; resumeEffects?: Effect[] };
+  pendingRegionChoiceContinuation?: { playerId: string; sourceCardId?: string; op: "recall_region" | "abandon_region"; cardIds: string[]; count?: number; resolving?: boolean; resumeEffects?: Effect[] };
   pendingDevelopmentChoice?: { playerId: string; sourceCardId?: string; cardIds: string[]; resumeDrawCount: number; resumeBehavior?: "reshuffle_draw" | "none"; usesProgressionToken?: boolean; free?: boolean; allowSkip?: boolean; resumeEffects?: Effect[] };
   pendingShortGameDevelopmentExileChoice?: { playerId: string; cardIds: string[]; resumeDrawCount: number; resumeBehavior?: "reshuffle_draw" | "none"; resumeEffects?: Effect[] };
   pendingShortGameDevelopmentExileQueue?: Array<{ playerId: string; cardIds: string[]; resumeDrawCount: number; resumeBehavior?: "reshuffle_draw" | "none" }>;
@@ -162,16 +163,17 @@ export interface GameState {
   pendingSwapChoice?: { playerId: string; sourceCardId?: string; sourceZone: SwapSourceZone; choices: { cardId: string; marketCardId: string }[]; resumeEffects?: Effect[] };
   pendingLookOrderChoice?: { playerId: string; sourceCardId?: string; source: LookSourceZone; cardIds: string[]; resumeEffects?: Effect[] };
   pendingUnrestAllocationChoice?: { playerId: string; recipientPlayerIds: string[]; countPerPlayer: number; availableUnrestCardIds: string[]; resumeEffects?: Effect[] };
-  pendingReactiveExhaustChoice?: { playerId: string; cardIds: string[]; resolvingPlayerId: string; sourceCardId?: string; resumeEffects?: Effect[]; trigger: ReactiveExhaustCondition["trigger"]; resource?: ResourceName; targetPlayerId?: string };
+  pendingReactiveExhaustChoice?: { playerId: string; cardIds: string[]; resolvingPlayerId: string; sourceCardId?: string; resumeEffects?: Effect[]; trigger: ReactiveExhaustCondition["trigger"]; resource?: ResourceName; targetPlayerId?: string; eventSourceCardId?: string; eventSourceWasInPlay?: boolean };
   pendingPlayCardResolution?: { playerId: string; cardId: string; freePlay: boolean; payment?: Partial<Record<ResourceName, number>> };
   pendingPlayedCardResolution?: { playerId: string; cardId: string; freePlay: boolean; afterPlayReactiveChecked?: boolean; afterPlayHooksStarted?: boolean; rollbackSnapshot?: GameState };
-  pendingAcquireCardResolution?: { playerId: string; cardId: string };
-  pendingAcquireEffectResolution?: { playerId: string; cardId: string; sourceCardId?: string; takenUnrestPlayerIds?: string[]; collectedResources?: Partial<Record<ResourceName, number>>; collectedResourceSources?: ResourceGainSource[]; resumeEffects?: Effect[] };
-  pendingMarketMoveEffectResolution?: { playerId: string; sourceCardId?: string; takenUnrestPlayerIds?: string[]; collectedResources?: Partial<Record<ResourceName, number>>; collectedResourceSources?: ResourceGainSource[]; resumeEffects?: Effect[] };
+  pendingAcquireCardResolution?: { playerId: string; cardId: string; payment?: Partial<Record<ResourceName, number>> };
+  pendingAcquireEffectResolution?: { playerId: string; cardId: string; sourceCardId?: string; takenUnrestPlayerIds?: string[]; collectedResources?: Partial<Record<ResourceName, number>>; collectedResourceSources?: ResourceGainSource[]; resolving?: boolean; resumeEffects?: Effect[] };
+  pendingMarketMoveEffectResolution?: { playerId: string; sourceCardId?: string; takenUnrestPlayerIds?: string[]; collectedResources?: Partial<Record<ResourceName, number>>; collectedResourceSources?: ResourceGainSource[]; resolving?: boolean; resumeEffects?: Effect[] };
+  pendingBreakThroughEffectResolution?: { playerId: string; sourceCardId?: string; gainedCardIds: string[]; afterBreakThroughCardReactiveChecked?: boolean; afterBreakThroughHooksStarted?: boolean; nextAfterBreakThroughReactiveCardIndex?: number; nextAfterBreakThroughHookCardIndex?: number; resolving?: boolean; resumeEffects?: Effect[] };
   pendingMarketUnrestHookContinuation?: { playerId: string; cardIds: string[]; nextIndex: number };
   pendingNationHookContinuation?: { playerId: string; trigger: NationHookTrigger; payload?: Record<string, unknown>; nextIndex: number; resolvedHookIndex: number };
   pendingUnrestTakeContinuation?: { playerId: string; recipientPlayerIds: string[]; countPerPlayer: number; recipientIndex: number; cardIndex: number; taken: number; reactiveTargetPlayerIds?: string[] };
-  pendingUnrestAllocationResolution?: { playerId: string; recipientPlayerIds: string[]; availableUnrestCardIds: string[]; nextIndex: number };
+  pendingUnrestAllocationResolution?: { playerId: string; recipientPlayerIds: string[]; availableUnrestCardIds: string[]; nextIndex: number; rollbackSnapshot?: GameState };
   pendingPostDevelopmentResolution?: { playerId: string; cardId?: string; resumeDrawCount: number; resumeBehavior?: "reshuffle_draw" | "none"; rollbackSnapshot?: GameState };
   pendingReshuffleResolution?: { playerId: string; resumeDrawCount: number };
   pendingAfterReshuffleEffects?: { playerId: string; resumeDrawCount: number; nextOverrideIndex: number };

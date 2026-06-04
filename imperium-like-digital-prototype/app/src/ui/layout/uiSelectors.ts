@@ -48,6 +48,11 @@ export function getPlayerZoneCounts(player: any) {
 export function getPlayerZoneLabels(G: GameState, playerId: string): Record<string, string> {
   const labels: Record<string, string> = {};
   const ruleset = G.activeNationRulesets?.[playerId];
+  for (const override of ruleset?.setupOverrides ?? []) {
+    if (override.op === "create_side_area" && typeof override.displayName === "string") {
+      labels[override.areaId] = override.displayName;
+    }
+  }
   for (const override of ruleset?.zoneOverrides ?? []) {
     if ((override.op === "replace_history_with_zone" || override.op === "create_zone") && "displayName" in override && typeof override.displayName === "string") {
       labels[override.zoneId] = override.displayName;
@@ -65,6 +70,9 @@ export function getZoneCards(player: any, zoneId: string): string[] {
 export function getOwnerVisibleZoneIds(G: GameState, playerId: string): Set<string> {
   const zoneIds = new Set<string>(["hand", "history"]);
   const ruleset = G.activeNationRulesets?.[playerId];
+  for (const override of ruleset?.setupOverrides ?? []) {
+    if (override.op === "create_side_area" && override.public !== true) zoneIds.add(override.areaId);
+  }
   for (const override of ruleset?.zoneOverrides ?? []) {
     if (override.op === "replace_history_with_zone") zoneIds.add(override.zoneId);
     if (override.op === "create_zone" && override.visibility === "private") zoneIds.add(override.zoneId);

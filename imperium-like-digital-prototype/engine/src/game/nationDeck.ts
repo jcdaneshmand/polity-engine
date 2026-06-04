@@ -7,9 +7,20 @@ export function isAccessionCard(G: GameState, player: PlayerState, cardId: strin
     || (card?.tags ?? []).includes("accession");
 }
 
-export function lookableNationDeckCards(G: GameState, player: PlayerState): string[] {
-  const nonAccessionCards = player.nationDeck.filter((cardId) => !isAccessionCard(G, player, cardId));
+export function canUseAccession(G: GameState, playerId: string): boolean {
+  return !(G.activeNationRulesets?.[playerId]?.rulesetTags ?? []).includes("no_accession");
+}
+
+export function isEffectiveAccessionCard(G: GameState, playerId: string, player: PlayerState, cardId: string): boolean {
+  return canUseAccession(G, playerId) && isAccessionCard(G, player, cardId);
+}
+
+export function lookableNationDeckCards(G: GameState, player: PlayerState, playerId?: string): string[] {
+  const isEffectiveAccession = (cardId: string) => playerId
+    ? isEffectiveAccessionCard(G, playerId, player, cardId)
+    : isAccessionCard(G, player, cardId);
+  const nonAccessionCards = player.nationDeck.filter((cardId) => !isEffectiveAccession(cardId));
   if (nonAccessionCards.length > 0) return nonAccessionCards;
   if (player.nationDeck.length > 0) return [...player.nationDeck];
-  return player.accessionCardId ? [player.accessionCardId] : [];
+  return player.accessionCardId && (!playerId || canUseAccession(G, playerId)) ? [player.accessionCardId] : [];
 }

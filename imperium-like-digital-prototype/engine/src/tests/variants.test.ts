@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createInitialGameStateFromPipeline } from "../setup/setupPipeline";
-import { resolveShortGameDevelopmentExileChoice } from "../game/moves";
+import { resolveChoice, resolveShortGameDevelopmentExileChoice } from "../game/moves";
 
 const cards:any = {
   a:{id:"a",displayName:"A",suit:"region",cardType:"attack",cost:{materials:0,population:0,progress:0,goods:0},developmentCost:{materials:0,population:0,progress:0,goods:0},vp:{mode:"none",value:null},startingLocation:"box",isTradeRouteExpansion:false,effects:[],tags:["aggressive"],implemented:false,tested:false,requiredExpansions:[],delayableInLoweredAggression:true,allowedModes:["multiplayer","solo","practice"]}
@@ -142,6 +142,102 @@ describe("variants",()=>{
     expect(G.players["1"].discard).toEqual(["n1", "accession"]);
     expect(G.players["1"].deck).toEqual([]);
     expect(G.pendingShortGameDevelopmentExileChoice).toBeUndefined();
+    expect(G.setupReport?.shortGameNationAdvanced).toBe(4);
+  });
+  it("continues queued short-game Development removals after an intervening pending choice",()=>{
+    const marketCards = Object.fromEntries(Array.from({ length: 15 }, (_, index) => {
+      const id = `main_${index + 1}`;
+      return [id, mainDeckCard(id)];
+    }));
+    const shortNation = {
+      ...nation,
+      startingDeckCardIds: [],
+      nationDeckCardIds: ["n1"],
+      accessionCardId: "accession",
+      developmentCardIds: ["dev_a", "dev_b"]
+    };
+    const G=createInitialGameStateFromPipeline({
+      options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:["short_game"]},
+      cardDb:{
+        ...marketCards,
+        n1: nationProgressionCard("n1"),
+        accession: { ...nationProgressionCard("accession"), cardType: "accession", tags: ["accession"] },
+        dev_a: nationProgressionCard("dev_a"),
+        dev_b: nationProgressionCard("dev_b")
+      },
+      nationDb:{test_nation_sun_coast:shortNation},
+      playerNationIds:{"0":"test_nation_sun_coast","1":"test_nation_sun_coast"}
+    });
+    G.pendingShortGameDevelopmentExileChoice = {
+      playerId: "0",
+      cardIds: ["dev_a", "dev_b"],
+      resumeDrawCount: 0,
+      resumeBehavior: "none",
+      resumeEffects: [{
+        trigger: "on_play",
+        op: "choose_one",
+        choices: [[{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }]]
+      } as any]
+    };
+    G.pendingShortGameDevelopmentExileQueue = [{
+      playerId: "1",
+      cardIds: ["dev_a", "dev_b"],
+      resumeDrawCount: 0,
+      resumeBehavior: "none"
+    }];
+    const startingMaterials = G.players["0"].resources.materials ?? 0;
+
+    resolveShortGameDevelopmentExileChoice({ G, ctx: { currentPlayer: "0" } as any }, "dev_b");
+    expect(G.pendingChoice).toEqual({
+      playerId: "0",
+      choices: [[{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }]]
+    });
+    expect(G.pendingShortGameDevelopmentExileChoice).toBeUndefined();
+
+    resolveChoice({ G, ctx: { currentPlayer: "0" } as any }, 0);
+
+    expect(G.pendingChoice).toBeUndefined();
+    expect(G.players["0"].resources.materials).toBe(startingMaterials + 1);
+    expect(G.pendingShortGameDevelopmentExileChoice).toEqual({
+      playerId: "1",
+      cardIds: ["dev_a", "dev_b"],
+      resumeDrawCount: 0,
+      resumeBehavior: "none"
+    });
+    expect(G.pendingShortGameDevelopmentExileQueue).toBeUndefined();
+  });
+  it("short game setup auto-exiles the lone Development after Accession",()=>{
+    const marketCards = Object.fromEntries(Array.from({ length: 15 }, (_, index) => {
+      const id = `main_${index + 1}`;
+      return [id, mainDeckCard(id)];
+    }));
+    const shortNation = {
+      ...nation,
+      startingDeckCardIds: [],
+      nationDeckCardIds: ["n1"],
+      accessionCardId: "accession",
+      developmentCardIds: ["dev_a"]
+    };
+    const G=createInitialGameStateFromPipeline({
+      options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:["short_game"]},
+      cardDb:{
+        ...marketCards,
+        n1: nationProgressionCard("n1"),
+        accession: { ...nationProgressionCard("accession"), cardType: "accession", tags: ["accession"] },
+        dev_a: nationProgressionCard("dev_a")
+      },
+      nationDb:{test_nation_sun_coast:shortNation},
+      playerNationIds:{"0":"test_nation_sun_coast","1":"test_nation_sun_coast"}
+    });
+
+    expect(G.players["0"].discard).toEqual(["n1", "accession"]);
+    expect(G.players["0"].developmentArea).toEqual([]);
+    expect(G.players["0"].exile).toEqual(["dev_a"]);
+    expect(G.players["1"].discard).toEqual(["n1", "accession"]);
+    expect(G.players["1"].developmentArea).toEqual([]);
+    expect(G.players["1"].exile).toEqual(["dev_a"]);
+    expect(G.pendingShortGameDevelopmentExileChoice).toBeUndefined();
+    expect(G.pendingShortGameDevelopmentExileQueue).toBeUndefined();
     expect(G.setupReport?.shortGameNationAdvanced).toBe(4);
   });
   it("short game setup can skip Accession Development removal for nation exceptions",()=>{
@@ -705,6 +801,67 @@ describe("variants",()=>{
       expect(G.players["1"].deck).toEqual(["accession"]);
       expect(G.players["1"].nationDeck).toEqual([]);
       expect(G.players["1"].accessionCardId).toBeUndefined();
+    } finally {
+      fs.rmSync(rulesetPath, { force:true });
+    }
+  });
+  it("short game quest exception skips Accession Development removal when default advancement adds Accession",()=>{
+    const rulesetPath = path.join(os.tmpdir(), `polity-short-game-${Date.now()}.json`);
+    try {
+      fs.writeFileSync(rulesetPath, JSON.stringify([{
+        nationId:"test_nation_sun_coast",
+        displayName:"Short Game Quest Accession Skip",
+        rulesetTags:["short_game_exception"],
+        requiredExpansions:[],
+        setupOverrides:[],
+        zoneOverrides:[],
+        stateOverrides:[],
+        reshuffleOverrides:[],
+        cleanupOverrides:[],
+        solsticeOverrides:[],
+        scoringOverrides:[],
+        collapseOverrides:[],
+        botOverrides:[],
+        shortGameOverrides:[{
+          op:"garrison_development_and_add_nation_to_starting_deck",
+          developmentCardId:"quest_card",
+          hostCardId:"court_card"
+        }],
+        hookRules:[],
+        implemented:true,
+        tested:true
+      }]));
+      const shortNation = {
+        ...nation,
+        powerCardIds: ["court_card"],
+        startingDeckCardIds: [],
+        nationDeckCardIds: ["n1"],
+        accessionCardId: "accession",
+        developmentCardIds: ["quest_card", "graal_card"]
+      };
+
+      const G=createInitialGameStateFromPipeline({
+        options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:["short_game"]},
+        cardDb:{
+          court_card: nationProgressionCard("court_card"),
+          quest_card: nationProgressionCard("quest_card"),
+          graal_card: nationProgressionCard("graal_card"),
+          n1: nationProgressionCard("n1"),
+          accession: { ...nationProgressionCard("accession"), cardType: "accession", tags: ["accession"] }
+        },
+        nationDb:{test_nation_sun_coast:shortNation},
+        playerNationIds:{"0":"test_nation_sun_coast","1":"test_nation_sun_coast"},
+        usePrivateRules:true,
+        privateRulesetPath:rulesetPath
+      });
+
+      expect(G.pendingShortGameDevelopmentExileChoice).toBeUndefined();
+      expect(G.pendingShortGameDevelopmentExileQueue).toBeUndefined();
+      expect(G.players["0"].discard).toEqual(["n1", "accession"]);
+      expect(G.players["0"].developmentArea).toEqual(["graal_card"]);
+      expect(G.cardStates?.court_card?.garrisonedCardIds).toEqual(["quest_card"]);
+      expect(G.players["1"].discard).toEqual(["n1", "accession"]);
+      expect(G.players["1"].developmentArea).toEqual(["graal_card"]);
     } finally {
       fs.rmSync(rulesetPath, { force:true });
     }

@@ -5,7 +5,7 @@ import { gainFameCardsForBot } from "../game/fame";
 import { placeMarketResource, returnMarketUnrest, tuckUnrestUnderMarketCard } from "../game/marketResources";
 import { refillMarketSlot } from "../game/marketRefill";
 import { isRegionCard } from "../game/regions";
-import { addResourceAmount, canonicalResourceName, gainPlayerResource, resourceAmount, returnResourceToSupply, setResourceAmount, takeResourceFromSupply } from "../game/resources";
+import { addResourceAmount, canonicalResourceName, gainPlayerResource, normalizeResourceMap, resourceAmount, returnResourceToSupply, setResourceAmount, takeResourceFromSupply } from "../game/resources";
 import { triggerScoring } from "../game/scoring";
 import { triggerScoringIfMainDeckEmpty } from "../game/scoringTriggers";
 import { cardCanSwapWithMarket } from "../game/swap";
@@ -37,7 +37,16 @@ function restoreGameStatePreservingBot(G: GameState, snapshot: GameState, bot: B
   if (G.solo) G.solo.bot = bot;
 }
 
-const match = (row: BotStateTable["rows"][number], card: Card) => row.trigger.kind === "card_id" ? row.trigger.cardId === card.id : row.trigger.kind === "card_name_private" ? card.displayName.trim().toLowerCase() === row.trigger.value.trim().toLowerCase() : row.trigger.kind === "suit" ? cardHasSuitIcon(card, row.trigger.suit as any) : row.trigger.kind === "card_type" ? row.trigger.cardType === (card.cardType ?? card.type) : row.trigger.kind === "tag" ? card.tags.includes(row.trigger.tag) : row.trigger.kind === "unrest" ? card.tags.includes("unrest") || card.suit === "unrest" || (card.cardType ?? card.type) === "unrest" : row.trigger.kind === "other";
+function match(row: BotStateTable["rows"][number], card: Card): boolean {
+  const tags = card.tags ?? [];
+  if (row.trigger.kind === "card_id") return row.trigger.cardId === card.id;
+  if (row.trigger.kind === "card_name_private") return card.displayName.trim().toLowerCase() === row.trigger.value.trim().toLowerCase();
+  if (row.trigger.kind === "suit") return cardHasSuitIcon(card, row.trigger.suit as any);
+  if (row.trigger.kind === "card_type") return row.trigger.cardType === (card.cardType ?? card.type);
+  if (row.trigger.kind === "tag") return tags.includes(row.trigger.tag);
+  if (row.trigger.kind === "unrest") return tags.includes("unrest") || card.suit === "unrest" || (card.cardType ?? card.type) === "unrest" || cardHasSuitIcon(card, "unrest");
+  return row.trigger.kind === "other";
+}
 
 function hasPendingInterruption(G: GameState): boolean {
   return Boolean(
@@ -50,6 +59,7 @@ function hasPendingInterruption(G: GameState): boolean {
     ?? G.pendingExileChoice
     ?? G.pendingGarrisonChoice
     ?? G.pendingRegionChoice
+    ?? G.pendingRegionChoiceContinuation
     ?? G.pendingDevelopmentChoice
     ?? G.pendingShortGameDevelopmentExileChoice
     ?? G.pendingTradeChoice
@@ -71,6 +81,7 @@ function hasPendingInterruption(G: GameState): boolean {
     ?? G.pendingAcquireCardResolution
     ?? G.pendingAcquireEffectResolution
     ?? G.pendingMarketMoveEffectResolution
+    ?? G.pendingBreakThroughEffectResolution
     ?? G.pendingMarketUnrestHookContinuation
     ?? G.pendingNationHookContinuation
     ?? G.pendingUnrestTakeContinuation
@@ -95,8 +106,24 @@ function cardMatchesFilter(G: GameState, cardId: string, filter?: BotAcquireFilt
   if (!card) return false;
   if (filter?.suits?.length && !cardHasAnySuitIcon(card, filter.suits as any)) return false;
   if (filter?.cardTypes?.length && !filter.cardTypes.includes((card.cardType ?? card.type) as any)) return false;
-  if (filter?.tags?.length && !filter.tags.some((tag) => card.tags.includes(tag))) return false;
+  if (filter?.tags?.length && !filter.tags.some((tag) => (card.tags ?? []).includes(tag))) return false;
+  const vp = cardVpValueForCondition(card);
+  if (filter?.minVp !== undefined && vp < filter.minVp) return false;
+  if (filter?.maxVp !== undefined && vp > filter.maxVp) return false;
+  if (filter?.hasMarketResource && resourceAmount(marketResourceMarkers(G, cardId), filter.hasMarketResource) <= 0) return false;
+  const marketSlotNumber = G.market.indexOf(cardId) + 1;
+  if (filter?.slotNumbers?.length && !filter.slotNumbers.includes(marketSlotNumber as any)) return false;
   return true;
+}
+
+function marketResourceMarkers(G: GameState, cardId: string): Partial<Record<ResourceName, number>> {
+  const legacy = normalizeResourceMap(G.marketResources?.[cardId]);
+  const slot = normalizeResourceMap(G.marketSlots?.find((candidate) => candidate.cardId === cardId)?.resourceMarkers);
+  const merged: Partial<Record<ResourceName, number>> = { ...legacy };
+  for (const [resource, amount] of Object.entries(slot) as [ResourceName, number | undefined][]) {
+    merged[resource] = Math.max(merged[resource] ?? 0, amount ?? 0);
+  }
+  return merged;
 }
 
 function findSideTableId(G: GameState, bot: BotState, nextSide: string): string | undefined {
@@ -271,7 +298,7 @@ function takeHumanChaos(G: GameState, bot: BotState, count: number, zoneId = "ch
 function exileMostTokenedMarketCards(G: GameState, bot: BotState): boolean {
   const counts = G.market.map((cardId) => ({
     cardId,
-    count: cardId ? Object.values(G.marketResources?.[cardId] ?? {}).reduce((sum, value) => sum + (value ?? 0), 0) : 0
+    count: cardId ? Object.values(marketResourceMarkers(G, cardId)).reduce((sum, value) => sum + (value ?? 0), 0) : 0
   })).filter((entry) => entry.cardId);
   const max = Math.max(0, ...counts.map((entry) => entry.count));
   if (max <= 0) return false;
@@ -279,11 +306,14 @@ function exileMostTokenedMarketCards(G: GameState, bot: BotState): boolean {
   for (const entry of counts.filter((candidate) => candidate.count === max)) {
     const index = G.market.indexOf(entry.cardId);
     if (index < 0) continue;
+    const slotIndex = G.marketSlots?.findIndex((slot) => slot.cardId === entry.cardId) ?? -1;
     delete G.marketResources?.[entry.cardId];
+    if (slotIndex >= 0) G.marketSlots?.splice(slotIndex, 1);
     G.sharedDiscard.push(entry.cardId);
     G.market.splice(index, 1);
     moved += 1;
   }
+  G.marketSlots?.forEach((slot, index) => { slot.index = index; });
   if (moved > 0) G.log.push({ round: G.round, playerId: bot.botId, message: `BotCultistsExiledMostTokenedMarketCards(count=${moved})` });
   return moved > 0;
 }
@@ -381,7 +411,7 @@ function botSwapMarket(G: GameState, bot: BotState, filter?: BotAcquireFilter, m
     bot.botPlayArea.splice(botIndex, 1);
     bot.botDiscard.push(marketCardId);
 
-    const marketResources = { ...(G.marketResources?.[marketCardId] ?? {}) } as Partial<Record<ResourceName, number>>;
+    const marketResources = marketResourceMarkers(G, marketCardId);
     delete G.marketResources?.[marketCardId];
     if (Object.keys(marketResources).length > 0) {
       G.marketResources ??= {};
@@ -417,15 +447,16 @@ function moveResolvedBotCardToDestination(G: GameState, bot: BotState, cardId: s
 
 function isTradeRouteCard(G: GameState, cardId: string): boolean {
   const card = G.cardDb[cardId];
-  return card?.type === "trade_route" || card?.cardType === "trade_route" || card?.suit === "trade_route";
+  return card?.type === "trade_route" || card?.cardType === "trade_route" || card?.suit === "trade_route" || cardHasSuitIcon(card, "trade_route");
 }
 
-function createHumanRegionChoice(G: GameState, bot: BotState, sourceCardId: string, op: "recall_region" | "abandon_region", filter?: BotAcquireFilter): BotEffectResolution {
+function createHumanRegionChoice(G: GameState, bot: BotState, sourceCardId: string, op: "recall_region" | "abandon_region", filter?: BotAcquireFilter, count = 1): BotEffectResolution {
   const playerId = humanPlayerId(G, bot);
   if (!playerId) return { resolved: false, warnings: ["missing human player"] };
   const cardIds = G.players[playerId].playArea.filter((cardId) => isRegionCard(G, cardId) && cardMatchesFilter(G, cardId, filter));
   if (cardIds.length === 0) return { resolved: false, warnings: [] };
-  G.pendingRegionChoice = { playerId, sourceCardId, op, cardIds };
+  const requiredCount = Math.min(count, cardIds.length);
+  G.pendingRegionChoice = { playerId, sourceCardId, op, cardIds, ...(requiredCount > 1 ? { count: requiredCount } : {}) };
   G.log.push({ round: G.round, playerId: bot.botId, message: `BotHumanRegionChoicePending(${sourceCardId}/${op}/options=${cardIds.length})` });
   return { resolved: true, warnings: [] };
 }
@@ -442,11 +473,22 @@ function resolveBotFallbackEffects(G: GameState, bot: BotState, table: BotStateT
   if (!effects?.length) return { resolved: false, warnings: [] };
   const warnings: string[] = [];
   let resolved = false;
-  for (const fallback of effects) {
+  for (let index = 0; index < effects.length; index += 1) {
+    const fallback = effects[index];
     const result = applyBotEffectWithResolution(G, bot, table, sourceCardId, fallback, options);
     resolved ||= result.resolved;
     warnings.push(...result.warnings);
     if (G.gameover) break;
+    if (hasPendingInterruption(G)) {
+      if (G.solo && index + 1 < effects.length) {
+        G.solo.pendingBotTradeRouteContinuation = {
+          sourceCardId,
+          effects,
+          nextEffectIndex: index + 1
+        };
+      }
+      break;
+    }
   }
   return { resolved, warnings };
 }
@@ -456,7 +498,7 @@ export function applyBotEffect(G: GameState, bot: BotState, table: BotStateTable
 }
 
 function marketResourceTokenCount(G: GameState, cardId: string): number {
-  return Object.values(G.marketResources?.[cardId] ?? {}).reduce((sum, value) => sum + (value ?? 0), 0);
+  return Object.values(marketResourceMarkers(G, cardId)).reduce((sum, value) => sum + (value ?? 0), 0);
 }
 
 function ensureGlobalExile(G: GameState): NonNullable<GameState["globalSpecialZones"]>[string] {
@@ -547,8 +589,12 @@ export function applyBotEffectWithResolution(G: GameState, bot: BotState, table:
     case "bot_resolve_cultists_state_cleanup":
       return { resolved: resolveCultistsStateCleanup(G, bot, table), warnings: [] };
     case "bot_gain_fame":
-      gainFameCardsForBot(G, bot, effect.count);
-      return { resolved: effect.count > 0, warnings: [] };
+      {
+        const hadResolvedSpecial = G.fameDeck?.resolvedSpecialByPlayer?.[bot.botId] === true;
+        const gained = gainFameCardsForBot(G, bot, effect.count);
+        const resolvedSpecial = !hadResolvedSpecial && G.fameDeck?.resolvedSpecialByPlayer?.[bot.botId] === true;
+        return { resolved: gained.length > 0 || resolvedSpecial, warnings: [] };
+      }
     case "bot_acquire":
       if (botAcquireFromMarket(G, bot, effect.filter, effect.fromExile)) return { resolved: true, warnings: [] };
       return resolveBotFallbackEffects(G, bot, table, sourceCardId, effect.ifUnable, options);
@@ -634,9 +680,9 @@ export function applyBotEffectWithResolution(G: GameState, bot: BotState, table:
       return { resolved: effect.count > 0, warnings: [] };
     }
     case "human_recall":
-      return createHumanRegionChoice(G, bot, sourceCardId, "recall_region", effect.filter);
+      return createHumanRegionChoice(G, bot, sourceCardId, "recall_region", effect.filter, effect.count);
     case "human_abandon":
-      return createHumanRegionChoice(G, bot, sourceCardId, "abandon_region", effect.filter);
+      return createHumanRegionChoice(G, bot, sourceCardId, "abandon_region", effect.filter, effect.count);
     case "bot_flip_state_table":
       {
         const beforeTableId = bot.botStateTableId;

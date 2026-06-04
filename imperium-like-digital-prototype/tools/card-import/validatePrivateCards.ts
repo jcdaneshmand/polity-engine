@@ -23,7 +23,7 @@ const reactiveFields = new Set(["trigger","target","sourceSuit","resource"]);
 const vpDetailFields = new Set(["condition","formula","trueValue","falseValue"]);
 const vpConditionFields = new Set(["op","zoneId"]);
 const vpCountCardsFormulaFields = new Set(["op","tag","suit","zones","amountEach","cap"]);
-const vpCountResourcesFormulaFields = new Set(["op","resource","resources","amountEach","denominator","cap"]);
+const vpCountResourcesFormulaFields = new Set(["op","resource","resources","resourceZones","amountEach","denominator","cap"]);
 const effectOps = new Set([
   "draw",
   "draw_if_able",
@@ -101,7 +101,7 @@ const destinationEffectOps = new Set(["find_card","acquire_card","gain_card","ta
 const suitEffectOps = new Set(["acquire_card","gain_card","take_card","find_card","exile_card","break_through"]);
 const cardTypeEffectOps = new Set(["acquire_card","gain_card","take_card","find_card","exile_card","break_through"]);
 const resourceEffectOps = new Set(["gain_resource","spend_resource","remove_resource","return_resource","steal_resource","conditional_resource_at_least"]);
-const countEffectOps = new Set(["draw","draw_if_able","discard_random","discard_cards","take_unrest","gain_fame","exile_card","acquire_card","gain_card","take_card","break_through","look_cards"]);
+const countEffectOps = new Set(["draw","draw_if_able","discard_random","discard_cards","take_unrest","gain_fame","recall_region","abandon_region","exile_card","acquire_card","gain_card","take_card","break_through","look_cards"]);
 const amountEffectOps = new Set(["gain_resource","spend_resource","remove_resource","return_resource","steal_resource","gain_action","spend_action"]);
 const atLeastEffectOps = new Set(["conditional_resource_at_least"]);
 const effectFields = new Set([
@@ -131,6 +131,7 @@ const effectFields = new Set([
   "else",
   "state",
   "choices",
+  "free",
   "reactive"
 ]);
 
@@ -336,6 +337,13 @@ function validateEffectOps(errors: CardImportError[], row: number, effects: unkn
         fatal = true;
       }
     };
+    const validateOptionalBoolean = (fieldName: "free") => {
+      const value = record[fieldName];
+      if (value !== undefined && typeof value !== "boolean") {
+        errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid ${fieldName} for ${op} at ${path}[${index}]: ${String(value)}` });
+        fatal = true;
+      }
+    };
     const validateReactiveMetadata = () => {
       const reactive = record.reactive;
       if (reactive === undefined) return;
@@ -374,6 +382,7 @@ function validateEffectOps(errors: CardImportError[], row: number, effects: unkn
       }
     };
     if (["draw","draw_if_able","discard_random","discard_cards","take_unrest","gain_fame","acquire_card","gain_card","take_card","break_through","look_cards"].includes(op)) validatePositiveIntegerField("count");
+    if (op === "recall_region" || op === "abandon_region") validateOptionalPositiveIntegerField("count");
     if (op === "exile_card") validateOptionalPositiveIntegerField("count");
     if (["gain_resource","spend_resource","remove_resource","return_resource","steal_resource","gain_action","spend_action"].includes(op)) validatePositiveIntegerField("amount");
     if (op === "conditional_resource_at_least") validateNonNegativeIntegerField("atLeast");
@@ -496,6 +505,11 @@ function validateEffectOps(errors: CardImportError[], row: number, effects: unkn
       errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid atLeast for ${op} at ${path}[${index}]: ${String(record.atLeast)}` });
       fatal = true;
     }
+    if (record.free !== undefined && op !== "develop") {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid free for ${op} at ${path}[${index}]: ${String(record.free)}` });
+      fatal = true;
+    }
+    if (op === "develop") validateOptionalBoolean("free");
     if (["acquire_card","gain_card","take_card","find_card","exile_card"].includes(op)) validateCardTypeField();
     if (op === "find_card") validateSourceZones(findSources, "sourceZones");
     if (op === "treat_suit_as") {
@@ -609,7 +623,7 @@ function validateVpDetails(errors: CardImportError[], row: number, value: string
     }
   }
   if (details.formula !== undefined) {
-    const formula = details.formula as { op?: unknown; tag?: unknown; suit?: unknown; zones?: unknown; resource?: unknown; resources?: unknown; amountEach?: unknown; denominator?: unknown; cap?: unknown };
+    const formula = details.formula as { op?: unknown; tag?: unknown; suit?: unknown; zones?: unknown; resource?: unknown; resources?: unknown; resourceZones?: unknown; amountEach?: unknown; denominator?: unknown; cap?: unknown };
     if (!formula || typeof formula !== "object" || Array.isArray(formula)) {
       errors.push({ level: "fatal", row, field: "vp_details_json", message: "VP formula must be an object" });
       return { fatal: true };
@@ -657,6 +671,10 @@ function validateVpDetails(errors: CardImportError[], row: number, value: string
       }
       if (formula.denominator !== undefined && (!isNumber(formula.denominator) || formula.denominator <= 0)) {
         errors.push({ level: "fatal", row, field: "vp_details_json", message: "VP count_resources formula denominator must be positive numeric when present" });
+        return { fatal: true };
+      }
+      if (formula.resourceZones !== undefined && (!Array.isArray(formula.resourceZones) || formula.resourceZones.some((zone) => typeof zone !== "string" || !zone.trim()))) {
+        errors.push({ level: "fatal", row, field: "vp_details_json", message: "VP count_resources formula resourceZones must be a string array" });
         return { fatal: true };
       }
     }

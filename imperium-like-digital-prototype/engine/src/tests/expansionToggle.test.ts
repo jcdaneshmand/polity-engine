@@ -4,7 +4,7 @@ import { createInitialGameState } from "../game/initialState";
 import { runEffects } from "../cards/effectRunner";
 import fs from "node:fs";
 import { loadCardDbWithOptionalPrivateData } from "../cards/privateCardLoader";
-import { playCard } from "../game/moves";
+import { exhaustCard, playCard } from "../game/moves";
 import { activateState } from "../game/stateMatching";
 
 const fakeCardDb = {
@@ -184,5 +184,34 @@ describe("trade_routes expansion toggle", () => {
     expect(G.log.some((entry) => entry.message === "TradeResolved(goods_to_progress)")).toBe(true);
     expect(G.players["0"].resources.goods).toBe(0);
     expect(G.players["0"].resources.knowledge).toBe(1);
+  });
+
+  it("exhausted card effects receive the enabled trade_routes expansion context", () => {
+    const G = createInitialGameState({ options: { playerCount: 2, mode: "multiplayer", enabledExpansions: ["trade_routes"], enabledVariants: [] } });
+    G.cardDb.trade_exhaust = {
+      id: "trade_exhaust",
+      displayName: "Trade Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "civic",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_exhaust", op: "trade" } as any]
+    };
+    G.players["0"].playArea = ["trade_exhaust"];
+    G.players["0"].resources.goods = 1;
+    G.players["0"].exhaustTokensAvailable = 1;
+    Object.values(G.players).forEach((player) => {
+      if (player !== G.players["0"]) player.playArea = [];
+    });
+
+    exhaustCard({ G, ctx: { currentPlayer: "0" } as any }, "trade_exhaust");
+
+    expect(G.log.some((entry) => entry.message.includes("Ignored trade"))).toBe(false);
+    expect(G.log.some((entry) => entry.message === "UnsupportedEffectOp(trade)")).toBe(false);
+    expect(G.log.some((entry) => entry.message === "TradeResolved(goods_to_progress)")).toBe(true);
+    expect(G.players["0"].resources.goods).toBe(0);
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["0"].exhaustTokensAvailable).toBe(0);
   });
 });

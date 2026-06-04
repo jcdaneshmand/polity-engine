@@ -539,6 +539,69 @@ describe("bot table CLI tools", () => {
     ]));
   });
 
+  it("rejects Bot if-unable branches on effects that cannot resolve fallbacks", () => {
+    const effects = [
+      {
+        op: "bot_gain_resource",
+        resource: "knowledge",
+        count: 1,
+        ifUnable: [{ op: "bot_gain_resource", resource: "materials", count: 1 }]
+      }
+    ];
+    const stateRows = [{
+      table_id: "test_table",
+      bot_nation_id: "test_bot",
+      table_side: "S",
+      row_id: "row_bad_if_unable_host",
+      priority: "1",
+      trigger_kind: "other",
+      trigger_value: "",
+      public_placeholder_label: "Bad ifUnable host row",
+      private_trigger_label: "",
+      private_effect_text: "",
+      effects_json: JSON.stringify(effects),
+      implemented: "true",
+      tested: "true",
+      notes: ""
+    }];
+    const tradeRows = [{
+      table_id: "trade_table",
+      row_type: "route",
+      merchant_state: "",
+      priority: "",
+      trade_route_card_id: "route_1",
+      public_placeholder_name: "Route One",
+      private_name: "",
+      commerce_effects_json: JSON.stringify(effects),
+      profit_effects_json: JSON.stringify([{ op: "log", message: "ok" }]),
+      end_of_turn_effects_json: "",
+      implemented: "true",
+      tested: "true",
+      notes: ""
+    }];
+
+    const stateImportReport = validatePrivateBotStateTableRows(stateRows);
+    const stateEntryReport = validatePrivateBotStateTableRowsForEntry(stateRows);
+    const tradeImportReport = validatePrivateBotTradeRoutesTableRows(tradeRows);
+    const tradeEntryReport = validatePrivateBotTradeRoutesTableRowsForEntry(tradeRows);
+
+    for (const report of [stateImportReport, stateEntryReport, tradeImportReport, tradeEntryReport]) {
+      expect(report.counts.fatal).toBe(1);
+    }
+    expect(stateImportReport.errors.map((e)=>e.message)).toEqual(expect.arrayContaining([
+      "Unsupported ifUnable branch on bot_gain_resource at effects_json[0]"
+    ]));
+    expect(stateEntryReport.errors.map((e)=>e.message)).toEqual(expect.arrayContaining([
+      "Unsupported ifUnable branch on bot_gain_resource at effects_json[0]"
+    ]));
+    expect(tradeImportReport.errors.map((e)=>e.message)).toEqual(expect.arrayContaining([
+      "Unsupported ifUnable branch on bot_gain_resource at commerce_effects_json[0]"
+    ]));
+    expect(tradeEntryReport.errors.map((e)=>e.message)).toEqual(expect.arrayContaining([
+      "Unsupported ifUnable branch on bot_gain_resource at commerce_effects_json[0]"
+    ]));
+  });
+
   it("rejects malformed Bot ifVp payloads before runtime", () => {
     const effects = [
       { op: "bot_resolve_top_main_deck", ifVp: "five" },

@@ -69,4 +69,15 @@ describe("zones/history", () => {
     expect(G.players["0"].resources.materials).toBe(2);
     expect(G.cardStates?.[hostId]).toBeUndefined();
   });
+
+  it("move self to history removes a Power-area source instead of duplicating it", () => {
+    const G = createInitialState();
+    const id = "test_power_archive";
+    G.players["0"].powerArea = [id];
+
+    runEffects({ G, playerId: "0", selfCardId: id }, [{ trigger: "on_exhaust", op: "move_self_to_history" }]);
+
+    expect(G.players["0"].powerArea).toEqual([]);
+    expect(G.players["0"].history).toEqual([id]);
+  });
 });

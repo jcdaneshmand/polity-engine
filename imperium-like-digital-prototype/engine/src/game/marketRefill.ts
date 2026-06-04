@@ -1,6 +1,7 @@
 import type { GameState, MarketDeckName, Suit } from "./state";
 import { tuckUnrestUnderMarketCard } from "./marketResources";
 import { triggerScoringIfMainDeckEmpty } from "./scoringTriggers";
+import { cardMarketSuitIcons } from "./suitIcons";
 
 export function deckForSuit(suit?: Suit): MarketDeckName | undefined {
   if (suit === "region") return "regionDeck";
@@ -19,12 +20,24 @@ export function drawMarketDeckCard(G: GameState, deckName: MarketDeckName): stri
   return cardId;
 }
 
+function refillDeckForCard(G: GameState, cardId: string): MarketDeckName | undefined {
+  const card = G.cardDb[cardId];
+  const bannerDeck = deckForSuit(card?.setupBannerSuit);
+  if (bannerDeck) return bannerDeck;
+  const printedDeck = deckForSuit(card?.suit);
+  if (printedDeck) return printedDeck;
+  for (const suit of cardMarketSuitIcons(card)) {
+    const deck = deckForSuit(suit);
+    if (deck) return deck;
+  }
+  return undefined;
+}
+
 function drawReplacementFromMarketDecks(G: GameState, args: { playerId: string; slotIndex: number; acquiredCardId: string; preferSuitDeck?: boolean }): string | undefined {
   const decks = G.marketDecks;
   if (!decks) return undefined;
-  const acquiredCard = G.cardDb[args.acquiredCardId];
-  const bannerSuit = acquiredCard?.setupBannerSuit ?? acquiredCard?.suit;
-  const sourceDeck = args.preferSuitDeck ? deckForSuit(bannerSuit) : args.slotIndex < 2 ? "mainDeck" : deckForSuit(bannerSuit);
+  const refillDeck = refillDeckForCard(G, args.acquiredCardId);
+  const sourceDeck = args.preferSuitDeck ? refillDeck : args.slotIndex < 2 ? "mainDeck" : refillDeck;
   const suitedCard = sourceDeck && sourceDeck !== "mainDeck" ? drawMarketDeckCard(G, sourceDeck) : undefined;
   if (suitedCard) return suitedCard;
 

@@ -51,6 +51,29 @@ describe("Exile acquisition", () => {
     expect(G.unrestPile).toEqual(["unrest_from_supply"]);
   });
 
+  it("does not add extra Unrest for imported Exile cards with an Unrest suit icon", () => {
+    const G = createInitialState();
+    const player = G.players["0"];
+    player.exile = ["imported_exiled_unrest"];
+    G.cardDb.imported_exiled_unrest = {
+      id: "imported_exiled_unrest",
+      displayName: "Imported Exiled Unrest",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: ["suit:unrest"],
+      effects: []
+    };
+    G.unrestPile = ["unrest_from_supply"];
+
+    expect(acquireFromExile(G, { playerId: "0", cardId: "imported_exiled_unrest" })).toBe(true);
+
+    expect(player.hand).toContain("imported_exiled_unrest");
+    expect(player.hand).not.toContain("unrest_from_supply");
+    expect(G.unrestPile).toEqual(["unrest_from_supply"]);
+  });
+
   it("does not finish Exile acquisition when required Unrest causes Collapse", () => {
     const G = createInitialState();
     G.players["0"].exile = ["exiled_action"];

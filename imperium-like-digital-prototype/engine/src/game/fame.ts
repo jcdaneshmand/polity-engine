@@ -5,6 +5,8 @@ import { createCardDrivenDevelopmentChoice } from "./zones";
 import { triggerScoring } from "./scoring";
 import { currentStateMatches } from "./stateMatching";
 import { actualHistorySourceZoneIds } from "./history";
+import { detachGarrisonedCard } from "./regions";
+import { cardHasSuitIcon } from "./suitIcons";
 
 function ensureFameDeck(G: GameState): NonNullable<GameState["fameDeck"]> {
   G.fameDeck ??= { available: [], resolvedSpecialByPlayer: {} };
@@ -22,47 +24,58 @@ function kingOfKingsRewardSuppressionState(G: GameState, playerId: string): stri
   return undefined;
 }
 
-function resolveSpecialBottomFameRewards(G: GameState, playerId: string, cardId: string): void {
+interface FameCardResult {
+  cardId?: string;
+  deferredDevelopmentEffect?: { trigger: "on_play"; op: "develop"; free: true; sourceCardId: string };
+}
+
+function resolveSpecialBottomFameRewards(G: GameState, playerId: string, cardId: string, options: { deferDevelopmentChoice?: boolean } = {}): FameCardResult {
   const suppressedState = kingOfKingsRewardSuppressionState(G, playerId);
   if (suppressedState) {
     G.log.push({ round: G.round, playerId, message: `KingOfKingsRewardSuppressed(${cardId}/${suppressedState})` });
-    return;
+    return {};
   }
   if (currentStateMatches(G, playerId, "uncivilized")) {
     const gained = gainPlayerResource(G, playerId, "knowledge", 6);
     G.log.push({ round: G.round, playerId, message: `KingOfKingsReward(${cardId}/uncivilized/progress=${gained === 6 ? 6 : `${gained}/6`})` });
-    return;
+    return {};
   }
   if (currentStateMatches(G, playerId, "civilized")) {
     const gained = gainPlayerResource(G, playerId, "knowledge", 3);
     G.log.push({ round: G.round, playerId, message: `KingOfKingsReward(${cardId}/civilized/progress=${gained === 3 ? 3 : `${gained}/3`}/free_develop)` });
+    if (options.deferDevelopmentChoice) return { deferredDevelopmentEffect: { trigger: "on_play", op: "develop", free: true, sourceCardId: cardId } };
     createCardDrivenDevelopmentChoice(G, playerId, cardId, { free: true });
   }
+  return {};
 }
 
-function resolveSpecialBottomFameCard(G: GameState, playerId: string): string | undefined {
+function resolveSpecialBottomFameCardResult(G: GameState, playerId: string, options: { deferDevelopmentChoice?: boolean } = {}): FameCardResult {
   const fameDeck = ensureFameDeck(G);
   const specialBottomCardId = fameDeck.specialBottomCardId;
-  if (!specialBottomCardId) return undefined;
-  if (fameDeck.specialBottomSide === "face_down") return undefined;
+  if (!specialBottomCardId) return {};
+  if (fameDeck.specialBottomSide === "face_down") return {};
   if (fameDeck.resolvedSpecialByPlayer[playerId]) {
     G.log.push({ round: G.round, playerId, message: `FameSpecialSkipped(already_resolved/${specialBottomCardId})` });
-    return undefined;
+    return {};
   }
 
   fameDeck.resolvedSpecialByPlayer[playerId] = true;
-  resolveSpecialBottomFameRewards(G, playerId, specialBottomCardId);
+  const reward = resolveSpecialBottomFameRewards(G, playerId, specialBottomCardId, options);
   if ((fameDeck.specialBottomSide ?? "A") === "A") {
     fameDeck.specialBottomSide = "B";
     G.log.push({ round: G.round, playerId, message: `FameSpecialResolved(${specialBottomCardId}/side=A->B)` });
-    return specialBottomCardId;
+    return { cardId: specialBottomCardId, deferredDevelopmentEffect: reward.deferredDevelopmentEffect };
   }
 
   delete fameDeck.specialBottomCardId;
   fameDeck.specialBottomSide = "face_down";
   G.log.push({ round: G.round, playerId, message: `FameSpecialResolved(${specialBottomCardId}/side=B->face_down)` });
   triggerScoring(G, "fame_deck_terminal_condition", playerId);
-  return specialBottomCardId;
+  return { cardId: specialBottomCardId, deferredDevelopmentEffect: reward.deferredDevelopmentEffect };
+}
+
+function resolveSpecialBottomFameCard(G: GameState, playerId: string): string | undefined {
+  return resolveSpecialBottomFameCardResult(G, playerId).cardId;
 }
 
 function normalizedBotStateTokens(bot: BotState): string[] {
@@ -133,25 +146,33 @@ export function peekFameCards(G: GameState, count: number): string[] {
 }
 
 export function takeFameCard(G: GameState, playerId: string): string | undefined {
+  return takeFameCardResult(G, playerId).cardId;
+}
+
+export function takeFameCardResult(G: GameState, playerId: string, options: { deferDevelopmentChoice?: boolean } = {}): FameCardResult {
   const fameDeck = ensureFameDeck(G);
   const cardId = fameDeck.available.shift();
   if (cardId) {
     G.players[playerId]?.discard.push(cardId);
-    return cardId;
+    return { cardId };
   }
 
-  return resolveSpecialBottomFameCard(G, playerId);
+  return resolveSpecialBottomFameCardResult(G, playerId, options);
 }
 
 export function drawFameCard(G: GameState, playerId: string): string | undefined {
+  return drawFameCardResult(G, playerId).cardId;
+}
+
+export function drawFameCardResult(G: GameState, playerId: string, options: { deferDevelopmentChoice?: boolean } = {}): FameCardResult {
   const fameDeck = ensureFameDeck(G);
   const cardId = fameDeck.available.shift();
   if (cardId) {
     G.players[playerId]?.hand.push(cardId);
-    return cardId;
+    return { cardId };
   }
 
-  return resolveSpecialBottomFameCard(G, playerId);
+  return resolveSpecialBottomFameCardResult(G, playerId, options);
 }
 
 export function returnFameCardToTop(G: GameState, cardId: string): void {
@@ -161,7 +182,7 @@ export function returnFameCardToTop(G: GameState, cardId: string): void {
 
 export function isFameCard(G: GameState, cardId: string): boolean {
   const card = G.cardDb[cardId];
-  return card?.suit === "fame" || card?.cardType === "fame" || card?.type === "fame";
+  return card?.suit === "fame" || card?.cardType === "fame" || card?.type === "fame" || cardHasSuitIcon(card, "fame");
 }
 
 function directZoneCardsForReturnFame(G: GameState, playerId: string, zoneId: string): string[] | undefined {
@@ -185,7 +206,10 @@ export function zoneCardsForReturnFame(G: GameState, playerId: string, zoneId: R
     if (!player) return [];
     return [...player.exile, ...(G.globalSpecialZones?.exile?.cardIds ?? [])];
   }
-  return directZoneCardsForReturnFame(G, playerId, zoneId) ?? [];
+  const cards = directZoneCardsForReturnFame(G, playerId, zoneId);
+  if (!cards) return [];
+  const garrisonedCardIds = cards.flatMap((hostCardId) => G.cardStates?.[hostCardId]?.garrisonedCardIds ?? []);
+  return [...cards, ...garrisonedCardIds];
 }
 
 function removeFromReturnFameZone(G: GameState, playerId: string, zoneId: ReturnFameSourceZone, cardId: string): boolean {
@@ -207,9 +231,18 @@ function removeFromReturnFameZone(G: GameState, playerId: string, zoneId: Return
   const cards = directZoneCardsForReturnFame(G, playerId, zoneId);
   if (!cards) return false;
   const index = cards.indexOf(cardId);
-  if (index < 0) return false;
-  cards.splice(index, 1);
-  return true;
+  if (index >= 0) {
+    cards.splice(index, 1);
+    return true;
+  }
+  for (const hostCardId of cards) {
+    const garrisoned = G.cardStates?.[hostCardId]?.garrisonedCardIds;
+    const garrisonedIndex = garrisoned?.indexOf(cardId) ?? -1;
+    if (!garrisoned || garrisonedIndex < 0) continue;
+    garrisoned.splice(garrisonedIndex, 1);
+    return true;
+  }
+  return Boolean(zoneId === "playArea" && detachGarrisonedCard(G, playerId, cardId));
 }
 
 export function returnFameCard(G: GameState, playerId: string, cardId: string, sourceZones: ReturnFameSourceZone[]): ReturnFameSourceZone | undefined {

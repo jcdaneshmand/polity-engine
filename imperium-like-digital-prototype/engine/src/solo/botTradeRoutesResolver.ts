@@ -5,6 +5,7 @@ import type { BotTradeRouteRow, BotTradeRoutesTable } from "./botTradeRoutesType
 import type { BotState } from "./botTypes";
 import type { BotStateTable } from "./botStateTableTypes";
 import { returnResourceToSupply, takeResourceFromSupply } from "../game/resources";
+import { cardHasSuitIcon } from "../game/suitIcons";
 
 function currentBotTable(G: GameState, bot: BotState): BotStateTable | undefined {
   return G.solo?.botStateTables[bot.botStateTableId];
@@ -33,6 +34,7 @@ function hasPendingInterruption(G: GameState): boolean {
     ?? G.pendingExileChoice
     ?? G.pendingGarrisonChoice
     ?? G.pendingRegionChoice
+    ?? G.pendingRegionChoiceContinuation
     ?? G.pendingDevelopmentChoice
     ?? G.pendingShortGameDevelopmentExileChoice
     ?? G.pendingTradeChoice
@@ -54,6 +56,7 @@ function hasPendingInterruption(G: GameState): boolean {
     ?? G.pendingAcquireCardResolution
     ?? G.pendingAcquireEffectResolution
     ?? G.pendingMarketMoveEffectResolution
+    ?? G.pendingBreakThroughEffectResolution
     ?? G.pendingMarketUnrestHookContinuation
     ?? G.pendingNationHookContinuation
     ?? G.pendingUnrestTakeContinuation
@@ -85,11 +88,16 @@ function executeBotEffects(G: GameState, bot: BotState, sourceCardId: string, ef
     warnings.push(...result.warnings);
     if (G.gameover) break;
     if (hasPendingInterruption(G)) {
-      G.solo!.pendingBotTradeRouteContinuation = {
-        sourceCardId,
-        effects,
-        nextEffectIndex: index + 1
-      };
+      const existingContinuation = G.solo!.pendingBotTradeRouteContinuation;
+      if (existingContinuation && existingContinuation.sourceCardId === sourceCardId) {
+        existingContinuation.effects = [...existingContinuation.effects, ...effects.slice(index + 1)];
+      } else {
+        G.solo!.pendingBotTradeRouteContinuation = {
+          sourceCardId,
+          effects,
+          nextEffectIndex: index + 1
+        };
+      }
       break;
     }
   }
@@ -135,7 +143,7 @@ function humanPlayerId(G: GameState, bot: BotState): string | undefined {
 
 function isTradeRoute(G: GameState, cardId: string): boolean {
   const card = G.cardDb[cardId];
-  return card?.suit === "trade_route" || card?.cardType === "trade_route" || card?.type === "trade_route";
+  return card?.suit === "trade_route" || card?.cardType === "trade_route" || card?.type === "trade_route" || cardHasSuitIcon(card, "trade_route");
 }
 
 function tradeRouteRank(G: GameState, cardId: string): number {

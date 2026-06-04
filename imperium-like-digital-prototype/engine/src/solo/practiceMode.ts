@@ -28,6 +28,8 @@ export function practiceMarketChurn(G: GameState): void {
   G.marketResources ??= {};
   G.marketResources[firstMarketCard] ??= {};
   G.marketResources[firstMarketCard].knowledge = (G.marketResources[firstMarketCard].knowledge ?? 0) + 1;
+  const slot = G.marketSlots?.find((candidate) => candidate.cardId === firstMarketCard);
+  if (slot) slot.resourceMarkers.knowledge = (slot.resourceMarkers.knowledge ?? 0) + 1;
   G.log.push({ round: G.round, playerId: "practice", message: `PracticeMarketChurn(${firstMarketCard}/knowledge/1)` });
 }
 

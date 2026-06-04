@@ -6,6 +6,7 @@ import { runNationHooks } from "../nations/nationRulesetHooks";
 import { currentStateMatches } from "./stateMatching";
 import { actualScoredHistoryZoneIds } from "./history";
 import { cardHasSuitIcon } from "./suitIcons";
+import { canonicalResourceName, normalizeResourceMap } from "./resources";
 
 function logOverride(G: GameState, playerId: string, nationId: string, category: string, op: string): void {
   G.log.push({ round: G.round, playerId, message: `NationRulesetApplied(${nationId}/${category}/${op})` });
@@ -77,13 +78,32 @@ function getZoneCards(G: GameState, playerId: string, zoneId: string): string[] 
 
 function isTradeRouteCard(G: GameState, cardId: string): boolean {
   const card = G.cardDb[cardId];
-  return card?.type === "trade_route" || card?.cardType === "trade_route" || card?.suit === "trade_route";
+  return card?.type === "trade_route" || card?.cardType === "trade_route" || cardHasSuitIcon(card, "trade_route");
 }
 
 function zoneCardsWithGarrisoned(G: GameState, playerId: string, zoneId: string): Array<{ cardId: string; zoneId: string }> {
   const cards = getZoneCards(G, playerId, zoneId);
   const garrisonedCards = cards.flatMap((hostId) => G.cardStates?.[hostId]?.garrisonedCardIds ?? []);
   return [...cards, ...garrisonedCards].map((cardId) => ({ cardId, zoneId }));
+}
+
+function playerExcludedScoringZones(G: GameState, playerId: string): Set<string> {
+  const ruleset = G.activeNationRulesets?.[playerId];
+  return new Set((ruleset?.scoringOverrides ?? []).filter((ov) => ov.op === "exclude_zone_from_scoring").map((ov) => ov.zoneId));
+}
+
+function baseScoredZoneIds(G: GameState, playerId: string): string[] {
+  return ["hand", "playArea", "deck", "discard", "powerArea", ...actualScoredHistoryZoneIds(G, playerId)];
+}
+
+function scoredFormulaZoneIds(G: GameState, playerId: string, requestedZoneIds: string[]): string[] {
+  const excludedZones = playerExcludedScoringZones(G, playerId);
+  const scoredZoneIds = baseScoredZoneIds(G, playerId);
+  const allowedZoneIds = new Set(scoredZoneIds.filter((zoneId) => !zoneIsExcluded(G, playerId, zoneId, excludedZones)));
+  const expandedZoneIds = requestedZoneIds.flatMap((zoneId) =>
+    zoneId === "history" ? actualScoredHistoryZoneIds(G, playerId) : [zoneId]
+  );
+  return expandedZoneIds.filter((zoneId, index, all) => allowedZoneIds.has(zoneId) && all.indexOf(zoneId) === index);
 }
 
 function formulaCap(score: number, cap: unknown): number {
@@ -93,18 +113,19 @@ function formulaCap(score: number, cap: unknown): number {
 function countVariableFormula(
   G: GameState,
   playerId: string,
-  formula: { op?: string; tag?: unknown; suit?: unknown; zones?: unknown; resource?: unknown; resources?: unknown; amountEach?: unknown; denominator?: unknown; cap?: unknown }
+  formula: { op?: string; tag?: unknown; suit?: unknown; zones?: unknown; resource?: unknown; resources?: unknown; resourceZones?: unknown; amountEach?: unknown; denominator?: unknown; cap?: unknown }
 ): number | undefined {
   if (typeof formula.amountEach !== "number") return undefined;
   if (formula.op === "count_cards") {
-    const zoneIds = Array.isArray(formula.zones) ? formula.zones.filter((zone): zone is string => typeof zone === "string") : ["hand", "playArea", "deck", "discard", "powerArea", ...actualScoredHistoryZoneIds(G, playerId)];
+    const requestedZoneIds = Array.isArray(formula.zones) ? formula.zones.filter((zone): zone is string => typeof zone === "string") : baseScoredZoneIds(G, playerId);
+    const zoneIds = scoredFormulaZoneIds(G, playerId, requestedZoneIds);
     const count = zoneIds
       .flatMap((zoneId) => zoneCardsWithGarrisoned(G, playerId, zoneId))
       .filter(({ cardId: matchedCardId, zoneId }) => {
         if (zoneId === "playArea" && isTradeRouteCard(G, matchedCardId)) return false;
         const card = G.cardDb[matchedCardId];
         if (!card) return false;
-        if (typeof formula.tag === "string" && !card.tags.includes(formula.tag)) return false;
+        if (typeof formula.tag === "string" && !(card.tags ?? []).includes(formula.tag)) return false;
         if (typeof formula.suit === "string" && !cardHasSuitIcon(card, formula.suit as any)) return false;
         return true;
       }).length;
@@ -112,13 +133,26 @@ function countVariableFormula(
   }
   if (formula.op === "count_resources") {
     const resourceIds = Array.isArray(formula.resources)
-      ? formula.resources.filter((resource): resource is ResourceName => typeof resource === "string")
+      ? formula.resources.filter((resource): resource is string => typeof resource === "string").map(canonicalResourceName)
       : typeof formula.resource === "string"
-        ? [formula.resource as ResourceName]
+        ? [canonicalResourceName(formula.resource)]
         : [];
     if (resourceIds.length === 0) return undefined;
     const p = G.players[playerId];
-    const total = resourceIds.reduce((sum, resource) => sum + (p.resources[resource] ?? 0), 0);
+    const resourceZoneIds = Array.isArray(formula.resourceZones)
+      ? scoredFormulaZoneIds(G, playerId, formula.resourceZones.filter((zone): zone is string => typeof zone === "string"))
+      : [];
+    const total = resourceZoneIds.length > 0
+      ? resourceZoneIds
+        .flatMap((zoneId) => zoneCardsWithGarrisoned(G, playerId, zoneId))
+        .reduce((sum, { cardId }) => {
+          const resources = normalizeResourceMap(G.cardStates?.[cardId]?.resources);
+          return sum + resourceIds.reduce((cardSum, resource) => cardSum + (resources[resource] ?? 0), 0);
+        }, 0)
+      : (() => {
+        const resources = normalizeResourceMap(p.resources);
+        return resourceIds.reduce((sum, resource) => sum + (resources[resource] ?? 0), 0);
+      })();
     const units = typeof formula.denominator === "number" && formula.denominator > 0 ? Math.floor(total / formula.denominator) : total;
     return formulaCap(units * formula.amountEach, formula.cap);
   }
@@ -137,7 +171,7 @@ function cardVp(G: GameState, playerId: string, cardId: string, zoneId?: string)
       mode?: string;
       value?: unknown;
       condition?: { op?: string; zoneId?: unknown };
-      formula?: { op?: string; tag?: unknown; suit?: unknown; zones?: unknown; resource?: unknown; resources?: unknown; amountEach?: unknown; denominator?: unknown; cap?: unknown };
+      formula?: { op?: string; tag?: unknown; suit?: unknown; zones?: unknown; resource?: unknown; resources?: unknown; resourceZones?: unknown; amountEach?: unknown; denominator?: unknown; cap?: unknown };
       trueValue?: unknown;
       falseValue?: unknown;
     };
@@ -195,13 +229,13 @@ function isBotCultistUnrestCard(G: GameState, cardId: string): boolean {
   if (bot?.botNationId !== "cultists") return false;
   const card = G.cardDb[cardId];
   const type = card?.cardType ?? card?.type;
-  return type === "unrest" || card?.suit === "unrest" || card?.tags?.includes("unrest");
+  return type === "unrest" || card?.suit === "unrest" || card?.tags?.includes("unrest") || cardHasSuitIcon(card, "unrest");
 }
 
 function isBotPowerCard(G: GameState, cardId: string): boolean {
   const card = G.cardDb[cardId];
   const type = card?.cardType ?? card?.type;
-  return type === "power" || card?.suit === "power" || card?.tags?.includes("power");
+  return type === "power" || card?.suit === "power" || card?.tags?.includes("power") || cardHasSuitIcon(card, "power");
 }
 
 function botScoredCardVp(G: GameState, cardId: string): number {
@@ -230,20 +264,21 @@ export function scoreBot(G: GameState): number {
     ...bot.botDiscard,
     ...bot.botHistory
   ]);
-  const progressScore = bot.resources.knowledge ?? 0;
+  const resources = normalizeResourceMap(bot.resources);
+  const progressScore = resources.knowledge ?? 0;
   const sovereignOrHigher = bot.difficulty === "sovereign" || bot.difficulty === "overlord" || bot.difficulty === "supreme_ruler";
-  const goodsAsBasicResources = sovereignOrHigher ? 0 : (bot.resources.goods ?? 0) * 5;
-  const basicResourceTotal = (bot.resources.materials ?? 0) + (bot.resources.influence ?? 0) + goodsAsBasicResources;
+  const goodsAsBasicResources = sovereignOrHigher ? 0 : (resources.goods ?? 0) * 5;
+  const basicResourceTotal = (resources.materials ?? 0) + (resources.influence ?? 0) + goodsAsBasicResources;
   const resourceDenominator = sovereignOrHigher ? 5 : 10;
   const basicResourceScore = Math.floor(basicResourceTotal / resourceDenominator);
-  const sovereignGoodsScore = sovereignOrHigher ? (bot.resources.goods ?? 0) : 0;
+  const sovereignGoodsScore = sovereignOrHigher ? (resources.goods ?? 0) : 0;
   return cardScore + progressScore + basicResourceScore + sovereignGoodsScore;
 }
 
 function isUnrestCard(G: GameState, cardId: string): boolean {
   const card = G.cardDb[cardId];
   const type = card?.cardType ?? card?.type;
-  return type === "unrest" || card?.suit === "unrest" || card?.tags?.includes("unrest");
+  return type === "unrest" || card?.suit === "unrest" || card?.tags?.includes("unrest") || cardHasSuitIcon(card, "unrest");
 }
 
 function scoreZone(G: GameState, playerId: string, zoneId: string, excludedZones: Set<string>): number {
@@ -258,11 +293,12 @@ function isResourceRatioOverride(override: ScoringOverride): override is Extract
 function scoreResourcePool(G: GameState, playerId: string): number {
   const p = G.players[playerId];
   const ruleset = G.activeNationRulesets?.[playerId];
-  const progressAmount = p.resources.knowledge ?? 0;
+  const resources = normalizeResourceMap(p.resources);
+  const progressAmount = resources.knowledge ?? 0;
   const progressOverride = (ruleset?.scoringOverrides ?? [])
     .filter(isResourceRatioOverride)
     .find((ov) =>
-      ov.resource === "knowledge"
+      canonicalResourceName(ov.resource) === "knowledge"
       && (!ov.state || currentStateMatches(G, playerId, ov.state))
     );
   if (!progressOverride || progressOverride.denominator <= 0) return progressAmount;
@@ -280,6 +316,7 @@ function hasPendingInterruption(G: GameState): boolean {
     ?? G.pendingExileChoice
     ?? G.pendingGarrisonChoice
     ?? G.pendingRegionChoice
+    ?? G.pendingRegionChoiceContinuation
     ?? G.pendingDevelopmentChoice
     ?? G.pendingShortGameDevelopmentExileChoice
     ?? G.pendingTradeChoice
@@ -293,12 +330,15 @@ function hasPendingInterruption(G: GameState): boolean {
     ?? G.pendingLookOrderChoice
     ?? G.pendingUnrestAllocationChoice
     ?? G.pendingSolsticeOrderChoice
+    ?? G.pendingCleanupMarketResourceChoice
+    ?? G.pendingCleanupDiscardChoice
     ?? G.pendingReactiveExhaustChoice
     ?? G.pendingPlayCardResolution
     ?? G.pendingPlayedCardResolution
     ?? G.pendingAcquireCardResolution
     ?? G.pendingAcquireEffectResolution
     ?? G.pendingMarketMoveEffectResolution
+    ?? G.pendingBreakThroughEffectResolution
     ?? G.pendingMarketUnrestHookContinuation
     ?? G.pendingNationHookContinuation
     ?? G.pendingUnrestTakeContinuation
@@ -371,7 +411,7 @@ function applyCollapseTieBreakReturnUnrestHooks(G: GameState, playerIds: string[
   for (const playerId of playerIds) {
     const ruleset = G.activeNationRulesets?.[playerId];
     if (!ruleset) continue;
-    const eligibleHooks = ruleset.hookRules
+    const eligibleHooks = (ruleset.hookRules ?? [])
       .filter(isCollapseTieBreakReturnUnrestHook)
       .map((hook) => expandScoringReturnUnrestSources(G, hook, playerId));
     if (eligibleHooks.length === 0) continue;
@@ -430,7 +470,7 @@ export function applyScoringLifecycleOnce(G: GameState, playerId: string, random
   const startOverrideIndex = pending?.overrideIndex ?? 0;
 
   if (!pending) {
-    ruleset.hookRules = ruleset.hookRules.map((hook) => expandScoringReturnUnrestSources(G, hook, playerId));
+    ruleset.hookRules = (ruleset.hookRules ?? []).map((hook) => expandScoringReturnUnrestSources(G, hook, playerId));
     if (!runNationHooks({ G, playerId, trigger: "before_scoring", randomNumber })) return false;
     if (G.gameover) return false;
     if (hasPendingInterruption(G)) {
@@ -624,12 +664,8 @@ export function scorePlayer(G: GameState, playerId: string, randomNumber?: () =>
 }
 
 function calculatePlayerScore(G: GameState, playerId: string): number {
-  const p = G.players[playerId];
-  const ruleset = G.activeNationRulesets?.[playerId];
-  const excludedZones = new Set((ruleset?.scoringOverrides ?? []).filter((ov) => ov.op === "exclude_zone_from_scoring").map((ov) => ov.zoneId));
-  const baseScoringZones = ["hand", "playArea", "deck", "discard", "powerArea"];
-  const historyZoneIds = actualScoredHistoryZoneIds(G, playerId);
-  const scoredZoneIds = [...baseScoringZones, ...historyZoneIds];
+  const excludedZones = playerExcludedScoringZones(G, playerId);
+  const scoredZoneIds = baseScoredZoneIds(G, playerId);
   const cardScore = scoredZoneIds.reduce((sum, zoneId) => sum + scoreZone(G, playerId, zoneId, excludedZones), 0);
   const garrisonScore = scoreCardIds(G, playerId, garrisonedCardsInScoringZones(G, playerId, scoredZoneIds, excludedZones));
   return cardScore + garrisonScore + scoreResourcePool(G, playerId);

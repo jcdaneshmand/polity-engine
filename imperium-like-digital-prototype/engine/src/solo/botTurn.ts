@@ -62,6 +62,7 @@ function hasPendingInterruption(G: GameState): boolean {
     ?? G.pendingExileChoice
     ?? G.pendingGarrisonChoice
     ?? G.pendingRegionChoice
+    ?? G.pendingRegionChoiceContinuation
     ?? G.pendingDevelopmentChoice
     ?? G.pendingShortGameDevelopmentExileChoice
     ?? G.pendingTradeChoice
@@ -83,6 +84,7 @@ function hasPendingInterruption(G: GameState): boolean {
     ?? G.pendingAcquireCardResolution
     ?? G.pendingAcquireEffectResolution
     ?? G.pendingMarketMoveEffectResolution
+    ?? G.pendingBreakThroughEffectResolution
     ?? G.pendingMarketUnrestHookContinuation
     ?? G.pendingNationHookContinuation
     ?? G.pendingUnrestTakeContinuation

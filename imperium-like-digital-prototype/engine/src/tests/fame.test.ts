@@ -152,7 +152,7 @@ describe("Fame deck", () => {
     expect(G.scoring).toBeUndefined();
   });
 
-  it("resolves King of Kings for a civilized State by gaining 3 Progress and offering a free Develop", () => {
+  it("resolves King of Kings for a civilized State by gaining 3 Progress and auto-resolving one free Develop", () => {
     const G = createInitialState();
     G.cardDb.civilized_state = {
       id: "civilized_state",
@@ -177,17 +177,11 @@ describe("Fame deck", () => {
     expect(takeFameCard(G, "1")).toBe("king_of_kings");
 
     expect(G.players["1"].resources.knowledge).toBe(3);
-    expect(G.pendingDevelopmentChoice).toEqual({
-      playerId: "1",
-      sourceCardId: "king_of_kings",
-      cardIds: ["test_action_scholars_circle"],
-      resumeDrawCount: 0,
-      resumeBehavior: "none",
-      usesProgressionToken: false,
-      free: true
-    });
+    expect(G.pendingDevelopmentChoice).toBeUndefined();
+    expect(G.players["1"].developmentArea).toEqual([]);
+    expect(G.players["1"].discard).toContain("test_action_scholars_circle");
     expect(G.scoring).toEqual({
-      reason: "fame_deck_terminal_condition",
+      reason: "development_area_empty",
       triggeredBy: "1",
       phase: "finish_current_round"
     });
@@ -265,7 +259,9 @@ describe("Fame deck", () => {
     expect(takeFameCard(G, "0")).toBe("king_of_kings");
 
     expect(G.players["0"].resources.knowledge).toBe(3);
-    expect(G.pendingDevelopmentChoice?.cardIds).toEqual(["test_action_scholars_circle"]);
+    expect(G.pendingDevelopmentChoice).toBeUndefined();
+    expect(G.players["0"].developmentArea).toEqual([]);
+    expect(G.players["0"].discard).toContain("test_action_scholars_circle");
   });
 
   it("can suppress King of Kings rewards for a ruleset-specific state exception", () => {

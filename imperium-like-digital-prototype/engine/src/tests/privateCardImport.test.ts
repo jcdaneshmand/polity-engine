@@ -124,9 +124,10 @@ describe("private card import", () => {
       {trigger:"on_play",op:"garrison_card"},
       {trigger:"on_play",op:"recall_region",cardId:"region_a"},
       {trigger:"on_play",op:"abandon_region",cardId:"region_b"},
-      {trigger:"on_play",op:"recall_region"},
-      {trigger:"on_play",op:"abandon_region"},
+      {trigger:"on_play",op:"recall_region",count:2},
+      {trigger:"on_play",op:"abandon_region",count:2},
       {trigger:"on_play",op:"develop"},
+      {trigger:"on_play",op:"develop",free:true},
       {trigger:"on_play",op:"exile_card",source:"market",cardId:"market_card"},
       {trigger:"on_play",op:"look_cards",source:"deck",count:2},
       {trigger:"on_play",op:"choose_one",choices:[
@@ -135,6 +136,18 @@ describe("private card import", () => {
       ]}
     ]);
     expect(validatePrivateCardsRows([{...base,effect_ops_json}]).counts.fatal).toBe(0);
+  });
+  it("preserves free Develop metadata from private card imports",()=> {
+    const effect_ops_json = JSON.stringify([
+      {trigger:"on_play",op:"develop",free:true}
+    ]);
+
+    const report = validatePrivateCardsRows([{...base,effect_ops_json}]);
+
+    expect(report.counts.fatal).toBe(0);
+    expect(normalizeCard({...base,effect_ops_json} as any).effects).toEqual([
+      {trigger:"on_play",op:"develop",free:true}
+    ]);
   });
   it("rejects empty nested effect branches before runtime",()=> {
     const effect_ops_json = JSON.stringify([
@@ -759,6 +772,18 @@ describe("private card import", () => {
       mode: "variable",
       value: null,
       formula: { op: "count_resources", resources: ["materials","influence"], amountEach: 1, denominator: 5, cap: 10 }
+    });
+  });
+  it("normalizes structured variable card-resource VP formulas from JSON",()=> {
+    const vp_details_json = JSON.stringify({
+      formula: { op: "count_resources", resource: "materials", resourceZones: ["playArea","history"], amountEach: 1, denominator: 2, cap: 10 }
+    });
+
+    expect(validatePrivateCardsRows([{...base,vp_mode:"variable",vp_details_json}]).counts.fatal).toBe(0);
+    expect(normalizeCard({...base,vp_mode:"variable",vp_details_json} as any).vp).toEqual({
+      mode: "variable",
+      value: null,
+      formula: { op: "count_resources", resource: "materials", resourceZones: ["playArea","history"], amountEach: 1, denominator: 2, cap: 10 }
     });
   });
   it("rejects invalid structured variable VP formulas",()=> {

@@ -20,6 +20,24 @@ describe("commons deck construction", () => {
     expect(result.mainDeck).toContain("aggressive_1");
   });
 
+  it("lowered_aggression delays explicitly marked cards even when they are not aggressive attacks", () => {
+    const result = buildCommonsDecks({
+      cards: [
+        card({ id: "safe_1", setupBannerSuit: "region" }),
+        card({ id: "safe_2", setupBannerSuit: "region" }),
+        card({ id: "safe_3", setupBannerSuit: "region" }),
+        card({ id: "safe_4", setupBannerSuit: "region" }),
+        card({ id: "safe_5", setupBannerSuit: "region" }),
+        card({ id: "delayed_non_attack", cardType: "action", tags: [], delayableInLoweredAggression: true })
+      ],
+      options: options({ enabledVariants: ["lowered_aggression"] })
+    });
+
+    expect(result.delayedCards).toEqual(["delayed_non_attack"]);
+    expect(result.initialMarket.map((slot) => slot.cardId)).not.toContain("delayed_non_attack");
+    expect(result.mainDeck).toContain("delayed_non_attack");
+  });
+
   it("quick_setup uses combined deck path", () => {
     const result = buildCommonsDecks({ cards: [card({ id: "combined_a", setupBannerSuit: "region" })], options: options({ enabledVariants: ["quick_setup"] }) });
     expect(result.constructionPath).toBe("quick");
@@ -59,6 +77,49 @@ describe("commons deck construction", () => {
     ];
     expect(initialMarketCards.size).toBe(5);
     remainingDeckCards.forEach((cardId) => expect(initialMarketCards.has(cardId)).toBe(false));
+  });
+
+  it("quick_setup still places visible Tributary bottom cards under the Small decks", () => {
+    const result = buildCommonsDecks({
+      cards: [
+        ...Array.from({ length: 20 }, (_, i) => card({ id: `quick_${i}`, setupBannerSuit: "none" })),
+        card({ id: "tributary_region_bottom", setupBannerSuit: "tributary" }),
+        card({ id: "tributary_uncivilized_bottom", setupBannerSuit: "tributary" }),
+        card({ id: "tributary_civilized_bottom", setupBannerSuit: "tributary" })
+      ],
+      options: options({ enabledVariants: ["quick_setup"], playerCount: 2, effectiveCommonsPlayerCount: 2 })
+    });
+
+    expect(result.initialMarket.map((slot) => slot.cardId)).toEqual(["quick_0", "quick_6", "quick_12", "quick_18", "quick_19"]);
+    expect(result.regionDeck.at(-1)).toBe("tributary_region_bottom");
+    expect(result.uncivilizedDeck.at(-1)).toBe("tributary_uncivilized_bottom");
+    expect(result.civilizedDeck.at(-1)).toBe("tributary_civilized_bottom");
+    expect((result as any).smallDeckBottomCards).toEqual({
+      regionDeck: "tributary_region_bottom",
+      uncivilizedDeck: "tributary_uncivilized_bottom",
+      civilizedDeck: "tributary_civilized_bottom"
+    });
+  });
+
+  it("quick_setup treats imported Tributary suit icons as visible Small-deck bottom cards", () => {
+    const result = buildCommonsDecks({
+      cards: [
+        ...Array.from({ length: 20 }, (_, i) => card({ id: `quick_${i}`, setupBannerSuit: "none" })),
+        card({ id: "imported_tributary_region_bottom", setupBannerSuit: "civilized", tags: ["suit:tributary"] }),
+        card({ id: "imported_tributary_uncivilized_bottom", setupBannerSuit: "civilized", tags: ["suit:tributary"] }),
+        card({ id: "imported_tributary_civilized_bottom", setupBannerSuit: "civilized", tags: ["suit:tributary"] })
+      ],
+      options: options({ enabledVariants: ["quick_setup"], playerCount: 2, effectiveCommonsPlayerCount: 2 })
+    });
+
+    expect(result.regionDeck.at(-1)).toBe("imported_tributary_region_bottom");
+    expect(result.uncivilizedDeck.at(-1)).toBe("imported_tributary_uncivilized_bottom");
+    expect(result.civilizedDeck.at(-1)).toBe("imported_tributary_civilized_bottom");
+    expect((result as any).smallDeckBottomCards).toEqual({
+      regionDeck: "imported_tributary_region_bottom",
+      uncivilizedDeck: "imported_tributary_uncivilized_bottom",
+      civilizedDeck: "imported_tributary_civilized_bottom"
+    });
   });
 
   it("does not treat non-market starting locations as market eligible by default", () => {
@@ -277,6 +338,32 @@ describe("commons deck construction", () => {
     expect(marketSlot?.attachedUnrestCardIds).toEqual(["unrest_a"]);
   });
 
+  it("puts tag-only imported Unrest into the shared Unrest pile during setup", () => {
+    const result = buildCommonsDecks({
+      cards: [
+        card({ id: "tagged_unrest_a", suit: "none", setupBannerSuit: "none", tags: ["unrest"] }),
+        card({ id: "market_a", setupBannerSuit: "civilized" })
+      ],
+      options: options()
+    });
+    expect(result.unrestPile).toEqual([]);
+    expect(result.initialMarket.map((slot) => slot.attachedUnrestCardIds)).toContainEqual(["tagged_unrest_a"]);
+    expect(result.initialMarket.map((slot) => slot.cardId)).not.toContain("tagged_unrest_a");
+  });
+
+  it("puts imported cards with a Fame suit icon into the Fame deck during setup", () => {
+    const result = buildCommonsDecks({
+      cards: [
+        card({ id: "tagged_fame_a", suit: "none", setupBannerSuit: "none", tags: ["suit:fame"] }),
+        card({ id: "market_a", setupBannerSuit: "civilized" })
+      ],
+      options: options()
+    });
+    expect(result.fameDeck).toEqual(["tagged_fame_a"]);
+    expect(result.initialMarket.map((slot) => slot.cardId)).not.toContain("tagged_fame_a");
+    expect(result.mainDeck).not.toContain("tagged_fame_a");
+  });
+
   it("does not attach Unrest under Region market cards", () => {
     const result = buildCommonsDecks({
       cards: [
@@ -287,6 +374,19 @@ describe("commons deck construction", () => {
     });
     expect(result.initialMarket[0].cardId).toBe("region_a");
     expect(result.initialMarket[0].attachedUnrestCardIds).toEqual([]);
+    expect(result.unrestPile).toEqual(["unrest_a"]);
+  });
+
+  it("does not attach Unrest under imported cards with a Region suit icon", () => {
+    const result = buildCommonsDecks({
+      cards: [
+        card({ id: "unrest_a", cardType: "unrest", suit: "unrest", unrestPileEligible: true }),
+        card({ id: "tagged_region_a", suit: "civilized", setupBannerSuit: "civilized", tags: ["suit:region"] })
+      ],
+      options: options()
+    });
+    const marketSlot = result.initialMarket.find((slot) => slot.cardId === "tagged_region_a");
+    expect(marketSlot?.attachedUnrestCardIds).toEqual([]);
     expect(result.unrestPile).toEqual(["unrest_a"]);
   });
 });

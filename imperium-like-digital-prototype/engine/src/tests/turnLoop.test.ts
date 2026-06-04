@@ -2,10 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import { runEffects } from "../cards/effectRunner";
 import { PrototypeGame } from "../game/game";
 import { createInitialState } from "../game/initialState";
-import { acquireCard, endTurnMove, exhaustCard, innovateTurn, playCard, resolveAcquireChoice, resolveBreakThroughChoice, resolveChoice, resolveCleanupDiscard, resolveCleanupMarketResource, resolveDiscardChoice, resolveDrawChoice, resolveExileChoice, resolveFindChoice, resolveGarrisonChoice, resolveGiveCardChoice, resolveLookOrderChoice, resolvePlaceOnDeckChoice, resolveReactiveExhaustChoice, resolveRegionChoice, resolveReturnExhaustTokenChoice, resolveReturnUnrestChoice, resolveSolsticeOrderChoice, resolveSwapChoice, resolveUnrestAllocationChoice, revoltTurn, skipReactiveExhaustChoice } from "../game/moves";
+import { acquireCard, endTurnMove, exhaustCard, innovateTurn, playCard, resolveAcquireChoice, resolveBreakThroughChoice, resolveChoice, resolveCleanupDiscard, resolveCleanupMarketResource, resolveDiscardChoice, resolveDrawChoice, resolveExileChoice, resolveFindChoice, resolveGarrisonChoice, resolveGiveCardChoice, resolveLookOrderChoice, resolveMarketCardChoice, resolvePlaceOnDeckChoice, resolveReactiveExhaustChoice, resolveRegionChoice, resolveReturnExhaustTokenChoice, resolveReturnUnrestChoice, resolveSolsticeOrderChoice, resolveSwapChoice, resolveUnrestAllocationChoice, revoltTurn, skipReactiveExhaustChoice } from "../game/moves";
 import type { GameState } from "../game/state";
 import { currentStateMatches } from "../game/stateMatching";
 import { continuePausedSolstice, onTurnBegin, onTurnEnd } from "../game/turn";
+import { continuePendingUnrestTake } from "../game/unrest";
 
 const ctx = { currentPlayer: "0" } as any;
 
@@ -104,6 +105,31 @@ describe("turn loop", () => {
     playCard({ G, ctx }, card);
     expect(G.players["0"].playArea).not.toContain(card);
     expect(G.players["0"].discard).toContain(card);
+  });
+
+  it("keeps a resolved in-play card in play after its play text resolves", () => {
+    const G = createInitialState();
+    const card = "persistent_play_card";
+    G.players["0"].hand = [card];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.players["0"].resources.knowledge = 0;
+    G.cardDb[card] = {
+      id: card,
+      displayName: "Persistent Play Card",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 } as any]
+    };
+
+    playCard({ G, ctx }, card);
+
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["0"].playArea).toContain(card);
+    expect(G.players["0"].discard).not.toContain(card);
   });
 
   it("defers after-play hooks and discard until a played card's pending choice resolves", () => {
@@ -404,6 +430,55 @@ describe("turn loop", () => {
     expect(G.players["0"].discard).toContain(playedCard);
   });
 
+  it("resolves only the matching reactive Exhaust text on a mixed Exhaust card", () => {
+    const G = createInitialState();
+    const playedCard = "mixed_reactive_trigger_card";
+    const exhaustCardId = "mixed_reactive_exhaust_card";
+    G.players["0"].hand = [playedCard];
+    G.players["0"].playArea = [exhaustCardId];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.cardDb[playedCard] = {
+      id: playedCard,
+      displayName: "Mixed Reactive Trigger",
+      type: "action",
+      cardType: "action",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 } as any]
+    };
+    G.cardDb[exhaustCardId] = {
+      id: exhaustCardId,
+      displayName: "Mixed Reactive Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [
+        { trigger: "on_exhaust", op: "gain_resource", resource: "materials", amount: 1 } as any,
+        {
+          trigger: "on_exhaust",
+          op: "gain_resource",
+          resource: "influence",
+          amount: 1,
+          reactive: { trigger: "after_gain_resource", resource: "knowledge" }
+        } as any
+      ]
+    };
+
+    playCard({ G, ctx }, playedCard);
+    resolveReactiveExhaustChoice({ G, ctx }, exhaustCardId);
+
+    expect(G.pendingReactiveExhaustChoice).toBeUndefined();
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["0"].resources.influence).toBe(1);
+    expect(G.players["0"].resources.materials).toBe(0);
+    expect(G.cardStates?.[exhaustCardId]?.exhaustTokens).toBe(1);
+  });
+
   it("offers a reactive Exhaust resource return even when no token can be returned", () => {
     const G = createInitialState();
     const playedCard = "reactive_return_empty_trigger_card";
@@ -632,6 +707,549 @@ describe("turn loop", () => {
     expect(G.players["0"].discard).toContain(playedCard);
   });
 
+  it("runs after-Break-through hooks after the reactive Exhaust window before later effects", () => {
+    const G = createInitialState();
+    const playedCard = "reactive_break_through_hook_trigger_card";
+    const exhaustCardId = "reactive_after_break_through_hook_exhaust_card";
+    const marketCardId = "reactive_break_through_hook_market_card";
+    G.players["0"].hand = [playedCard];
+    G.players["0"].playArea = [exhaustCardId];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.players["0"].resources.goods = 0;
+    G.players["0"].resources.influence = 0;
+    G.players["0"].resources.materials = 0;
+    G.market = [marketCardId];
+    G.marketRefillPool = [];
+    G.marketDecks = undefined;
+    G.cardDb[playedCard] = {
+      id: playedCard,
+      displayName: "Reactive Break Through Hook Trigger",
+      type: "action",
+      cardType: "action",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [
+        { trigger: "on_play", op: "break_through", suit: "uncivilized", source: "market", count: 1 } as any,
+        { trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 } as any
+      ]
+    };
+    G.cardDb[marketCardId] = {
+      ...G.cardDb.test_action_foundry_shift,
+      id: marketCardId,
+      displayName: "Reactive Break Through Hook Market Card",
+      suit: "uncivilized"
+    };
+    G.cardDb[exhaustCardId] = {
+      id: exhaustCardId,
+      displayName: "Reactive After Break Through Hook Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_exhaust",
+        op: "gain_resource",
+        resource: "influence",
+        amount: 1,
+        reactive: { trigger: "after_break_through_card", target: "self" }
+      } as any]
+    };
+    G.activeNationRulesets = {
+      "0": {
+        hookRules: [{
+          trigger: "after_break_through",
+          condition: { op: "payload_card_is", payloadKey: "cardId", cardId: marketCardId },
+          effects: [{ trigger: "on_play", op: "gain_resource", resource: "goods", amount: 1 }]
+        }]
+      }
+    } as any;
+
+    playCard({ G, ctx }, playedCard);
+
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: [exhaustCardId],
+      resolvingPlayerId: "0",
+      sourceCardId: playedCard,
+      trigger: "after_break_through_card",
+      targetPlayerId: "0"
+    });
+
+    resolveReactiveExhaustChoice({ G, ctx }, exhaustCardId);
+
+    expect(G.pendingReactiveExhaustChoice).toBeUndefined();
+    expect(G.players["0"].resources.influence).toBe(1);
+    expect(G.players["0"].resources.goods).toBe(1);
+    expect(G.players["0"].resources.materials).toBe(1);
+    expect(G.log.some((entry) => entry.message === "Nation hook after_break_through #0 resolved.")).toBe(true);
+  });
+
+  it("continues after-Break-through hooks for later gained cards after a hook choice resolves", () => {
+    const G = createInitialState();
+    const playedCard = "multi_break_through_hook_choice_trigger";
+    const firstGainedCardId = "multi_break_through_hook_choice_first";
+    const secondGainedCardId = "multi_break_through_hook_choice_second";
+    G.players["0"].hand = [playedCard, "discard_hook_card_a", "discard_hook_card_b"];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.players["0"].resources.goods = 0;
+    G.players["0"].resources.knowledge = 0;
+    G.players["0"].resources.materials = 0;
+    G.marketDecks = {
+      mainDeck: [],
+      regionDeck: [],
+      uncivilizedDeck: [firstGainedCardId, secondGainedCardId],
+      civilizedDeck: [],
+      tributaryDeck: []
+    };
+    G.cardDb[playedCard] = {
+      id: playedCard,
+      displayName: "Multi Break Through Hook Choice Trigger",
+      type: "action",
+      cardType: "action",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [
+        { trigger: "on_play", op: "break_through", suit: "uncivilized", source: "deck", count: 2 } as any,
+        { trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 } as any
+      ]
+    };
+    for (const id of [firstGainedCardId, secondGainedCardId]) {
+      G.cardDb[id] = {
+        id,
+        displayName: id,
+        type: "action",
+        cardType: "action",
+        suit: "uncivilized",
+        cost: 0,
+        tags: [],
+        effects: []
+      };
+    }
+    G.activeNationRulesets = {
+      "0": {
+        hookRules: [
+          {
+            trigger: "after_break_through",
+            condition: { op: "payload_card_is", payloadKey: "cardId", cardId: firstGainedCardId },
+            effects: [
+              { trigger: "on_play", op: "discard_cards", count: 1 } as any,
+              { trigger: "on_play", op: "gain_resource", resource: "goods", amount: 1 } as any
+            ]
+          },
+          {
+            trigger: "after_break_through",
+            condition: { op: "payload_card_is", payloadKey: "cardId", cardId: secondGainedCardId },
+            effects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 } as any]
+          }
+        ]
+      }
+    } as any;
+
+    playCard({ G, ctx }, playedCard);
+
+    expect(G.players["0"].hand).toEqual(expect.arrayContaining([firstGainedCardId, secondGainedCardId]));
+    expect(G.pendingDiscardChoice).toMatchObject({
+      playerId: "0",
+      sourceCardId: playedCard,
+      cardIds: expect.arrayContaining(["discard_hook_card_a", "discard_hook_card_b"]),
+      count: 1
+    });
+    expect(G.players["0"].resources.goods).toBe(0);
+    expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.players["0"].resources.materials).toBe(0);
+
+    resolveDiscardChoice({ G, ctx }, ["discard_hook_card_a"]);
+
+    expect(G.pendingDiscardChoice).toBeUndefined();
+    expect(G.players["0"].resources.goods).toBe(1);
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["0"].resources.materials).toBe(1);
+    expect(G.log.filter((entry) => entry.message === "Nation hook after_break_through #0 resolved.")).toHaveLength(1);
+    expect(G.log.filter((entry) => entry.message === "Nation hook after_break_through #1 resolved.")).toHaveLength(1);
+  });
+
+  it("keeps later resource costs behind a pending discard-card choice", () => {
+    const G = createInitialState();
+    const playedCard = "discard_then_spend_action";
+    G.players["0"].hand = [playedCard, "discard_a", "discard_b", "keep_card"];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.players["0"].resources.knowledge = 1;
+    G.players["0"].resources.materials = 0;
+    G.cardDb[playedCard] = {
+      id: playedCard,
+      displayName: "Discard Then Spend Action",
+      type: "action",
+      cardType: "action",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [
+        { trigger: "on_play", op: "discard_cards", count: 2 } as any,
+        { trigger: "on_play", op: "spend_resource", resource: "knowledge", amount: 1 } as any,
+        { trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 } as any
+      ]
+    };
+
+    playCard({ G, ctx }, playedCard);
+
+    expect(G.pendingDiscardChoice).toMatchObject({
+      playerId: "0",
+      sourceCardId: playedCard,
+      cardIds: ["discard_a", "discard_b", "keep_card"],
+      count: 2,
+      resumeEffects: [
+        { trigger: "on_play", op: "spend_resource", resource: "knowledge", amount: 1 },
+        { trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }
+      ]
+    });
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["0"].resources.materials).toBe(0);
+
+    resolveDiscardChoice({ G, ctx }, ["discard_a", "discard_b"]);
+
+    expect(G.pendingDiscardChoice).toBeUndefined();
+    expect(G.players["0"].hand).toEqual(["keep_card"]);
+    expect(G.players["0"].discard).toEqual(["discard_a", "discard_b", playedCard]);
+    expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.players["0"].resources.materials).toBe(1);
+  });
+
+  it("keeps later resource costs behind resource-gain reactive Exhaust windows", () => {
+    const G = createInitialState();
+    const playedCard = "resource_gain_then_later_cost_action";
+    const exhaustCardId = "resource_gain_later_cost_exhaust";
+    G.players["0"].hand = [playedCard];
+    G.players["0"].playArea = [exhaustCardId];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.players["0"].resources.knowledge = 0;
+    G.players["0"].resources.materials = 1;
+    G.players["0"].resources.influence = 0;
+    G.cardDb[playedCard] = {
+      id: playedCard,
+      displayName: "Resource Gain Then Later Cost Action",
+      type: "action",
+      cardType: "action",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [
+        { trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 } as any,
+        { trigger: "on_play", op: "spend_resource", resource: "materials", amount: 1 } as any,
+        { trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 } as any
+      ]
+    };
+    G.cardDb[exhaustCardId] = {
+      id: exhaustCardId,
+      displayName: "Resource Gain Later Cost Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_exhaust",
+        op: "gain_resource",
+        resource: "influence",
+        amount: 1,
+        reactive: { trigger: "after_gain_resource", resource: "knowledge" }
+      } as any]
+    };
+
+    playCard({ G, ctx }, playedCard);
+
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: [exhaustCardId],
+      resolvingPlayerId: "0",
+      sourceCardId: playedCard,
+      trigger: "after_gain_resource",
+      resource: "knowledge",
+      resumeEffects: [
+        { trigger: "on_play", op: "spend_resource", resource: "materials", amount: 1 },
+        { trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }
+      ]
+    });
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["0"].resources.materials).toBe(1);
+    expect(G.players["0"].resources.influence).toBe(0);
+
+    resolveReactiveExhaustChoice({ G, ctx }, exhaustCardId);
+
+    expect(G.pendingReactiveExhaustChoice).toBeUndefined();
+    expect(G.players["0"].resources.knowledge).toBe(2);
+    expect(G.players["0"].resources.materials).toBe(0);
+    expect(G.players["0"].resources.influence).toBe(1);
+    expect(G.players["0"].discard).toContain(playedCard);
+  });
+
+  it("keeps later resource costs behind steal-resource reactive Exhaust windows", () => {
+    const G = createInitialState();
+    const playedCard = "steal_resource_then_later_cost_action";
+    const exhaustCardId = "steal_resource_later_cost_exhaust";
+    G.players["0"].hand = [playedCard];
+    G.players["0"].playArea = [exhaustCardId];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.players["0"].resources.knowledge = 0;
+    G.players["0"].resources.materials = 1;
+    G.players["0"].resources.influence = 0;
+    G.players["1"].resources.knowledge = 1;
+    G.cardDb[playedCard] = {
+      id: playedCard,
+      displayName: "Steal Resource Then Later Cost Action",
+      type: "action",
+      cardType: "action",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [
+        { trigger: "on_play", op: "steal_resource", fromPlayerId: "1", resource: "knowledge", amount: 1 } as any,
+        { trigger: "on_play", op: "spend_resource", resource: "materials", amount: 1 } as any,
+        { trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 } as any
+      ]
+    };
+    G.cardDb[exhaustCardId] = {
+      id: exhaustCardId,
+      displayName: "Steal Resource Later Cost Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_exhaust",
+        op: "gain_resource",
+        resource: "influence",
+        amount: 1,
+        reactive: { trigger: "after_gain_resource", resource: "knowledge" }
+      } as any]
+    };
+
+    playCard({ G, ctx }, playedCard);
+
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: [exhaustCardId],
+      resolvingPlayerId: "0",
+      sourceCardId: playedCard,
+      trigger: "after_gain_resource",
+      resource: "knowledge",
+      resumeEffects: [
+        { trigger: "on_play", op: "spend_resource", resource: "materials", amount: 1 },
+        { trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }
+      ]
+    });
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["0"].resources.materials).toBe(1);
+    expect(G.players["0"].resources.influence).toBe(0);
+    expect(G.players["1"].resources.knowledge).toBe(0);
+
+    resolveReactiveExhaustChoice({ G, ctx }, exhaustCardId);
+
+    expect(G.pendingReactiveExhaustChoice).toBeUndefined();
+    expect(G.players["0"].resources.knowledge).toBe(2);
+    expect(G.players["0"].resources.materials).toBe(0);
+    expect(G.players["0"].resources.influence).toBe(1);
+    expect(G.players["0"].discard).toContain(playedCard);
+  });
+
+  it("opens after-Break-through reactive windows once per gained card before later effects", () => {
+    const G = createInitialState();
+    const playedCard = "multi_break_through_reactive_trigger";
+    const exhaustCardId = "multi_break_through_reactive_exhaust";
+    const firstGainedCardId = "multi_break_through_reactive_first";
+    const secondGainedCardId = "multi_break_through_reactive_second";
+    G.players["0"].hand = [playedCard];
+    G.players["0"].playArea = [exhaustCardId];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.players["0"].resources.materials = 0;
+    G.players["0"].resources.influence = 0;
+    G.marketDecks = {
+      mainDeck: [],
+      regionDeck: [],
+      uncivilizedDeck: [firstGainedCardId, secondGainedCardId],
+      civilizedDeck: [],
+      tributaryDeck: []
+    };
+    G.cardDb[playedCard] = {
+      id: playedCard,
+      displayName: "Multi Break Through Reactive Trigger",
+      type: "action",
+      cardType: "action",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [
+        { trigger: "on_play", op: "break_through", suit: "uncivilized", source: "deck", count: 2 } as any,
+        { trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 } as any
+      ]
+    };
+    for (const id of [firstGainedCardId, secondGainedCardId]) {
+      G.cardDb[id] = {
+        id,
+        displayName: id,
+        type: "action",
+        cardType: "action",
+        suit: "uncivilized",
+        cost: 0,
+        tags: [],
+        effects: []
+      };
+    }
+    G.cardDb[exhaustCardId] = {
+      id: exhaustCardId,
+      displayName: "Multi Break Through Reactive Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_exhaust",
+        op: "gain_resource",
+        resource: "influence",
+        amount: 1,
+        reactive: { trigger: "after_break_through_card", target: "self" }
+      } as any]
+    };
+
+    playCard({ G, ctx }, playedCard);
+
+    expect(G.players["0"].hand).toEqual(expect.arrayContaining([firstGainedCardId, secondGainedCardId]));
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: [exhaustCardId],
+      resolvingPlayerId: "0",
+      sourceCardId: playedCard,
+      trigger: "after_break_through_card",
+      targetPlayerId: "0"
+    });
+    expect(G.players["0"].resources.materials).toBe(0);
+
+    skipReactiveExhaustChoice({ G, ctx });
+
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: [exhaustCardId],
+      resolvingPlayerId: "0",
+      sourceCardId: playedCard,
+      trigger: "after_break_through_card",
+      targetPlayerId: "0"
+    });
+    expect(G.players["0"].resources.materials).toBe(0);
+  });
+
+  it("resumes direct market Break through after market resource windows before later effects", () => {
+    const G = createInitialState();
+    const playedCard = "reactive_break_through_resource_trigger_card";
+    const resourceExhaustCardId = "reactive_break_through_resource_exhaust_card";
+    const breakThroughExhaustCardId = "reactive_break_through_after_exhaust_card";
+    const marketCardId = "reactive_break_through_resource_market_card";
+    G.players["0"].hand = [playedCard];
+    G.players["0"].playArea = [resourceExhaustCardId, breakThroughExhaustCardId];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.players["0"].resources.knowledge = 0;
+    G.players["0"].resources.materials = 0;
+    G.players["0"].resources.influence = 0;
+    G.market = [marketCardId];
+    G.marketResources = { [marketCardId]: { knowledge: 1 } };
+    G.marketRefillPool = [];
+    G.marketDecks = undefined;
+    G.cardDb[playedCard] = {
+      id: playedCard,
+      displayName: "Reactive Break Through Resource Trigger",
+      type: "action",
+      cardType: "action",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [
+        { trigger: "on_play", op: "break_through", suit: "uncivilized", source: "market", count: 1 } as any,
+        { trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 } as any
+      ]
+    };
+    G.cardDb[marketCardId] = {
+      ...G.cardDb.test_action_foundry_shift,
+      id: marketCardId,
+      displayName: "Reactive Break Through Resource Market Card",
+      suit: "uncivilized"
+    };
+    G.cardDb[resourceExhaustCardId] = {
+      id: resourceExhaustCardId,
+      displayName: "Reactive Break Through Resource Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_exhaust",
+        op: "gain_resource",
+        resource: "influence",
+        amount: 1,
+        reactive: { trigger: "after_gain_resource", resource: "knowledge" }
+      } as any]
+    };
+    G.cardDb[breakThroughExhaustCardId] = {
+      id: breakThroughExhaustCardId,
+      displayName: "Reactive After Break Through Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_exhaust",
+        op: "gain_resource",
+        resource: "knowledge",
+        amount: 1,
+        reactive: { trigger: "after_break_through_card", target: "self" }
+      } as any]
+    };
+
+    playCard({ G, ctx }, playedCard);
+
+    expect(G.players["0"].hand).toContain(marketCardId);
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: [resourceExhaustCardId],
+      resolvingPlayerId: "0",
+      sourceCardId: playedCard,
+      trigger: "after_gain_resource",
+      resource: "knowledge",
+      eventSourceCardId: marketCardId,
+      eventSourceWasInPlay: true
+    });
+    expect(G.players["0"].resources.materials).toBe(0);
+
+    skipReactiveExhaustChoice({ G, ctx });
+
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: [breakThroughExhaustCardId],
+      resolvingPlayerId: "0",
+      sourceCardId: playedCard,
+      trigger: "after_break_through_card",
+      targetPlayerId: "0"
+    });
+    expect(G.players["0"].resources.materials).toBe(0);
+  });
+
   it("pauses after failed Break through fallback Materials for a resource reactive Exhaust before resuming later effects", () => {
     const G = createInitialState();
     const playedCard = "reactive_break_through_fallback_trigger_card";
@@ -767,6 +1385,205 @@ describe("turn loop", () => {
     expect(G.cardStates?.[exhaustCardId]?.exhaustTokens).toBe(1);
     expect(G.players["0"].playArea).not.toContain(playedCard);
     expect(G.players["0"].discard).toContain(playedCard);
+  });
+
+  it("opens an Unrest reactive window after a paused first take before taking the next Unrest", () => {
+    const G = createInitialState();
+    const playedCard = "paused_multi_unrest_trigger_card";
+    const exhaustCardId = "paused_multi_unrest_exhaust_card";
+    G.players["0"].hand = [playedCard];
+    G.players["0"].playArea = [exhaustCardId];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.players["0"].resources.goods = 0;
+    G.unrestPile = ["paused_multi_unrest_a", "paused_multi_unrest_b"];
+    for (const id of G.unrestPile) {
+      G.cardDb[id] = {
+        id,
+        displayName: id,
+        type: "unrest",
+        cardType: "unrest",
+        suit: "unrest",
+        cost: 0,
+        tags: ["unrest"],
+        effects: []
+      };
+    }
+    G.cardDb[playedCard] = {
+      id: playedCard,
+      displayName: "Paused Multi Unrest Trigger",
+      type: "action",
+      cardType: "action",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_play", op: "take_unrest", count: 2 } as any]
+    };
+    G.cardDb[exhaustCardId] = {
+      id: exhaustCardId,
+      displayName: "Paused Multi Unrest Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_exhaust",
+        op: "gain_resource",
+        resource: "influence",
+        amount: 1,
+        reactive: { trigger: "after_take_unrest", target: "self" }
+      } as any]
+    };
+    G.activeNationRulesets = {
+      "0": {
+        hookRules: [{
+          trigger: "after_gain_unrest",
+          effects: [{
+            trigger: "on_play",
+            op: "choose_one",
+            choices: [[{ trigger: "on_play", op: "gain_resource", resource: "goods", amount: 1 }]]
+          } as any]
+        }]
+      }
+    } as any;
+
+    playCard({ G, ctx }, playedCard);
+
+    expect(G.players["0"].hand).toContain("paused_multi_unrest_a");
+    expect(G.players["0"].hand).not.toContain("paused_multi_unrest_b");
+    expect(G.pendingChoice).toBeDefined();
+    expect(G.pendingUnrestTakeContinuation).toMatchObject({
+      playerId: "0",
+      recipientPlayerIds: ["0"],
+      countPerPlayer: 2,
+      recipientIndex: 0,
+      cardIndex: 1,
+      reactiveTargetPlayerIds: ["0"]
+    });
+
+    resolveChoice({ G, ctx }, 0);
+
+    expect(G.players["0"].resources.goods).toBe(1);
+    expect(G.players["0"].hand).not.toContain("paused_multi_unrest_b");
+    expect(G.pendingUnrestTakeContinuation).toMatchObject({
+      playerId: "0",
+      recipientPlayerIds: ["0"],
+      countPerPlayer: 2,
+      recipientIndex: 0,
+      cardIndex: 1,
+      reactiveTargetPlayerIds: []
+    });
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: [exhaustCardId],
+      resolvingPlayerId: "0",
+      trigger: "after_take_unrest",
+      targetPlayerId: "0"
+    });
+  });
+
+  it("keeps a pending Unrest-take continuation parked behind cleanup discard choices", () => {
+    const G = createInitialState();
+    G.unrestPile = ["parked_unrest"];
+    G.pendingUnrestTakeContinuation = {
+      playerId: "0",
+      recipientPlayerIds: ["0"],
+      countPerPlayer: 1,
+      recipientIndex: 0,
+      cardIndex: 0,
+      taken: 0
+    };
+    G.pendingCleanupDiscardChoice = { playerId: "0", cardIds: ["discard_option"] };
+
+    const result = continuePendingUnrestTake(G, "0");
+
+    expect(result).toBeUndefined();
+    expect(G.pendingUnrestTakeContinuation).toEqual({
+      playerId: "0",
+      recipientPlayerIds: ["0"],
+      countPerPlayer: 1,
+      recipientIndex: 0,
+      cardIndex: 0,
+      taken: 0
+    });
+    expect(G.players["0"].hand).not.toContain("parked_unrest");
+    expect(G.unrestPile).toEqual(["parked_unrest"]);
+  });
+
+  it("keeps a pending Unrest-take continuation parked behind Solstice order choices", () => {
+    const G = createInitialState();
+    G.unrestPile = ["solstice_order_unrest"];
+    G.pendingUnrestTakeContinuation = {
+      playerId: "0",
+      recipientPlayerIds: ["0"],
+      countPerPlayer: 1,
+      recipientIndex: 0,
+      cardIndex: 0,
+      taken: 0
+    };
+    G.pendingSolsticeOrderChoice = { playerId: "0", phase: "on_solstice", cardIds: ["first_solstice_card", "second_solstice_card"] };
+
+    const result = continuePendingUnrestTake(G, "0");
+
+    expect(result).toBeUndefined();
+    expect(G.pendingUnrestTakeContinuation).toEqual({
+      playerId: "0",
+      recipientPlayerIds: ["0"],
+      countPerPlayer: 1,
+      recipientIndex: 0,
+      cardIndex: 0,
+      taken: 0
+    });
+    expect(G.players["0"].hand).not.toContain("solstice_order_unrest");
+    expect(G.unrestPile).toEqual(["solstice_order_unrest"]);
+  });
+
+  it("keeps a pending Unrest-take continuation parked behind paused Solstice continuations", () => {
+    const G = createInitialState();
+    G.unrestPile = ["paused_solstice_unrest"];
+    G.pendingUnrestTakeContinuation = {
+      playerId: "0",
+      recipientPlayerIds: ["0"],
+      countPerPlayer: 1,
+      recipientIndex: 0,
+      cardIndex: 0,
+      taken: 0
+    };
+    G.pendingSolsticeContinuation = {
+      playerId: "0",
+      phase: "on_solstice",
+      cardIds: ["remaining_solstice_card"],
+      cursor: {
+        playOrder: ["0", "1"],
+        playerIndex: 0,
+        phase: "on_solstice",
+        cardIndex: 1,
+        overrideIndex: 0
+      }
+    };
+    G.pausedSolstice = {
+      playOrder: ["0", "1"],
+      playerIndex: 0,
+      phase: "on_solstice",
+      cardIndex: 1,
+      overrideIndex: 0
+    };
+
+    const result = continuePendingUnrestTake(G, "0");
+
+    expect(result).toBeUndefined();
+    expect(G.pendingUnrestTakeContinuation).toEqual({
+      playerId: "0",
+      recipientPlayerIds: ["0"],
+      countPerPlayer: 1,
+      recipientIndex: 0,
+      cardIndex: 0,
+      taken: 0
+    });
+    expect(G.players["0"].hand).not.toContain("paused_solstice_unrest");
+    expect(G.unrestPile).toEqual(["paused_solstice_unrest"]);
   });
 
   it("pauses after acquiring a card for a reactive Exhaust before resuming later effects", () => {
@@ -924,6 +1741,118 @@ describe("turn loop", () => {
     expect(G.players["0"].discard).toContain(playedCard);
   });
 
+  it("opens direct Market Acquire tucked Unrest reactive windows before market resource windows", () => {
+    const G = createInitialState();
+    const playedCard = "direct_acquire_unrest_before_resource_trigger";
+    const acquiredCardId = "direct_acquire_unrest_before_resource_market";
+    const unrestCardId = "direct_acquire_unrest_before_resource_unrest";
+    const unrestExhaustCardId = "direct_acquire_unrest_before_resource_unrest_exhaust";
+    const resourceExhaustCardId = "direct_acquire_unrest_before_resource_resource_exhaust";
+    G.players["0"].hand = [playedCard];
+    G.players["0"].playArea = [unrestExhaustCardId, resourceExhaustCardId];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.market = [acquiredCardId];
+    G.marketResources = { [acquiredCardId]: { knowledge: 1 } };
+    G.marketUnrest = { [acquiredCardId]: [unrestCardId] };
+    G.marketRefillPool = [];
+    G.marketDecks = undefined;
+    G.cardDb[acquiredCardId] = {
+      id: acquiredCardId,
+      displayName: "Direct Acquire Market Card",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb[unrestCardId] = {
+      id: unrestCardId,
+      displayName: "Direct Acquire Unrest",
+      type: "unrest",
+      cardType: "unrest",
+      suit: "unrest",
+      cost: 0,
+      tags: ["unrest"],
+      effects: []
+    };
+    G.cardDb[playedCard] = {
+      id: playedCard,
+      displayName: "Direct Acquire Unrest Before Resource Trigger",
+      type: "action",
+      cardType: "action",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [
+        { trigger: "on_play", op: "acquire_card", cardId: acquiredCardId, count: 1, destination: "hand" } as any,
+        { trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 } as any
+      ]
+    };
+    G.cardDb[unrestExhaustCardId] = {
+      id: unrestExhaustCardId,
+      displayName: "Direct Acquire Unrest Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_exhaust",
+        op: "gain_resource",
+        resource: "influence",
+        amount: 1,
+        reactive: { trigger: "after_take_unrest", target: "self" }
+      } as any]
+    };
+    G.cardDb[resourceExhaustCardId] = {
+      id: resourceExhaustCardId,
+      displayName: "Direct Acquire Resource Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_exhaust",
+        op: "gain_resource",
+        resource: "goods",
+        amount: 1,
+        reactive: { trigger: "after_gain_resource", resource: "knowledge" }
+      } as any]
+    };
+
+    playCard({ G, ctx }, playedCard);
+
+    expect(G.players["0"].hand).toContain(acquiredCardId);
+    expect(G.players["0"].hand).toContain(unrestCardId);
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: [unrestExhaustCardId],
+      resolvingPlayerId: "0",
+      sourceCardId: playedCard,
+      trigger: "after_take_unrest",
+      targetPlayerId: "0"
+    });
+    expect(G.players["0"].resources.materials).toBe(0);
+
+    skipReactiveExhaustChoice({ G, ctx });
+
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: [resourceExhaustCardId],
+      resolvingPlayerId: "0",
+      sourceCardId: playedCard,
+      trigger: "after_gain_resource",
+      resource: "knowledge",
+      eventSourceCardId: acquiredCardId,
+      eventSourceWasInPlay: true
+    });
+  });
+
   it("matches source-suited reactive Exhausts against the acquired market card that released resources", () => {
     const G = createInitialState();
     const playedCard = "reactive_market_source_suit_trigger_card";
@@ -996,6 +1925,307 @@ describe("turn loop", () => {
     expect(G.players["0"].resources.influence).toBe(1);
     expect(G.players["0"].resources.materials).toBe(1);
     expect(G.players["0"].discard).toContain(playedCard);
+  });
+
+  it("resumes paused acquisition continuations with Unrest reactive windows before resource windows", () => {
+    const G = createInitialState();
+    const sourceCardId = "paused_acquire_source";
+    const acquiredCardId = "paused_acquired_market_card";
+    const unrestExhaustCardId = "paused_acquire_unrest_exhaust";
+    const resourceExhaustCardId = "paused_acquire_resource_exhaust";
+    G.players["0"].playArea = [unrestExhaustCardId, resourceExhaustCardId];
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.players["0"].resources.knowledge = 1;
+    G.pendingAcquireEffectResolution = {
+      playerId: "0",
+      cardId: acquiredCardId,
+      sourceCardId,
+      takenUnrestPlayerIds: ["0"],
+      collectedResources: { knowledge: 1 },
+      collectedResourceSources: [{ sourceCardId: acquiredCardId, sourceWasInPlay: true, gains: { knowledge: 1 } }]
+    };
+    G.pendingReactiveExhaustChoice = {
+      playerId: "0",
+      cardIds: ["earlier_window"],
+      resolvingPlayerId: "0",
+      sourceCardId,
+      trigger: "after_acquire_card",
+      targetPlayerId: "0"
+    };
+    G.cardDb[acquiredCardId] = {
+      id: acquiredCardId,
+      displayName: "Paused Acquired Market Card",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb[unrestExhaustCardId] = {
+      id: unrestExhaustCardId,
+      displayName: "Paused Acquire Unrest Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_exhaust",
+        op: "gain_resource",
+        resource: "influence",
+        amount: 1,
+        reactive: { trigger: "after_take_unrest", target: "self" }
+      } as any]
+    };
+    G.cardDb[resourceExhaustCardId] = {
+      id: resourceExhaustCardId,
+      displayName: "Paused Acquire Resource Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_exhaust",
+        op: "gain_resource",
+        resource: "materials",
+        amount: 1,
+        reactive: { trigger: "after_gain_resource", resource: "knowledge" }
+      } as any]
+    };
+
+    skipReactiveExhaustChoice({ G, ctx });
+
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: [unrestExhaustCardId],
+      resolvingPlayerId: "0",
+      sourceCardId,
+      trigger: "after_take_unrest",
+      targetPlayerId: "0"
+    });
+
+    skipReactiveExhaustChoice({ G, ctx });
+
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: [resourceExhaustCardId],
+      resolvingPlayerId: "0",
+      sourceCardId,
+      trigger: "after_gain_resource",
+      resource: "knowledge",
+      eventSourceCardId: acquiredCardId,
+      eventSourceWasInPlay: true
+    });
+  });
+
+  it("resumes paused market move continuations with resource reactive windows before Unrest windows", () => {
+    const G = createInitialState();
+    const sourceCardId = "paused_market_move_source";
+    const movedCardId = "paused_moved_market_card";
+    const resourceExhaustCardId = "paused_market_move_resource_exhaust";
+    const unrestExhaustCardId = "paused_market_move_unrest_exhaust";
+    G.players["0"].playArea = [resourceExhaustCardId, unrestExhaustCardId];
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.players["0"].resources.knowledge = 1;
+    G.pendingMarketMoveEffectResolution = {
+      playerId: "0",
+      sourceCardId,
+      takenUnrestPlayerIds: ["0"],
+      collectedResources: { knowledge: 1 },
+      collectedResourceSources: [{ sourceCardId: movedCardId, sourceWasInPlay: true, gains: { knowledge: 1 } }]
+    };
+    G.pendingReactiveExhaustChoice = {
+      playerId: "0",
+      cardIds: ["earlier_window"],
+      resolvingPlayerId: "0",
+      sourceCardId,
+      trigger: "after_play_card",
+      targetPlayerId: "0"
+    };
+    G.cardDb[movedCardId] = {
+      id: movedCardId,
+      displayName: "Paused Moved Market Card",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb[resourceExhaustCardId] = {
+      id: resourceExhaustCardId,
+      displayName: "Paused Market Move Resource Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_exhaust",
+        op: "gain_resource",
+        resource: "materials",
+        amount: 1,
+        reactive: { trigger: "after_gain_resource", resource: "knowledge" }
+      } as any]
+    };
+    G.cardDb[unrestExhaustCardId] = {
+      id: unrestExhaustCardId,
+      displayName: "Paused Market Move Unrest Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_exhaust",
+        op: "gain_resource",
+        resource: "influence",
+        amount: 1,
+        reactive: { trigger: "after_take_unrest", target: "self" }
+      } as any]
+    };
+
+    skipReactiveExhaustChoice({ G, ctx });
+
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: [resourceExhaustCardId],
+      resolvingPlayerId: "0",
+      sourceCardId,
+      trigger: "after_gain_resource",
+      resource: "knowledge",
+      eventSourceCardId: movedCardId,
+      eventSourceWasInPlay: true
+    });
+
+    skipReactiveExhaustChoice({ G, ctx });
+
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: [unrestExhaustCardId],
+      resolvingPlayerId: "0",
+      sourceCardId,
+      trigger: "after_take_unrest",
+      targetPlayerId: "0"
+    });
+  });
+
+  it("resumes direct market gain_card with tucked Unrest windows after market resource windows", () => {
+    const G = createInitialState();
+    const playedCard = "direct_gain_card_resource_then_unrest_trigger";
+    const gainedCardId = "direct_gain_card_resource_then_unrest_market";
+    const unrestCardId = "direct_gain_card_resource_then_unrest_unrest";
+    const resourceExhaustCardId = "direct_gain_card_resource_then_unrest_resource_exhaust";
+    const unrestExhaustCardId = "direct_gain_card_resource_then_unrest_unrest_exhaust";
+    G.players["0"].hand = [playedCard];
+    G.players["0"].playArea = [resourceExhaustCardId, unrestExhaustCardId];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.players["0"].resources.knowledge = 0;
+    G.players["0"].resources.materials = 0;
+    G.players["0"].resources.influence = 0;
+    G.market = [gainedCardId];
+    G.marketResources = { [gainedCardId]: { knowledge: 1 } };
+    G.marketUnrest = { [gainedCardId]: [unrestCardId] };
+    G.marketRefillPool = [];
+    G.marketDecks = undefined;
+    G.cardDb[playedCard] = {
+      id: playedCard,
+      displayName: "Direct Gain Card Resource Then Unrest Trigger",
+      type: "action",
+      cardType: "action",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [
+        { trigger: "on_play", op: "gain_card", source: "market", cardId: gainedCardId, count: 1, destination: "hand" } as any,
+        { trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 } as any
+      ]
+    };
+    G.cardDb[gainedCardId] = {
+      id: gainedCardId,
+      displayName: "Direct Gain Card Resource Then Unrest Market",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb[unrestCardId] = {
+      id: unrestCardId,
+      displayName: "Direct Gain Card Resource Then Unrest",
+      type: "unrest",
+      cardType: "unrest",
+      suit: "unrest",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb[resourceExhaustCardId] = {
+      id: resourceExhaustCardId,
+      displayName: "Direct Gain Card Resource Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_exhaust",
+        op: "gain_resource",
+        resource: "materials",
+        amount: 1,
+        reactive: { trigger: "after_gain_resource", resource: "knowledge" }
+      } as any]
+    };
+    G.cardDb[unrestExhaustCardId] = {
+      id: unrestExhaustCardId,
+      displayName: "Direct Gain Card Unrest Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_exhaust",
+        op: "gain_resource",
+        resource: "influence",
+        amount: 1,
+        reactive: { trigger: "after_take_unrest", target: "self" }
+      } as any]
+    };
+
+    playCard({ G, ctx }, playedCard);
+
+    expect(G.players["0"].hand).toContain(gainedCardId);
+    expect(G.players["0"].hand).toContain(unrestCardId);
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: [resourceExhaustCardId],
+      resolvingPlayerId: "0",
+      sourceCardId: playedCard,
+      trigger: "after_gain_resource",
+      resource: "knowledge",
+      eventSourceCardId: gainedCardId,
+      eventSourceWasInPlay: true
+    });
+    expect(G.players["0"].resources.materials).toBe(0);
+
+    skipReactiveExhaustChoice({ G, ctx });
+
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: [unrestExhaustCardId],
+      resolvingPlayerId: "0",
+      sourceCardId: playedCard,
+      trigger: "after_take_unrest",
+      targetPlayerId: "0"
+    });
+    expect(G.players["0"].resources.materials).toBe(0);
   });
 
   it("pauses after collecting resources from a recalled Region for a reactive Exhaust before resuming later effects", () => {
@@ -1072,6 +2302,212 @@ describe("turn loop", () => {
     expect(G.players["0"].discard).toContain(playedCard);
   });
 
+  it("matches source-suited reactive Exhausts against garrisoned resources recalled with a Region", () => {
+    const G = createInitialState();
+    const playedCard = "reactive_recall_child_source_suit_trigger";
+    const regionCardId = "reactive_recall_child_source_suit_region";
+    const childCardId = "reactive_recall_child_source_suit_child";
+    const exhaustCardId = "reactive_recall_child_source_suit_exhaust";
+    G.players["0"].hand = [playedCard];
+    G.players["0"].playArea = [regionCardId, exhaustCardId];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.players["0"].resources.materials = 0;
+    G.players["0"].resources.knowledge = 0;
+    G.players["0"].resources.influence = 0;
+    G.cardStates = {
+      [regionCardId]: { garrisonedCardIds: [childCardId] },
+      [childCardId]: { resources: { knowledge: 1 } }
+    };
+    G.cardDb[playedCard] = {
+      id: playedCard,
+      displayName: "Reactive Recall Child Source Suit Trigger",
+      type: "action",
+      cardType: "action",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [
+        { trigger: "on_play", op: "recall_region", cardId: regionCardId } as any,
+        { trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 } as any
+      ]
+    };
+    G.cardDb[regionCardId] = {
+      id: regionCardId,
+      displayName: "Reactive Recall Child Source Suit Region",
+      type: "region",
+      cardType: "region",
+      suit: "region",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb[childCardId] = {
+      id: childCardId,
+      displayName: "Reactive Recall Child Source Suit Child",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb[exhaustCardId] = {
+      id: exhaustCardId,
+      displayName: "Reactive Recall Child Source Suit Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_exhaust",
+        op: "gain_resource",
+        resource: "influence",
+        amount: 1,
+        reactive: { trigger: "after_gain_resource", resource: "knowledge", sourceSuit: "civilized" }
+      } as any]
+    };
+
+    playCard({ G, ctx }, playedCard);
+
+    expect(G.players["0"].hand).toContain(regionCardId);
+    expect(G.players["0"].hand).toContain(childCardId);
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: [exhaustCardId],
+      resolvingPlayerId: "0",
+      sourceCardId: playedCard,
+      trigger: "after_gain_resource",
+      resource: "knowledge",
+      eventSourceCardId: childCardId,
+      eventSourceWasInPlay: true
+    });
+    expect(G.players["0"].resources.materials).toBe(0);
+
+    resolveReactiveExhaustChoice({ G, ctx }, exhaustCardId);
+
+    expect(G.pendingReactiveExhaustChoice).toBeUndefined();
+    expect(G.players["0"].resources.influence).toBe(1);
+    expect(G.players["0"].resources.materials).toBe(1);
+    expect(G.players["0"].discard).toContain(playedCard);
+  });
+
+  it("matches source-suited reactive Exhausts against pending Region choices with garrisoned resources", () => {
+    const G = createInitialState();
+    const playedCard = "reactive_pending_recall_child_source_suit_trigger";
+    const targetRegionCardId = "reactive_pending_recall_child_source_suit_region";
+    const otherRegionCardId = "reactive_pending_recall_child_source_suit_other_region";
+    const childCardId = "reactive_pending_recall_child_source_suit_child";
+    const exhaustCardId = "reactive_pending_recall_child_source_suit_exhaust";
+    G.players["0"].hand = [playedCard];
+    G.players["0"].playArea = [targetRegionCardId, otherRegionCardId, exhaustCardId];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.players["0"].resources.materials = 0;
+    G.players["0"].resources.knowledge = 0;
+    G.players["0"].resources.influence = 0;
+    G.cardStates = {
+      [targetRegionCardId]: { garrisonedCardIds: [childCardId] },
+      [childCardId]: { resources: { knowledge: 1 } }
+    };
+    G.cardDb[playedCard] = {
+      id: playedCard,
+      displayName: "Reactive Pending Recall Child Source Suit Trigger",
+      type: "action",
+      cardType: "action",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [
+        { trigger: "on_play", op: "recall_region" } as any,
+        { trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 } as any
+      ]
+    };
+    G.cardDb[targetRegionCardId] = {
+      id: targetRegionCardId,
+      displayName: "Reactive Pending Recall Child Source Suit Region",
+      type: "region",
+      cardType: "region",
+      suit: "region",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb[otherRegionCardId] = {
+      id: otherRegionCardId,
+      displayName: "Reactive Pending Recall Child Source Suit Other Region",
+      type: "region",
+      cardType: "region",
+      suit: "region",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb[childCardId] = {
+      id: childCardId,
+      displayName: "Reactive Pending Recall Child Source Suit Child",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb[exhaustCardId] = {
+      id: exhaustCardId,
+      displayName: "Reactive Pending Recall Child Source Suit Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_exhaust",
+        op: "gain_resource",
+        resource: "influence",
+        amount: 1,
+        reactive: { trigger: "after_gain_resource", resource: "knowledge", sourceSuit: "civilized" }
+      } as any]
+    };
+
+    playCard({ G, ctx }, playedCard);
+
+    expect(G.pendingRegionChoice).toMatchObject({
+      playerId: "0",
+      sourceCardId: playedCard,
+      op: "recall_region",
+      cardIds: [targetRegionCardId, otherRegionCardId]
+    });
+
+    resolveRegionChoice({ G, ctx }, targetRegionCardId);
+
+    expect(G.players["0"].hand).toContain(targetRegionCardId);
+    expect(G.players["0"].hand).toContain(childCardId);
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: [exhaustCardId],
+      resolvingPlayerId: "0",
+      sourceCardId: playedCard,
+      trigger: "after_gain_resource",
+      resource: "knowledge",
+      eventSourceCardId: childCardId,
+      eventSourceWasInPlay: true
+    });
+    expect(G.players["0"].resources.materials).toBe(0);
+
+    resolveReactiveExhaustChoice({ G, ctx }, exhaustCardId);
+
+    expect(G.pendingReactiveExhaustChoice).toBeUndefined();
+    expect(G.players["0"].resources.influence).toBe(1);
+    expect(G.players["0"].resources.materials).toBe(1);
+    expect(G.players["0"].discard).toContain(playedCard);
+  });
+
   it("pauses after collecting resources from a History-bound card for a reactive Exhaust before resuming later effects", () => {
     const G = createInitialState();
     const playedCard = "reactive_history_resource_trigger_card";
@@ -1135,6 +2571,168 @@ describe("turn loop", () => {
     expect(G.players["0"].resources.knowledge).toBe(1);
     expect(G.players["0"].history).toContain(playedCard);
     expect(G.players["0"].discard).not.toContain(playedCard);
+  });
+
+  it("keeps disabled-History resource collection reactive before later self-History text resumes", () => {
+    const G = createInitialState();
+    const playedCard = "reactive_disabled_history_resource_trigger_card";
+    const exhaustCardId = "reactive_disabled_history_resource_exhaust";
+    G.players["0"].hand = [playedCard];
+    G.players["0"].playArea = [exhaustCardId];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.activeNationRulesets = {
+      "0": {
+        nationId: "no_history_resource_nation",
+        displayName: "No History Resource Nation",
+        rulesetTags: ["no_history", "discard_instead_of_history"],
+        requiredExpansions: [],
+        setupOverrides: [],
+        zoneOverrides: [],
+        stateOverrides: [],
+        reshuffleOverrides: [],
+        cleanupOverrides: [],
+        solsticeOverrides: [],
+        scoringOverrides: [],
+        collapseOverrides: [],
+        botOverrides: [],
+        shortGameOverrides: [],
+        hookRules: [],
+        implemented: true,
+        tested: true
+      }
+    };
+    G.cardStates = { [playedCard]: { resources: { materials: 2 } } };
+    G.cardDb[playedCard] = {
+      id: playedCard,
+      displayName: "Reactive Disabled History Resource Trigger",
+      type: "action",
+      cardType: "action",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [
+        { trigger: "on_play", op: "move_self_to_history" } as any,
+        { trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 } as any
+      ]
+    };
+    G.cardDb[exhaustCardId] = {
+      id: exhaustCardId,
+      displayName: "Reactive Disabled History Resource Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_exhaust",
+        op: "gain_resource",
+        resource: "influence",
+        amount: 1,
+        reactive: { trigger: "after_gain_resource", resource: "materials" }
+      } as any]
+    };
+
+    playCard({ G, ctx }, playedCard);
+
+    expect(G.players["0"].history).not.toContain(playedCard);
+    expect(G.players["0"].discard).toContain(playedCard);
+    expect(G.players["0"].resources.materials).toBe(2);
+    expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: [exhaustCardId],
+      resolvingPlayerId: "0",
+      sourceCardId: playedCard,
+      trigger: "after_gain_resource",
+      resource: "materials"
+    });
+
+    resolveReactiveExhaustChoice({ G, ctx }, exhaustCardId);
+
+    expect(G.pendingReactiveExhaustChoice).toBeUndefined();
+    expect(G.players["0"].resources.influence).toBe(1);
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["0"].discard).toContain(playedCard);
+  });
+
+  it("matches source-suited reactive Exhausts against garrisoned resources moved by History text", () => {
+    const G = createInitialState();
+    const hostCardId = "history_child_source_suit_host";
+    const childCardId = "history_child_source_suit_child";
+    const exhaustCardId = "history_child_source_suit_exhaust";
+    G.players["0"].playArea = [hostCardId, exhaustCardId];
+    G.players["0"].resources.materials = 0;
+    G.players["0"].resources.knowledge = 0;
+    G.players["0"].resources.influence = 0;
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.cardStates = {
+      [hostCardId]: { garrisonedCardIds: [childCardId] },
+      [childCardId]: { resources: { knowledge: 1 } }
+    };
+    G.cardDb[hostCardId] = {
+      id: hostCardId,
+      displayName: "History Child Source Suit Host",
+      type: "region",
+      cardType: "region",
+      suit: "region",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb[childCardId] = {
+      id: childCardId,
+      displayName: "History Child Source Suit Child",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb[exhaustCardId] = {
+      id: exhaustCardId,
+      displayName: "History Child Source Suit Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_exhaust",
+        op: "gain_resource",
+        resource: "influence",
+        amount: 1,
+        reactive: { trigger: "after_gain_resource", resource: "knowledge", sourceSuit: "civilized" }
+      } as any]
+    };
+
+    const resolved = runEffects({ G, playerId: "0", selfCardId: hostCardId }, [
+      { trigger: "on_play", op: "move_self_to_history" } as any,
+      { trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 } as any
+    ]);
+
+    expect(resolved).toBe(true);
+    expect(G.players["0"].history).toEqual([hostCardId, childCardId]);
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: [exhaustCardId],
+      resolvingPlayerId: "0",
+      sourceCardId: hostCardId,
+      trigger: "after_gain_resource",
+      resource: "knowledge",
+      eventSourceCardId: childCardId,
+      eventSourceWasInPlay: true
+    });
+    expect(G.players["0"].resources.materials).toBe(0);
+
+    resolveReactiveExhaustChoice({ G, ctx }, exhaustCardId);
+
+    expect(G.pendingReactiveExhaustChoice).toBeUndefined();
+    expect(G.players["0"].resources.influence).toBe(1);
+    expect(G.players["0"].resources.materials).toBe(1);
   });
 
   it("pauses after exact Find moves a play-area host to History and collects resources", () => {
@@ -1225,6 +2823,94 @@ describe("turn loop", () => {
     expect(G.players["0"].resources.influence).toBe(1);
     expect(G.players["0"].resources.knowledge).toBe(1);
     expect(G.players["0"].history).toEqual([hostCardId, childCardId]);
+    expect(G.players["0"].discard).toContain(playedCard);
+  });
+
+  it("matches source-suited reactive Exhausts against garrisoned resources moved with a host", () => {
+    const G = createInitialState();
+    const playedCard = "reactive_find_host_child_source_suit_trigger";
+    const hostCardId = "reactive_find_host_child_source_suit_host";
+    const childCardId = "reactive_find_host_child_source_suit_child";
+    const exhaustCardId = "reactive_find_host_child_source_suit_exhaust";
+    G.players["0"].hand = [playedCard];
+    G.players["0"].playArea = [hostCardId, exhaustCardId];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.cardStates = {
+      [hostCardId]: { garrisonedCardIds: [childCardId] },
+      [childCardId]: { resources: { knowledge: 1 } }
+    };
+    G.cardDb[playedCard] = {
+      id: playedCard,
+      displayName: "Reactive Find Host Child Source Suit Trigger",
+      type: "action",
+      cardType: "action",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [
+        { trigger: "on_play", op: "find_card", sourceZones: ["playArea"], cardId: hostCardId, destination: "history" } as any,
+        { trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 } as any
+      ]
+    };
+    G.cardDb[hostCardId] = {
+      id: hostCardId,
+      displayName: "Reactive Find Host Child Source Suit Host",
+      type: "region",
+      cardType: "region",
+      suit: "region",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb[childCardId] = {
+      id: childCardId,
+      displayName: "Reactive Find Host Child Source Suit Child",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb[exhaustCardId] = {
+      id: exhaustCardId,
+      displayName: "Reactive Find Host Child Source Suit Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_exhaust",
+        op: "gain_resource",
+        resource: "influence",
+        amount: 1,
+        reactive: { trigger: "after_gain_resource", resource: "knowledge", sourceSuit: "civilized" }
+      } as any]
+    };
+
+    playCard({ G, ctx }, playedCard);
+
+    expect(G.players["0"].history).toEqual([hostCardId, childCardId]);
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: [exhaustCardId],
+      resolvingPlayerId: "0",
+      sourceCardId: playedCard,
+      trigger: "after_gain_resource",
+      resource: "knowledge",
+      eventSourceCardId: childCardId,
+      eventSourceWasInPlay: true
+    });
+    expect(G.players["0"].resources.materials).toBe(0);
+
+    resolveReactiveExhaustChoice({ G, ctx }, exhaustCardId);
+
+    expect(G.players["0"].resources.influence).toBe(1);
+    expect(G.players["0"].resources.materials).toBe(1);
     expect(G.players["0"].discard).toContain(playedCard);
   });
 
@@ -1498,6 +3184,55 @@ describe("turn loop", () => {
     expect(G.players["0"].discard).toContain(card);
     expect(G.players["0"].resources.materials).toBe(2);
     expect(G.cardStates?.[card]).toEqual({ actionTokens: 1 });
+  });
+
+  it("opens a source-suited reactive Exhaust window after collecting resources from a resolved action card", () => {
+    const G = createInitialState();
+    const card = "test_action_archive_survey";
+    const reactiveCard = "resolved_card_resource_reactive";
+    G.cardDb[card] = { ...G.cardDb[card], suit: "civilized", effects: [] };
+    G.cardDb[reactiveCard] = {
+      id: reactiveCard,
+      displayName: "Resolved Card Resource Reactive",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_exhaust",
+        op: "gain_resource",
+        resource: "knowledge",
+        amount: 1,
+        reactive: { trigger: "after_gain_resource", resource: "materials", sourceSuit: "civilized" }
+      } as any]
+    };
+    G.players["0"].hand = [card];
+    G.players["0"].playArea = [reactiveCard];
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.players["0"].resources.materials = 0;
+    G.players["0"].resources.knowledge = 0;
+    G.cardStates = { [card]: { resources: { materials: 2 } } };
+
+    playCard({ G, ctx }, card);
+
+    expect(G.players["0"].discard).toContain(card);
+    expect(G.players["0"].resources.materials).toBe(2);
+    expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: [reactiveCard],
+      resolvingPlayerId: "0",
+      trigger: "after_gain_resource",
+      resource: "materials",
+      eventSourceCardId: card,
+      eventSourceWasInPlay: true
+    });
+
+    resolveReactiveExhaustChoice({ G, ctx }, reactiveCard);
+
+    expect(G.pendingReactiveExhaustChoice).toBeUndefined();
+    expect(G.players["0"].resources.knowledge).toBe(1);
   });
 
   it("moves garrisoned cards with a resolved action card when it goes to discard", () => {
@@ -1923,6 +3658,33 @@ describe("turn loop", () => {
     expect(G.freePlayedThisTurn?.["0"]).toEqual([card]);
   });
 
+  it("Free play cards still require printed resource costs", () => {
+    const G = createInitialState();
+    const card = "test_action_archive_survey";
+    G.cardDb[card] = {
+      ...G.cardDb[card],
+      tags: ["free_play"],
+      effects: [
+        { trigger: "on_play", op: "spend_resource", resource: "materials", amount: 1 } as any,
+        { trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 } as any
+      ]
+    };
+    G.players["0"].hand = [card];
+    G.players["0"].resources.materials = 0;
+    G.players["0"].actionsRemaining = 0;
+    G.players["0"].actionTokensAvailable = 0;
+
+    playCard({ G, ctx }, card);
+
+    expect(G.players["0"].hand).toEqual([card]);
+    expect(G.players["0"].discard).not.toContain(card);
+    expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.players["0"].actionsRemaining).toBe(0);
+    expect(G.players["0"].actionTokensAvailable).toBe(0);
+    expect(G.freePlayedThisTurn?.["0"]).toBeUndefined();
+    expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): no_resolvable_on_play_effects(${card})`);
+  });
+
   it("blocks playing cards whose state requirement does not match the visible State card", () => {
     const G = createInitialState();
     G.players["0"].stateArea = ["barbarian_state"];
@@ -2059,6 +3821,35 @@ describe("turn loop", () => {
     expect(G.log.some((entry) => entry.message === `InvalidMove(playCard): no_resolvable_on_play_effects(${card})`)).toBe(false);
   });
 
+  it("does not treat no-Nation-deck cards as resolvable draw text", () => {
+    const G = createInitialState();
+    const card = "test_action_archive_survey";
+    G.cardDb[card] = {
+      ...G.cardDb[card],
+      effects: [{ trigger: "on_play", op: "draw", count: 1 } as any]
+    };
+    G.players["0"].hand = [card];
+    G.players["0"].deck = [];
+    G.players["0"].discard = [];
+    G.players["0"].nationDeck = ["test_action_lineage_record"];
+    G.players["0"].developmentArea = [];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.players["0"].progressionTokens = { nationDeck: 0, developmentArea: 0 };
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      rulesetTags: ["no_nation_deck"] as any
+    };
+
+    playCard({ G, ctx, random: { Number: () => 0 } }, card);
+
+    expect(G.players["0"].hand).toEqual([card]);
+    expect(G.players["0"].discard).not.toContain(card);
+    expect(G.players["0"].nationDeck).toEqual(["test_action_lineage_record"]);
+    expect(G.players["0"].actionTokensAvailable).toBe(1);
+    expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): no_resolvable_on_play_effects(${card})`);
+  });
+
   it("does not treat discard Unrest as a resolvable default Return Unrest source", () => {
     const G = createInitialState();
     const card = "test_action_archive_survey";
@@ -2092,6 +3883,40 @@ describe("turn loop", () => {
     expect(G.players["0"].actionTokensAvailable).toBe(1);
     expect(G.unrestPile).toEqual([]);
     expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): no_resolvable_on_play_effects(${card})`);
+  });
+
+  it("plays default Return Unrest when the only returnable hand card has an imported Unrest suit icon", () => {
+    const G = createInitialState();
+    const card = "test_action_archive_survey";
+    const unrestCard = "imported_suit_icon_card";
+    G.cardDb[card] = {
+      ...G.cardDb[card],
+      effects: [{ trigger: "on_play", op: "return_unrest" } as any]
+    };
+    G.cardDb[unrestCard] = {
+      id: unrestCard,
+      displayName: "Imported Suit Icon",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: ["suit:unrest"],
+      effects: []
+    };
+    G.players["0"].hand = [card, unrestCard];
+    G.players["0"].discard = [];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.unrestPile = [];
+
+    playCard({ G, ctx }, card);
+
+    expect(G.players["0"].hand).toEqual([]);
+    expect(G.players["0"].discard).toContain(card);
+    expect(G.unrestPile).toEqual([unrestCard]);
+    expect(G.players["0"].actionsRemaining).toBe(0);
+    expect(G.players["0"].actionTokensAvailable).toBe(0);
+    expect(G.log.some((entry) => entry.message === `InvalidMove(playCard): no_resolvable_on_play_effects(${card})`)).toBe(false);
   });
 
   it("plays Action-token text through the normal move legality path", () => {
@@ -2418,6 +4243,40 @@ describe("turn loop", () => {
     expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): no_resolvable_on_play_effects(${card})`);
   });
 
+  it("does not play Exile-acquire text when required Unrest is unavailable", () => {
+    const G = createInitialState();
+    const card = "test_action_archive_survey";
+    G.cardDb[card] = {
+      ...G.cardDb[card],
+      effects: [{ trigger: "on_play", op: "acquire_card", source: "exile", suit: "civilized", count: 1 } as any]
+    };
+    G.cardDb.exiled_civilized = {
+      id: "exiled_civilized",
+      displayName: "Exiled Civilized",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.players["0"].hand = [card];
+    G.players["0"].exile = ["exiled_civilized"];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.unrestPile = [];
+
+    playCard({ G, ctx }, card);
+
+    expect(G.gameover).toBeUndefined();
+    expect(G.players["0"].hand).toEqual([card]);
+    expect(G.players["0"].discard).not.toContain(card);
+    expect(G.players["0"].exile).toEqual(["exiled_civilized"]);
+    expect(G.players["0"].actionsRemaining).toBe(1);
+    expect(G.players["0"].actionTokensAvailable).toBe(1);
+    expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): no_resolvable_on_play_effects(${card})`);
+  });
+
   it("plays Exile-acquire text when only public setup Exile has a matching card", () => {
     const G = createInitialState();
     const card = "test_action_archive_survey";
@@ -2623,6 +4482,32 @@ describe("turn loop", () => {
     expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): no_resolvable_on_play_effects(${card})`);
   });
 
+  it("plays a free-Develop card even when no Development card is payable", () => {
+    const G = createInitialState();
+    const card = "test_action_archive_survey";
+    G.cardDb[card] = {
+      ...G.cardDb[card],
+      effects: [{ trigger: "on_play", op: "develop", free: true } as any]
+    };
+    G.cardDb.test_action_scholars_circle.developmentCost = { materials: 2 };
+    G.players["0"].hand = [card];
+    G.players["0"].developmentArea = ["test_action_scholars_circle"];
+    G.players["0"].resources.materials = 0;
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+
+    playCard({ G, ctx }, card);
+
+    expect(G.players["0"].hand).toEqual([]);
+    expect(G.players["0"].discard).toContain(card);
+    expect(G.players["0"].discard).toContain("test_action_scholars_circle");
+    expect(G.players["0"].developmentArea).toEqual([]);
+    expect(G.players["0"].actionsRemaining).toBe(0);
+    expect(G.players["0"].actionTokensAvailable).toBe(0);
+    expect(G.players["0"].resources.materials).toBe(0);
+    expect(G.pendingDevelopmentChoice).toBeUndefined();
+  });
+
   it("does not play a fame-only card when no Fame card can be gained", () => {
     const G = createInitialState();
     const card = "test_action_archive_survey";
@@ -2705,6 +4590,50 @@ describe("turn loop", () => {
     expect(G.pendingChoice).toBeUndefined();
     expect(G.players["0"].actionsRemaining).toBe(1);
     expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): no_resolvable_on_play_effects(${card})`);
+  });
+
+  it("does not require post-choice costs before playing a choice-producing card", () => {
+    const G = createInitialState();
+    const card = "test_action_archive_survey";
+    G.cardDb[card] = {
+      ...G.cardDb[card],
+      effects: [
+        {
+          trigger: "on_play",
+          op: "choose_one",
+          choices: [[{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }]]
+        },
+        { trigger: "on_play", op: "spend_resource", resource: "materials", amount: 1 },
+        { trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }
+      ] as any
+    };
+    G.players["0"].hand = [card];
+    G.players["0"].resources.materials = 0;
+    G.players["0"].resources.knowledge = 0;
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+
+    playCard({ G, ctx }, card);
+
+    expect(G.players["0"].hand).toEqual([]);
+    expect(G.players["0"].playArea).toContain(card);
+    expect(G.players["0"].actionsRemaining).toBe(0);
+    expect(G.players["0"].actionTokensAvailable).toBe(0);
+    expect(G.pendingChoice).toMatchObject({
+      playerId: "0",
+      sourceCardId: card,
+      resumeEffects: [
+        { trigger: "on_play", op: "spend_resource", resource: "materials", amount: 1 },
+        { trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }
+      ]
+    });
+
+    resolveChoice({ G, ctx }, 0);
+
+    expect(G.pendingChoice).toBeUndefined();
+    expect(G.players["0"].resources.materials).toBe(0);
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["0"].discard).toContain(card);
   });
 
   it("does not play an optional-only card when the optional effect cannot be chosen", () => {
@@ -2813,6 +4742,25 @@ describe("turn loop", () => {
     expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): no_resolvable_on_play_effects(${card})`);
   });
 
+  it("does not play spend-action-only zero-amount effects", () => {
+    const G = createInitialState();
+    const card = "test_action_archive_survey";
+    G.cardDb[card] = {
+      ...G.cardDb[card],
+      effects: [{ trigger: "on_play", op: "spend_action", amount: 0 } as any]
+    };
+    G.players["0"].hand = [card];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+
+    playCard({ G, ctx }, card);
+
+    expect(G.players["0"].hand).toEqual([card]);
+    expect(G.players["0"].actionsRemaining).toBe(1);
+    expect(G.players["0"].actionTokensAvailable).toBe(1);
+    expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): no_resolvable_on_play_effects(${card})`);
+  });
+
   it("does not play direct resource return text when no token can be returned", () => {
     const G = createInitialState();
     const card = "test_action_empty_return";
@@ -2861,6 +4809,153 @@ describe("turn loop", () => {
     expect(G.players["0"].hand).toEqual([card]);
     expect(G.pendingChoice).toBeUndefined();
     expect(G.players["0"].deck).toEqual(["test_action_foundry_shift"]);
+    expect(G.players["0"].actionsRemaining).toBe(1);
+    expect(G.players["0"].actionTokensAvailable).toBe(1);
+    expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): no_resolvable_on_play_effects(${card})`);
+  });
+
+  it("does not play draw-only zero-count effects", () => {
+    const G = createInitialState();
+    const card = "test_action_archive_survey";
+    G.cardDb[card] = {
+      ...G.cardDb[card],
+      effects: [{ trigger: "on_play", op: "draw", count: 0 } as any]
+    };
+    G.players["0"].hand = [card];
+    G.players["0"].deck = ["test_action_foundry_shift"];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+
+    playCard({ G, ctx }, card);
+
+    expect(G.players["0"].hand).toEqual([card]);
+    expect(G.players["0"].deck).toEqual(["test_action_foundry_shift"]);
+    expect(G.players["0"].actionsRemaining).toBe(1);
+    expect(G.players["0"].actionTokensAvailable).toBe(1);
+    expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): no_resolvable_on_play_effects(${card})`);
+  });
+
+  it("does not play look-only zero-count effects", () => {
+    const G = createInitialState();
+    const card = "test_action_archive_survey";
+    G.cardDb[card] = {
+      ...G.cardDb[card],
+      effects: [{ trigger: "on_play", op: "look_cards", source: "deck", count: 0 } as any]
+    };
+    G.players["0"].hand = [card];
+    G.players["0"].deck = ["test_action_foundry_shift"];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+
+    playCard({ G, ctx }, card);
+
+    expect(G.players["0"].hand).toEqual([card]);
+    expect(G.lookedCards).toBeUndefined();
+    expect(G.players["0"].deck).toEqual(["test_action_foundry_shift"]);
+    expect(G.players["0"].actionsRemaining).toBe(1);
+    expect(G.players["0"].actionTokensAvailable).toBe(1);
+    expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): no_resolvable_on_play_effects(${card})`);
+  });
+
+  it("does not play draw-if-able-only zero-count effects", () => {
+    const G = createInitialState();
+    const card = "test_action_archive_survey";
+    G.cardDb[card] = {
+      ...G.cardDb[card],
+      effects: [{ trigger: "on_play", op: "draw_if_able", count: 0 } as any]
+    };
+    G.players["0"].hand = [card];
+    G.players["0"].deck = ["test_action_foundry_shift"];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+
+    playCard({ G, ctx }, card);
+
+    expect(G.players["0"].hand).toEqual([card]);
+    expect(G.players["0"].deck).toEqual(["test_action_foundry_shift"]);
+    expect(G.players["0"].actionsRemaining).toBe(1);
+    expect(G.players["0"].actionTokensAvailable).toBe(1);
+    expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): no_resolvable_on_play_effects(${card})`);
+  });
+
+  it("does not play Fame-gain-only zero-count effects", () => {
+    const G = createInitialState();
+    const card = "test_action_archive_survey";
+    G.cardDb[card] = {
+      ...G.cardDb[card],
+      effects: [{ trigger: "on_play", op: "gain_fame", count: 0 } as any]
+    };
+    G.players["0"].hand = [card];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+
+    playCard({ G, ctx }, card);
+
+    expect(G.players["0"].hand).toEqual([card]);
+    expect(G.players["0"].actionsRemaining).toBe(1);
+    expect(G.players["0"].actionTokensAvailable).toBe(1);
+    expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): no_resolvable_on_play_effects(${card})`);
+  });
+
+  it("does not play Take-Unrest-only zero-count effects", () => {
+    const G = createInitialState();
+    const card = "test_action_archive_survey";
+    G.cardDb[card] = {
+      ...G.cardDb[card],
+      effects: [{ trigger: "on_play", op: "take_unrest", count: 0 } as any]
+    };
+    G.players["0"].hand = [card];
+    G.unrestPile = ["unrest_1"];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+
+    playCard({ G, ctx }, card);
+
+    expect(G.players["0"].hand).toEqual([card]);
+    expect(G.players["0"].hand).not.toContain("unrest_1");
+    expect(G.unrestPile).toEqual(["unrest_1"]);
+    expect(G.players["0"].actionsRemaining).toBe(1);
+    expect(G.players["0"].actionTokensAvailable).toBe(1);
+    expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): no_resolvable_on_play_effects(${card})`);
+  });
+
+  it("does not play resource-gain-only zero-amount effects", () => {
+    const G = createInitialState();
+    const card = "test_action_archive_survey";
+    G.cardDb[card] = {
+      ...G.cardDb[card],
+      effects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 0 } as any]
+    };
+    G.players["0"].hand = [card];
+    G.players["0"].resources.materials = 0;
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+
+    playCard({ G, ctx }, card);
+
+    expect(G.players["0"].hand).toEqual([card]);
+    expect(G.players["0"].resources.materials).toBe(0);
+    expect(G.players["0"].actionsRemaining).toBe(1);
+    expect(G.players["0"].actionTokensAvailable).toBe(1);
+    expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): no_resolvable_on_play_effects(${card})`);
+  });
+
+  it("does not play resource-spend-only zero-amount effects", () => {
+    const G = createInitialState();
+    const card = "test_action_archive_survey";
+    G.cardDb[card] = {
+      ...G.cardDb[card],
+      effects: [{ trigger: "on_play", op: "spend_resource", resource: "materials", amount: 0 } as any]
+    };
+    G.players["0"].hand = [card];
+    G.players["0"].resources.materials = 1;
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+
+    playCard({ G, ctx }, card);
+
+    expect(G.players["0"].hand).toEqual([card]);
+    expect(G.players["0"].resources.materials).toBe(1);
     expect(G.players["0"].actionsRemaining).toBe(1);
     expect(G.players["0"].actionTokensAvailable).toBe(1);
     expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): no_resolvable_on_play_effects(${card})`);
@@ -2934,6 +5029,124 @@ describe("turn loop", () => {
     expect(G.log.some((entry) => entry.message === "SpentResourcePenalty(knowledge/unrest=1)")).toBe(true);
   });
 
+  it("does not trigger spend penalties when returning Progress instead of paying it", () => {
+    const G = createInitialState();
+    const card = "test_action_archive_survey";
+    G.cardDb[card] = {
+      ...G.cardDb[card],
+      effects: [{ trigger: "on_play", op: "return_resource", resource: "knowledge", amount: 1 } as any]
+    };
+    G.players["0"].hand = [card];
+    G.players["0"].resources.knowledge = 1;
+    G.players["0"].stateArea = ["alien_state"];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.unrestPile = ["alien_unrest"];
+    G.cardDb.alien_state = {
+      id: "alien_state",
+      displayName: "Alien",
+      type: "state",
+      cardType: "state",
+      suit: "none",
+      cost: 0,
+      tags: ["alien"],
+      effects: []
+    };
+    G.cardStates = { alien_state: { activeState: "alien" } };
+    G.activeNationRulesets!["0"].stateOverrides = [
+      { op: "take_unrest_when_spending_resource", resource: "knowledge", state: "alien" } as any
+    ];
+
+    playCard({ G, ctx }, card);
+
+    expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.unrestPile).toEqual(["alien_unrest"]);
+    expect(G.players["0"].hand).not.toContain("alien_unrest");
+    expect(G.players["0"].discard).toContain(card);
+    expect(G.log.some((entry) => entry.message.startsWith("SpentResourcePenalty("))).toBe(false);
+  });
+
+  it("does not trigger spend penalties when removing Progress instead of paying it", () => {
+    const G = createInitialState();
+    const card = "test_action_archive_survey";
+    G.cardDb[card] = {
+      ...G.cardDb[card],
+      effects: [{ trigger: "on_play", op: "remove_resource", resource: "knowledge", amount: 1 } as any]
+    };
+    G.players["0"].hand = [card];
+    G.players["0"].resources.knowledge = 1;
+    G.players["0"].stateArea = ["alien_state"];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.unrestPile = ["alien_unrest"];
+    G.cardDb.alien_state = {
+      id: "alien_state",
+      displayName: "Alien",
+      type: "state",
+      cardType: "state",
+      suit: "none",
+      cost: 0,
+      tags: ["alien"],
+      effects: []
+    };
+    G.cardStates = { alien_state: { activeState: "alien" } };
+    G.activeNationRulesets!["0"].stateOverrides = [
+      { op: "take_unrest_when_spending_resource", resource: "knowledge", state: "alien" } as any
+    ];
+
+    playCard({ G, ctx }, card);
+
+    expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.unrestPile).toEqual(["alien_unrest"]);
+    expect(G.players["0"].hand).not.toContain("alien_unrest");
+    expect(G.players["0"].discard).toContain(card);
+    expect(G.log.some((entry) => entry.message.startsWith("SpentResourcePenalty("))).toBe(false);
+  });
+
+  it("does not trigger spend penalties when stealing Progress instead of paying it", () => {
+    const G = createInitialState();
+    const card = "test_action_archive_survey";
+    G.cardDb[card] = {
+      ...G.cardDb[card],
+      effects: [{ trigger: "on_play", op: "steal_resource", fromPlayerId: "1", resource: "knowledge", amount: 1 } as any]
+    };
+    G.players["0"].hand = [card];
+    G.players["0"].resources.knowledge = 0;
+    G.players["1"].resources.knowledge = 1;
+    G.players["0"].stateArea = ["alien_state"];
+    G.players["1"].stateArea = ["alien_state"];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.unrestPile = ["alien_unrest_0", "alien_unrest_1"];
+    G.cardDb.alien_state = {
+      id: "alien_state",
+      displayName: "Alien",
+      type: "state",
+      cardType: "state",
+      suit: "none",
+      cost: 0,
+      tags: ["alien"],
+      effects: []
+    };
+    G.cardStates = { alien_state: { activeState: "alien" } };
+    G.activeNationRulesets!["0"].stateOverrides = [
+      { op: "take_unrest_when_spending_resource", resource: "knowledge", state: "alien" } as any
+    ];
+    G.activeNationRulesets!["1"].stateOverrides = [
+      { op: "take_unrest_when_spending_resource", resource: "knowledge", state: "alien" } as any
+    ];
+
+    playCard({ G, ctx }, card);
+
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["1"].resources.knowledge).toBe(0);
+    expect(G.unrestPile).toEqual(["alien_unrest_0", "alien_unrest_1"]);
+    expect(G.players["0"].hand).not.toContain("alien_unrest_0");
+    expect(G.players["1"].hand).not.toContain("alien_unrest_1");
+    expect(G.players["0"].discard).toContain(card);
+    expect(G.log.some((entry) => entry.message.startsWith("SpentResourcePenalty("))).toBe(false);
+  });
+
   it("does not play a paid action when selected payment overpays the cost", () => {
     const G = createInitialState();
     const card = "test_action_archive_survey";
@@ -2981,6 +5194,35 @@ describe("turn loop", () => {
     expect(G.players["0"].discard).toEqual(["test_action_foundry_shift"]);
     expect(G.players["0"].actionsRemaining).toBe(1);
     expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): no_resolvable_on_play_effects(${card})`);
+  });
+
+  it("draw-if-able text draws only available deck cards without reshuffling discard", () => {
+    const G = createInitialState();
+    const card = "test_action_archive_survey";
+    G.cardDb[card] = {
+      ...G.cardDb[card],
+      effects: [{ trigger: "on_play", op: "draw_if_able", count: 2 } as any]
+    };
+    G.players["0"].hand = [card];
+    G.players["0"].deck = ["deck_card"];
+    G.players["0"].discard = ["discard_card"];
+    G.players["0"].nationDeck = ["nation_card"];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.cardDb.deck_card = { id: "deck_card", displayName: "Deck Card", type: "action", cardType: "action", suit: "none", cost: 0, tags: [], effects: [] };
+    G.cardDb.discard_card = { id: "discard_card", displayName: "Discard Card", type: "action", cardType: "action", suit: "none", cost: 0, tags: [], effects: [] };
+    G.cardDb.nation_card = { id: "nation_card", displayName: "Nation Card", type: "action", cardType: "action", suit: "none", cost: 0, tags: [], effects: [] };
+
+    playCard({ G, ctx }, card);
+
+    expect(G.players["0"].hand).toEqual(["deck_card"]);
+    expect(G.players["0"].deck).toEqual([]);
+    expect(G.players["0"].discard).toEqual(["discard_card", card]);
+    expect(G.players["0"].nationDeck).toEqual(["nation_card"]);
+    expect(G.pendingReshuffleResolution).toBeUndefined();
+    expect(G.pendingDevelopmentChoice).toBeUndefined();
+    expect(G.players["0"].actionsRemaining).toBe(0);
+    expect(G.log.some((entry) => entry.message === "Draw-if-able stopped (deck empty).")).toBe(true);
   });
 
   it("does not treat an unpayable Development reshuffle as resolvable draw text", () => {
@@ -3403,7 +5645,7 @@ describe("turn loop", () => {
     expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): no_resolvable_on_play_effects(${card})`);
   });
 
-  it("plays unspecified Recall text when the only eligible Region is garrisoned", () => {
+  it("auto-resolves unspecified Recall text when the only eligible Region is garrisoned", () => {
     const G = createInitialState();
     const card = "test_action_archive_survey";
     G.cardDb[card] = {
@@ -3438,12 +5680,9 @@ describe("turn loop", () => {
 
     playCard({ G, ctx }, card);
 
-    expect(G.pendingRegionChoice).toEqual({
-      playerId: "0",
-      sourceCardId: card,
-      op: "recall_region",
-      cardIds: ["garrisoned_region"]
-    });
+    expect(G.pendingRegionChoice).toBeUndefined();
+    expect(G.players["0"].hand).toContain("garrisoned_region");
+    expect(G.cardStates?.non_region_host?.garrisonedCardIds ?? []).not.toContain("garrisoned_region");
     expect(G.log.some((entry) => entry.message === `InvalidMove(playCard): no_resolvable_on_play_effects(${card})`)).toBe(false);
   });
 
@@ -3476,6 +5715,28 @@ describe("turn loop", () => {
     expect(endTurn).toHaveBeenCalledTimes(1);
     expect(G.pendingCleanupMarketResourceChoice).toBeUndefined();
     expect(G.marketResources?.test_action_archive_survey?.knowledge).toBe(1);
+  });
+
+  it("cleanup market resource choices keep structured market slots in sync", () => {
+    const endTurn = vi.fn();
+    const G = createInitialState();
+    G.market = ["test_action_foundry_shift", "test_action_archive_survey"];
+    G.marketSlots = [
+      { index: 0, cardId: "test_action_foundry_shift", resourceMarkers: {}, attachedUnrestCardIds: [] },
+      { index: 1, cardId: "test_action_archive_survey", resourceMarkers: {}, attachedUnrestCardIds: [] }
+    ];
+    G.players["0"].hand = [];
+
+    endTurnMove({ G, ctx, events: { endTurn } });
+    resolveCleanupMarketResource({ G, ctx, events: { endTurn } }, "test_action_archive_survey");
+
+    expect(G.marketResources?.test_action_archive_survey?.knowledge).toBe(1);
+    expect(G.marketSlots[0].resourceMarkers).toEqual({});
+    expect(G.marketSlots[1]).toMatchObject({
+      cardId: "test_action_archive_survey",
+      resourceMarkers: { knowledge: 1 },
+      attachedUnrestCardIds: []
+    });
   });
 
   it("cleanup market resource choices honor nation cleanup resource overrides", () => {
@@ -3785,7 +6046,7 @@ describe("turn loop", () => {
     onTurnEnd(G, ctx);
 
     expect(G.marketResources?.test_action_foundry_shift?.knowledge ?? 0).toBe(0);
-    expect(G.log.some((entry) => entry.message === "MarketResourceAdded(test_action_foundry_shift/knowledge/0/1)")).toBe(true);
+    expect(G.log.some((entry) => entry.message.startsWith("MarketResourceAdded(test_action_foundry_shift/knowledge"))).toBe(false);
   });
 
   it("runs solstice only after all players have completed the round", () => {
@@ -3806,6 +6067,46 @@ describe("turn loop", () => {
 
     expect(G.players["0"].resources.influence).toBe(1);
     expect(G.round).toBe(2);
+  });
+
+  it("uses the default Solstice state flip when imported rulesets omit state overrides", () => {
+    const G = createInitialState();
+    G.players["0"].stateArea = ["barbarian_state", "empire_state"];
+    G.players["0"].hand = [];
+    G.players["1"].hand = [];
+    G.cardDb.barbarian_state = {
+      id: "barbarian_state",
+      displayName: "Barbarian State",
+      type: "state",
+      cardType: "state",
+      suit: "none",
+      cost: 0,
+      tags: ["barbarian"],
+      effects: []
+    };
+    G.cardDb.empire_state = {
+      id: "empire_state",
+      displayName: "Empire State",
+      type: "state",
+      cardType: "state",
+      suit: "none",
+      cost: 0,
+      tags: ["empire"],
+      effects: []
+    };
+    G.activeNationRulesets!["0"] = {
+      nationId: "minimal_solstice_nation",
+      displayName: "Minimal Solstice Nation",
+      rulesetTags: [],
+      stateOverrides: undefined,
+      solsticeOverrides: [{ op: "flip_state" }],
+      hookRules: []
+    } as any;
+
+    onTurnEnd(G, { currentPlayer: "1", playOrder: ["0", "1"] } as any);
+
+    expect(G.players["0"].stateArea).toEqual(["empire_state", "barbarian_state"]);
+    expect(G.gameover).toBeUndefined();
   });
 
   it("runs Solstice-triggered effects from play area, Power, and State cards", () => {
@@ -4025,6 +6326,47 @@ describe("turn loop", () => {
     expect(G.players["0"].resources.knowledge).toBe(0);
   });
 
+  it("does not resolve Solstice text from a later source removed by an earlier ordered Solstice effect", () => {
+    const G = createInitialState();
+    G.players["0"].playArea = ["solstice_exile_source", "solstice_removed_source"];
+    G.players["0"].hand = [];
+    G.players["1"].hand = [];
+    G.cardDb.solstice_exile_source = {
+      id: "solstice_exile_source",
+      displayName: "Solstice Exile Source",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_solstice", op: "exile_card", source: "playArea", cardId: "solstice_removed_source" } as any]
+    };
+    G.cardDb.solstice_removed_source = {
+      id: "solstice_removed_source",
+      displayName: "Solstice Removed Source",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_solstice", op: "gain_resource", resource: "knowledge", amount: 1 } as any]
+    };
+
+    onTurnEnd(G, { currentPlayer: "1", playOrder: ["0", "1"] } as any);
+
+    expect(G.pendingSolsticeOrderChoice).toEqual({
+      playerId: "0",
+      phase: "on_solstice",
+      cardIds: ["solstice_exile_source", "solstice_removed_source"]
+    });
+
+    resolveSolsticeOrderChoice({ G, ctx, random: { Number: () => 0 } }, ["solstice_exile_source", "solstice_removed_source"]);
+
+    expect(G.players["0"].playArea).toEqual(["solstice_exile_source"]);
+    expect(G.players["0"].exile).toEqual(["solstice_removed_source"]);
+    expect(G.players["0"].resources.knowledge).toBe(0);
+  });
+
   it("removes a configured Reactor-style play card and remaining Nation deck at End of Solstice when its resource is empty", () => {
     const G = createInitialState();
     const p = G.players["0"];
@@ -4062,6 +6404,58 @@ describe("turn loop", () => {
     expect(p.playArea).toEqual([]);
     expect(p.nationDeck).toEqual([]);
     expect(p.exile).toEqual(["reactor_explosion", "remaining_nation_1", "remaining_nation_2"]);
+    expect(G.log.some((entry) => entry.message === "SolsticeRemovedPlayCardAndNationDeck(reactor_explosion/removed=3)")).toBe(true);
+  });
+
+  it("removes a separated Accession card with the remaining Nation deck during Reactor-style End-of-Solstice removal", () => {
+    const G = createInitialState();
+    const p = G.players["0"];
+    p.playArea = ["reactor_explosion"];
+    p.nationDeck = ["remaining_nation_1"];
+    p.accessionCardId = "accession_card";
+    p.resources.knowledge = 0;
+    p.stateArea = ["alien_state"];
+    G.cardDb.reactor_explosion = {
+      id: "reactor_explosion",
+      displayName: "Reactor Explosion",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb.accession_card = {
+      id: "accession_card",
+      displayName: "Accession",
+      type: "accession",
+      cardType: "accession",
+      suit: "civilized",
+      cost: 0,
+      tags: ["accession"],
+      effects: []
+    };
+    G.cardDb.alien_state = {
+      id: "alien_state",
+      displayName: "Alien / Gone Native",
+      type: "state",
+      cardType: "state",
+      suit: "none",
+      cost: 0,
+      tags: ["alien", "native"],
+      effects: []
+    };
+    G.cardStates = { alien_state: { activeState: "alien" } };
+    G.activeNationRulesets!["0"].solsticeOverrides = [
+      { op: "remove_play_card_and_nation_deck_if_resource_empty", cardId: "reactor_explosion", resource: "knowledge", state: "alien" } as any
+    ];
+
+    onTurnEnd(G, { currentPlayer: "1", playOrder: ["0", "1"] } as any);
+
+    expect(p.playArea).toEqual([]);
+    expect(p.nationDeck).toEqual([]);
+    expect(p.accessionCardId).toBeUndefined();
+    expect(p.exile).toEqual(["reactor_explosion", "remaining_nation_1", "accession_card"]);
     expect(G.log.some((entry) => entry.message === "SolsticeRemovedPlayCardAndNationDeck(reactor_explosion/removed=3)")).toBe(true);
   });
 
@@ -4639,7 +7033,7 @@ describe("turn loop", () => {
     G.players["0"].playArea = ["exile_solstice_card", "gain_solstice_card"];
     G.players["0"].hand = [];
     G.players["1"].hand = [];
-    G.market = ["market_civilized"];
+    G.market = ["market_civilized", "market_civilized_b"];
     G.cleanupMarketResourcePlaced = { playerId: "1", round: G.round };
     G.cardDb.exile_solstice_card = {
       id: "exile_solstice_card",
@@ -4756,6 +7150,66 @@ describe("turn loop", () => {
     expect(G.players["0"].deck).toEqual(["draw_first"]);
   });
 
+  it("lets a player choose Solstice order when Place on Deck can feed Draw", () => {
+    const G = createInitialState();
+    G.players["0"].playArea = ["draw_solstice_card", "place_solstice_card"];
+    G.players["0"].hand = ["placed_card", "other_hand_card"];
+    G.players["0"].deck = ["original_top"];
+    G.players["1"].hand = [];
+    G.cardDb.draw_solstice_card = {
+      id: "draw_solstice_card",
+      displayName: "Draw Solstice",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_solstice", op: "draw", count: 1 } as any]
+    };
+    G.cardDb.place_solstice_card = {
+      id: "place_solstice_card",
+      displayName: "Place Solstice",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_solstice", op: "place_card_on_deck" } as any]
+    };
+    G.cardDb.placed_card = { id: "placed_card", displayName: "Placed Card", type: "action", cardType: "action", suit: "none", cost: 0, tags: [], effects: [] };
+    G.cardDb.other_hand_card = { id: "other_hand_card", displayName: "Other Hand Card", type: "action", cardType: "action", suit: "none", cost: 0, tags: [], effects: [] };
+    G.cardDb.original_top = { id: "original_top", displayName: "Original Top", type: "action", cardType: "action", suit: "none", cost: 0, tags: [], effects: [] };
+
+    onTurnEnd(G, { currentPlayer: "1", playOrder: ["0", "1"] } as any);
+
+    expect(G.pendingSolsticeOrderChoice).toEqual({
+      playerId: "0",
+      phase: "on_solstice",
+      cardIds: ["draw_solstice_card", "place_solstice_card"]
+    });
+    expect(G.pendingPlaceOnDeckChoice).toBeUndefined();
+    expect(G.players["0"].hand).toEqual(["placed_card", "other_hand_card"]);
+
+    resolveSolsticeOrderChoice({ G, ctx }, ["place_solstice_card", "draw_solstice_card"]);
+
+    expect(G.pendingPlaceOnDeckChoice).toEqual({
+      playerId: "0",
+      sourceCardId: "place_solstice_card",
+      sourceZone: "hand",
+      cardIds: ["placed_card", "other_hand_card"]
+    });
+    expect(G.pendingSolsticeContinuation?.cardIds).toEqual(["draw_solstice_card"]);
+    expect(G.players["0"].hand).toEqual(["placed_card", "other_hand_card"]);
+    expect(G.players["0"].deck).toEqual(["original_top"]);
+
+    resolvePlaceOnDeckChoice({ G, ctx }, "placed_card");
+
+    expect(G.pendingPlaceOnDeckChoice).toBeUndefined();
+    expect(G.pendingSolsticeContinuation).toBeUndefined();
+    expect(G.players["0"].hand).toEqual(["other_hand_card", "placed_card"]);
+    expect(G.players["0"].deck).toEqual(["original_top"]);
+  });
+
   it("lets a player choose Solstice order before a Return Unrest choice pauses resolution", () => {
     const G = createInitialState();
     G.players["0"].playArea = ["return_unrest_solstice_card", "gain_solstice_card"];
@@ -4862,6 +7316,75 @@ describe("turn loop", () => {
       cardIds: ["return_fame_solstice_card", "gain_solstice_card"]
     });
     expect(G.pendingReturnFameChoice).toBeUndefined();
+    expect(G.players["0"].resources.knowledge).toBe(0);
+  });
+
+  it("lets a player choose Solstice order before a Return Exhaust token choice pauses resolution", () => {
+    const G = createInitialState();
+    G.players["0"].playArea = ["spent_exhaust_card_a", "spent_exhaust_card_b", "return_exhaust_solstice_card", "gain_solstice_card"];
+    G.players["0"].hand = [];
+    G.players["1"].hand = [];
+    G.players["0"].exhaustTokensAvailable = 0;
+    G.cardStates = {
+      spent_exhaust_card_a: { exhaustTokens: 1 },
+      spent_exhaust_card_b: { exhaustTokens: 1 }
+    };
+    G.cardDb.spent_exhaust_card_a = {
+      id: "spent_exhaust_card_a",
+      displayName: "Spent Exhaust A",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb.spent_exhaust_card_b = {
+      id: "spent_exhaust_card_b",
+      displayName: "Spent Exhaust B",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb.return_exhaust_solstice_card = {
+      id: "return_exhaust_solstice_card",
+      displayName: "Return Exhaust Solstice",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_solstice", op: "return_exhaust_token" } as any]
+    };
+    G.cardDb.gain_solstice_card = {
+      id: "gain_solstice_card",
+      displayName: "Gain Solstice",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_solstice", op: "gain_resource", resource: "knowledge", amount: 1 } as any]
+    };
+
+    onTurnEnd(G, { currentPlayer: "1", playOrder: ["0", "1"] } as any);
+
+    expect(G.pendingSolsticeOrderChoice).toEqual({
+      playerId: "0",
+      phase: "on_solstice",
+      cardIds: ["return_exhaust_solstice_card", "gain_solstice_card"]
+    });
+    expect(G.pendingReturnExhaustTokenChoice).toBeUndefined();
+    expect(G.players["0"].resources.knowledge).toBe(0);
+
+    resolveSolsticeOrderChoice({ G, ctx }, ["return_exhaust_solstice_card", "gain_solstice_card"]);
+
+    expect(G.pendingReturnExhaustTokenChoice?.cardIds).toEqual(["spent_exhaust_card_a", "spent_exhaust_card_b"]);
+    expect(G.pendingSolsticeContinuation?.cardIds).toEqual(["gain_solstice_card"]);
+    expect(G.players["0"].exhaustTokensAvailable).toBe(0);
     expect(G.players["0"].resources.knowledge).toBe(0);
   });
 
@@ -5168,7 +7691,7 @@ describe("turn loop", () => {
     G.players["0"].playArea = ["solstice_exile_card"];
     G.players["0"].hand = [];
     G.players["1"].hand = [];
-    G.market = ["market_civilized"];
+    G.market = ["market_civilized", "market_civilized_b"];
     G.marketRefillPool = ["market_refill"];
     G.marketDecks = undefined;
     G.cleanupMarketResourcePlaced = { playerId: "1", round: G.round };
@@ -5183,7 +7706,7 @@ describe("turn loop", () => {
       tags: [],
       effects: [{ trigger: "on_solstice", op: "exile_card", source: "market", suit: "civilized" } as any]
     };
-    for (const id of ["market_civilized", "market_refill"]) {
+    for (const id of ["market_civilized", "market_civilized_b", "market_refill"]) {
       G.cardDb[id] = {
         id,
         displayName: id,
@@ -5202,7 +7725,7 @@ describe("turn loop", () => {
       playerId: "0",
       sourceCardId: "solstice_exile_card",
       source: "market",
-      cardIds: ["market_civilized"]
+      cardIds: ["market_civilized", "market_civilized_b"]
     });
     expect(G.pausedSolstice).toEqual({
       playOrder: ["0", "1"],
@@ -5460,7 +7983,7 @@ describe("turn loop", () => {
 
   it("resumes paused Solstice after a pending Region choice resolves", () => {
     const G = createInitialState();
-    G.players["0"].playArea = ["solstice_region_choice", "test_region"];
+    G.players["0"].playArea = ["solstice_region_choice", "test_region", "second_region"];
     G.players["0"].hand = [];
     G.players["1"].hand = [];
     G.cardDb.solstice_region_choice = {
@@ -5486,16 +8009,27 @@ describe("turn loop", () => {
       tags: [],
       effects: []
     };
+    G.cardDb.second_region = {
+      id: "second_region",
+      displayName: "Second Region",
+      type: "region",
+      cardType: "region",
+      suit: "region",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
 
     onTurnEnd(G, { currentPlayer: "1", playOrder: ["0", "1"] } as any);
     resolveRegionChoice({ G, ctx }, "test_region");
 
     expect(G.pendingRegionChoice).toBeUndefined();
+    expect(G.pendingSolsticeContinuation).toBeUndefined();
     expect(G.pausedSolstice).toBeUndefined();
     expect(G.players["0"].hand).toContain("test_region");
     expect(G.players["0"].resources.knowledge).toBe(1);
     expect(G.round).toBe(2);
-    expect(G.log.some((entry) => entry.message === "SolsticeResumed")).toBe(true);
+    expect(G.log.some((entry) => entry.message === "SolsticePaused(pending_region_choice)")).toBe(true);
   });
 
   it("pauses and resumes Solstice when an after-Solstice nation hook creates a pending choice", () => {
@@ -5933,6 +8467,51 @@ describe("turn loop", () => {
     expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): ${reason}`);
   });
 
+  it.each([
+    {
+      name: "post-development resolution",
+      setPending: (G: GameState) => { G.pendingPostDevelopmentResolution = { playerId: "0", cardId: "development_1", resumeDrawCount: 1 }; }
+    },
+    {
+      name: "reshuffle resolution",
+      setPending: (G: GameState) => { G.pendingReshuffleResolution = { playerId: "0", resumeDrawCount: 1 }; }
+    },
+    {
+      name: "after-reshuffle effects",
+      setPending: (G: GameState) => { G.pendingAfterReshuffleEffects = { playerId: "0", resumeDrawCount: 1, nextOverrideIndex: 0 }; }
+    },
+    {
+      name: "reshuffle draw continuation",
+      setPending: (G: GameState) => { G.pendingReshuffleDraw = { playerId: "0", resumeDrawCount: 1 }; }
+    }
+  ])("keeps paused Solstice behind a $name", ({ setPending }) => {
+    const G = createInitialState();
+    G.players["0"].hand = [];
+    G.players["1"].hand = [];
+    G.pausedSolstice = {
+      playOrder: ["0", "1"],
+      playerIndex: 0,
+      phase: "on_solstice",
+      cardIndex: 0,
+      overrideIndex: 0
+    };
+    G.currentTurnType = "solstice";
+    setPending(G);
+
+    continuePausedSolstice(G, "0");
+
+    expect(G.pausedSolstice).toEqual({
+      playOrder: ["0", "1"],
+      playerIndex: 0,
+      phase: "on_solstice",
+      cardIndex: 0,
+      overrideIndex: 0
+    });
+    expect(G.round).toBe(1);
+    expect(G.currentTurnType).toBe("solstice");
+    expect(G.log.some((entry) => entry.message === "SolsticeResumed")).toBe(false);
+  });
+
   it("keeps Collapse from an on-play effect instead of rolling the action back", () => {
     const G = createInitialState();
     G.unrestPile = [];
@@ -6088,13 +8667,14 @@ describe("turn loop", () => {
     expect(G.log.some((entry) => entry.message === "ExhaustTokenReturned(return_exhaust_card)")).toBe(true);
   });
 
-  it("pauses to choose which Exhaust token to return, then resumes later effects", () => {
+  it("pauses to choose which Exhaust token to return before paying later costs, then resumes effects", () => {
     const G = createInitialState();
     G.players["0"].hand = ["return_exhaust_source"];
     G.players["0"].playArea = ["spent_a", "spent_b"];
     G.players["0"].actionTokensAvailable = 1;
     G.players["0"].actionsRemaining = 1;
     G.players["0"].exhaustTokensAvailable = 0;
+    G.players["0"].resources.knowledge = 1;
     G.cardStates = {
       spent_a: { exhausted: true, exhaustTokens: 1 },
       spent_b: { exhausted: true, exhaustTokens: 1 }
@@ -6129,6 +8709,7 @@ describe("turn loop", () => {
       tags: [],
       effects: [
         { trigger: "on_play", op: "return_exhaust_token" } as any,
+        { trigger: "on_play", op: "spend_resource", resource: "knowledge", amount: 1 } as any,
         { trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 } as any
       ]
     };
@@ -6139,9 +8720,12 @@ describe("turn loop", () => {
       playerId: "0",
       sourceCardId: "return_exhaust_source",
       cardIds: ["spent_a", "spent_b"],
-      resumeEffects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }]
+      resumeEffects: [
+        { trigger: "on_play", op: "spend_resource", resource: "knowledge", amount: 1 },
+        { trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }
+      ]
     });
-    expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.players["0"].resources.knowledge).toBe(1);
 
     resolveReturnExhaustTokenChoice({ G, ctx }, "spent_b");
 
@@ -6222,7 +8806,47 @@ describe("turn loop", () => {
     expect(G.log.at(-1)?.message).toBe("InvalidMove(playCard): no_resolvable_on_play_effects(market_exile_source)");
   });
 
-  it("allows an exhaust garrison ability with one card in hand", () => {
+  it("does not play a play-area Exile action when all matching player cards have card-state tokens", () => {
+    const G = createInitialState();
+    G.players["0"].hand = ["player_exile_source"];
+    G.players["0"].playArea = ["tokened_region"];
+    G.players["0"].actionTokensAvailable = 1;
+    G.players["0"].actionsRemaining = 1;
+    G.cardDb.player_exile_source = {
+      id: "player_exile_source",
+      displayName: "Player Exile Source",
+      type: "action",
+      cardType: "action",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_play", op: "exile_card", source: "playArea", suit: "region" } as any]
+    };
+    G.cardDb.tokened_region = {
+      id: "tokened_region",
+      displayName: "Tokened Region",
+      type: "region",
+      cardType: "region",
+      suit: "region",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardStates = {
+      tokened_region: { exhaustTokens: 1 }
+    };
+
+    playCard({ G, ctx }, "player_exile_source");
+
+    expect(G.players["0"].hand).toEqual(["player_exile_source"]);
+    expect(G.players["0"].discard).not.toContain("player_exile_source");
+    expect(G.players["0"].actionsRemaining).toBe(1);
+    expect(G.players["0"].actionTokensAvailable).toBe(1);
+    expect(G.pendingExileChoice).toBeUndefined();
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(playCard): no_resolvable_on_play_effects(player_exile_source)");
+  });
+
+  it("auto-resolves an exhaust garrison ability with one host and one card in hand", () => {
     const G = createInitialState();
     G.cardDb.test_region = {
       id: "test_region",
@@ -6250,16 +8874,13 @@ describe("turn loop", () => {
 
     exhaustCard({ G, ctx }, "exhaust_garrison_card");
 
-    expect(G.pendingGarrisonChoice).toEqual({
-      playerId: "0",
-      sourceCardId: "exhaust_garrison_card",
-      hostCardIds: ["test_region"],
-      cardIds: ["test_action_archive_survey"]
-    });
+    expect(G.pendingGarrisonChoice).toBeUndefined();
+    expect(G.players["0"].hand).toEqual([]);
+    expect(G.cardStates?.test_region?.garrisonedCardIds).toEqual(["test_action_archive_survey"]);
     expect(G.players["0"].exhaustTokensAvailable).toBe(0);
   });
 
-  it("allows an on-play Garrison Region to use itself as the host with one other hand card", () => {
+  it("auto-resolves an on-play Garrison Region using itself as the only host", () => {
     const G = createInitialState();
     G.cardDb.garrison_region = {
       id: "garrison_region",
@@ -6276,13 +8897,10 @@ describe("turn loop", () => {
 
     playCard({ G, ctx }, "garrison_region");
 
-    expect(G.pendingGarrisonChoice).toEqual({
-      playerId: "0",
-      sourceCardId: "garrison_region",
-      hostCardIds: ["garrison_region"],
-      cardIds: ["test_action_archive_survey"]
-    });
+    expect(G.pendingGarrisonChoice).toBeUndefined();
     expect(G.players["0"].playArea).toContain("garrison_region");
+    expect(G.players["0"].hand).toEqual([]);
+    expect(G.cardStates?.garrison_region?.garrisonedCardIds).toEqual(["test_action_archive_survey"]);
     expect(G.log.some((entry) => entry.message === "InvalidMove(playCard): no_resolvable_on_play_effects(garrison_region)")).toBe(false);
   });
 
@@ -6381,6 +8999,95 @@ describe("turn loop", () => {
     expect(G.players["0"].exhaustTokensAvailable).toBe(0);
     expect(G.cardStates?.exhaust_remove_card?.exhausted).toBe(true);
     expect(G.log.some((entry) => entry.message === "Removed 0/1 materials.")).toBe(true);
+  });
+
+  it("does not allow a reactive-only Exhaust ability to be used as an ordinary Exhaust", () => {
+    const G = createInitialState();
+    G.cardDb.reactive_only_exhaust_card = {
+      id: "reactive_only_exhaust_card",
+      displayName: "Reactive Only Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_exhaust",
+        op: "gain_resource",
+        resource: "knowledge",
+        amount: 1,
+        reactive: { trigger: "after_gain_resource", resource: "materials" }
+      } as any]
+    };
+    G.players["0"].playArea = ["reactive_only_exhaust_card"];
+    G.players["0"].resources.knowledge = 0;
+    G.players["0"].exhaustTokensAvailable = 1;
+
+    exhaustCard({ G, ctx }, "reactive_only_exhaust_card");
+
+    expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.players["0"].exhaustTokensAvailable).toBe(1);
+    expect(G.cardStates?.reactive_only_exhaust_card?.exhausted).toBeUndefined();
+    expect(G.cardStates?.reactive_only_exhaust_card?.exhaustTokens).toBeUndefined();
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(exhaustCard): no_exhaust_ability(reactive_only_exhaust_card)");
+  });
+
+  it("allows a reactive Exhaust ability to use selected payment", () => {
+    const G = createInitialState();
+    G.cardDb.resource_trigger_card = {
+      id: "resource_trigger_card",
+      displayName: "Resource Trigger",
+      type: "action",
+      cardType: "action",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 } as any]
+    };
+    G.cardDb.paid_reactive_exhaust_card = {
+      id: "paid_reactive_exhaust_card",
+      displayName: "Paid Reactive Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [
+        {
+          trigger: "on_exhaust",
+          op: "spend_resource",
+          resource: "influence",
+          amount: 1,
+          reactive: { trigger: "after_gain_resource", resource: "materials" }
+        } as any,
+        {
+          trigger: "on_exhaust",
+          op: "gain_resource",
+          resource: "influence",
+          amount: 1,
+          reactive: { trigger: "after_gain_resource", resource: "materials" }
+        } as any
+      ]
+    };
+    G.players["0"].hand = ["resource_trigger_card"];
+    G.players["0"].playArea = ["paid_reactive_exhaust_card"];
+    G.players["0"].resources.knowledge = 0;
+    G.players["0"].resources.influence = 0;
+    G.players["0"].resources.goods = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.players["0"].exhaustTokensAvailable = 1;
+
+    playCard({ G, ctx }, "resource_trigger_card");
+    expect(G.pendingReactiveExhaustChoice?.cardIds).toEqual(["paid_reactive_exhaust_card"]);
+
+    resolveReactiveExhaustChoice({ G, ctx }, "paid_reactive_exhaust_card", { goods: 1 } as any);
+
+    expect(G.pendingReactiveExhaustChoice).toBeUndefined();
+    expect(G.players["0"].resources.goods).toBe(0);
+    expect(G.players["0"].resources.influence).toBe(1);
+    expect(G.players["0"].exhaustTokensAvailable).toBe(0);
+    expect(G.cardStates?.paid_reactive_exhaust_card?.exhaustTokens).toBe(1);
+    expect(G.log.at(-1)?.message).toBe("ReactiveExhaustResolved(paid_reactive_exhaust_card).");
   });
 
   it("blocks exhausting the same card twice before cleanup", () => {
@@ -7324,6 +10031,34 @@ describe("turn loop", () => {
     expect(G.market).toEqual([]);
   });
 
+  it("honors selected Progress substitution when acquiring from the market", () => {
+    const G = createInitialState();
+    G.cardDb.progress_paid_market_card = {
+      id: "progress_paid_market_card",
+      displayName: "Progress Paid Market Card",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 2,
+      tags: [],
+      effects: []
+    };
+    G.market = ["progress_paid_market_card"];
+    G.marketRefillPool = [];
+    G.marketDecks = undefined;
+    G.players["0"].resources.materials = 0;
+    G.players["0"].resources.knowledge = 1;
+    G.players["0"].resources.goods = 1;
+
+    acquireCard({ G, ctx }, "progress_paid_market_card", { knowledge: 1 });
+
+    expect(G.players["0"].resources.materials).toBe(0);
+    expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.players["0"].resources.goods).toBe(1);
+    expect(G.players["0"].hand).toContain("progress_paid_market_card");
+    expect(G.market).toEqual([]);
+  });
+
   it("requires direct Progress and Goods for structured market acquire costs", () => {
     const G = createInitialState();
     G.cardDb.structured_cost_card = {
@@ -7410,6 +10145,33 @@ describe("turn loop", () => {
     expect(G.unrestPile).toEqual(["test_unrest_2"]);
   });
 
+  it("does not tuck unrest under a Region setup-banner replacement card", () => {
+    const G = createInitialState();
+    G.cardDb.multi_region_replacement = {
+      id: "multi_region_replacement",
+      displayName: "Multi Region Banner",
+      type: "action",
+      cardType: "action",
+      suit: "multi",
+      suitIcons: ["region", "civilized"],
+      setupBannerSuit: "region",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.market = ["test_action_foundry_shift"];
+    G.marketRefillPool = ["multi_region_replacement"];
+    G.marketDecks = undefined;
+    G.unrestPile = ["test_unrest_2"];
+    G.players["0"].resources.materials = 1;
+
+    acquireCard({ G, ctx }, "test_action_foundry_shift");
+
+    expect(G.market).toEqual(["multi_region_replacement"]);
+    expect(G.marketUnrest?.multi_region_replacement).toBeUndefined();
+    expect(G.unrestPile).toEqual(["test_unrest_2"]);
+  });
+
   it("triggers collapse when a market refill needs Unrest and the Unrest pile is empty", () => {
     const G = createInitialState();
     G.market = ["test_action_foundry_shift"];
@@ -7485,6 +10247,177 @@ describe("turn loop", () => {
     expect(G.players["0"].actionTokensAvailable).toBe(1);
     expect(G.log.some((entry) => entry.message === "Nation hook after_acquire #0 failed.")).toBe(true);
     expect(G.log.at(-1)?.message).toBe("InvalidMove(acquireCard): after_acquire_hook_failed(test_action_foundry_shift)");
+  });
+
+  it("failed tucked-Unrest hooks restore the direct Market acquisition state", () => {
+    const G = createInitialState();
+    G.market = ["test_action_foundry_shift"];
+    G.marketRefillPool = ["test_action_archive_survey"];
+    G.marketDecks = undefined;
+    G.marketUnrest = { test_action_foundry_shift: ["test_unrest_1"] };
+    G.players["0"].resources.materials = 1;
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      hookRules: [{
+        trigger: "after_gain_unrest",
+        effects: [{ trigger: "on_play", op: "unsupported_private_effect" } as any]
+      } as any]
+    };
+
+    acquireCard({ G, ctx }, "test_action_foundry_shift");
+
+    expect(G.market).toEqual(["test_action_foundry_shift"]);
+    expect(G.marketRefillPool).toEqual(["test_action_archive_survey"]);
+    expect(G.marketUnrest).toEqual({ test_action_foundry_shift: ["test_unrest_1"] });
+    expect(G.players["0"].hand).not.toContain("test_action_foundry_shift");
+    expect(G.players["0"].hand).not.toContain("test_unrest_1");
+    expect(G.players["0"].resources.materials).toBe(1);
+    expect(G.players["0"].actionsRemaining).toBe(1);
+    expect(G.players["0"].actionTokensAvailable).toBe(1);
+    expect(G.log.some((entry) => entry.message === "Nation hook after_gain_unrest #0 failed.")).toBe(true);
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(acquireCard): after_gain_unrest_hook_failed(test_action_foundry_shift)");
+  });
+
+  it("failed tucked-Unrest hooks during card-effect Market acquisition restore the card play state", () => {
+    const G = createInitialState();
+    const card = "failed_effect_market_acquire_unrest_hook_card";
+    G.players["0"].hand = [card];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.market = ["test_action_foundry_shift"];
+    G.marketRefillPool = ["test_action_archive_survey"];
+    G.marketDecks = undefined;
+    G.marketUnrest = { test_action_foundry_shift: ["test_unrest_1"] };
+    G.cardDb[card] = {
+      id: card,
+      displayName: "Failed Effect Market Acquire Unrest Hook Card",
+      type: "action",
+      cardType: "action",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_play",
+        op: "acquire_card",
+        source: "market",
+        cardId: "test_action_foundry_shift",
+        count: 1
+      } as any]
+    };
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      hookRules: [{
+        trigger: "after_gain_unrest",
+        effects: [{ trigger: "on_play", op: "unsupported_private_effect" } as any]
+      } as any]
+    };
+
+    playCard({ G, ctx }, card);
+
+    expect(G.players["0"].hand).toEqual([card]);
+    expect(G.players["0"].playArea).not.toContain(card);
+    expect(G.players["0"].discard).not.toContain(card);
+    expect(G.players["0"].actionsRemaining).toBe(1);
+    expect(G.players["0"].actionTokensAvailable).toBe(1);
+    expect(G.market).toEqual(["test_action_foundry_shift"]);
+    expect(G.marketRefillPool).toEqual(["test_action_archive_survey"]);
+    expect(G.marketUnrest).toEqual({ test_action_foundry_shift: ["test_unrest_1"] });
+    expect(G.players["0"].hand).not.toContain("test_action_foundry_shift");
+    expect(G.players["0"].hand).not.toContain("test_unrest_1");
+    expect(G.log.some((entry) => entry.message === "Nation hook after_gain_unrest #0 failed.")).toBe(true);
+    expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): on_play_effect_failed(${card})`);
+  });
+
+  it("failed resumed tucked-Unrest hooks during card-effect Market acquisition restore the card play state", () => {
+    const G = createInitialState();
+    const card = "failed_resumed_effect_market_acquire_unrest_hook_card";
+    G.players["0"].hand = [card];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.market = ["test_action_foundry_shift"];
+    G.marketRefillPool = ["test_action_archive_survey"];
+    G.marketDecks = undefined;
+    G.marketUnrest = { test_action_foundry_shift: ["test_unrest_1", "test_unrest_2"] };
+    G.unrestPile = ["spare_test_unrest"];
+    G.cardDb.spare_test_unrest = {
+      id: "spare_test_unrest",
+      displayName: "Spare Test Unrest",
+      type: "unrest",
+      cardType: "unrest",
+      suit: "unrest",
+      cost: 0,
+      tags: ["unrest"],
+      effects: []
+    };
+    G.cardDb[card] = {
+      id: card,
+      displayName: "Failed Resumed Effect Market Acquire Unrest Hook Card",
+      type: "action",
+      cardType: "action",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_play",
+        op: "acquire_card",
+        source: "market",
+        cardId: "test_action_foundry_shift",
+        count: 1
+      } as any]
+    };
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      hookRules: [{
+        trigger: "after_gain_unrest",
+        condition: { op: "payload_card_is", payloadKey: "cardId", cardId: "test_unrest_1" },
+        effects: [{
+          trigger: "on_play",
+          op: "choose_one",
+          choices: [[{ trigger: "on_play", op: "gain_resource", resource: "goods", amount: 1 }]]
+        } as any]
+      } as any]
+    };
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      hookRules: [
+        ...G.activeNationRulesets!["0"].hookRules,
+        {
+        trigger: "after_gain_unrest",
+        condition: { op: "payload_card_is", payloadKey: "cardId", cardId: "test_unrest_2" },
+        effects: [{ trigger: "on_play", op: "unsupported_private_effect" } as any]
+        } as any
+      ]
+    };
+
+    playCard({ G, ctx }, card);
+
+    expect(G.pendingChoice).toBeDefined();
+    expect(G.pendingMarketUnrestHookContinuation).toEqual({
+      playerId: "0",
+      cardIds: ["test_unrest_1", "test_unrest_2"],
+      nextIndex: 1
+    });
+
+    resolveChoice({ G, ctx }, 0);
+
+    expect(G.players["0"].hand).toEqual([card]);
+    expect(G.players["0"].playArea).not.toContain(card);
+    expect(G.players["0"].discard).not.toContain(card);
+    expect(G.players["0"].actionsRemaining).toBe(1);
+    expect(G.players["0"].actionTokensAvailable).toBe(1);
+    expect(G.players["0"].resources.goods).toBe(0);
+    expect(G.market).toEqual(["test_action_foundry_shift"]);
+    expect(G.marketRefillPool).toEqual(["test_action_archive_survey"]);
+    expect(G.marketUnrest).toEqual({ test_action_foundry_shift: ["test_unrest_1", "test_unrest_2"] });
+    expect(G.pendingChoice).toBeUndefined();
+    expect(G.pendingMarketUnrestHookContinuation).toBeUndefined();
+    expect(G.players["0"].hand).not.toContain("test_action_foundry_shift");
+    expect(G.players["0"].hand).not.toContain("test_unrest_1");
+    expect(G.players["0"].hand).not.toContain("test_unrest_2");
+    expect(G.log.some((entry) => entry.message === "Nation hook after_gain_unrest #1 failed.")).toBe(true);
+    expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): on_play_effect_failed(${card})`);
   });
 
   it("matches nation hook payload suit conditions against multi-suit icons", () => {
@@ -7687,8 +10620,9 @@ describe("turn loop", () => {
         expectedKey: "pendingExileChoice",
         effect: { trigger: "on_play", op: "exile_card", source: "market", suit: "civilized" },
         setup(G: ReturnType<typeof createInitialState>) {
-          G.market = ["test_action_foundry_shift", "market_civilized"];
+          G.market = ["test_action_foundry_shift", "market_civilized", "market_civilized_b"];
           G.cardDb.market_civilized = { ...G.cardDb.test_action_archive_survey, id: "market_civilized", displayName: "Market Civilized", suit: "civilized" };
+          G.cardDb.market_civilized_b = { ...G.cardDb.test_action_archive_survey, id: "market_civilized_b", displayName: "Market Civilized B", suit: "civilized" };
         },
         resolve(G: ReturnType<typeof createInitialState>) {
           resolveExileChoice({ G, ctx }, "market_civilized");
@@ -8177,6 +11111,38 @@ describe("turn loop", () => {
     ]);
   });
 
+  it("blocks unrelated moves while a pending Region continuation is unresolved", () => {
+    const G = createInitialState();
+    const card = "test_action_archive_survey";
+    G.players["0"].hand = [card];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].resources.materials = 1;
+    G.market = ["test_action_foundry_shift"];
+    G.pendingRegionChoiceContinuation = {
+      playerId: "0",
+      sourceCardId: "counted_region_source",
+      op: "recall_region",
+      cardIds: ["test_region"],
+      count: 1
+    };
+    const endTurn = vi.fn();
+
+    playCard({ G, ctx }, card);
+    acquireCard({ G, ctx }, "test_action_foundry_shift");
+    endTurnMove({ G, ctx, events: { endTurn } });
+
+    expect(G.players["0"].hand).toEqual([card]);
+    expect(G.players["0"].discard).not.toContain(card);
+    expect(G.market).toEqual(["test_action_foundry_shift"]);
+    expect(endTurn).not.toHaveBeenCalled();
+    expect(G.pendingCleanupMarketResourceChoice).toBeUndefined();
+    expect(G.log.slice(-3).map((entry) => entry.message)).toEqual([
+      "InvalidMove(playCard): pending_region_choice_continuation",
+      "InvalidMove(acquireCard): pending_region_choice_continuation",
+      "InvalidMove(endTurn): pending_region_choice_continuation"
+    ]);
+  });
+
   it("resolves the selected pending Find choice", () => {
     const G = createInitialState();
     G.players["0"].hand = ["test_action_foundry_shift"];
@@ -8269,6 +11235,40 @@ describe("turn loop", () => {
       ...G.activeNationRulesets!["0"],
       rulesetTags: ["no_history", "discard_instead_of_history"] as any,
       zoneOverrides: [{ op: "disable_history", replacementBehavior: "discard" } as any]
+    };
+    G.pendingFindChoice = {
+      playerId: "0",
+      sourceCardId: "finder",
+      cardIds: ["found_card"],
+      destination: "history"
+    };
+
+    resolveFindChoice({ G, ctx }, "found_card");
+
+    expect(G.pendingFindChoice).toBeUndefined();
+    expect(G.players["0"].hand).toEqual([]);
+    expect(G.players["0"].history).toEqual([]);
+    expect(G.players["0"].discard).toEqual(["found_card"]);
+    expect(G.log.at(-1)?.message).toBe("FindChoiceResolved(finder/found_card->discard)");
+  });
+
+  it("infers no-History discard replacement from imported ruleset tags", () => {
+    const G = createInitialState();
+    G.players["0"].hand = ["found_card"];
+    G.cardDb.found_card = {
+      id: "found_card",
+      displayName: "Found Card",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      rulesetTags: ["no_history", "discard_instead_of_history"] as any,
+      zoneOverrides: []
     };
     G.pendingFindChoice = {
       playerId: "0",
@@ -8454,6 +11454,87 @@ describe("turn loop", () => {
     expect(G.players["0"].resources.influence).toBe(1);
     expect(G.players["0"].resources.knowledge).toBe(1);
     expect(G.players["0"].history).toEqual([hostCardId, childCardId]);
+  });
+
+  it("matches source-suited reactive Exhausts against pending Find child resources moved with a host", () => {
+    const G = createInitialState();
+    const hostCardId = "pending_find_child_source_suit_host";
+    const childCardId = "pending_find_child_source_suit_child";
+    const exhaustCardId = "pending_find_child_source_suit_exhaust";
+    G.players["0"].playArea = [hostCardId, exhaustCardId];
+    G.players["0"].resources.materials = 0;
+    G.players["0"].resources.knowledge = 0;
+    G.players["0"].resources.influence = 0;
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.cardStates = {
+      [hostCardId]: { garrisonedCardIds: [childCardId] },
+      [childCardId]: { resources: { knowledge: 1 } }
+    };
+    G.cardDb[hostCardId] = {
+      id: hostCardId,
+      displayName: "Pending Find Child Source Suit Host",
+      type: "region",
+      cardType: "region",
+      suit: "region",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb[childCardId] = {
+      id: childCardId,
+      displayName: "Pending Find Child Source Suit Child",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb[exhaustCardId] = {
+      id: exhaustCardId,
+      displayName: "Pending Find Child Source Suit Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_exhaust",
+        op: "gain_resource",
+        resource: "influence",
+        amount: 1,
+        reactive: { trigger: "after_gain_resource", resource: "knowledge", sourceSuit: "civilized" }
+      } as any]
+    };
+    G.pendingFindChoice = {
+      playerId: "0",
+      sourceCardId: "pending_find_source",
+      cardIds: [hostCardId],
+      destination: "history",
+      resumeEffects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }]
+    } as any;
+
+    resolveFindChoice({ G, ctx }, hostCardId);
+
+    expect(G.players["0"].history).toEqual([hostCardId, childCardId]);
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: [exhaustCardId],
+      resolvingPlayerId: "0",
+      sourceCardId: "pending_find_source",
+      trigger: "after_gain_resource",
+      resource: "knowledge",
+      eventSourceCardId: childCardId,
+      eventSourceWasInPlay: true
+    });
+    expect(G.players["0"].resources.materials).toBe(0);
+
+    resolveReactiveExhaustChoice({ G, ctx }, exhaustCardId);
+
+    expect(G.pendingReactiveExhaustChoice).toBeUndefined();
+    expect(G.players["0"].resources.influence).toBe(1);
+    expect(G.players["0"].resources.materials).toBe(1);
   });
 
   it("matches source-suited reactive Exhausts against a garrisoned card that released resources", () => {
@@ -8782,6 +11863,258 @@ describe("turn loop", () => {
     expect(G.players["0"].resources.knowledge).toBe(1);
   });
 
+  it("failed required-Unrest hooks during Exile acquisition restore the card play state", () => {
+    const G = createInitialState();
+    const card = "failed_exile_unrest_hook_card";
+    G.players["0"].hand = [card];
+    G.players["0"].exile = ["exiled_action"];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.cardDb[card] = {
+      id: card,
+      displayName: "Failed Exile Unrest Hook Card",
+      type: "action",
+      cardType: "action",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_play",
+        op: "acquire_card",
+        source: "exile",
+        cardId: "exiled_action",
+        count: 1
+      } as any]
+    };
+    G.cardDb.exiled_action = {
+      id: "exiled_action",
+      displayName: "Exiled Action",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.unrestPile = ["test_unrest_1"];
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      hookRules: [{
+        trigger: "after_gain_unrest",
+        effects: [{ trigger: "on_play", op: "unsupported_private_effect" } as any]
+      } as any]
+    };
+
+    playCard({ G, ctx }, card);
+
+    expect(G.players["0"].hand).toEqual([card]);
+    expect(G.players["0"].playArea).not.toContain(card);
+    expect(G.players["0"].discard).not.toContain(card);
+    expect(G.players["0"].exile).toEqual(["exiled_action"]);
+    expect(G.players["0"].actionsRemaining).toBe(1);
+    expect(G.players["0"].actionTokensAvailable).toBe(1);
+    expect(G.unrestPile).toEqual(["test_unrest_1"]);
+    expect(G.log.some((entry) => entry.message === "Nation hook after_gain_unrest #0 failed.")).toBe(true);
+    expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): on_play_effect_failed(${card})`);
+  });
+
+  it("failed after-gain-Unrest hooks during Take Unrest restore the card play state", () => {
+    const G = createInitialState();
+    const card = "failed_take_unrest_hook_card";
+    G.players["0"].hand = [card];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.cardDb[card] = {
+      id: card,
+      displayName: "Failed Take Unrest Hook Card",
+      type: "action",
+      cardType: "action",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_play", op: "take_unrest", count: 1 } as any]
+    };
+    G.unrestPile = ["test_unrest_1"];
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      hookRules: [{
+        trigger: "after_gain_unrest",
+        effects: [{ trigger: "on_play", op: "unsupported_private_effect" } as any]
+      } as any]
+    };
+
+    playCard({ G, ctx }, card);
+
+    expect(G.players["0"].hand).toEqual([card]);
+    expect(G.players["0"].playArea).not.toContain(card);
+    expect(G.players["0"].discard).not.toContain(card);
+    expect(G.players["0"].actionsRemaining).toBe(1);
+    expect(G.players["0"].actionTokensAvailable).toBe(1);
+    expect(G.unrestPile).toEqual(["test_unrest_1"]);
+    expect(G.log.some((entry) => entry.message === "Nation hook after_gain_unrest #0 failed.")).toBe(true);
+    expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): on_play_effect_failed(${card})`);
+  });
+
+  it("failed resumed after-gain-Unrest hooks during Take Unrest restore the card play state", () => {
+    const G = createInitialState();
+    const card = "failed_resumed_take_unrest_hook_card";
+    G.players["0"].hand = [card];
+    G.players["0"].actionsRemaining = 1;
+    G.players["0"].actionTokensAvailable = 1;
+    G.cardDb[card] = {
+      id: card,
+      displayName: "Failed Resumed Take Unrest Hook Card",
+      type: "action",
+      cardType: "action",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_play", op: "take_unrest", count: 2 } as any]
+    };
+    G.unrestPile = ["test_unrest_1", "test_unrest_2"];
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      hookRules: [
+        {
+          trigger: "after_gain_unrest",
+          condition: { op: "payload_card_is", payloadKey: "cardId", cardId: "test_unrest_1" },
+          effects: [{
+            trigger: "on_play",
+            op: "choose_one",
+            choices: [[{ trigger: "on_play", op: "gain_resource", resource: "goods", amount: 1 }]]
+          } as any]
+        } as any,
+        {
+          trigger: "after_gain_unrest",
+          condition: { op: "payload_card_is", payloadKey: "cardId", cardId: "test_unrest_2" },
+          effects: [{ trigger: "on_play", op: "unsupported_private_effect" } as any]
+        } as any
+      ]
+    };
+
+    playCard({ G, ctx }, card);
+
+    expect(G.pendingChoice).toBeDefined();
+    expect(G.pendingUnrestTakeContinuation).toMatchObject({
+      playerId: "0",
+      recipientPlayerIds: ["0"],
+      countPerPlayer: 2,
+      recipientIndex: 0,
+      cardIndex: 1,
+      taken: 1
+    });
+
+    resolveChoice({ G, ctx }, 0);
+
+    expect(G.players["0"].hand).toEqual([card]);
+    expect(G.players["0"].playArea).not.toContain(card);
+    expect(G.players["0"].discard).not.toContain(card);
+    expect(G.players["0"].actionsRemaining).toBe(1);
+    expect(G.players["0"].actionTokensAvailable).toBe(1);
+    expect(G.players["0"].resources.goods).toBe(0);
+    expect(G.unrestPile).toEqual(["test_unrest_1", "test_unrest_2"]);
+    expect(G.pendingChoice).toBeUndefined();
+    expect(G.pendingUnrestTakeContinuation).toBeUndefined();
+    expect(G.players["0"].hand).not.toContain("test_unrest_1");
+    expect(G.players["0"].hand).not.toContain("test_unrest_2");
+    expect(G.log.some((entry) => entry.message === "Nation hook after_gain_unrest #1 failed.")).toBe(true);
+    expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): on_play_effect_failed(${card})`);
+  });
+
+  it("failed after-gain-Unrest hooks during short-pile allocation restore the allocation choice", () => {
+    const G = createInitialState();
+    G.unrestPile = ["test_unrest_1"];
+    G.players["0"].hand = [];
+    G.players["1"].hand = [];
+    G.pendingUnrestAllocationChoice = {
+      playerId: "0",
+      recipientPlayerIds: ["0", "1"],
+      countPerPlayer: 1,
+      availableUnrestCardIds: ["test_unrest_1"]
+    };
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      hookRules: [{
+        trigger: "after_gain_unrest",
+        effects: [{ trigger: "on_play", op: "unsupported_private_effect" } as any]
+      } as any]
+    };
+
+    resolveUnrestAllocationChoice({ G, ctx }, ["0"]);
+
+    expect(G.pendingUnrestAllocationChoice).toEqual({
+      playerId: "0",
+      recipientPlayerIds: ["0", "1"],
+      countPerPlayer: 1,
+      availableUnrestCardIds: ["test_unrest_1"]
+    });
+    expect(G.players["0"].hand).toEqual([]);
+    expect(G.players["1"].hand).toEqual([]);
+    expect(G.pendingUnrestAllocationResolution).toBeUndefined();
+    expect(G.gameover).toBeUndefined();
+    expect(G.log.some((entry) => entry.message === "Nation hook after_gain_unrest #0 failed.")).toBe(true);
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(resolveUnrestAllocationChoice): unrest_allocation_failed");
+  });
+
+  it("failed resumed after-gain-Unrest hooks during short-pile allocation restore the allocation choice", () => {
+    const G = createInitialState();
+    G.unrestPile = [];
+    G.players["0"].hand = [];
+    G.players["1"].hand = [];
+    G.pendingUnrestAllocationChoice = {
+      playerId: "0",
+      recipientPlayerIds: ["0", "1"],
+      countPerPlayer: 1,
+      availableUnrestCardIds: ["test_unrest_1", "test_unrest_2"]
+    };
+    G.activeNationRulesets!["0"] = {
+      ...G.activeNationRulesets!["0"],
+      hookRules: [{
+        trigger: "after_gain_unrest",
+        condition: { op: "payload_card_is", payloadKey: "cardId", cardId: "test_unrest_1" },
+        effects: [{
+          trigger: "on_play",
+          op: "choose_one",
+          choices: [[{ trigger: "on_play", op: "gain_resource", resource: "goods", amount: 1 }]]
+        } as any]
+      } as any]
+    };
+    G.activeNationRulesets!["1"] = {
+      ...G.activeNationRulesets!["1"],
+      hookRules: [{
+        trigger: "after_gain_unrest",
+        condition: { op: "payload_card_is", payloadKey: "cardId", cardId: "test_unrest_2" },
+        effects: [{ trigger: "on_play", op: "unsupported_private_effect" } as any]
+      } as any]
+    };
+
+    resolveUnrestAllocationChoice({ G, ctx }, ["0", "1"]);
+
+    expect(G.pendingChoice).toBeDefined();
+    expect(G.pendingUnrestAllocationResolution).toMatchObject({
+      playerId: "0",
+      recipientPlayerIds: ["0", "1"],
+      availableUnrestCardIds: ["test_unrest_1", "test_unrest_2"],
+      nextIndex: 1
+    });
+    resolveChoice({ G, ctx }, 0);
+
+    expect(G.pendingUnrestAllocationChoice).toEqual({
+      playerId: "0",
+      recipientPlayerIds: ["0", "1"],
+      countPerPlayer: 1,
+      availableUnrestCardIds: ["test_unrest_1", "test_unrest_2"]
+    });
+    expect(G.players["0"].hand).toEqual([]);
+    expect(G.players["1"].hand).toEqual([]);
+    expect(G.players["0"].resources.goods).toBe(0);
+    expect(G.pendingChoice).toBeUndefined();
+    expect(G.pendingUnrestAllocationResolution).toBeUndefined();
+    expect(G.gameover).toBeUndefined();
+    expect(G.log.some((entry) => entry.message === "Nation hook after_gain_unrest #0 failed.")).toBe(true);
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(resolveUnrestAllocationChoice): unrest_allocation_failed");
+  });
+
   it("resolves the selected pending Market acquisition choice", () => {
     const G = createInitialState();
     G.market = ["market_region", "market_civilized"];
@@ -8839,6 +12172,100 @@ describe("turn loop", () => {
     expect(G.marketUnrest.market_civilized).toBeUndefined();
     expect(G.marketUnrest.market_refill).toEqual(["test_unrest_2"]);
     expect(G.log.at(-1)?.message).toBe("AcquireChoiceResolved(market_picker/market_civilized)");
+  });
+
+  it("pauses a selected Market gain for resource reactive Exhausts before resume effects", () => {
+    const G = createInitialState();
+    G.market = ["market_region", "market_civilized"];
+    G.marketRefillPool = ["market_refill"];
+    G.marketDecks = undefined;
+    G.marketResources = { market_civilized: { knowledge: 1 } };
+    G.unrestPile = ["test_unrest_1"];
+    G.cardDb.market_region = {
+      id: "market_region",
+      displayName: "Market Region",
+      type: "region",
+      cardType: "region",
+      suit: "region",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb.market_civilized = {
+      id: "market_civilized",
+      displayName: "Market Civilized",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb.market_refill = {
+      id: "market_refill",
+      displayName: "Market Refill",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb.market_choice_reactive_exhaust = {
+      id: "market_choice_reactive_exhaust",
+      displayName: "Market Choice Reactive Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_exhaust",
+        op: "gain_resource",
+        resource: "materials",
+        amount: 1,
+        reactive: { trigger: "after_gain_resource", resource: "knowledge" }
+      } as any]
+    };
+    G.players["0"].playArea = ["market_choice_reactive_exhaust"];
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.players["0"].resources.knowledge = 0;
+    G.players["0"].resources.materials = 0;
+    G.players["0"].resources.influence = 0;
+    G.pendingMarketCardChoice = {
+      playerId: "0",
+      sourceCardId: "market_gain_source",
+      op: "gain_card",
+      cardIds: ["market_region", "market_civilized"],
+      destination: "discard",
+      resumeEffects: [{ trigger: "on_play", op: "gain_resource", resource: "influence", amount: 1 } as any]
+    };
+
+    resolveMarketCardChoice({ G, ctx }, "market_civilized");
+
+    expect(G.players["0"].discard).toContain("market_civilized");
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["0"].resources.influence).toBe(0);
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: ["market_choice_reactive_exhaust"],
+      resolvingPlayerId: "0",
+      sourceCardId: "market_gain_source",
+      trigger: "after_gain_resource",
+      resource: "knowledge"
+    });
+    expect(G.pendingMarketMoveEffectResolution).toMatchObject({
+      playerId: "0",
+      sourceCardId: "market_gain_source",
+      resumeEffects: [{ trigger: "on_play", op: "gain_resource", resource: "influence", amount: 1 }]
+    });
+
+    resolveReactiveExhaustChoice({ G, ctx }, "market_choice_reactive_exhaust");
+
+    expect(G.pendingReactiveExhaustChoice).toBeUndefined();
+    expect(G.pendingMarketMoveEffectResolution).toBeUndefined();
+    expect(G.players["0"].resources.materials).toBe(1);
+    expect(G.players["0"].resources.influence).toBe(1);
   });
 
   it("resumes a pending Market acquisition choice after tucked Unrest creates a Nation choice", () => {
@@ -9059,7 +12486,7 @@ describe("turn loop", () => {
 
   it("stops pending market Acquire resume effects and logs when refill triggers Collapse", () => {
     const G = createInitialState();
-    G.market = ["market_civilized"];
+    G.market = ["market_civilized", "market_civilized_b"];
     G.marketRefillPool = ["test_action_archive_survey"];
     G.marketDecks = undefined;
     G.unrestPile = [];
@@ -9205,6 +12632,49 @@ describe("turn loop", () => {
     expect(G.market).toEqual(["main_slot_a", "main_slot_b", "civilized_refill"]);
     expect(G.scoring).toBeUndefined();
     expect(G.log.some((entry) => entry.message === "ScoringTriggered(main_deck_empty)")).toBe(false);
+  });
+
+  it("refills imported market suit icons from the matching small deck", () => {
+    const G = createInitialState();
+    G.market = ["main_slot_a", "main_slot_b", "imported_civilized"];
+    G.marketDecks = {
+      mainDeck: ["main_refill"],
+      regionDeck: [],
+      uncivilizedDeck: [],
+      civilizedDeck: ["civilized_refill"],
+      tributaryDeck: []
+    };
+    G.unrestPile = ["test_unrest_1"];
+    G.players["0"].resources.materials = 1;
+    for (const id of ["main_slot_a", "main_slot_b", "main_refill", "civilized_refill"]) {
+      G.cardDb[id] = {
+        id,
+        displayName: id,
+        type: "action",
+        cardType: "action",
+        suit: "none",
+        cost: 1,
+        tags: [],
+        effects: []
+      };
+    }
+    G.cardDb.imported_civilized = {
+      id: "imported_civilized",
+      displayName: "Imported Civilized",
+      type: "action",
+      cardType: "action",
+      suit: "none",
+      setupBannerSuit: "none",
+      cost: 1,
+      tags: ["suit:civilized"],
+      effects: []
+    };
+
+    acquireCard({ G, ctx }, "imported_civilized");
+
+    expect(G.market).toEqual(["main_slot_a", "main_slot_b", "civilized_refill"]);
+    expect(G.marketDecks.civilizedDeck).toEqual([]);
+    expect(G.marketDecks.mainDeck).toEqual(["main_refill"]);
   });
 
   it("resolves the selected pending Exile Break Through choice", () => {
@@ -9456,5 +12926,83 @@ describe("turn loop", () => {
     expect(G.players["0"].playArea).toEqual([]);
     expect(G.players["0"].hand).toEqual(["test_region"]);
     expect(G.log.at(-1)?.message).toBe("RegionChoiceResolved(recall_source/recall_region/test_region)");
+  });
+
+  it("pauses counted pending Region choices for reactive Exhaust windows before the next Region selection", () => {
+    const G = createInitialState();
+    const firstRegion = "counted_reactive_region_one";
+    const secondRegion = "counted_reactive_region_two";
+    const exhaustCardId = "counted_reactive_region_exhaust";
+    G.players["0"].playArea = [firstRegion, secondRegion, exhaustCardId];
+    G.players["0"].exhaustTokensAvailable = 1;
+    G.cardStates = { [firstRegion]: { resources: { materials: 1 } } };
+    for (const id of [firstRegion, secondRegion]) {
+      G.cardDb[id] = {
+        id,
+        displayName: id,
+        type: "region",
+        cardType: "region",
+        suit: "region",
+        cost: 0,
+        tags: [],
+        effects: []
+      };
+    }
+    G.cardDb[exhaustCardId] = {
+      id: exhaustCardId,
+      displayName: "Counted Reactive Region Exhaust",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{
+        trigger: "on_exhaust",
+        op: "gain_resource",
+        resource: "knowledge",
+        amount: 1,
+        reactive: { trigger: "after_gain_resource", resource: "materials" }
+      } as any]
+    };
+    G.pendingRegionChoice = {
+      playerId: "0",
+      sourceCardId: "counted_recall_source",
+      op: "recall_region",
+      cardIds: [firstRegion, secondRegion],
+      count: 2,
+      resumeEffects: [{ trigger: "on_play", op: "gain_resource", resource: "influence", amount: 1 } as any]
+    };
+
+    resolveRegionChoice({ G, ctx }, firstRegion);
+
+    expect(G.players["0"].hand).toContain(firstRegion);
+    expect(G.players["0"].resources.materials).toBe(1);
+    expect(G.pendingRegionChoice).toBeUndefined();
+    expect(G.pendingReactiveExhaustChoice).toMatchObject({
+      playerId: "0",
+      cardIds: [exhaustCardId],
+      sourceCardId: "counted_recall_source",
+      trigger: "after_gain_resource",
+      resource: "materials"
+    });
+
+    resolveReactiveExhaustChoice({ G, ctx }, exhaustCardId);
+
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.pendingReactiveExhaustChoice).toBeUndefined();
+    expect(G.pendingRegionChoice).toMatchObject({
+      playerId: "0",
+      sourceCardId: "counted_recall_source",
+      op: "recall_region",
+      cardIds: [secondRegion],
+      count: 1
+    });
+
+    resolveRegionChoice({ G, ctx }, secondRegion);
+
+    expect(G.pendingRegionChoice).toBeUndefined();
+    expect(G.players["0"].hand).toEqual(expect.arrayContaining([firstRegion, secondRegion]));
+    expect(G.players["0"].resources.influence).toBe(1);
+    expect(G.log.at(-1)?.message).toBe(`RegionChoiceResolved(counted_recall_source/recall_region/${secondRegion})`);
   });
 });

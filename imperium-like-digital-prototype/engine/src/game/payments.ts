@@ -19,9 +19,17 @@ export function describeResourceCost(cost: ResourceCost): string {
     .join(",");
 }
 
+function normalizePlayerResourcePool(G: GameState, playerId: string): Partial<Record<ResourceName, number>> {
+  const resources = G.players[playerId].resources as Partial<Record<string, number | undefined>>;
+  const normalized = normalizeResourceMap(resources);
+  for (const resource of Object.keys(resources)) delete resources[resource];
+  for (const resource of RESOURCE_NAMES) resources[resource] = normalized[resource] ?? 0;
+  return G.players[playerId].resources;
+}
+
 export function availableForResourceCost(G: GameState, playerId: string, resource: ResourceName): number {
   const canonical = canonicalResourceName(resource);
-  const resources = G.players[playerId].resources;
+  const resources = normalizePlayerResourcePool(G, playerId);
   const direct = resources[canonical] ?? 0;
   if (canonical === "materials") return direct + 2 * ((resources.knowledge ?? 0) + (resources.goods ?? 0));
   if (canonical === "influence") return direct + (resources.knowledge ?? 0) + (resources.goods ?? 0);
@@ -54,6 +62,7 @@ export function payResourceCost(G: GameState, playerId: string, resource: Resour
 export function canPayResourceCosts(G: GameState, playerId: string, cost: ResourceCost, payment?: ResourceCost): boolean {
   const normalizedCost = normalizeResourceMap(cost as Partial<Record<string, number | undefined>>);
   const normalizedPayment = payment ? normalizeResourceMap(payment as Partial<Record<string, number | undefined>>) : undefined;
+  normalizePlayerResourcePool(G, playerId);
   if (!resourcesCanPayCost(G.players[playerId].resources, normalizedCost)) return false;
   if (!normalizedPayment) return true;
   return paymentIsAvailable(G, playerId, normalizedPayment) && selectedPaymentMatchesCost(normalizedPayment, normalizedCost);
@@ -117,6 +126,7 @@ function applySpentResourceOverrides(G: GameState, playerId: string, spent: Part
 export function payResourceCosts(G: GameState, playerId: string, cost: ResourceCost, payment?: ResourceCost, randomNumber?: () => number): boolean {
   const normalizedCost = normalizeResourceMap(cost as Partial<Record<string, number | undefined>>);
   const normalizedPayment = payment ? normalizeResourceMap(payment as Partial<Record<string, number | undefined>>) : undefined;
+  normalizePlayerResourcePool(G, playerId);
   if (!canPayResourceCosts(G, playerId, normalizedCost, normalizedPayment)) {
     const required = Object.entries(normalizedCost)
       .filter(([, amount]) => (amount ?? 0) > 0)

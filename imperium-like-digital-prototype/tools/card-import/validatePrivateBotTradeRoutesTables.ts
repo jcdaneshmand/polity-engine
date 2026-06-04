@@ -48,6 +48,17 @@ const botEffectFields = new Set([
   "op", "resource", "count", "countPerCard", "effects", "ifUnable", "ifVp", "filter", "marketFilter",
   "fromExile", "resolveGained", "discardGained", "slot", "nextSide", "nextTableId", "nextState", "cardId", "message",
 ]);
+const botIfUnableOps = new Set([
+  "bot_acquire",
+  "bot_break_through",
+  "bot_exile_market",
+  "bot_discard_top_bot_deck",
+  "bot_discard_top_dynasty_deck",
+  "bot_return_from_discard",
+  "bot_abandon_in_play",
+  "bot_recall_in_play",
+  "bot_swap_market"
+]);
 const botFilterFields = new Set(["suits", "cardTypes", "tags", "minVp", "maxVp", "hasMarketResource", "slotNumbers"]);
 const botIfVpFields = new Set(["value", "effects"]);
 
@@ -272,6 +283,10 @@ function validateParsedEffects(errors: BotTradeRoutesTableImportError[], row: nu
     }
     const ifUnable = (effect as { ifUnable?: unknown }).ifUnable;
     if (ifUnable !== undefined) {
+      if (typeof op === "string" && !botIfUnableOps.has(op)) {
+        errors.push({ level: "fatal", row, field, message: `Unsupported ifUnable branch on ${op} at ${path}[${index}]` });
+        fatal = true;
+      }
       fatal = validateParsedEffects(errors, row, field, ifUnable, `${path}[${index}].ifUnable`, false) || fatal;
     }
     const ifVp = (effect as { ifVp?: unknown }).ifVp;

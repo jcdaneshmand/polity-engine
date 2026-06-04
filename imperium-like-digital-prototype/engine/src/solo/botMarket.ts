@@ -1,5 +1,5 @@
 import type { Card, GameState, ResourceName } from "../game/state";
-import { addResourceAmount } from "../game/resources";
+import { addResourceAmount, normalizeResourceMap, resourceAmount } from "../game/resources";
 import { deckForSuit, drawMarketDeckCard, refillMarketSlot } from "../game/marketRefill";
 import { triggerCollapse } from "../game/scoring";
 import { triggerScoringIfMainDeckEmpty } from "../game/scoringTriggers";
@@ -50,11 +50,21 @@ function cardVpForBot(card: Card | undefined): number {
 }
 
 function marketTokenCount(G: GameState, cardId: string): number {
-  return Object.values(G.marketResources?.[cardId] ?? {}).reduce((sum, amount) => sum + (amount ?? 0), 0);
+  return Object.values(marketResourceMarkers(G, cardId)).reduce((sum, amount) => sum + (amount ?? 0), 0);
 }
 
 function marketCardVpForBot(G: GameState, cardId: string): number {
   return cardVpForBot(G.cardDb[cardId]) + marketTokenCount(G, cardId);
+}
+
+function marketResourceMarkers(G: GameState, cardId: string): Partial<Record<ResourceName, number>> {
+  const legacy = normalizeResourceMap(G.marketResources?.[cardId]);
+  const slot = normalizeResourceMap(G.marketSlots?.find((candidate) => candidate.cardId === cardId)?.resourceMarkers);
+  const merged: Partial<Record<ResourceName, number>> = { ...legacy };
+  for (const [resource, amount] of Object.entries(slot) as [ResourceName, number | undefined][]) {
+    merged[resource] = Math.max(merged[resource] ?? 0, amount ?? 0);
+  }
+  return merged;
 }
 
 function matchesFilter(G: GameState, cardId: string, filter?: BotAcquireFilter): boolean {
@@ -62,10 +72,10 @@ function matchesFilter(G: GameState, cardId: string, filter?: BotAcquireFilter):
   if (!card) return false;
   if (filter?.suits?.length && !cardHasAnySuitIcon(card, filter.suits as any)) return false;
   if (filter?.cardTypes?.length && !filter.cardTypes.includes((card.cardType ?? card.type) as any)) return false;
-  if (filter?.tags?.length && !filter.tags.some((tag) => card.tags.includes(tag))) return false;
+  if (filter?.tags?.length && !filter.tags.some((tag) => (card.tags ?? []).includes(tag))) return false;
   if (filter?.minVp !== undefined && cardVpForBot(card) < filter.minVp) return false;
   if (filter?.maxVp !== undefined && cardVpForBot(card) > filter.maxVp) return false;
-  if (filter?.hasMarketResource && !G.marketResources?.[cardId]?.[filter.hasMarketResource]) return false;
+  if (filter?.hasMarketResource && resourceAmount(marketResourceMarkers(G, cardId), filter.hasMarketResource) <= 0) return false;
   const slotNumber = G.market.indexOf(cardId) + 1;
   if (filter?.slotNumbers?.length && !filter.slotNumbers.includes(slotNumber as any)) return false;
   return true;
@@ -84,18 +94,19 @@ function chooseBotMarketCard(G: GameState, filter?: BotAcquireFilter): { cardId:
     })[0];
 }
 
-function chooseBotAcquireCard(G: GameState, filter: BotAcquireFilter | undefined, includeExile: boolean): BotAcquireCandidate | undefined {
+function chooseBotAcquireCard(G: GameState, botId: string, filter: BotAcquireFilter | undefined, includeExile: boolean): BotAcquireCandidate | undefined {
   const candidates: BotAcquireCandidate[] = G.market
     .map((cardId, slotIndex) => ({ source: "market" as const, cardId, slotIndex }))
     .filter(({ cardId }) => matchesFilter(G, cardId, filter));
 
   if (includeExile) {
     let optionIndex = 0;
-    for (const ownerId of Object.keys(G.players).sort()) {
-      const exile = G.players[ownerId].exile;
+    const botPlayer = G.players[botId];
+    if (botPlayer) {
+      const exile = botPlayer.exile;
       for (let exileIndex = 0; exileIndex < exile.length; exileIndex += 1) {
         const cardId = exile[exileIndex];
-        if (matchesFilter(G, cardId, filter)) candidates.push({ source: "exile", cardId, ownerId, exileIndex, optionIndex });
+        if (matchesFilter(G, cardId, filter)) candidates.push({ source: "exile", cardId, ownerId: botId, exileIndex, optionIndex });
         optionIndex += 1;
       }
     }
@@ -121,7 +132,7 @@ function chooseBotAcquireCard(G: GameState, filter: BotAcquireFilter | undefined
 
 function isUnrestCard(G: GameState, cardId: string): boolean {
   const card = G.cardDb[cardId];
-  return card?.suit === "unrest" || card?.cardType === "unrest" || card?.type === "unrest";
+  return card?.suit === "unrest" || card?.cardType === "unrest" || card?.type === "unrest" || cardHasSuitIcon(card, "unrest");
 }
 
 function takeUnrestForBotExileAcquire(G: GameState, bot: BotState, cardId: string): string[] {
@@ -153,26 +164,32 @@ function placeBotGainedCards(bot: BotState, cardIds: string[], options?: BotBrea
 }
 
 function gainMarketResources(G: GameState, bot: BotState, cardId: string): void {
-  const resources = G.marketResources?.[cardId];
-  if (!resources) return;
+  const resources = marketResourceMarkers(G, cardId);
+  if (Object.keys(resources).length === 0) return;
   for (const [resource, amount] of Object.entries(resources) as [ResourceName, number | undefined][]) {
     addResourceAmount(bot.resources, resource, amount ?? 0);
   }
   delete G.marketResources?.[cardId];
+  const slot = G.marketSlots?.find((candidate) => candidate.cardId === cardId);
+  if (slot) slot.resourceMarkers = {};
 }
 
 function gainMarketUnrest(G: GameState, cardId: string): string[] {
-  const unrestCards = G.marketUnrest?.[cardId] ?? [];
+  const slot = G.marketSlots?.find((candidate) => candidate.cardId === cardId);
+  const unrestCards = [...new Set([...(G.marketUnrest?.[cardId] ?? []), ...(slot?.attachedUnrestCardIds ?? [])])];
   delete G.marketUnrest?.[cardId];
+  if (slot) slot.attachedUnrestCardIds = [];
   return unrestCards;
 }
 
 function returnMarketUnrestToPile(G: GameState, bot: BotState, cardId: string): void {
-  const unrestCards = G.marketUnrest?.[cardId] ?? [];
+  const slot = G.marketSlots?.find((candidate) => candidate.cardId === cardId);
+  const unrestCards = [...new Set([...(G.marketUnrest?.[cardId] ?? []), ...(slot?.attachedUnrestCardIds ?? [])])];
   if (unrestCards.length === 0) return;
   G.unrestPile ??= [];
   G.unrestPile.push(...unrestCards);
   delete G.marketUnrest?.[cardId];
+  if (slot) slot.attachedUnrestCardIds = [];
   G.log.push({ round: G.round, playerId: bot.botId, message: `BotMarketUnrestReturned(${cardId}/count=${unrestCards.length})` });
 }
 
@@ -198,7 +215,7 @@ function botGainMarketCard(G: GameState, bot: BotState, filter: BotAcquireFilter
 export function botAcquireFromMarket(G: GameState, bot: BotState, filter?: BotAcquireFilter, includeExile = false): boolean {
   if (!includeExile) return botGainMarketCard(G, bot, filter, "acquire");
 
-  const chosen = chooseBotAcquireCard(G, filter, includeExile);
+  const chosen = chooseBotAcquireCard(G, bot.botId, filter, includeExile);
   if (!chosen) {
     G.log.push({ round: G.round, playerId: bot.botId, message: "BotAcquireSkipped(no_eligible_card)" });
     return false;

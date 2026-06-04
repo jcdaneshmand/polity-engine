@@ -125,6 +125,7 @@ function pendingInterruption(G: GameState): string | undefined {
   if (G.pendingExileChoice) return "pending_exile_choice";
   if (G.pendingGarrisonChoice) return "pending_garrison_choice";
   if (G.pendingRegionChoice) return "pending_region_choice";
+  if (G.pendingRegionChoiceContinuation) return "pending_region_choice_continuation";
   if (G.pendingDevelopmentChoice) return "pending_development_choice";
   if (G.pendingShortGameDevelopmentExileChoice) return "pending_short_game_development_exile_choice";
   if (G.pendingTradeChoice) return "pending_trade_choice";
@@ -146,10 +147,15 @@ function pendingInterruption(G: GameState): string | undefined {
   if (G.pendingAcquireCardResolution) return "pending_acquire_card_resolution";
   if (G.pendingAcquireEffectResolution) return "pending_acquire_effect_resolution";
   if (G.pendingMarketMoveEffectResolution) return "pending_market_move_effect_resolution";
+  if (G.pendingBreakThroughEffectResolution) return "pending_break_through_effect_resolution";
   if (G.pendingMarketUnrestHookContinuation) return "pending_market_unrest_hook_continuation";
   if (G.pendingNationHookContinuation) return "pending_nation_hook_continuation";
   if (G.pendingUnrestTakeContinuation) return "pending_unrest_take_continuation";
   if (G.pendingUnrestAllocationResolution) return "pending_unrest_allocation_resolution";
+  if (G.pendingPostDevelopmentResolution) return "pending_post_development_resolution";
+  if (G.pendingReshuffleResolution) return "pending_reshuffle_resolution";
+  if (G.pendingAfterReshuffleEffects) return "pending_after_reshuffle_effects";
+  if (G.pendingReshuffleDraw) return "pending_reshuffle_draw";
   if (G.pendingScoringFinalization) return "pending_scoring_finalization";
   if (G.pendingScoringLifecycle) return "pending_scoring_lifecycle";
   if (G.pendingPracticeMarketExileBeforeCleanup) return "pending_practice_market_exile_before_cleanup";
@@ -256,7 +262,7 @@ function runOrderedSolsticeCardEffects(
 ): boolean {
   for (let index = 0; index < cardIds.length; index += 1) {
     const cardId = cardIds[index];
-    if (phase === "end_of_solstice" && !isCurrentSolsticeSource(G, playerId, cardId)) continue;
+    if (!isCurrentSolsticeSource(G, playerId, cardId)) continue;
     runTriggeredEffects({ G, playerId, selfCardId: cardId, enabledExpansions: G.options?.enabledExpansions, randomNumber }, G.cardDb[cardId]?.effects ?? [], phase);
     if (G.gameover) return false;
     if (pendingInterruption(G)) {
@@ -271,7 +277,7 @@ function runOrderedSolsticeCardEffects(
 
 function applySolsticeStateFlip(G: GameState, playerId: string, ruleset: NationRuleset): void {
   const p = G.players[playerId];
-  const sequenceOverride = ruleset.stateOverrides.find((ov) => ov.op === "flip_state_on_solstice");
+  const sequenceOverride = (ruleset.stateOverrides ?? []).find((ov) => ov.op === "flip_state_on_solstice");
   if (!sequenceOverride) {
     if (p.stateArea.length >= 2) [p.stateArea[0], p.stateArea[1]] = [p.stateArea[1], p.stateArea[0]];
     syncPlayerStateCardStats(G, playerId);
@@ -311,8 +317,12 @@ function applyEndOfSolsticeRemovals(G: GameState, playerId: string, ruleset: Nat
     const garrisonedCardIds = detachGarrisonedCards(G, ov.cardId);
     garrisonedCardIds.forEach((cardId) => collectAndClearCardStateToPlayer(G, playerId, cardId));
     const removedNationCards = p.nationDeck.splice(0);
-    p.exile.push(...[removedCardId, ...garrisonedCardIds, ...removedNationCards].filter(Boolean));
-    G.log.push({ round: G.round, playerId, message: `SolsticeRemovedPlayCardAndNationDeck(${ov.cardId}/removed=${1 + garrisonedCardIds.length + removedNationCards.length})` });
+    const removedAccessionCardId = p.accessionCardId;
+    p.accessionCardId = undefined;
+    const removedCardIds = [removedCardId, ...garrisonedCardIds, ...removedNationCards];
+    if (removedAccessionCardId) removedCardIds.push(removedAccessionCardId);
+    p.exile.push(...removedCardIds);
+    G.log.push({ round: G.round, playerId, message: `SolsticeRemovedPlayCardAndNationDeck(${ov.cardId}/removed=${1 + garrisonedCardIds.length + removedNationCards.length + (removedAccessionCardId ? 1 : 0)})` });
     if (ov.activateState) {
       activateState(G, playerId, ov.activateState);
       G.log.push({ round: G.round, playerId, message: `StateActivatedOnSolsticeRemoval(${ov.cardId}/${ov.activateState})` });
@@ -556,7 +566,9 @@ function finishTurnAfterCleanupDraw(G: GameState, ctx: Ctx, randomNumber?: () =>
   if (G.options?.mode === "practice") {
     tickPracticeClock(G);
     if (G.gameover) return;
-    if (startPracticeMarketExileChoice(G, ctx.currentPlayer)) {
+    if (G.cleanupMarketResourcePlaced?.playerId === ctx.currentPlayer
+      && G.cleanupMarketResourcePlaced.round === G.round
+      && startPracticeMarketExileChoice(G, ctx.currentPlayer)) {
       G.pendingTurnEndCleanup = { playerId: ctx.currentPlayer, playOrder: getTurnOrder(G, ctx), stage: "after_practice_market_exile" };
       return;
     }

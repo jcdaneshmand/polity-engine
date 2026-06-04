@@ -11,16 +11,20 @@ export function setupPlayerFromNation(args: {
   enabledExpansions?: ExpansionId[];
   extraStartingDeckCardIds?: string[];
   removedStartingDeckCardIds?: string[];
+  disableAccession?: boolean;
 }): PlayerState {
   const missing = validateNationCardReferences(args.nation, args.cardDb as Record<string, unknown>);
   const missingCampaignCards = (args.extraStartingDeckCardIds ?? []).filter((cardId) => !args.cardDb[cardId]);
   if (missing.length || missingCampaignCards.length) throw new Error(`Nation ${args.nation.id} references missing cards: ${[...missing, ...missingCampaignCards].join(",")}`);
   const enabled = args.enabledExpansions ?? [];
-  if (args.nation.requiredExpansions.some((e) => !enabled.includes(e))) throw new Error(`Nation ${args.nation.id} requires disabled expansion.`);
+  if ((args.nation.requiredExpansions ?? []).some((e) => !enabled.includes(e))) throw new Error(`Nation ${args.nation.id} requires disabled expansion.`);
   const tradeRoutesEnabled = enabled.includes("trade_routes");
-  const embeddedAccessionCardId = args.nation.nationDeckCardIds.find((cardId) => isSetupAccessionCard(args.cardDb[cardId]));
-  const accessionCardId = args.nation.accessionCardId ?? embeddedAccessionCardId;
+  const embeddedAccessionCardId = args.disableAccession ? undefined : args.nation.nationDeckCardIds.find((cardId) => isSetupAccessionCard(args.cardDb[cardId]));
+  const accessionCardId = args.disableAccession ? undefined : args.nation.accessionCardId ?? embeddedAccessionCardId;
   const regularNationDeckCardIds = args.nation.nationDeckCardIds.filter((cardId) => cardId !== accessionCardId);
+  if (args.disableAccession && args.nation.accessionCardId && !regularNationDeckCardIds.includes(args.nation.accessionCardId)) {
+    regularNationDeckCardIds.push(args.nation.accessionCardId);
+  }
   const removedStartingDeckCardIds = new Set(args.removedStartingDeckCardIds ?? []);
   const startingDeckCardIds = [
     ...args.nation.startingDeckCardIds,
@@ -33,7 +37,7 @@ export function setupPlayerFromNation(args: {
     actionTokensBase: args.nation.actionTokensBase, exhaustTokensBase: args.nation.exhaustTokensBase, actionTokensAvailable: args.nation.actionTokensBase, exhaustTokensAvailable: args.nation.exhaustTokensBase,
     progressionTokens: { nationDeck: 0, developmentArea: 0 }
   };
-  args.nation.setupRules.forEach((r) => applySetupRule(p, r));
+  args.nation.setupRules.forEach((r) => applySetupRule(p, r, { disableAccession: args.disableAccession }));
   return p;
 }
 
@@ -41,7 +45,7 @@ function isSetupAccessionCard(card: NormalizedCardRecord | undefined): boolean {
   return card?.cardType === "accession" || (card?.tags ?? []).includes("accession");
 }
 
-function applySetupRule(player: PlayerState, rule: SetupRule): void {
+function applySetupRule(player: PlayerState, rule: SetupRule, options: { disableAccession?: boolean } = {}): void {
   if (rule.op === "gain_resource") player.resources[mapRes(rule.resource)] += rule.count;
   if (rule.op === "create_side_area") {
     player.sideAreas ??= {};
@@ -70,7 +74,10 @@ function applySetupRule(player: PlayerState, rule: SetupRule): void {
       case "nation_deck": player.nationDeck.push(rule.cardId); break;
       case "power_area": player.powerArea.push(rule.cardId); break;
       case "state_area": player.stateArea.push(rule.cardId); break;
-      case "accession": player.accessionCardId = rule.cardId; break;
+      case "accession":
+        if (options.disableAccession) player.nationDeck.push(rule.cardId);
+        else player.accessionCardId = rule.cardId;
+        break;
       case "side_area":
         player.sideAreas ??= {};
         if (!player.sideAreas.default) player.sideAreas.default = [];

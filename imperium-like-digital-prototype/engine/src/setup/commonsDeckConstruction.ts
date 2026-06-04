@@ -1,4 +1,5 @@
 import type { NormalizedCardRecord } from "../../../tools/card-import/cardCsvTypes";
+import { cardHasSuitIcon } from "../game/suitIcons";
 import type { CommonsDeckConstructionInput, CommonsDeckConstructionResult, CommonsRng, MarketSlot } from "./commonsTypes";
 import { getSetupSuit } from "./commonsTypes";
 
@@ -19,11 +20,11 @@ function shuffleWithRng<T>(items: T[], rng?: CommonsRng): T[] {
 }
 
 function isUnrest(card: NormalizedCardRecord): boolean {
-  return card.unrestPileEligible === true || card.cardType === "unrest" || getSetupSuit(card) === "unrest";
+  return card.unrestPileEligible === true || card.cardType === "unrest" || getSetupSuit(card) === "unrest" || cardHasSuitIcon(card as any, "unrest");
 }
 
 function isFame(card: NormalizedCardRecord): boolean {
-  return card.fameDeckEligible === true || card.cardType === "fame" || getSetupSuit(card) === "fame";
+  return card.fameDeckEligible === true || card.cardType === "fame" || getSetupSuit(card) === "fame" || cardHasSuitIcon(card as any, "fame");
 }
 
 function isMarketEligible(card: NormalizedCardRecord): boolean {
@@ -40,6 +41,10 @@ function isSmallDeckEligible(card: NormalizedCardRecord): boolean {
   return card.smallDeckEligible !== false;
 }
 
+function isSetupTributary(card: NormalizedCardRecord): boolean {
+  return getSetupSuit(card) === "tributary" || cardHasSuitIcon(card as any, "tributary");
+}
+
 function shouldDelayForLoweredAggression(card: NormalizedCardRecord): boolean {
   return card.delayableInLoweredAggression === true || (card.cardType === "attack" && (card.tags ?? []).includes("aggressive"));
 }
@@ -47,7 +52,7 @@ function shouldDelayForLoweredAggression(card: NormalizedCardRecord): boolean {
 function canAttachUnrest(card: NormalizedCardRecord | undefined): boolean {
   if (!card) return false;
   if (isUnrest(card)) return false;
-  if (card.cardType === "region" || getSetupSuit(card) === "region") return false;
+  if (card.cardType === "region" || getSetupSuit(card) === "region" || cardHasSuitIcon(card as any, "region")) return false;
   if ((card as any).attachUnrestOnSetup === false) return false;
   if ((card.tags ?? []).includes("no_unrest_under_market")) return false;
   return true;
@@ -57,7 +62,7 @@ function markerRecord(card: NormalizedCardRecord | undefined): Record<string, nu
   if (!card) return {};
   const markers = (card as any).startingMarketResourceMarkers;
   const setupMarkers: Record<string, number> = {};
-  if (getSetupSuit(card) === "tributary") setupMarkers.knowledge = 1;
+  if (isSetupTributary(card)) setupMarkers.knowledge = 1;
   if (!markers || typeof markers !== "object") return setupMarkers;
   return { ...setupMarkers, ...markers };
 }
@@ -138,11 +143,23 @@ export function buildCommonsDecks(input: CommonsDeckConstructionInput): CommonsD
   let smallDeckBottomCards: SmallDeckBottomCards = {};
 
   if (quickSetup) {
-    const quickSetupDeck = shuffleWithRng(activeCards.filter((card) => isMainDeckEligible(card)).map((card) => card.id), input.rng);
+    const marketCards = activeCards.filter((card) => isMainDeckEligible(card));
+    const tributaryCards = shuffleWithRng(marketCards.filter((card) => isSmallDeckEligible(card) && isSetupTributary(card)).map((card) => card.id), input.rng);
+    const [regionBottomCard, uncivilizedBottomCard, civilizedBottomCard, ...extraTributaryCards] = tributaryCards;
+    const remainingTributaryCards = extraTributaryCards.slice(tributaryRemovalCount(input.options.effectiveCommonsPlayerCount));
+    const quickSetupDeck = shuffleWithRng([
+      ...marketCards
+        .filter((card) => !isSmallDeckEligible(card) || !isSetupTributary(card))
+        .map((card) => card.id),
+      ...remainingTributaryCards
+    ], input.rng);
     const smallDeckSize = smallDeckFaceDownSize(input.options.effectiveCommonsPlayerCount);
     regionDeck = quickSetupDeck.splice(0, smallDeckSize);
     uncivilizedDeck = quickSetupDeck.splice(0, smallDeckSize);
     civilizedDeck = quickSetupDeck.splice(0, smallDeckSize);
+    if (regionBottomCard) regionDeck.push(regionBottomCard);
+    if (uncivilizedBottomCard) uncivilizedDeck.push(uncivilizedBottomCard);
+    if (civilizedBottomCard) civilizedDeck.push(civilizedBottomCard);
     mainDeck = quickSetupDeck;
     initialMarket = createInitialMarketFromDeckSequence({
       sourceDecks: [regionDeck, uncivilizedDeck, civilizedDeck, mainDeck, mainDeck],
@@ -150,10 +167,15 @@ export function buildCommonsDecks(input: CommonsDeckConstructionInput): CommonsD
       unrestPile,
       cardById
     });
+    smallDeckBottomCards = {
+      ...(regionBottomCard && regionDeck.at(-1) === regionBottomCard ? { regionDeck: regionBottomCard } : {}),
+      ...(uncivilizedBottomCard && uncivilizedDeck.at(-1) === uncivilizedBottomCard ? { uncivilizedDeck: uncivilizedBottomCard } : {}),
+      ...(civilizedBottomCard && civilizedDeck.at(-1) === civilizedBottomCard ? { civilizedDeck: civilizedBottomCard } : {})
+    };
   } else {
     const marketCards = activeCards.filter((card) => isMainDeckEligible(card));
-    const smallDeckCards = marketCards.filter((card) => isSmallDeckEligible(card) && DEFAULT_SMALL_DECK_SUITS.includes(getSetupSuit(card)));
-    const tributaryCards = shuffleWithRng(marketCards.filter((card) => isSmallDeckEligible(card) && getSetupSuit(card) === "tributary").map((card) => card.id), input.rng);
+    const smallDeckCards = marketCards.filter((card) => isSmallDeckEligible(card) && !isSetupTributary(card) && DEFAULT_SMALL_DECK_SUITS.includes(getSetupSuit(card)));
+    const tributaryCards = shuffleWithRng(marketCards.filter((card) => isSmallDeckEligible(card) && isSetupTributary(card)).map((card) => card.id), input.rng);
     const regionSplit = splitSmallDeckForPlayerCount(shuffleWithRng(smallDeckCards.filter((card) => getSetupSuit(card) === "region").map((card) => card.id), input.rng), input.options.effectiveCommonsPlayerCount);
     const uncivilizedSplit = splitSmallDeckForPlayerCount(shuffleWithRng(smallDeckCards.filter((card) => getSetupSuit(card) === "uncivilized").map((card) => card.id), input.rng), input.options.effectiveCommonsPlayerCount);
     const civilizedSplit = splitSmallDeckForPlayerCount(shuffleWithRng(smallDeckCards.filter((card) => getSetupSuit(card) === "civilized").map((card) => card.id), input.rng), input.options.effectiveCommonsPlayerCount);
@@ -168,7 +190,7 @@ export function buildCommonsDecks(input: CommonsDeckConstructionInput): CommonsD
     tributaryDeck = [];
     mainDeck = shuffleWithRng([
       ...marketCards
-        .filter((card) => !isSmallDeckEligible(card) || ![...DEFAULT_SMALL_DECK_SUITS, "tributary"].includes(getSetupSuit(card)))
+        .filter((card) => !isSmallDeckEligible(card) || (!isSetupTributary(card) && !DEFAULT_SMALL_DECK_SUITS.includes(getSetupSuit(card))))
         .map((card) => card.id),
       ...regionSplit.setAside,
       ...uncivilizedSplit.setAside,

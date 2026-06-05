@@ -5,8 +5,9 @@ import { PrototypeGame } from "../../engine/src/game/game";
 import type { CampaignProgress } from "../../engine/src/options/gameOptions";
 import AboutPage from "./AboutPage";
 import Board from "./Board";
-import { computePrivateDataFingerprint, createPolityOnlineMatch, joinPolityOnlineMatch, listOnlineMatches, ONLINE_SESSION_STORAGE_KEY, parseOnlineSessionRecord, resolveMultiplayerServerURL, serializeOnlineSessionRecord, spectateOnlineMatch, type ListedMatch, type OnlineSessionRecord } from "./onlineSession";
+import { computePrivateDataFingerprint, createLobbyRoom, createPolityOnlineMatch, joinLobbyRoom, joinPolityOnlineMatch, listLobbyRooms, listOnlineMatches, ONLINE_SESSION_STORAGE_KEY, parseOnlineSessionRecord, rejoinLobbyRoom, resolveMultiplayerServerURL, selectLobbyNation, serializeOnlineSessionRecord, setLobbyReady, spectateOnlineMatch, startLobbyGame, updateLobbySetup, type ListedLobby, type ListedMatch, type LobbyRoomDetails, type OnlineLobbySessionRecord, type OnlineSessionRecord, type OnlineStartedSessionRecord } from "./onlineSession";
 import PrivateCardEntry from "./ui/privateData/PrivateCardEntry";
+import LobbyRoom from "./ui/online/LobbyRoom";
 import OnlineGames from "./ui/online/OnlineGames";
 import NewGameSetup, { type NewGameSessionConfig } from "./ui/setup/NewGameSetup";
 
@@ -28,13 +29,24 @@ function saveOnlineSessionRecord(record: OnlineSessionRecord): void {
   window.localStorage.setItem(ONLINE_SESSION_STORAGE_KEY, serializeOnlineSessionRecord(record));
 }
 
+function isLobbySessionRecord(record: OnlineSessionRecord | undefined): record is OnlineLobbySessionRecord {
+  return record?.kind === "lobby";
+}
+
+function isStartedSessionRecord(record: OnlineSessionRecord | undefined): record is OnlineStartedSessionRecord {
+  return Boolean(record && record.kind !== "lobby");
+}
+
 export default function App() {
   const [session, setSession] = useState<GameSession | null>(null);
-  const [homeView, setHomeView] = useState<"setup" | "private-data" | "about" | "online">("setup");
+  const [homeView, setHomeView] = useState<"setup" | "private-data" | "about" | "online" | "lobby">("setup");
   const [pendingCampaignProgress, setPendingCampaignProgress] = useState<CampaignProgress | undefined>(undefined);
   const [savedOnlineSession, setSavedOnlineSession] = useState<OnlineSessionRecord | undefined>(loadOnlineSessionRecord());
   const [onlineSetupConfig, setOnlineSetupConfig] = useState<NewGameSessionConfig | undefined>(undefined);
+  const [listedLobbies, setListedLobbies] = useState<ListedLobby[]>([]);
   const [listedMatches, setListedMatches] = useState<ListedMatch[]>([]);
+  const [currentLobby, setCurrentLobby] = useState<LobbyRoomDetails | undefined>(undefined);
+  const [currentLobbySession, setCurrentLobbySession] = useState<OnlineLobbySessionRecord | undefined>(isLobbySessionRecord(savedOnlineSession) ? savedOnlineSession : undefined);
   const [onlineStatus, setOnlineStatus] = useState("");
   const multiplayerServerURL = resolveMultiplayerServerURL({
     configuredURL: typeof import.meta.env.VITE_MULTIPLAYER_SERVER_URL === "string" ? import.meta.env.VITE_MULTIPLAYER_SERVER_URL : undefined,
@@ -91,7 +103,7 @@ export default function App() {
     setSession({ ...config, id: Date.now(), kind: "local" });
   };
 
-  const startOnlineSession = (config: NewGameSessionConfig, record: OnlineSessionRecord) => {
+  const startOnlineSession = (config: NewGameSessionConfig, record: OnlineStartedSessionRecord) => {
     saveOnlineSessionRecord(record);
     setSavedOnlineSession(record);
     setPendingCampaignProgress(undefined);
@@ -120,8 +132,24 @@ export default function App() {
     });
   };
 
-  const rejoinOnlineGame = () => {
+  const rejoinOnlineGame = async () => {
     if (!savedOnlineSession) return;
+    if (isLobbySessionRecord(savedOnlineSession)) {
+      setOnlineStatus(`Rejoining lobby ${savedOnlineSession.lobbyID}`);
+      try {
+        const rejoined = await rejoinLobbyRoom({
+          serverURL: savedOnlineSession.serverURL,
+          lobbyID: savedOnlineSession.lobbyID,
+          lobbyCredentials: savedOnlineSession.lobbyCredentials
+        });
+        setCurrentLobbySession(savedOnlineSession);
+        setCurrentLobby(rejoined.lobby);
+        setHomeView("lobby");
+      } catch (error) {
+        setOnlineStatus(error instanceof Error ? error.message : "Could not rejoin lobby.");
+      }
+      return;
+    }
     setOnlineStatus(`Rejoining online room ${savedOnlineSession.matchID}`);
     const rejoinOptions = {
       playerCount: savedOnlineSession.numPlayers as 1 | 2 | 3 | 4,
@@ -158,9 +186,14 @@ export default function App() {
   const refreshOnlineMatches = async () => {
     setOnlineStatus("Refreshing online games...");
     try {
-      const matches = await listOnlineMatches({ serverURL: multiplayerServerURL });
+      const [lobbies, matches] = await Promise.all([
+        listLobbyRooms({ serverURL: multiplayerServerURL }),
+        listOnlineMatches({ serverURL: multiplayerServerURL })
+      ]);
+      setListedLobbies(lobbies);
       setListedMatches(matches);
-      setOnlineStatus(matches.length ? `Loaded ${matches.length} online game${matches.length === 1 ? "" : "s"}.` : "No online games are listed yet.");
+      const total = lobbies.length + matches.length;
+      setOnlineStatus(total ? `Loaded ${total} online room${total === 1 ? "" : "s"}.` : "No online games are listed yet.");
     } catch (error) {
       setOnlineStatus(error instanceof Error ? error.message : "Could not load online games.");
     }
@@ -185,35 +218,66 @@ export default function App() {
   const currentPrivateDataFingerprint = computePrivateDataFingerprint(currentOnlineConfig.privateData);
 
   const hostOnlineGame = async (args: { roomName: string; password?: string; setupConfig: NewGameSessionConfig; privateDataFingerprint: string }) => {
-    setOnlineStatus("Creating online game...");
+    setOnlineStatus("Creating lobby...");
     try {
-      const created = await createPolityOnlineMatch({
+      const created = await createLobbyRoom({
         serverURL: multiplayerServerURL,
         roomName: args.roomName,
-        numPlayers: args.setupConfig.options.playerCount,
+        playerCount: args.setupConfig.options.playerCount,
         setupData: args.setupConfig,
         privateDataFingerprint: args.privateDataFingerprint,
         password: args.password
       });
-      const joined = await joinPolityOnlineMatch({
+      const record: OnlineLobbySessionRecord = {
+        kind: "lobby",
+        lobbyID: created.lobbyID,
+        seatID: created.seatID,
+        lobbyCredentials: created.lobbyCredentials,
         serverURL: multiplayerServerURL,
-        matchID: created.matchID,
-        playerID: "0",
-        playerName: "Host",
-        privateDataFingerprint: args.privateDataFingerprint,
-        password: args.password
-      });
-      startOnlineSession(args.setupConfig, {
-        kind: "player",
-        matchID: created.matchID,
-        playerID: "0",
-        credentials: joined.playerCredentials,
-        serverURL: multiplayerServerURL,
-        numPlayers: args.setupConfig.options.playerCount,
         savedAt: new Date().toISOString()
-      });
+      };
+      saveOnlineSessionRecord(record);
+      setSavedOnlineSession(record);
+      setCurrentLobbySession(record);
+      setCurrentLobby(created.lobby);
+      setOnlineSetupConfig(args.setupConfig);
+      setHomeView("lobby");
+      setOnlineStatus(`Lobby ${created.lobbyID} created.`);
     } catch (error) {
-      setOnlineStatus(error instanceof Error ? error.message : "Could not create online game.");
+      setOnlineStatus(error instanceof Error ? error.message : "Could not create lobby.");
+    }
+  };
+
+  const currentLobbySetupConfig = currentLobby?.setupData && typeof currentLobby.setupData === "object"
+    ? currentLobby.setupData as NewGameSessionConfig
+    : currentOnlineConfig;
+
+  const joinOnlineLobby = async (args: { lobbyID: string; playerName: string; password?: string; privateDataFingerprint: string }) => {
+    setOnlineStatus("Joining lobby...");
+    try {
+      const joined = await joinLobbyRoom({
+        serverURL: multiplayerServerURL,
+        lobbyID: args.lobbyID,
+        displayName: args.playerName,
+        password: args.password,
+        privateDataFingerprint: args.privateDataFingerprint
+      });
+      const record: OnlineLobbySessionRecord = {
+        kind: "lobby",
+        lobbyID: joined.lobbyID,
+        seatID: joined.seatID,
+        lobbyCredentials: joined.lobbyCredentials,
+        serverURL: multiplayerServerURL,
+        savedAt: new Date().toISOString()
+      };
+      saveOnlineSessionRecord(record);
+      setSavedOnlineSession(record);
+      setCurrentLobbySession(record);
+      setCurrentLobby(joined.lobby);
+      setHomeView("lobby");
+      setOnlineStatus(`Joined lobby ${joined.lobbyID}.`);
+    } catch (error) {
+      setOnlineStatus(error instanceof Error ? error.message : "Could not join lobby.");
     }
   };
 
@@ -253,9 +317,99 @@ export default function App() {
     }
   };
 
+  const refreshCurrentLobby = async () => {
+    if (!currentLobbySession) return;
+    try {
+      const rejoined = await rejoinLobbyRoom({
+        serverURL: multiplayerServerURL,
+        lobbyID: currentLobbySession.lobbyID,
+        lobbyCredentials: currentLobbySession.lobbyCredentials
+      });
+      setCurrentLobby(rejoined.lobby);
+      setOnlineStatus(`Lobby ${currentLobbySession.lobbyID} refreshed.`);
+    } catch (error) {
+      setOnlineStatus(error instanceof Error ? error.message : "Could not refresh lobby.");
+    }
+  };
+
+  const updateCurrentLobbySetup = async (args: { roomName: string; setupConfig: NewGameSessionConfig }) => {
+    if (!currentLobbySession) return;
+    try {
+      const updated = await updateLobbySetup({
+        serverURL: multiplayerServerURL,
+        lobbyID: currentLobbySession.lobbyID,
+        lobbyCredentials: currentLobbySession.lobbyCredentials,
+        roomName: args.roomName,
+        playerCount: args.setupConfig.options.playerCount,
+        setupData: args.setupConfig,
+        privateDataFingerprint: computePrivateDataFingerprint(args.setupConfig.privateData)
+      });
+      if (updated.lobby) setCurrentLobby(updated.lobby);
+      setOnlineStatus("Setup updated; players need to ready again.");
+    } catch (error) {
+      setOnlineStatus(error instanceof Error ? error.message : "Could not update setup.");
+    }
+  };
+
+  const selectCurrentLobbyNation = async (nationID: string) => {
+    if (!currentLobbySession) return;
+    try {
+      const updated = await selectLobbyNation({
+        serverURL: multiplayerServerURL,
+        lobbyID: currentLobbySession.lobbyID,
+        lobbyCredentials: currentLobbySession.lobbyCredentials,
+        nationID
+      });
+      if (updated.lobby) setCurrentLobby(updated.lobby);
+      setOnlineStatus("Nation selected.");
+    } catch (error) {
+      setOnlineStatus(error instanceof Error ? error.message : "Could not select nation.");
+    }
+  };
+
+  const setCurrentLobbyReady = async (ready: boolean) => {
+    if (!currentLobbySession) return;
+    try {
+      const updated = await setLobbyReady({
+        serverURL: multiplayerServerURL,
+        lobbyID: currentLobbySession.lobbyID,
+        lobbyCredentials: currentLobbySession.lobbyCredentials,
+        ready
+      });
+      if (updated.lobby) setCurrentLobby(updated.lobby);
+      setOnlineStatus(ready ? "Ready." : "Setup unlocked.");
+    } catch (error) {
+      setOnlineStatus(error instanceof Error ? error.message : "Could not update ready state.");
+    }
+  };
+
+  const startCurrentLobbyGame = async () => {
+    if (!currentLobbySession || !currentLobby) return;
+    try {
+      const started = await startLobbyGame({
+        serverURL: multiplayerServerURL,
+        lobbyID: currentLobbySession.lobbyID,
+        lobbyCredentials: currentLobbySession.lobbyCredentials
+      });
+      startOnlineSession(currentOnlineConfig, {
+        kind: "player",
+        matchID: started.matchID,
+        playerID: started.playerID,
+        credentials: started.playerCredentials,
+        serverURL: multiplayerServerURL,
+        numPlayers: currentLobby.playerCount,
+        savedAt: new Date().toISOString()
+      });
+    } catch (error) {
+      setOnlineStatus(error instanceof Error ? error.message : "Could not start game.");
+    }
+  };
+
   const forgetOnlineSession = () => {
     if (typeof window !== "undefined") window.localStorage.removeItem(ONLINE_SESSION_STORAGE_KEY);
     setSavedOnlineSession(undefined);
+    setCurrentLobbySession(undefined);
+    setCurrentLobby(undefined);
   };
 
   if (!session || !GameClient) {
@@ -277,6 +431,27 @@ export default function App() {
       );
     }
 
+    if (homeView === "lobby" && currentLobby) {
+      return (
+        <div className="app-home" data-theme="default">
+          <LobbyRoom
+            lobby={currentLobby}
+            setupConfig={currentLobbySetupConfig}
+            statusMessage={onlineStatus}
+            onBack={() => {
+              setHomeView("online");
+              void refreshOnlineMatches();
+            }}
+            onRefresh={refreshCurrentLobby}
+            onUpdateSetup={updateCurrentLobbySetup}
+            onSelectNation={selectCurrentLobbyNation}
+            onReady={setCurrentLobbyReady}
+            onStart={startCurrentLobbyGame}
+          />
+        </div>
+      );
+    }
+
     if (homeView === "online") {
       return (
         <div className="app-home" data-theme="default">
@@ -284,14 +459,16 @@ export default function App() {
             setupConfig={currentOnlineConfig}
             privateDataFingerprint={currentPrivateDataFingerprint}
             savedSessions={savedOnlineSession ? [savedOnlineSession] : []}
+            lobbies={listedLobbies}
             matches={listedMatches}
             statusMessage={onlineStatus}
             onBackToSetup={() => setHomeView("setup")}
             onRefresh={refreshOnlineMatches}
             onHost={hostOnlineGame}
+            onJoinLobby={joinOnlineLobby}
             onJoin={joinOnlineGame}
             onSpectate={spectateOnlineGame}
-            onRejoin={() => rejoinOnlineGame()}
+            onRejoin={() => void rejoinOnlineGame()}
             onForgetSession={() => forgetOnlineSession()}
           />
         </div>

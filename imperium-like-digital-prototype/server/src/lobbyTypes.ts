@@ -46,6 +46,10 @@ export type CreateLobbyMatchInput = {
   setupData: unknown;
   privateDataFingerprint: string;
   password?: string;
+  passwordVerifier?: string;
+  spectatingAllowed?: boolean;
+  status?: ListedMatchStatus;
+  occupiedSeats?: ListedSeat[];
 };
 
 export type RecordPlayerJoinInput = {

@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { ListedMatch, OnlineSessionRecord } from "../../onlineSession";
+import type { ListedLobby, ListedMatch, OnlineSessionRecord } from "../../onlineSession";
 import type { NewGameSessionConfig } from "../setup/NewGameSetup";
 import OnlineGames from "./OnlineGames";
 
@@ -35,6 +35,26 @@ const baseMatch: ListedMatch = {
   }
 };
 
+const baseLobby: ListedLobby = {
+  kind: "lobby",
+  lobbyID: "lobby-open",
+  roomName: "Pregame Table",
+  createdAt: "2026-06-05T01:00:00.000Z",
+  updatedAt: "2026-06-05T01:00:00.000Z",
+  status: "waiting",
+  playerCount: 2,
+  occupiedSeats: [{ seatID: "0", displayName: "Host", connected: true, ready: false }],
+  availableSeats: ["1"],
+  isLocked: false,
+  privateDataLabel: "placeholder",
+  setupSummary: {
+    commonsSetId: "classics",
+    enabledExpansions: [],
+    enabledVariants: [],
+    nationLabels: []
+  }
+};
+
 describe("OnlineGames", () => {
   it("renders the action-first hub sections", () => {
     const html = renderToStaticMarkup(
@@ -42,11 +62,13 @@ describe("OnlineGames", () => {
         setupConfig={config}
         privateDataFingerprint="placeholder"
         savedSessions={[]}
+        lobbies={[]}
         matches={[baseMatch]}
         statusMessage=""
         onBackToSetup={() => undefined}
         onRefresh={() => undefined}
         onHost={() => undefined}
+        onJoinLobby={() => undefined}
         onJoin={() => undefined}
         onSpectate={() => undefined}
         onRejoin={() => undefined}
@@ -64,6 +86,31 @@ describe("OnlineGames", () => {
     expect(html).toContain("Spectate");
   });
 
+  it("renders joinable pregame lobbies", () => {
+    const html = renderToStaticMarkup(
+      <OnlineGames
+        setupConfig={config}
+        privateDataFingerprint="placeholder"
+        savedSessions={[]}
+        lobbies={[baseLobby]}
+        matches={[]}
+        statusMessage=""
+        onBackToSetup={() => undefined}
+        onRefresh={() => undefined}
+        onHost={() => undefined}
+        onJoinLobby={() => undefined}
+        onJoin={() => undefined}
+        onSpectate={() => undefined}
+        onRejoin={() => undefined}
+        onForgetSession={() => undefined}
+      />
+    );
+
+    expect(html).toContain("Pregame Table");
+    expect(html).toContain("Lobby");
+    expect(html).toContain("Join Lobby");
+  });
+
   it("shows locked games and private-data mismatch states", () => {
     const locked: ListedMatch = {
       ...baseMatch,
@@ -77,11 +124,13 @@ describe("OnlineGames", () => {
         setupConfig={config}
         privateDataFingerprint="placeholder"
         savedSessions={[]}
+        lobbies={[]}
         matches={[locked]}
         statusMessage=""
         onBackToSetup={() => undefined}
         onRefresh={() => undefined}
         onHost={() => undefined}
+        onJoinLobby={() => undefined}
         onJoin={() => undefined}
         onSpectate={() => undefined}
         onRejoin={() => undefined}
@@ -108,11 +157,13 @@ describe("OnlineGames", () => {
         setupConfig={config}
         privateDataFingerprint="private:abc"
         savedSessions={[]}
+        lobbies={[]}
         matches={[locked]}
         statusMessage=""
         onBackToSetup={() => undefined}
         onRefresh={() => undefined}
         onHost={() => undefined}
+        onJoinLobby={() => undefined}
         onJoin={() => undefined}
         onSpectate={() => undefined}
         onRejoin={() => undefined}
@@ -139,11 +190,13 @@ describe("OnlineGames", () => {
         setupConfig={config}
         privateDataFingerprint="placeholder"
         savedSessions={[saved]}
+        lobbies={[]}
         matches={[baseMatch]}
         statusMessage="Ready"
         onBackToSetup={() => undefined}
         onRefresh={() => undefined}
         onHost={() => undefined}
+        onJoinLobby={() => undefined}
         onJoin={() => undefined}
         onSpectate={() => undefined}
         onRejoin={() => undefined}

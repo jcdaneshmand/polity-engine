@@ -1,16 +1,18 @@
 import { useState } from "react";
-import type { ListedMatch, OnlineSessionRecord } from "../../onlineSession";
+import type { ListedLobby, ListedMatch, OnlineSessionRecord } from "../../onlineSession";
 import type { NewGameSessionConfig } from "../setup/NewGameSetup";
 
 type OnlineGamesProps = {
   setupConfig: NewGameSessionConfig;
   privateDataFingerprint: string;
   savedSessions: OnlineSessionRecord[];
+  lobbies: ListedLobby[];
   matches: ListedMatch[];
   statusMessage: string;
   onBackToSetup: () => void;
   onRefresh: () => void | Promise<void>;
   onHost: (args: { roomName: string; password?: string; setupConfig: NewGameSessionConfig; privateDataFingerprint: string }) => void | Promise<void>;
+  onJoinLobby: (args: { lobbyID: string; playerName: string; password?: string; privateDataFingerprint: string }) => void | Promise<void>;
   onJoin: (args: { matchID: string; playerID?: string; playerName: string; password?: string; privateDataFingerprint: string; setupConfig: NewGameSessionConfig }) => void | Promise<void>;
   onSpectate: (args: { matchID: string; password?: string; privateDataFingerprint: string }) => void | Promise<void>;
   onRejoin: (record: OnlineSessionRecord) => void;
@@ -25,6 +27,16 @@ function playerLabel(playerID: string | undefined): string {
 function privateDataStatus(match: ListedMatch, privateDataFingerprint: string): "compatible" | "missing" | "server_check" {
   if (match.privateDataLabel === "placeholder") return "compatible";
   return privateDataFingerprint === "placeholder" ? "missing" : "server_check";
+}
+
+function savedSessionLabel(record: OnlineSessionRecord): string {
+  if (record.kind === "lobby") return record.lobbyID;
+  return record.matchID;
+}
+
+function savedSessionRole(record: OnlineSessionRecord): string {
+  if (record.kind === "lobby") return `Lobby ${playerLabel(record.seatID)}`;
+  return playerLabel(record.playerID);
 }
 
 function statusLabel(status: ListedMatch["status"]): string {
@@ -43,11 +55,13 @@ export default function OnlineGames({
   setupConfig,
   privateDataFingerprint,
   savedSessions,
+  lobbies,
   matches,
   statusMessage,
   onBackToSetup,
   onRefresh,
   onHost,
+  onJoinLobby,
   onJoin,
   onSpectate,
   onRejoin,
@@ -69,15 +83,14 @@ export default function OnlineGames({
     });
   };
 
-  const submitJoinByCode = () => {
-    const matchID = joinCode.trim();
-    if (!matchID) return;
-    void onJoin({
-      matchID,
+  const submitJoinLobbyByCode = () => {
+    const lobbyID = joinCode.trim();
+    if (!lobbyID) return;
+    void onJoinLobby({
+      lobbyID,
       playerName: playerName.trim() || "Player",
       password: joinPassword.trim() || undefined,
-      privateDataFingerprint,
-      setupConfig
+      privateDataFingerprint
     });
   };
 
@@ -100,9 +113,9 @@ export default function OnlineGames({
           <h2 id="online-resume">Resume Games</h2>
           <div className="online-card-grid">
             {savedSessions.length ? savedSessions.map((record) => (
-              <article className="online-card" key={`${record.kind ?? "player"}-${record.matchID}-${record.playerID ?? "spectator"}`}>
-                <strong>{record.matchID}</strong>
-                <span>{playerLabel(record.playerID)}</span>
+              <article className="online-card" key={`${record.kind ?? "player"}-${savedSessionLabel(record)}`}>
+                <strong>{savedSessionLabel(record)}</strong>
+                <span>{savedSessionRole(record)}</span>
                 <small>Saved {record.savedAt}</small>
                 <div className="private-data-actions">
                   <button type="button" onClick={() => onRejoin(record)}>Rejoin</button>
@@ -148,13 +161,50 @@ export default function OnlineGames({
               <span>Name</span>
               <input value={playerName} onChange={(event: { target: HTMLInputElement }) => setPlayerName(event.target.value)} />
             </label>
-            <button type="button" onClick={submitJoinByCode} disabled={!joinCode.trim()}>Join By Code</button>
+            <button type="button" onClick={submitJoinLobbyByCode} disabled={!joinCode.trim()}>Join Lobby</button>
           </div>
         </section>
 
         <section className="setup-stage" aria-labelledby="online-browse">
           <h2 id="online-browse">Browse Games</h2>
           <div className="online-match-list">
+            {lobbies.map((lobby) => {
+              const password = matchPasswords[lobby.lobbyID] ?? "";
+              const needsPassword = lobby.isLocked && !password.trim();
+              const blockedByData = lobby.privateDataLabel === "private_data_required" && privateDataFingerprint === "placeholder";
+              const canJoinLobby = lobby.availableSeats.length > 0 && !needsPassword && !blockedByData;
+              return (
+                <article className="online-match-row" key={lobby.lobbyID}>
+                  <div>
+                    <strong>{lobby.roomName}</strong>
+                    <span>Lobby - {lobby.status === "locked" ? "Ready to start" : "Waiting"} - {lobby.occupiedSeats.length}/{lobby.playerCount} seats</span>
+                    <small>{lobby.occupiedSeats.length ? lobby.occupiedSeats.map((seat) => `${seat.displayName}: ${seat.ready ? "ready" : "not ready"}`).join(", ") : "No seats occupied"}</small>
+                    <small>{lobby.privateDataLabel === "private_data_required" ? "Private data required" : "Placeholder data"}</small>
+                    {blockedByData ? <small className="online-warning">Import matching private data to enter</small> : null}
+                  </div>
+                  <div className="online-match-actions">
+                    {lobby.isLocked ? (
+                      <label className="setup-field">
+                        <span>Password</span>
+                        <input value={password} onChange={(event: { target: HTMLInputElement }) => setMatchPasswords((current) => ({ ...current, [lobby.lobbyID]: event.target.value }))} />
+                      </label>
+                    ) : null}
+                    <button
+                      type="button"
+                      disabled={!canJoinLobby}
+                      onClick={() => void onJoinLobby({
+                        lobbyID: lobby.lobbyID,
+                        playerName,
+                        password: password.trim() || undefined,
+                        privateDataFingerprint
+                      })}
+                    >
+                      Join Lobby
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
             {matches.length ? matches.map((match) => {
               const dataStatus = privateDataStatus(match, privateDataFingerprint);
               const blockedByData = dataStatus === "missing";
@@ -203,7 +253,8 @@ export default function OnlineGames({
                   </div>
                 </article>
               );
-            }) : <p className="setup-help">No online games are listed yet.</p>}
+            }) : null}
+            {!lobbies.length && !matches.length ? <p className="setup-help">No online games are listed yet.</p> : null}
           </div>
         </section>
       </section>

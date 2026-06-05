@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildJoinURL, computePrivateDataFingerprint, createOnlineMatch, createPolityOnlineMatch, joinOnlineMatch, joinPolityOnlineMatch, listOnlineMatches, ONLINE_SESSION_STORAGE_KEY, parseJoinURL, parseOnlineSessionRecord, resolveMultiplayerServerURL, serializeOnlineSessionRecord, sortListedMatches, spectateOnlineMatch } from "./onlineSession";
+import { buildJoinURL, computePrivateDataFingerprint, createLobbyRoom, createOnlineMatch, createPolityOnlineMatch, joinLobbyRoom, joinOnlineMatch, joinPolityOnlineMatch, listLobbyRooms, listOnlineMatches, ONLINE_SESSION_STORAGE_KEY, parseJoinURL, parseOnlineSessionRecord, rejoinLobbyRoom, resolveMultiplayerServerURL, selectLobbyNation, serializeOnlineSessionRecord, setLobbyReady, sortListedMatches, spectateOnlineMatch, startLobbyGame, updateLobbySetup } from "./onlineSession";
 
 function jsonResponse(body: unknown): Response {
   return {
@@ -22,6 +22,19 @@ describe("online session utilities", () => {
 
     expect(parseOnlineSessionRecord(serializeOnlineSessionRecord(record))).toEqual(record);
     expect(ONLINE_SESSION_STORAGE_KEY).toBe("polity-engine.onlineSession.v1");
+  });
+
+  it("round-trips a saved pregame lobby session record", () => {
+    const record = {
+      kind: "lobby" as const,
+      lobbyID: "lobby-123",
+      seatID: "0",
+      lobbyCredentials: "lobby-token",
+      serverURL: "http://localhost:8000",
+      savedAt: "2026-06-05T01:00:00.000Z"
+    };
+
+    expect(parseOnlineSessionRecord(serializeOnlineSessionRecord(record))).toEqual(record);
   });
 
   it("rejects malformed saved session records", () => {
@@ -114,6 +127,56 @@ describe("online session utilities", () => {
     })).resolves.toEqual({ playerCredentials: "player-token", playerID: "1" });
 
     expect(calls[0].body).toEqual({ playerName: "A", privateDataFingerprint: "placeholder" });
+  });
+
+  it("uses pregame lobby APIs for room setup and start", async () => {
+    const calls: Array<{ url: string; body?: unknown }> = [];
+    const lobby = {
+      kind: "lobby",
+      lobbyID: "lobby-1",
+      roomName: "Room",
+      createdAt: "a",
+      updatedAt: "b",
+      status: "waiting",
+      playerCount: 2,
+      occupiedSeats: [],
+      availableSeats: ["0", "1"],
+      isLocked: false,
+      privateDataLabel: "placeholder",
+      setupSummary: { commonsSetId: "classics", enabledExpansions: [], enabledVariants: [], nationLabels: [] },
+      setupData: {},
+      seats: [],
+      viewer: { seatID: "0", isHost: true }
+    };
+    const fetcher = async (url: string, init?: RequestInit) => {
+      calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      if (url.endsWith("/rooms") && init?.method !== "POST") return jsonResponse({ lobbies: [lobby] });
+      if (url.endsWith("/rooms")) return jsonResponse({ lobbyID: "lobby-1", seatID: "0", lobbyCredentials: "cred-host", lobby });
+      if (url.endsWith("/join")) return jsonResponse({ lobbyID: "lobby-1", seatID: "1", lobbyCredentials: "cred-guest", lobby: { ...lobby, viewer: { seatID: "1", isHost: false } } });
+      if (url.endsWith("/start")) return jsonResponse({ matchID: "match-1", playerID: "0", playerCredentials: "player-token", lobby: { ...lobby, startedMatchID: "match-1", playerCredentials: "player-token" } });
+      if (url.endsWith("/lobby-1")) return jsonResponse({ lobby });
+      return jsonResponse({ ok: true, lobby });
+    };
+
+    await expect(listLobbyRooms({ serverURL: "http://localhost:8000", fetcher })).resolves.toHaveLength(1);
+    await expect(createLobbyRoom({ serverURL: "http://localhost:8000", roomName: "Room", playerCount: 2, setupData: { ok: true }, privateDataFingerprint: "placeholder", hostName: "Host", fetcher })).resolves.toEqual({ lobbyID: "lobby-1", seatID: "0", lobbyCredentials: "cred-host", lobby });
+    await expect(joinLobbyRoom({ serverURL: "http://localhost:8000", lobbyID: "lobby-1", displayName: "Guest", privateDataFingerprint: "placeholder", fetcher })).resolves.toEqual({ lobbyID: "lobby-1", seatID: "1", lobbyCredentials: "cred-guest", lobby: { ...lobby, viewer: { seatID: "1", isHost: false } } });
+    await expect(rejoinLobbyRoom({ serverURL: "http://localhost:8000", lobbyID: "lobby-1", lobbyCredentials: "cred-host", fetcher })).resolves.toEqual({ lobby });
+    await expect(updateLobbySetup({ serverURL: "http://localhost:8000", lobbyID: "lobby-1", lobbyCredentials: "cred-host", roomName: "Room", playerCount: 2, setupData: { ok: true }, privateDataFingerprint: "placeholder", fetcher })).resolves.toEqual({ ok: true, lobby });
+    await expect(selectLobbyNation({ serverURL: "http://localhost:8000", lobbyID: "lobby-1", lobbyCredentials: "cred-host", nationID: "test_nation_sun_coast", fetcher })).resolves.toEqual({ ok: true, lobby });
+    await expect(setLobbyReady({ serverURL: "http://localhost:8000", lobbyID: "lobby-1", lobbyCredentials: "cred-host", ready: true, fetcher })).resolves.toEqual({ ok: true, lobby });
+    await expect(startLobbyGame({ serverURL: "http://localhost:8000", lobbyID: "lobby-1", lobbyCredentials: "cred-host", fetcher })).resolves.toEqual({ matchID: "match-1", playerID: "0", playerCredentials: "player-token", lobby: { ...lobby, startedMatchID: "match-1", playerCredentials: "player-token" } });
+
+    expect(calls.map((call) => call.url)).toEqual([
+      "http://localhost:8000/polity/lobby/rooms",
+      "http://localhost:8000/polity/lobby/rooms",
+      "http://localhost:8000/polity/lobby/rooms/lobby-1/join",
+      "http://localhost:8000/polity/lobby/rooms/lobby-1",
+      "http://localhost:8000/polity/lobby/rooms/lobby-1/update-setup",
+      "http://localhost:8000/polity/lobby/rooms/lobby-1/select-nation",
+      "http://localhost:8000/polity/lobby/rooms/lobby-1/ready",
+      "http://localhost:8000/polity/lobby/rooms/lobby-1/start"
+    ]);
   });
 
   it("reports non-JSON lobby responses without leaking HTML parse errors", async () => {

@@ -102,18 +102,19 @@ export function createLobbyStore(options: LobbyStoreOptions = {}) {
     createMatchMetadata(input: CreateLobbyMatchInput): ListedMatch {
       const timestamp = now();
       const password = input.password?.trim();
+      const passwordVerifier = input.passwordVerifier ?? (password ? hashPassword(password) : undefined);
       const match: PrivateMatchMetadata = {
         matchID: input.matchID,
         roomName: safeRoomName(input.roomName, input.matchID),
         createdAt: timestamp,
         updatedAt: timestamp,
-        status: "setup",
+        status: input.status ?? "setup",
         playerCount: input.playerCount,
-        occupiedSeats: new Map(),
-        isLocked: Boolean(password),
-        spectatingAllowed: true,
+        occupiedSeats: new Map((input.occupiedSeats ?? []).map((seat) => [seat.playerID, seat])),
+        isLocked: Boolean(passwordVerifier),
+        spectatingAllowed: input.spectatingAllowed ?? true,
         privateDataFingerprint: input.privateDataFingerprint,
-        ...(password ? { passwordVerifier: hashPassword(password) } : {}),
+        ...(passwordVerifier ? { passwordVerifier } : {}),
         setupSummary: deriveSetupSummary(input.setupData)
       };
       matches.set(input.matchID, match);

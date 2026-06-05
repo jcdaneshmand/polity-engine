@@ -60,9 +60,9 @@ const campaignModes: Array<{ id: "none" | CampaignMode; label: string }> = [
   { id: "supreme_ruler", label: "Supreme Ruler" }
 ];
 
-type NationOption = { id: string; label: string };
+export type NationOption = { id: string; label: string };
 
-function getNationOptions(enabledExpansions: ExpansionId[], privateData?: PrivateDataBundle): NationOption[] {
+export function getNationOptions(enabledExpansions: ExpansionId[], privateData?: PrivateDataBundle): NationOption[] {
   const nations = privateData?.nations?.length ? privateData.nations : Object.values(loadNationDb({ enabledExpansions }));
   return nations
     .filter((nation) => !nation.requiredExpansions.some((expansion) => !enabledExpansions.includes(expansion)) && !(nation.excludedExpansions ?? []).some((expansion) => enabledExpansions.includes(expansion)))

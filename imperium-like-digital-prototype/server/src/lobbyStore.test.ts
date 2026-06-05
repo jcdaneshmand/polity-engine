@@ -52,6 +52,41 @@ describe("lobby store", () => {
     expect(store.validateAccess({ matchID: "match-1", password: "pw", privateDataFingerprint: "fp-a" })).toEqual({ ok: true });
   });
 
+  it("accepts pre-hashed passwords for started lobby matches", () => {
+    const store = createLobbyStore({
+      now: () => "2026-06-05T01:00:00.000Z",
+      hashPassword: (value) => `hash:${value}`
+    });
+
+    store.createMatchMetadata({
+      matchID: "match-1",
+      roomName: "Started",
+      playerCount: 2,
+      setupData: {},
+      privateDataFingerprint: "fp-a",
+      passwordVerifier: "hash:pw",
+      status: "in_progress",
+      occupiedSeats: [
+        { playerID: "0", playerName: "Host", isConnected: true },
+        { playerID: "1", playerName: "Guest", isConnected: true }
+      ]
+    });
+
+    expect(store.listMatches()).toEqual([
+      expect.objectContaining({
+        matchID: "match-1",
+        status: "in_progress",
+        isLocked: true,
+        availableSeats: [],
+        occupiedSeats: [
+          { playerID: "0", playerName: "Host", isConnected: true },
+          { playerID: "1", playerName: "Guest", isConnected: true }
+        ]
+      })
+    ]);
+    expect(store.validateAccess({ matchID: "match-1", password: "pw", privateDataFingerprint: "fp-a" })).toEqual({ ok: true });
+  });
+
   it("sorts joinable setup games before spectatable in-progress games", () => {
     const store = createLobbyStore({ now: () => "2026-06-05T01:00:00.000Z" });
     store.createMatchMetadata({ matchID: "full", roomName: "Full", playerCount: 1, setupData: {}, privateDataFingerprint: "placeholder" });

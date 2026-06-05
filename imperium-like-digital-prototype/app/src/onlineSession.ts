@@ -1,6 +1,6 @@
 export const ONLINE_SESSION_STORAGE_KEY = "polity-engine.onlineSession.v1";
 
-export type OnlineSessionRecord = {
+export type OnlineStartedSessionRecord = {
   kind?: "player" | "spectator";
   matchID: string;
   playerID?: string;
@@ -9,6 +9,17 @@ export type OnlineSessionRecord = {
   numPlayers: number;
   savedAt: string;
 };
+
+export type OnlineLobbySessionRecord = {
+  kind: "lobby";
+  lobbyID: string;
+  seatID: string;
+  lobbyCredentials: string;
+  serverURL: string;
+  savedAt: string;
+};
+
+export type OnlineSessionRecord = OnlineStartedSessionRecord | OnlineLobbySessionRecord;
 
 export type JoinURLDetails = {
   matchID?: string;
@@ -42,15 +53,59 @@ export type ListedMatch = {
   };
 };
 
+export type ListedLobby = {
+  kind: "lobby";
+  lobbyID: string;
+  roomName: string;
+  createdAt: string;
+  updatedAt: string;
+  status: "waiting" | "locked";
+  playerCount: number;
+  occupiedSeats: Array<{ seatID: string; displayName: string; connected: boolean; ready: boolean; selectedNationID?: string }>;
+  availableSeats: string[];
+  isLocked: boolean;
+  privateDataLabel: PrivateDataLabel;
+  setupSummary: ListedMatch["setupSummary"];
+};
+
+export type LobbySeatView = {
+  seatID: string;
+  displayName: string;
+  connected: boolean;
+  ready: boolean;
+  isSelf: boolean;
+  isHost: boolean;
+  selectedNationID?: string;
+};
+
+export type LobbyRoomDetails = ListedLobby & {
+  setupData: unknown;
+  seats: LobbySeatView[];
+  viewer: {
+    seatID: string;
+    isHost: boolean;
+  };
+  startedMatchID?: string;
+  playerCredentials?: string;
+};
+
 function isOnlineSessionRecord(value: unknown): value is OnlineSessionRecord {
   if (!value || typeof value !== "object") return false;
   const record = value as OnlineSessionRecord;
-  return typeof record.matchID === "string" && record.matchID.length > 0
-    && (record.kind === "spectator" || typeof record.playerID === "string" && record.playerID.length > 0)
-    && typeof record.credentials === "string" && record.credentials.length > 0
-    && typeof record.serverURL === "string" && record.serverURL.length > 0
-    && Number.isInteger(record.numPlayers) && record.numPlayers > 0
-    && typeof record.savedAt === "string" && record.savedAt.length > 0;
+  if (record.kind === "lobby") {
+    return typeof record.lobbyID === "string" && record.lobbyID.length > 0
+      && typeof record.seatID === "string" && record.seatID.length > 0
+      && typeof record.lobbyCredentials === "string" && record.lobbyCredentials.length > 0
+      && typeof record.serverURL === "string" && record.serverURL.length > 0
+      && typeof record.savedAt === "string" && record.savedAt.length > 0;
+  }
+  const started = record as OnlineStartedSessionRecord;
+  return typeof started.matchID === "string" && started.matchID.length > 0
+    && (started.kind === "spectator" || typeof started.playerID === "string" && started.playerID.length > 0)
+    && typeof started.credentials === "string" && started.credentials.length > 0
+    && typeof started.serverURL === "string" && started.serverURL.length > 0
+    && Number.isInteger(started.numPlayers) && started.numPlayers > 0
+    && typeof started.savedAt === "string" && started.savedAt.length > 0;
 }
 
 export function serializeOnlineSessionRecord(record: OnlineSessionRecord): string {
@@ -186,6 +241,118 @@ export async function listOnlineMatches(args: { serverURL: string; fetcher?: Fet
     args.fetcher ?? fetch
   );
   return sortListedMatches(result.matches);
+}
+
+export async function listLobbyRooms(args: { serverURL: string; fetcher?: Fetcher }): Promise<ListedLobby[]> {
+  const result = await getLobbyJSON<{ lobbies: ListedLobby[] }>(
+    lobbyURL(args.serverURL, "/polity/lobby/rooms"),
+    args.fetcher ?? fetch
+  );
+  return result.lobbies;
+}
+
+export async function createLobbyRoom(args: {
+  serverURL: string;
+  roomName: string;
+  playerCount: number;
+  setupData: unknown;
+  privateDataFingerprint: string;
+  password?: string;
+  hostName?: string;
+  fetcher?: Fetcher;
+}): Promise<{ lobbyID: string; seatID: string; lobbyCredentials: string; lobby: LobbyRoomDetails }> {
+  return postLobbyJSON<{ lobbyID: string; seatID: string; lobbyCredentials: string; lobby: LobbyRoomDetails }>(
+    lobbyURL(args.serverURL, "/polity/lobby/rooms"),
+    {
+      roomName: args.roomName,
+      playerCount: args.playerCount,
+      setupData: args.setupData,
+      privateDataFingerprint: args.privateDataFingerprint,
+      ...(args.password?.trim() ? { password: args.password.trim() } : {}),
+      ...(args.hostName?.trim() ? { hostName: args.hostName.trim() } : {})
+    },
+    args.fetcher ?? fetch
+  );
+}
+
+export async function joinLobbyRoom(args: {
+  serverURL: string;
+  lobbyID: string;
+  displayName: string;
+  privateDataFingerprint: string;
+  password?: string;
+  seatID?: string;
+  fetcher?: Fetcher;
+}): Promise<{ lobbyID: string; seatID: string; lobbyCredentials: string; lobby: LobbyRoomDetails }> {
+  return postLobbyJSON<{ lobbyID: string; seatID: string; lobbyCredentials: string; lobby: LobbyRoomDetails }>(
+    lobbyURL(args.serverURL, `/polity/lobby/rooms/${encodeURIComponent(args.lobbyID)}/join`),
+    {
+      displayName: args.displayName,
+      privateDataFingerprint: args.privateDataFingerprint,
+      ...(args.password?.trim() ? { password: args.password.trim() } : {}),
+      ...(args.seatID ? { seatID: args.seatID } : {})
+    },
+    args.fetcher ?? fetch
+  );
+}
+
+export async function rejoinLobbyRoom(args: { serverURL: string; lobbyID: string; lobbyCredentials: string; fetcher?: Fetcher }): Promise<{ lobby: LobbyRoomDetails }> {
+  return postLobbyJSON<{ lobby: LobbyRoomDetails }>(
+    lobbyURL(args.serverURL, `/polity/lobby/rooms/${encodeURIComponent(args.lobbyID)}`),
+    { lobbyCredentials: args.lobbyCredentials },
+    args.fetcher ?? fetch
+  );
+}
+
+export async function updateLobbySetup(args: {
+  serverURL: string;
+  lobbyID: string;
+  lobbyCredentials: string;
+  roomName: string;
+  playerCount: number;
+  setupData: unknown;
+  privateDataFingerprint: string;
+  password?: string;
+  spectatingAllowed?: boolean;
+  fetcher?: Fetcher;
+}): Promise<{ ok: true; lobby?: LobbyRoomDetails }> {
+  return postLobbyJSON<{ ok: true; lobby?: LobbyRoomDetails }>(
+    lobbyURL(args.serverURL, `/polity/lobby/rooms/${encodeURIComponent(args.lobbyID)}/update-setup`),
+    {
+      lobbyCredentials: args.lobbyCredentials,
+      roomName: args.roomName,
+      playerCount: args.playerCount,
+      setupData: args.setupData,
+      privateDataFingerprint: args.privateDataFingerprint,
+      ...(args.password !== undefined ? { password: args.password } : {}),
+      ...(args.spectatingAllowed !== undefined ? { spectatingAllowed: args.spectatingAllowed } : {})
+    },
+    args.fetcher ?? fetch
+  );
+}
+
+export async function selectLobbyNation(args: { serverURL: string; lobbyID: string; lobbyCredentials: string; nationID: string; fetcher?: Fetcher }): Promise<{ ok: true; lobby?: LobbyRoomDetails }> {
+  return postLobbyJSON<{ ok: true; lobby?: LobbyRoomDetails }>(
+    lobbyURL(args.serverURL, `/polity/lobby/rooms/${encodeURIComponent(args.lobbyID)}/select-nation`),
+    { lobbyCredentials: args.lobbyCredentials, nationID: args.nationID },
+    args.fetcher ?? fetch
+  );
+}
+
+export async function setLobbyReady(args: { serverURL: string; lobbyID: string; lobbyCredentials: string; ready: boolean; fetcher?: Fetcher }): Promise<{ ok: true; lobby?: LobbyRoomDetails }> {
+  return postLobbyJSON<{ ok: true; lobby?: LobbyRoomDetails }>(
+    lobbyURL(args.serverURL, `/polity/lobby/rooms/${encodeURIComponent(args.lobbyID)}/ready`),
+    { lobbyCredentials: args.lobbyCredentials, ready: args.ready },
+    args.fetcher ?? fetch
+  );
+}
+
+export async function startLobbyGame(args: { serverURL: string; lobbyID: string; lobbyCredentials: string; fetcher?: Fetcher }): Promise<{ matchID: string; playerID: string; playerCredentials: string; lobby?: LobbyRoomDetails }> {
+  return postLobbyJSON<{ matchID: string; playerID: string; playerCredentials: string; lobby?: LobbyRoomDetails }>(
+    lobbyURL(args.serverURL, `/polity/lobby/rooms/${encodeURIComponent(args.lobbyID)}/start`),
+    { lobbyCredentials: args.lobbyCredentials },
+    args.fetcher ?? fetch
+  );
 }
 
 export async function createPolityOnlineMatch(args: {

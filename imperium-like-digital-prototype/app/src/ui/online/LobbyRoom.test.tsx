@@ -94,6 +94,8 @@ describe("LobbyRoom", () => {
     );
 
     expect(html).toContain("Friday Table");
+    expect(html).toContain("Room code");
+    expect(html).toContain("lobby-1");
     expect(html).toContain("Host controls");
     expect(html).toContain("Host");
     expect(html).toContain("Guest");

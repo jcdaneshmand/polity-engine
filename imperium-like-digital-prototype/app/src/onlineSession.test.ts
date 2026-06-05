@@ -53,6 +53,8 @@ describe("online session utilities", () => {
   it("resolves the multiplayer server URL from config or app origin", () => {
     expect(resolveMultiplayerServerURL({ configuredURL: "https://api.polity.example", windowOrigin: "https://app.polity.example" })).toBe("https://api.polity.example");
     expect(resolveMultiplayerServerURL({ configuredURL: "", windowOrigin: "https://app.polity.example" })).toBe("https://app.polity.example");
+    expect(resolveMultiplayerServerURL({ configuredURL: "", windowOrigin: "http://localhost:5173" })).toBe("http://localhost:5173");
+    expect(resolveMultiplayerServerURL({ configuredURL: "", windowOrigin: "http://127.0.0.1:5173" })).toBe("http://127.0.0.1:5173");
     expect(resolveMultiplayerServerURL({})).toBe("http://localhost:8000");
   });
 

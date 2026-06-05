@@ -1,5 +1,6 @@
 import type { PrivateBotStateTableCsvRow } from "../card-import/botStateTableCsvTypes";
 import type { PrivateBotTradeRoutesTableCsvRow } from "../card-import/botTradeRoutesTableCsvTypes";
+import type { PrivateNationCsvRow } from "../card-import/nationCsvTypes";
 
 export const botStateTableCsvColumns = [
   "table_id",
@@ -66,6 +67,51 @@ export type BotTradeRoutesTableEntryDraft = {
   tested: string;
   notes: string;
 };
+
+export type BotNationOption = {
+  id: string;
+  label: string;
+};
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function nextGeneratedId(existingIds: string[], prefix: string): string {
+  const pattern = new RegExp(`^${escapeRegExp(prefix)}_(\\d+)$`);
+  const max = existingIds.reduce((currentMax, id) => {
+    const match = id.trim().match(pattern);
+    return match ? Math.max(currentMax, Number(match[1])) : currentMax;
+  }, 0);
+  return `${prefix}_${max + 1}`;
+}
+
+export function buildBotNationOptions(rows: PrivateNationCsvRow[]): BotNationOption[] {
+  return rows
+    .map((row) => {
+      const id = row.nation_id?.trim() ?? "";
+      const name = row.nation_name_private?.trim() || row.public_placeholder_name?.trim() || id;
+      return id ? { id, label: `${name} (${id})` } : undefined;
+    })
+    .filter((option): option is BotNationOption => Boolean(option))
+    .sort((left, right) => left.label.localeCompare(right.label));
+}
+
+export function getNextBotStateTableId(rows: PrivateBotStateTableCsvRow[], nationId: string): string {
+  const normalizedNationId = nationId.trim() || "bot";
+  return nextGeneratedId(
+    rows.map((row) => row.table_id ?? ""),
+    `bot_state_${normalizedNationId}`
+  );
+}
+
+export function getNextBotTradeRoutesTableId(rows: PrivateBotTradeRoutesTableCsvRow[], nationId: string): string {
+  const normalizedNationId = nationId.trim() || "bot";
+  return nextGeneratedId(
+    rows.map((row) => row.table_id ?? ""),
+    `bot_trade_${normalizedNationId}`
+  );
+}
 
 export function createBlankBotStateTableDraft(): BotStateTableEntryDraft {
   return {

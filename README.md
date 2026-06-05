@@ -27,7 +27,7 @@ Any official dataset, demo mode using real Imperium content, hosted public datab
 - Rules-engine scaffolding and automation.
 - A Vite, React, and TypeScript companion app.
 - CSV import/export tools.
-- Card and nation CSV maker.
+- Card and Nation Transcription Tool for entering local cards, nations, rulesets, and bot tables.
 - Local private data import for cards, nations, rulesets, strategy profiles, and AI bot tables.
 - Example schema files and fake/demo data only.
 - Solo and table bookkeeping support.
@@ -43,6 +43,36 @@ Any official dataset, demo mode using real Imperium content, hosted public datab
 - Scans, photos, or reproductions of game components.
 - A hosted public card database.
 
+## Feature Checklist
+
+### Included
+
+- [x] Vite, React, and TypeScript companion app.
+- [x] Rules-engine scaffolding for game state, turn flow, choices, effects, scoring, and setup.
+- [x] Multiplayer, solo, and practice game setup modes.
+- [x] Online multiplayer lobby server for local/development play.
+- [x] Metadata-driven Commons setup for placeholder and local private card data.
+- [x] Expansion and variant option plumbing, including the `trade_routes` expansion module.
+- [x] Local private data import for cards, nations, nation rulesets, nation strategy profiles, bot state tables, and bot Trade Routes tables.
+- [x] Browser upload support for local private JSON/CSV data.
+- [x] Card and Nation Transcription Tool for browser-based entry of cards, nation definitions, nation rulesets, bot state tables, and bot Trade Routes tables.
+- [x] Card, nation, ruleset, strategy, and bot-table validation/reporting tools.
+- [x] Solo bot support driven by imported bot tables.
+- [x] Solo campaign setup, continuation, end-game update flow, and campaign sheet export.
+- [x] Board UI for core bookkeeping, public/shared zones, player zones, card inspection, logs, and keyboard-oriented controls.
+- [x] Fictional placeholder/demo data and schema examples only.
+
+### Planned
+
+- [ ] Custom Commons setup workflow for choosing or composing the Commons pool from local data.
+- [ ] Save/resume support for in-progress local games.
+- [ ] Extensive local testing with privately entered real card data to improve rules-engine coverage, without committing or distributing that data.
+- [ ] Broader rules parity coverage for remaining keywords, edge cases, and card-specific effects.
+- [ ] Undo support and stronger legal-move validation for risky actions.
+- [ ] More complete Steam Deck/controller-oriented UI polish.
+- [ ] Import/export polish for portable local game and campaign files.
+- [ ] Production-ready multiplayer hosting, persistence, and authentication.
+
 ## Repository Structure
 
 - `imperium-like-digital-prototype/app/`: Vite, React, and TypeScript UI using `boardgame.io/react`.
@@ -53,42 +83,64 @@ Any official dataset, demo mode using real Imperium content, hosted public datab
 - `imperium-like-digital-prototype/data/placeholder-cards/`: fictional placeholder/demo data.
 - `imperium-like-digital-prototype/docs/`: design notes, legal/content boundary notes, and workflow documentation.
 
-## Setup
+## Running and Testing the App
 
-Run project npm commands from the workspace package root:
+The app workspace is `imperium-like-digital-prototype`. Run npm commands from that directory unless a command explicitly says it runs from the repository root.
 
-```bash
+Install dependencies:
+
+```powershell
 cd imperium-like-digital-prototype
 npm install
 ```
 
-Start the development server:
+Start the Vite development server:
 
-```bash
+```powershell
 npm run dev
+```
+
+Then open the local URL printed by Vite, usually `http://localhost:5173`.
+
+Start the app with the multiplayer lobby server:
+
+```powershell
+npm run dev:full
+```
+
+This starts the lobby server on `http://127.0.0.1:8000` and the app on `http://127.0.0.1:5173`. To run only the server:
+
+```powershell
+npm run server:dev
 ```
 
 Run the engine test suite:
 
-```bash
+```powershell
 npm test
 ```
 
-Run TypeScript checks for the engine and app:
+Run TypeScript checks for the engine, app, and server:
 
-```bash
+```powershell
 npm run typecheck
+```
+
+Run the app workspace tests directly:
+
+```powershell
+npm run test -w app
 ```
 
 Build the app:
 
-```bash
+```powershell
 npm run build -w app
 ```
 
 If `npm test` reports that `vitest` is missing, run `npm install` from `imperium-like-digital-prototype`, not from the repository root.
 
-## Quick Health Check
+### Quick Health Check
 
 From the repository root, the PowerShell helper runs tests, runs typecheck, and starts the Vite dev server only after both checks pass:
 
@@ -105,16 +157,16 @@ For a checks-only run:
 If your PowerShell profile or execution policy interferes:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev-check.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev-check.ps1 -NoLaunch
 ```
 
 ## Using Your Own Physical Copy
 
 The intended workflow is local and private:
 
-1. Open the card/nation CSV maker from the app.
-2. Enter the card, nation, ruleset, and bot configuration data you want to use locally.
-3. Export CSV files from the maker.
+1. Open the Card and Nation Transcription Tool from the app setup screen.
+2. Enter the card rows, nation definitions, nation ruleset traits, bot state table rows, and bot Trade Routes table rows you want to use locally.
+3. Export CSV files from the transcription tool.
 4. Store those CSV files in a private ignored folder such as `imperium-like-digital-prototype/private-card-data/`.
 5. Import those CSV files into the app.
 6. Use the app for rules automation, bookkeeping, setup support, and solo/table assistance.

@@ -19,6 +19,29 @@ type GameSession = NewGameSessionConfig & {
   | { kind: "online"; role: "spectator"; matchID: string; credentials: string; serverURL: string }
 );
 
+export async function loadOnlineDirectory(args: {
+  listLobbies: () => Promise<ListedLobby[]>;
+  listMatches: () => Promise<ListedMatch[]>;
+  listChat: () => Promise<ChatMessage[]>;
+}): Promise<{ lobbies: ListedLobby[]; matches: ListedMatch[]; chatMessages: ChatMessage[]; chatUnavailable: boolean }> {
+  const [lobbies, matches] = await Promise.all([args.listLobbies(), args.listMatches()]);
+  try {
+    return {
+      lobbies,
+      matches,
+      chatMessages: await args.listChat(),
+      chatUnavailable: false
+    };
+  } catch {
+    return {
+      lobbies,
+      matches,
+      chatMessages: [],
+      chatUnavailable: true
+    };
+  }
+}
+
 function loadOnlineSessionRecord(): OnlineSessionRecord | undefined {
   if (typeof window === "undefined") return undefined;
   return parseOnlineSessionRecord(window.localStorage.getItem(ONLINE_SESSION_STORAGE_KEY));
@@ -195,16 +218,17 @@ export default function App() {
   const refreshOnlineMatches = async () => {
     setOnlineStatus("Refreshing online games...");
     try {
-      const [lobbies, matches, chatMessages] = await Promise.all([
-        listLobbyRooms({ serverURL: multiplayerServerURL }),
-        listOnlineMatches({ serverURL: multiplayerServerURL }),
-        listOnlineChat({ serverURL: multiplayerServerURL })
-      ]);
+      const { lobbies, matches, chatMessages, chatUnavailable } = await loadOnlineDirectory({
+        listLobbies: () => listLobbyRooms({ serverURL: multiplayerServerURL }),
+        listMatches: () => listOnlineMatches({ serverURL: multiplayerServerURL }),
+        listChat: () => listOnlineChat({ serverURL: multiplayerServerURL })
+      });
       setListedLobbies(lobbies);
       setListedMatches(matches);
       setOnlineChatMessages(chatMessages);
       const total = lobbies.length + matches.length;
-      setOnlineStatus(total ? `Loaded ${total} online room${total === 1 ? "" : "s"}.` : "No online games are listed yet.");
+      const roomStatus = total ? `Loaded ${total} online room${total === 1 ? "" : "s"}.` : "No online games are listed yet.";
+      setOnlineStatus(chatUnavailable ? `${roomStatus} Chat is unavailable from this server.` : roomStatus);
     } catch (error) {
       setOnlineStatus(error instanceof Error ? error.message : "Could not load online games.");
     }

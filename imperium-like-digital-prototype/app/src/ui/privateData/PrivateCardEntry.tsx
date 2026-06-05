@@ -17,8 +17,11 @@ import {
   botTradeRoutesTableCsvColumns,
   botTradeRoutesTableDraftToCsvRow,
   botTradeRoutesTableRowToDraft,
+  buildBotNationOptions,
   createBlankBotStateTableDraft,
   createBlankBotTradeRoutesTableDraft,
+  getNextBotStateTableId,
+  getNextBotTradeRoutesTableId,
   type BotStateTableEntryDraft,
   type BotTradeRoutesTableEntryDraft
 } from "../../../../tools/card-entry/botTableDraft";
@@ -336,6 +339,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
   const [botTradeStatus, setBotTradeStatus] = useState("No bot trade route table CSV loaded. New rows stay in this browser until exported.");
   const [botTradeFileHandle, setBotTradeFileHandle] = useState<FileSystemFileHandleLike | null>(null);
   const [botTradeDirty, setBotTradeDirty] = useState(false);
+  const [botTradeNationId, setBotTradeNationId] = useState("");
   const [suitSelectElement, setSuitSelectElement] = useState<HTMLSelectElement | null>(null);
 
   const selectedProfile = useMemo(() => profileFromSelection(profileId, nationId), [profileId, nationId]);
@@ -369,6 +373,15 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
   const botStateWarningCount = botStateReport.counts.warnings;
   const botTradeFatalCount = botTradeReport.counts.fatal;
   const botTradeWarningCount = botTradeReport.counts.warnings;
+  const botNationOptions = useMemo(() => buildBotNationOptions(nationRows), [nationRows]);
+  const botStateNationId = botStateDraft.botNationId || botNationOptions[0]?.id || "";
+  const selectedBotTradeNationId = botTradeNationId || botNationOptions[0]?.id || "";
+  const botStateNationOptions = botStateNationId && !botNationOptions.some((option) => option.id === botStateNationId)
+    ? [{ id: botStateNationId, label: `${botStateNationId} (not loaded)` }, ...botNationOptions]
+    : botNationOptions;
+  const botTradeNationOptions = selectedBotTradeNationId && !botNationOptions.some((option) => option.id === selectedBotTradeNationId)
+    ? [{ id: selectedBotTradeNationId, label: `${selectedBotTradeNationId} (not loaded)` }, ...botNationOptions]
+    : botNationOptions;
 
   const updateDraft = (field: keyof CardEntryDraft, value: string) => {
     setDraft((current) => ({ ...current, [field]: value }));
@@ -461,6 +474,36 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
 
   const createAutoNumberedNationDraft = (availableRows = nationRows): NationEntryDraft =>
     createBlankNationDraft(getNextNumericNationId(availableRows));
+
+  const createBotStateDraftForNation = (selectedNationId = botStateNationId, availableRows = botStateRows): BotStateTableEntryDraft => ({
+    ...createBlankBotStateTableDraft(),
+    botNationId: selectedNationId,
+    tableId: getNextBotStateTableId(availableRows, selectedNationId)
+  });
+
+  const createBotTradeDraftForNation = (selectedNationId = selectedBotTradeNationId, availableRows = botTradeRows): BotTradeRoutesTableEntryDraft => ({
+    ...createBlankBotTradeRoutesTableDraft(),
+    tableId: getNextBotTradeRoutesTableId(availableRows, selectedNationId)
+  });
+
+  const changeBotStateNation = (selectedNationId: string) => {
+    setBotStateDraft((current) => ({
+      ...current,
+      botNationId: selectedNationId,
+      tableId: getNextBotStateTableId(botStateRows, selectedNationId)
+    }));
+  };
+
+  const changeBotTradeNation = (selectedNationId: string) => {
+    setBotTradeNationId(selectedNationId);
+    setBotTradeDraft((current) => ({
+      ...current,
+      tableId: getNextBotTradeRoutesTableId(botTradeRows, selectedNationId)
+    }));
+  };
+
+  const inferBotTradeNationId = (tableId: string): string =>
+    botNationOptions.find((option) => tableId.includes(option.id))?.id ?? selectedBotTradeNationId;
 
   const resetDraftForProfile = (profile: CardEntryBatchProfile, availableRows = rows) => {
     setDraft(createAutoNumberedDraft(profile, availableRows));
@@ -620,7 +663,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
       setBotStateFileHandle(handle);
       setBotStateFileName(file.name);
       setBotStateRows(nextRows);
-      setBotStateDraft(nextRows[0] ? botStateTableRowToDraft(nextRows[0]) : createBlankBotStateTableDraft());
+      setBotStateDraft(nextRows[0] ? botStateTableRowToDraft(nextRows[0]) : createBotStateDraftForNation(botStateNationId, nextRows));
       setBotStateDirty(false);
       setBotStateStatus(`Loaded ${file.name}.`);
       return;
@@ -634,7 +677,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
     setBotStateFileHandle(null);
     setBotStateFileName(file.name);
     setBotStateRows(nextRows);
-    setBotStateDraft(nextRows[0] ? botStateTableRowToDraft(nextRows[0]) : createBlankBotStateTableDraft());
+    setBotStateDraft(nextRows[0] ? botStateTableRowToDraft(nextRows[0]) : createBotStateDraftForNation(botStateNationId, nextRows));
     setBotStateDirty(false);
     setBotStateStatus(`Loaded ${file.name}. Saving will download a replacement CSV.`);
   };
@@ -651,7 +694,9 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
       setBotTradeFileHandle(handle);
       setBotTradeFileName(file.name);
       setBotTradeRows(nextRows);
-      setBotTradeDraft(nextRows[0] ? botTradeRoutesTableRowToDraft(nextRows[0]) : createBlankBotTradeRoutesTableDraft());
+      const nextDraft = nextRows[0] ? botTradeRoutesTableRowToDraft(nextRows[0]) : createBotTradeDraftForNation(selectedBotTradeNationId, nextRows);
+      setBotTradeDraft(nextDraft);
+      setBotTradeNationId(inferBotTradeNationId(nextDraft.tableId));
       setBotTradeDirty(false);
       setBotTradeStatus(`Loaded ${file.name}.`);
       return;
@@ -665,7 +710,9 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
     setBotTradeFileHandle(null);
     setBotTradeFileName(file.name);
     setBotTradeRows(nextRows);
-    setBotTradeDraft(nextRows[0] ? botTradeRoutesTableRowToDraft(nextRows[0]) : createBlankBotTradeRoutesTableDraft());
+    const nextDraft = nextRows[0] ? botTradeRoutesTableRowToDraft(nextRows[0]) : createBotTradeDraftForNation(selectedBotTradeNationId, nextRows);
+    setBotTradeDraft(nextDraft);
+    setBotTradeNationId(inferBotTradeNationId(nextDraft.tableId));
     setBotTradeDirty(false);
     setBotTradeStatus(`Loaded ${file.name}. Saving will download a replacement CSV.`);
   };
@@ -1259,7 +1306,15 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
 
             <form className="private-entry-grid" onSubmit={(event: { preventDefault: () => void }) => { event.preventDefault(); saveBotStateRow(); }}>
               <label>Table ID <input value={botStateDraft.tableId} onChange={botStateDraftChange("tableId")} /></label>
-              <label>Bot Nation ID <input value={botStateDraft.botNationId} onChange={botStateDraftChange("botNationId")} /></label>
+              {botStateNationOptions.length > 0 ? (
+                <label>Bot Nation
+                  <select value={botStateNationId} onChange={(event: { target: HTMLSelectElement }) => changeBotStateNation(event.target.value)}>
+                    {botStateNationOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                  </select>
+                </label>
+              ) : (
+                <label>Bot Nation ID <input value={botStateDraft.botNationId} onChange={(event: { target: HTMLInputElement }) => changeBotStateNation(event.target.value)} /></label>
+              )}
               <label>Table Side <select value={botStateDraft.tableSide} onChange={botStateDraftChange("tableSide")}>{botTableSideOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
               <label>Row ID <input value={botStateDraft.rowId} onChange={botStateDraftChange("rowId")} /></label>
               <label>Priority <input value={botStateDraft.priority} onChange={botStateDraftChange("priority")} /></label>
@@ -1273,7 +1328,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
               <label className="private-entry-wide">Effects JSON <textarea rows={5} value={botStateDraft.effectsJson} onChange={botStateDraftChange("effectsJson")} /></label>
               <label className="private-entry-wide">Notes <textarea rows={2} value={botStateDraft.notes} onChange={botStateDraftChange("notes")} /></label>
               <div className="private-entry-footer private-entry-wide">
-                <button type="button" onClick={() => setBotStateDraft(createBlankBotStateTableDraft())}>New Bot State Row</button>
+                <button type="button" onClick={() => setBotStateDraft(createBotStateDraftForNation())}>New Bot State Row</button>
                 <button className="primary-action" type="submit">Save Bot State Row</button>
               </div>
             </form>
@@ -1323,7 +1378,11 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
                       : `${item.table_id}|${item.row_type}|${item.trade_route_card_id}`;
                     return key === event.target.value;
                   });
-                  if (row) setBotTradeDraft(botTradeRoutesTableRowToDraft(row));
+                  if (row) {
+                    const nextDraft = botTradeRoutesTableRowToDraft(row);
+                    setBotTradeDraft(nextDraft);
+                    setBotTradeNationId(inferBotTradeNationId(nextDraft.tableId));
+                  }
                 }}>
                   <option value="">Load saved row...</option>
                   {botTradeRows.map((row) => {
@@ -1338,6 +1397,15 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
 
             <form className="private-entry-grid" onSubmit={(event: { preventDefault: () => void }) => { event.preventDefault(); saveBotTradeRow(); }}>
               <label>Table ID <input value={botTradeDraft.tableId} onChange={botTradeDraftChange("tableId")} /></label>
+              {botTradeNationOptions.length > 0 ? (
+                <label>Bot Nation
+                  <select value={selectedBotTradeNationId} onChange={(event: { target: HTMLSelectElement }) => changeBotTradeNation(event.target.value)}>
+                    {botTradeNationOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                  </select>
+                </label>
+              ) : (
+                <label>Bot Nation ID <input value={selectedBotTradeNationId} onChange={(event: { target: HTMLInputElement }) => changeBotTradeNation(event.target.value)} /></label>
+              )}
               <label>Row Type <select value={botTradeDraft.rowType} onChange={botTradeDraftChange("rowType")}>{botTradeRowTypeOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
               <label>Merchant State <select value={botTradeDraft.merchantState} onChange={botTradeDraftChange("merchantState")}>{botMerchantStateOptions.map((value) => <option key={value} value={value}>{value || "None"}</option>)}</select></label>
               <label>Priority <input value={botTradeDraft.priority} onChange={botTradeDraftChange("priority")} /></label>
@@ -1351,7 +1419,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
               <label className="private-entry-wide">End-of-Turn Effects JSON <textarea rows={4} value={botTradeDraft.endOfTurnEffectsJson} onChange={botTradeDraftChange("endOfTurnEffectsJson")} /></label>
               <label className="private-entry-wide">Notes <textarea rows={2} value={botTradeDraft.notes} onChange={botTradeDraftChange("notes")} /></label>
               <div className="private-entry-footer private-entry-wide">
-                <button type="button" onClick={() => setBotTradeDraft(createBlankBotTradeRoutesTableDraft())}>New Bot Trade Row</button>
+                <button type="button" onClick={() => setBotTradeDraft(createBotTradeDraftForNation())}>New Bot Trade Row</button>
                 <button className="primary-action" type="submit">Save Bot Trade Row</button>
               </div>
             </form>

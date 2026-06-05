@@ -470,6 +470,24 @@
   padding: 8px 10px;
 }
 
+.lobby-room-code {
+  color: #d9c7a7;
+  display: grid;
+  gap: 2px;
+  margin-top: 6px;
+}
+
+.lobby-room-code span {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.lobby-room-code strong {
+  color: #f3ead8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0;
+}
+
 .online-card-grid,
 .online-games-actions {
   display: grid;

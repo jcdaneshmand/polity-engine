@@ -145,7 +145,10 @@ export function parseJoinURL(url: string): JoinURLDetails {
 }
 
 export function resolveMultiplayerServerURL(args: { configuredURL?: string; windowOrigin?: string }): string {
-  return args.configuredURL?.trim() || args.windowOrigin || "http://localhost:8000";
+  const configured = args.configuredURL?.trim();
+  if (configured) return configured;
+  if (args.windowOrigin) return args.windowOrigin;
+  return "http://localhost:8000";
 }
 
 function lobbyURL(serverURL: string, path: string): string {

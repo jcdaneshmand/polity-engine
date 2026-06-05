@@ -40,6 +40,10 @@ export function findSavedMatchSession(savedSessions: OnlineSessionRecord[], matc
   return savedSessions.find((record) => record.kind !== "lobby" && record.matchID === matchID);
 }
 
+export function isChatSubmitKey(event: { key: string; shiftKey: boolean }): boolean {
+  return event.key === "Enter" && !event.shiftKey;
+}
+
 function savedSessionLabel(record: OnlineSessionRecord): string {
   if (record.kind === "lobby") return record.lobbyID;
   return record.matchID;
@@ -145,7 +149,15 @@ export default function OnlineGames({
           <div className="online-games-actions">
             <label className="setup-field">
               <span>Message</span>
-              <input value={chatText} onChange={(event: { target: HTMLInputElement }) => setChatText(event.target.value)} />
+              <input
+                value={chatText}
+                onChange={(event: { target: HTMLInputElement }) => setChatText(event.target.value)}
+                onKeyDown={(event: { key: string; shiftKey: boolean; preventDefault: () => void }) => {
+                  if (!isChatSubmitKey(event)) return;
+                  event.preventDefault();
+                  submitChat();
+                }}
+              />
             </label>
             <button type="button" disabled={!chatText.trim() || !onSendChat} onClick={submitChat}>Send</button>
           </div>

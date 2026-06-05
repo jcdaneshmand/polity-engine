@@ -75,6 +75,10 @@ export default function LobbyRoom({
           <div>
             <p className="setup-kicker">Pregame lobby</p>
             <h1 id="lobby-room-title">{lobby.roomName}</h1>
+            <div className="lobby-room-code" aria-label="Room code">
+              <span>Room code</span>
+              <strong>{lobby.lobbyID}</strong>
+            </div>
           </div>
           <div className="private-data-actions">
             <button type="button" onClick={onRefresh}>Refresh</button>

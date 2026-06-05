@@ -6,8 +6,11 @@ import {
   botStateTableRowToDraft,
   botTradeRoutesTableDraftToCsvRow,
   botTradeRoutesTableRowToDraft,
+  buildBotNationOptions,
   createBlankBotStateTableDraft,
-  createBlankBotTradeRoutesTableDraft
+  createBlankBotTradeRoutesTableDraft,
+  getNextBotStateTableId,
+  getNextBotTradeRoutesTableId
 } from "../../../tools/card-entry/botTableDraft";
 
 describe("bot table entry drafts", () => {
@@ -68,5 +71,37 @@ describe("bot table entry drafts", () => {
 
     expect(appendOrReplaceBotTradeRoutesTableRow([route], routeReplacement)).toEqual([routeReplacement]);
     expect(appendOrReplaceBotTradeRoutesTableRow([eot], eotReplacement)).toEqual([eotReplacement]);
+  });
+
+  it("builds bot nation dropdown options from private nation rows", () => {
+    expect(buildBotNationOptions([
+      { nation_id: "persians", public_placeholder_name: "Persians", nation_name_private: "", source_box: "", complexity: "", power_card_ids: "", state_card_ids: "", starting_deck_card_ids: "", nation_deck_card_ids: "", accession_card_id: "", development_card_ids: "", action_tokens_base: "", exhaust_tokens_base: "", required_expansions: "", special_setup_json: "", passive_rules_json: "", implemented: "false", tested: "false", notes: "" },
+      { nation_id: "macedonians", public_placeholder_name: "Macedonians", nation_name_private: "Macedonians Private", source_box: "", complexity: "", power_card_ids: "", state_card_ids: "", starting_deck_card_ids: "", nation_deck_card_ids: "", accession_card_id: "", development_card_ids: "", action_tokens_base: "", exhaust_tokens_base: "", required_expansions: "", special_setup_json: "", passive_rules_json: "", implemented: "false", tested: "false", notes: "" }
+    ])).toEqual([
+      { id: "macedonians", label: "Macedonians Private (macedonians)" },
+      { id: "persians", label: "Persians (persians)" }
+    ]);
+  });
+
+  it("increments generated bot state table IDs by selected nation", () => {
+    const rows = [
+      botStateTableDraftToCsvRow({ ...createBlankBotStateTableDraft(), tableId: "bot_state_macedonians_1", botNationId: "macedonians", rowId: "a" }),
+      botStateTableDraftToCsvRow({ ...createBlankBotStateTableDraft(), tableId: "bot_state_macedonians_2", botNationId: "macedonians", rowId: "b" }),
+      botStateTableDraftToCsvRow({ ...createBlankBotStateTableDraft(), tableId: "bot_state_persians_1", botNationId: "persians", rowId: "a" })
+    ];
+
+    expect(getNextBotStateTableId(rows, "macedonians")).toBe("bot_state_macedonians_3");
+    expect(getNextBotStateTableId(rows, "persians")).toBe("bot_state_persians_2");
+  });
+
+  it("increments generated bot Trade Routes table IDs by selected nation", () => {
+    const rows = [
+      botTradeRoutesTableDraftToCsvRow({ ...createBlankBotTradeRoutesTableDraft(), tableId: "bot_trade_macedonians_1", tradeRouteCardId: "route_a" }),
+      botTradeRoutesTableDraftToCsvRow({ ...createBlankBotTradeRoutesTableDraft(), tableId: "bot_trade_macedonians_2", tradeRouteCardId: "route_b" }),
+      botTradeRoutesTableDraftToCsvRow({ ...createBlankBotTradeRoutesTableDraft(), tableId: "bot_trade_persians_1", tradeRouteCardId: "route_a" })
+    ];
+
+    expect(getNextBotTradeRoutesTableId(rows, "macedonians")).toBe("bot_trade_macedonians_3");
+    expect(getNextBotTradeRoutesTableId(rows, "persians")).toBe("bot_trade_persians_2");
   });
 });

@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { ListedLobby, ListedMatch, OnlineSessionRecord } from "../../onlineSession";
 import type { NewGameSessionConfig } from "../setup/NewGameSetup";
-import OnlineGames, { findSavedLobbySession, findSavedMatchSession } from "./OnlineGames";
+import OnlineGames, { findSavedLobbySession, findSavedMatchSession, isChatSubmitKey } from "./OnlineGames";
 
 const config: NewGameSessionConfig = {
   options: {
@@ -83,6 +83,12 @@ describe("OnlineGames", () => {
     expect(findSavedMatchSession([savedLobby, savedMatch], "match-open")).toBe(savedMatch);
     expect(findSavedLobbySession([savedMatch], "lobby-open")).toBeUndefined();
     expect(findSavedMatchSession([savedLobby], "match-open")).toBeUndefined();
+  });
+
+  it("treats Enter as chat submit while allowing shifted Enter to stay in the field", () => {
+    expect(isChatSubmitKey({ key: "Enter", shiftKey: false })).toBe(true);
+    expect(isChatSubmitKey({ key: "Enter", shiftKey: true })).toBe(false);
+    expect(isChatSubmitKey({ key: "Escape", shiftKey: false })).toBe(false);
   });
 
   it("renders the action-first hub sections", () => {

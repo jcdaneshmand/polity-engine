@@ -16,6 +16,11 @@ const currentDir = dirname(fileURLToPath(import.meta.url));
 const { FlatFile, Server, SocketIO } = getBoardgameServerPackage();
 const db = config.storageDir ? new FlatFile({ dir: config.storageDir }) : undefined;
 const accountStore = createAccountStore({ storageFile: config.accountStorageFile });
+accountStore.ensureDefaultAdmin({
+  email: "xenokinesis@local.admin",
+  username: "Xenokinesis",
+  password: "admin"
+});
 const lobbyStore = createLobbyStore();
 const pregameLobbyStore = createPregameLobbyStore();
 const boardgameApi = createBoardgameHttpApi(`http://127.0.0.1:${config.port}`);

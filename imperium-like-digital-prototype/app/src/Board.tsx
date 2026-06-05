@@ -6,6 +6,7 @@ import BoardLayout from "./ui/layout/BoardLayout";
 import type { AccountGameResultContext } from "./ui/layout/EndGameSummary";
 
 export type PolityBoardProps = BoardProps<GameState> & {
+  viewerPlayerID?: string | null;
   onCampaignProgress?: (progress: CampaignProgress) => void;
   accountResultContext?: AccountGameResultContext;
   onAccountGameResult?: (result: AccountGameResultInput) => void;

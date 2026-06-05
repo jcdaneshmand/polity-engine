@@ -60,14 +60,14 @@ describe("setup pipeline",()=>{
     expect(snapshot.campaignProgress?.defeatedBotNationIds).toEqual([]);
     expect(snapshot.campaignProgress?.startingDeckAdditions).toEqual([]);
   });
-  it("uses explicitly provided player ids without creating player 0",()=> {
+  it("normalizes legacy one-based player ids to boardgame player ids",()=> {
     const G=createInitialGameState({
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[]},
       playerNationIds:{"1":"test_nation_sun_coast","2":"test_nation_sun_coast"}
     });
-    expect(Object.keys(G.players)).toEqual(["1","2"]);
-    expect(G.playOrder).toEqual(["1","2"]);
-    expect(G.players["0"]).toBeUndefined();
+    expect(Object.keys(G.players)).toEqual(["0","1"]);
+    expect(G.playOrder).toEqual(["0","1"]);
+    expect(G.players["2"]).toBeUndefined();
   });
   it("can create a game from uploaded in-memory private card and nation data",()=> {
     const G=createInitialGameState({
@@ -100,8 +100,8 @@ describe("setup pipeline",()=>{
         }]
       }
     } as any);
-    expect(Object.keys(G.players)).toEqual(["1"]);
-    expect(G.players["1"].hand).toContain("uploaded_starter");
+    expect(Object.keys(G.players)).toEqual(["0"]);
+    expect(G.players["0"].hand).toContain("uploaded_starter");
     expect(G.market).toEqual(["uploaded_market_1","uploaded_market_2","uploaded_market_3","uploaded_market_4","uploaded_market_5"]);
   });
   it("defaults missing imported nation and ruleset compatibility arrays during setup",()=> {
@@ -157,7 +157,7 @@ describe("setup pipeline",()=>{
       }
     } as any);
 
-    expect(G.players["1"].hand).toContain("minimal_starter");
+    expect(G.players["0"].hand).toContain("minimal_starter");
   });
   it("rejects a selected nation when its imported ruleset requires disabled Trade Routes",()=> {
     expect(() => createInitialGameState({

@@ -118,7 +118,15 @@ export type AccountSessionRecord = {
   lastSeenAt: string;
 };
 
+export type AccountPasswordResetRecord = {
+  tokenHash: string;
+  accountID: string;
+  createdAt: string;
+  usedAt?: string;
+};
+
 export type AccountStoreSnapshot = {
   accounts: AccountRecord[];
   sessions: AccountSessionRecord[];
+  passwordResets?: AccountPasswordResetRecord[];
 };

@@ -29,6 +29,9 @@ describe("AccountPanel", () => {
         statusMessage=""
         onRegister={() => undefined}
         onSignIn={() => undefined}
+        onRequestPasswordReset={() => undefined}
+        onCompletePasswordReset={() => undefined}
+        onChangePassword={() => undefined}
         onSignOut={() => undefined}
       />
     );
@@ -39,6 +42,8 @@ describe("AccountPanel", () => {
     expect(html).toContain("Password");
     expect(html).toContain("Create Account");
     expect(html).toContain("Sign In");
+    expect(html).toContain("Forgot Password");
+    expect(html).toContain("Reset Password");
   });
 
   it("renders signed-in player state", () => {
@@ -48,6 +53,9 @@ describe("AccountPanel", () => {
         statusMessage=""
         onRegister={() => undefined}
         onSignIn={() => undefined}
+        onRequestPasswordReset={() => undefined}
+        onCompletePasswordReset={() => undefined}
+        onChangePassword={() => undefined}
         onSignOut={() => undefined}
       />
     );
@@ -55,6 +63,7 @@ describe("AccountPanel", () => {
     expect(html).toContain("Jonah");
     expect(html).toContain("player");
     expect(html).toContain("Sign Out");
+    expect(html).toContain("Change Password");
     expect(html).not.toContain("Create Account");
   });
 
@@ -87,6 +96,9 @@ describe("AccountPanel", () => {
         statusMessage=""
         onRegister={() => undefined}
         onSignIn={() => undefined}
+        onRequestPasswordReset={() => undefined}
+        onCompletePasswordReset={() => undefined}
+        onChangePassword={() => undefined}
         onSignOut={() => undefined}
       />
     );
@@ -110,6 +122,9 @@ describe("AccountPanel", () => {
         statusMessage=""
         onRegister={() => undefined}
         onSignIn={() => undefined}
+        onRequestPasswordReset={() => undefined}
+        onCompletePasswordReset={() => undefined}
+        onChangePassword={() => undefined}
         onSignOut={() => undefined}
       />
     );

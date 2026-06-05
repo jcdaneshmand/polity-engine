@@ -365,6 +365,31 @@ export async function signInAccount(args: { serverURL: string; login: string; pa
   );
 }
 
+export async function requestPasswordReset(args: { serverURL: string; email: string; resetURLBase?: string; fetcher?: Fetcher }): Promise<{ ok: true; resetLink?: string }> {
+  return postLobbyJSON<{ ok: true; resetLink?: string }>(
+    lobbyURL(args.serverURL, "/polity/accounts/forgot-password"),
+    { email: args.email, ...(args.resetURLBase ? { resetURLBase: args.resetURLBase } : {}) },
+    args.fetcher ?? fetch
+  );
+}
+
+export async function completePasswordReset(args: { serverURL: string; token: string; password: string; passwordConfirmation: string; fetcher?: Fetcher }): Promise<{ ok: true }> {
+  return postLobbyJSON<{ ok: true }>(
+    lobbyURL(args.serverURL, "/polity/accounts/reset-password"),
+    { token: args.token, password: args.password, passwordConfirmation: args.passwordConfirmation },
+    args.fetcher ?? fetch
+  );
+}
+
+export async function changeAccountPassword(args: { serverURL: string; accountToken: string; currentPassword: string; password: string; fetcher?: Fetcher }): Promise<{ ok: true }> {
+  return postLobbyJSON<{ ok: true }>(
+    lobbyURL(args.serverURL, "/polity/accounts/change-password"),
+    { currentPassword: args.currentPassword, password: args.password },
+    args.fetcher ?? fetch,
+    args.accountToken
+  );
+}
+
 export async function signOutAccount(args: { serverURL: string; accountToken: string; fetcher?: Fetcher }): Promise<{ ok: true }> {
   return postLobbyJSON<{ ok: true }>(
     lobbyURL(args.serverURL, "/polity/accounts/sign-out"),

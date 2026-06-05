@@ -502,6 +502,17 @@ function resolveSoloBotNationId(args: {
   return args.requestedBotNationId;
 }
 
+function normalizePlayerNationIds(options: GameOptions, playerNationIds?: Record<string, string>): Record<string, string> {
+  const selected = playerNationIds ?? {};
+  return Object.fromEntries(
+    Array.from({ length: options.playerCount }, (_, index) => {
+      const playerId = String(index);
+      const legacyPlayerId = String(index + 1);
+      return [playerId, selected[playerId] ?? selected[legacyPlayerId] ?? "test_nation_sun_coast"];
+    })
+  );
+}
+
 export function createInitialGameStateFromPipeline(args: { options: GameOptions; playerNationIds?: Record<string,string>; soloBotNationId?: string; cardDb: Record<string, NormalizedCardRecord>; nationDb: Record<string, NationDefinition>; randomSeed?: string; usePrivateRules?: boolean; privateData?: PrivateDataBundle; privateRulesetPath?: string; privateStrategyPath?: string; privateBotStateTablePath?: string; privateBotTradeRoutesTablePath?: string; }): GameState {
   const validation = validateGameOptions(args.options);
   const fatals = validation.issues.filter((i) => i.level === "fatal");
@@ -509,10 +520,7 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   const options = validation.options;
   const modules = getEnabledRulesModules(options);
   const filteredCards = filterCardsByOptions(Object.values(args.cardDb), options);
-  const defaultSelected = Object.fromEntries(
-    Array.from({ length: options.playerCount }, (_, i) => [String(i), "test_nation_sun_coast"])
-  ) as Record<string, string>;
-  const selected = args.playerNationIds ? { ...args.playerNationIds } : defaultSelected;
+  const selected = normalizePlayerNationIds(options, args.playerNationIds);
   const rulesetDb = args.privateData?.nationRulesets
     ? { ...loadNationRulesets(), ...recordById(args.privateData.nationRulesets, (ruleset) => ruleset.nationId) }
     : loadNationRulesets({ usePrivate: args.usePrivateRules, privatePath: args.privateRulesetPath });

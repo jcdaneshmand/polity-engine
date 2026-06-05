@@ -4,6 +4,7 @@ import type { CampaignMode, CampaignProgress, CommonsSetId, ExpansionId, GameMod
 import { loadNationDb } from "../../../../engine/src/nations/nationLoader";
 import { loadBotStateTables } from "../../../../engine/src/solo/botStateTableLoader";
 import type { PrivateDataBundle } from "../../../../engine/src/setup/privateDataBundle";
+import type { AccountPublicView } from "../../accountSession";
 import { getBotNationSetupOptions } from "./botNationOptions";
 import { getPrivateDataReadyMessage, getPrivateDataRecordCounts, hasPrivateData, importPrivateDataFiles, type PrivateDataFileStatus } from "./privateDataImport";
 
@@ -17,6 +18,11 @@ export type NewGameSessionConfig = {
 type NewGameSetupProps = {
   onStart: (config: NewGameSessionConfig) => void;
   onOpenOnlineGames?: (config: NewGameSessionConfig, playerName: string) => void;
+  account?: AccountPublicView;
+  accountStatusMessage?: string;
+  onSignInForOnline?: (config: NewGameSessionConfig, input: { login: string; password: string }) => void | Promise<void>;
+  onRequestPasswordReset?: (input: { email: string }) => void | Promise<void>;
+  onCompletePasswordReset?: (input: { token: string; password: string; passwordConfirmation: string }) => void | Promise<void>;
   onOpenCardEntry?: () => void;
   initialCampaignProgress?: CampaignProgress;
   initialConfig?: NewGameSessionConfig;
@@ -171,7 +177,15 @@ function isFreshCampaignProgress(progress: CampaignProgress | undefined): boolea
 }
 
 function initialNationId(config: NewGameSessionConfig | undefined, playerId: string): string | undefined {
-  return config?.playerNationIds[playerId] ?? config?.playerNationIds[String(Number(playerId) - 1)];
+  return config?.playerNationIds[playerId] ?? config?.playerNationIds[String(Number(playerId) + 1)];
+}
+
+export function getLaunchPlayerIds(playerCount: 1 | 2 | 3 | 4): string[] {
+  return Array.from({ length: playerCount }, (_, index) => String(index));
+}
+
+function displayPlayerLabel(playerId: string): string {
+  return `Player ${Number(playerId) + 1}`;
 }
 
 export function buildCampaignGameOptions(args: {
@@ -200,6 +214,11 @@ export function buildCampaignGameOptions(args: {
 export default function NewGameSetup({
   onStart,
   onOpenOnlineGames,
+  account,
+  accountStatusMessage = "",
+  onSignInForOnline,
+  onRequestPasswordReset,
+  onCompletePasswordReset,
   onOpenCardEntry,
   initialCampaignProgress,
   initialConfig,
@@ -228,12 +247,17 @@ export default function NewGameSetup({
   const [privateData, setPrivateData] = useState<PrivateDataBundle>(initialConfig?.privateData ?? {});
   const [privateDataConfirmed, setPrivateDataConfirmed] = useState(Boolean(initialConfig?.privateData));
   const [privateFileStatuses, setPrivateFileStatuses] = useState<PrivateDataFileStatus[]>([]);
-  const [onlinePlayerName, setOnlinePlayerName] = useState("");
+  const [onlineLogin, setOnlineLogin] = useState("");
+  const [onlinePassword, setOnlinePassword] = useState("");
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetToken, setResetToken] = useState("");
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetPasswordConfirmation, setResetPasswordConfirmation] = useState("");
   const [playerNationIds, setPlayerNationIds] = useState<Record<string, string>>({
-    "1": initialNationId(initialConfig, "1") ?? initialCampaignProgress?.playerNationId ?? DEFAULT_NATION_ID,
+    "0": initialNationId(initialConfig, "0") ?? initialCampaignProgress?.playerNationId ?? DEFAULT_NATION_ID,
+    "1": initialNationId(initialConfig, "1") ?? DEFAULT_NATION_ID,
     "2": initialNationId(initialConfig, "2") ?? DEFAULT_NATION_ID,
-    "3": initialNationId(initialConfig, "3") ?? DEFAULT_NATION_ID,
-    "4": initialNationId(initialConfig, "4") ?? DEFAULT_NATION_ID
+    "3": initialNationId(initialConfig, "3") ?? DEFAULT_NATION_ID
   });
 
   const normalizedPlayerCount = playerCountForMode(mode, playerCount);
@@ -249,7 +273,7 @@ export default function NewGameSetup({
     () => getBotNationSetupOptions(availableNations, loadBotStateTables()),
     [availableNations]
   );
-  const activePlayerIds = Array.from({ length: normalizedPlayerCount }, (_, index) => String(index + 1));
+  const activePlayerIds = getLaunchPlayerIds(normalizedPlayerCount);
   const selectedNationLabels = activePlayerIds
     .map((playerId) => availableNations.find((nation) => nation.id === playerNationIds[playerId])?.label ?? firstNationId(availableNations))
     .join(", ");
@@ -259,7 +283,7 @@ export default function NewGameSetup({
   ].join(", ") || "Core rules";
   const privateDataSummary = privateDataConfirmed && hasPrivateData(privateData) ? privateDataReadyMessage : "Placeholder data";
   const effectiveCampaignMode = mode === "solo" ? campaignMode : "none";
-  const selectedPlayerOneNationId = playerNationIds["1"] ?? DEFAULT_NATION_ID;
+  const selectedPlayerOneNationId = playerNationIds["0"] ?? DEFAULT_NATION_ID;
   const launchCampaignOptions = buildCampaignGameOptions({
     mode,
     campaignMode: effectiveCampaignMode,
@@ -345,7 +369,7 @@ export default function NewGameSetup({
       ? current
       : createCampaignProgress({
         mode: nextCampaignMode,
-        playerNationId: playerNationIds["1"] ?? DEFAULT_NATION_ID,
+        playerNationId: playerNationIds["0"] ?? DEFAULT_NATION_ID,
         startingDifficulty: nextCampaignMode === "supreme_ruler" ? "supreme_ruler" : soloDifficulty
       })
     );
@@ -538,16 +562,56 @@ export default function NewGameSetup({
             {mode === "multiplayer" && onlineGamesEnabled ? (
               <fieldset className="setup-section setup-section--wide">
                 <legend>Online</legend>
-                <p className="setup-help">Browse listed games, host a public or locked table, join by code, rejoin saved seats, or spectate public state.</p>
-                <label className="setup-field">
-                  <span>Online name</span>
-                  <input name="online-player-name" value={onlinePlayerName} onChange={(event: { target: HTMLInputElement }) => setOnlinePlayerName(event.target.value)} />
-                </label>
-                <div className="private-data-actions">
-                  <button className="primary-action" type="button" onClick={() => onOpenOnlineGames?.(buildLaunchConfig(), onlinePlayerName.trim())} disabled={!onOpenOnlineGames || !onlinePlayerName.trim()}>
-                    Online Games
-                  </button>
-                </div>
+                <p className="setup-help">Sign in before entering online games. Your account username is used at the table.</p>
+                {account ? (
+                  <div className="private-data-actions">
+                    <button className="primary-action" type="button" onClick={() => onOpenOnlineGames?.(buildLaunchConfig(), account.username)} disabled={!onOpenOnlineGames}>
+                      Continue as {account.username}
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <label className="setup-field">
+                      <span>Username or Email</span>
+                      <input name="online-account-login" value={onlineLogin} onChange={(event: { target: HTMLInputElement }) => setOnlineLogin(event.target.value)} />
+                    </label>
+                    <label className="setup-field">
+                      <span>Password</span>
+                      <input name="online-account-password" type="password" value={onlinePassword} onChange={(event: { target: HTMLInputElement }) => setOnlinePassword(event.target.value)} />
+                    </label>
+                    <div className="private-data-actions">
+                      <button className="primary-action" type="button" onClick={() => void onSignInForOnline?.(buildLaunchConfig(), { login: onlineLogin, password: onlinePassword })} disabled={!onSignInForOnline || !onlineLogin.trim() || !onlinePassword}>
+                        Online Games
+                      </button>
+                      <button type="button" onClick={() => onOpenOnlineGames?.(buildLaunchConfig(), "Guest")} disabled={!onOpenOnlineGames}>
+                        Continue as Guest
+                      </button>
+                    </div>
+                    <div className="online-games-actions">
+                      <label className="setup-field">
+                        <span>Forgot Password Email</span>
+                        <input value={resetEmail} onChange={(event: { target: HTMLInputElement }) => setResetEmail(event.target.value)} />
+                      </label>
+                      <button type="button" disabled={!onRequestPasswordReset || !resetEmail.trim()} onClick={() => void onRequestPasswordReset?.({ email: resetEmail })}>Forgot Password</button>
+                    </div>
+                    <div className="online-games-actions">
+                      <label className="setup-field">
+                        <span>Reset Token or Link</span>
+                        <input value={resetToken} onChange={(event: { target: HTMLInputElement }) => setResetToken(event.target.value)} />
+                      </label>
+                      <label className="setup-field">
+                        <span>New Password</span>
+                        <input type="password" value={resetPassword} onChange={(event: { target: HTMLInputElement }) => setResetPassword(event.target.value)} />
+                      </label>
+                      <label className="setup-field">
+                        <span>Confirm New Password</span>
+                        <input type="password" value={resetPasswordConfirmation} onChange={(event: { target: HTMLInputElement }) => setResetPasswordConfirmation(event.target.value)} />
+                      </label>
+                      <button type="button" disabled={!onCompletePasswordReset || !resetToken.trim() || resetPassword.length < 4 || resetPassword !== resetPasswordConfirmation} onClick={() => void onCompletePasswordReset?.({ token: resetToken, password: resetPassword, passwordConfirmation: resetPasswordConfirmation })}>Reset Password</button>
+                    </div>
+                  </>
+                )}
+                {accountStatusMessage ? <p className="setup-help">{accountStatusMessage}</p> : null}
               </fieldset>
             ) : null}
           </div>
@@ -596,7 +660,7 @@ export default function NewGameSetup({
               <div className="nation-grid">
                 {activePlayerIds.map((playerId) => (
                   <label key={playerId} className="setup-field">
-                    <span>Player {playerId}</span>
+                    <span>{displayPlayerLabel(playerId)}</span>
                     <select value={playerNationIds[playerId] ?? DEFAULT_NATION_ID} onChange={(event: { target: HTMLSelectElement }) => setPlayerNationIds((current) => ({ ...current, [playerId]: event.target.value }))}>
                       {availableNations.map((nation) => (
                         <option key={nation.id} value={nation.id}>

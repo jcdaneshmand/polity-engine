@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type {
   AccountPublicView,
+  AccountPasswordResetRecord,
   AccountRecord,
   AccountSessionRecord,
   AccountStats,
@@ -38,6 +39,8 @@ type AccountFailureReason =
   | "invalid_session"
   | "account_not_found"
   | "history_not_found";
+
+const MIN_PASSWORD_LENGTH = 4;
 
 function key(value: string): string {
   return value.trim().toLowerCase();
@@ -128,11 +131,13 @@ export function createAccountStore(options: AccountStoreOptions = {}) {
   const loadedSnapshot = options.snapshot ?? loadSnapshot(options.storageFile);
   const accounts = new Map<string, AccountRecord>((loadedSnapshot?.accounts ?? []).map((account) => [account.id, account]));
   const sessions = new Map<string, AccountSessionRecord>((loadedSnapshot?.sessions ?? []).map((session) => [session.tokenHash, session]));
+  const passwordResets = new Map<string, AccountPasswordResetRecord>((loadedSnapshot?.passwordResets ?? []).map((reset) => [reset.tokenHash, reset]));
 
   function snapshot(): AccountStoreSnapshot {
     return {
       accounts: Array.from(accounts.values()),
-      sessions: Array.from(sessions.values())
+      sessions: Array.from(sessions.values()),
+      passwordResets: Array.from(passwordResets.values())
     };
   }
 
@@ -163,6 +168,43 @@ export function createAccountStore(options: AccountStoreOptions = {}) {
     });
     persist();
     return { account: publicAccount(account), token };
+  }
+
+  function invalidateAccountSessions(accountID: string): void {
+    for (const [hash, session] of sessions.entries()) {
+      if (session.accountID === accountID) sessions.delete(hash);
+    }
+  }
+
+  function setPassword(account: AccountRecord, password: string, timestamp: string): void {
+    const salt = createSalt();
+    account.passwordSalt = salt;
+    account.passwordHash = saltPassword(password, salt);
+    account.updatedAt = timestamp;
+    invalidateAccountSessions(account.id);
+  }
+
+  function accountWithPassword(input: AccountCreateInput, role: AccountRecord["role"]): AccountRecord | { reason: AccountFailureReason } {
+    const email = input.email.trim().toLowerCase();
+    const username = input.username.trim();
+    const password = input.password;
+    if (!email || !username || password.length < MIN_PASSWORD_LENGTH) return { reason: "invalid_account" };
+    const timestamp = now();
+    const salt = createSalt();
+    return {
+      id: createID(),
+      email,
+      username,
+      emailKey: key(email),
+      usernameKey: key(username),
+      passwordSalt: salt,
+      passwordHash: saltPassword(password, salt),
+      role,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      stats: defaultStats(),
+      history: []
+    };
   }
 
   function countResult(account: AccountRecord, entry: GameHistoryEntry, result: GameResultInput, timestamp: string): void {
@@ -197,28 +239,30 @@ export function createAccountStore(options: AccountStoreOptions = {}) {
     createAccount(input: AccountCreateInput): { ok: true; account: AccountPublicView; token: string } | { ok: false; reason: AccountFailureReason } {
       const email = input.email.trim().toLowerCase();
       const username = input.username.trim();
-      const password = input.password;
-      if (!email || !username || password.length < 8) return { ok: false, reason: "invalid_account" };
+      if (!email || !username || input.password.length < MIN_PASSWORD_LENGTH) return { ok: false, reason: "invalid_account" };
       if (findByEmail(email)) return { ok: false, reason: "email_taken" };
       if (findByUsername(username)) return { ok: false, reason: "username_taken" };
-      const timestamp = now();
-      const salt = createSalt();
-      const account: AccountRecord = {
-        id: createID(),
-        email,
-        username,
-        emailKey: key(email),
-        usernameKey: key(username),
-        passwordSalt: salt,
-        passwordHash: saltPassword(password, salt),
-        role: accounts.size === 0 ? "admin" : "player",
-        createdAt: timestamp,
-        updatedAt: timestamp,
-        stats: defaultStats(),
-        history: []
-      };
+      const account = accountWithPassword(input, accounts.size === 0 ? "admin" : "player");
+      if ("reason" in account) return { ok: false, reason: account.reason };
       accounts.set(account.id, account);
       return { ok: true, ...sessionForAccount(account) };
+    },
+
+    ensureDefaultAdmin(input: AccountCreateInput): { ok: true; account: AccountPublicView } | { ok: false; reason: AccountFailureReason } {
+      const existing = findByEmail(input.email) ?? findByUsername(input.username);
+      if (existing) {
+        existing.role = "admin";
+        existing.updatedAt = now();
+        persist();
+        return { ok: true, account: publicAccount(existing) };
+      }
+      if (findByEmail(input.email)) return { ok: false, reason: "email_taken" };
+      if (findByUsername(input.username)) return { ok: false, reason: "username_taken" };
+      const account = accountWithPassword(input, "admin");
+      if ("reason" in account) return { ok: false, reason: account.reason };
+      accounts.set(account.id, account);
+      persist();
+      return { ok: true, account: publicAccount(account) };
     },
 
     signIn(input: { login: string; password: string }): { ok: true; account: AccountPublicView; token: string } | { ok: false; reason: AccountFailureReason } {
@@ -231,6 +275,50 @@ export function createAccountStore(options: AccountStoreOptions = {}) {
 
     signOut(token: string): { ok: true } {
       sessions.delete(tokenHash(token));
+      persist();
+      return { ok: true };
+    },
+
+    requestPasswordReset(input: { email: string; resetURLBase?: string }): { ok: true; resetLink?: string; resetToken?: string } {
+      const account = findByEmail(input.email);
+      if (!account) return { ok: true };
+      const token = createToken();
+      const timestamp = now();
+      passwordResets.set(tokenHash(token), {
+        tokenHash: tokenHash(token),
+        accountID: account.id,
+        createdAt: timestamp
+      });
+      persist();
+      const resetLink = input.resetURLBase
+        ? `${input.resetURLBase}${input.resetURLBase.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`
+        : undefined;
+      return { ok: true, ...(resetLink ? { resetLink } : {}), resetToken: token };
+    },
+
+    completePasswordReset(input: { token: string; password: string; passwordConfirmation: string }): { ok: true } | { ok: false; reason: AccountFailureReason } {
+      if (!input.token.trim()) return { ok: false, reason: "invalid_session" };
+      if (input.password.length < MIN_PASSWORD_LENGTH || input.password !== input.passwordConfirmation) return { ok: false, reason: "invalid_account" };
+      const hash = tokenHash(input.token);
+      const reset = passwordResets.get(hash);
+      if (!reset || reset.usedAt) return { ok: false, reason: "invalid_session" };
+      const account = accounts.get(reset.accountID);
+      if (!account) return { ok: false, reason: "account_not_found" };
+      const timestamp = now();
+      setPassword(account, input.password, timestamp);
+      reset.usedAt = timestamp;
+      passwordResets.delete(hash);
+      persist();
+      return { ok: true };
+    },
+
+    changePassword(accountID: string, input: { currentPassword: string; password: string }): { ok: true } | { ok: false; reason: AccountFailureReason } {
+      const account = accounts.get(accountID);
+      if (!account) return { ok: false, reason: "account_not_found" };
+      if (input.password.length < MIN_PASSWORD_LENGTH) return { ok: false, reason: "invalid_account" };
+      const candidate = saltPassword(input.currentPassword, account.passwordSalt);
+      if (!safePasswordMatch(candidate, account.passwordHash)) return { ok: false, reason: "invalid_credentials" };
+      setPassword(account, input.password, now());
       persist();
       return { ok: true };
     },
@@ -305,6 +393,7 @@ function loadSnapshot(storageFile: string | undefined): AccountStoreSnapshot | u
   const parsed = JSON.parse(readFileSync(storageFile, "utf8")) as AccountStoreSnapshot;
   return {
     accounts: Array.isArray(parsed.accounts) ? parsed.accounts : [],
-    sessions: Array.isArray(parsed.sessions) ? parsed.sessions : []
+    sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
+    passwordResets: Array.isArray(parsed.passwordResets) ? parsed.passwordResets : []
   };
 }

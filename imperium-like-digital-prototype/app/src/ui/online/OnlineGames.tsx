@@ -28,6 +28,9 @@ type OnlineGamesProps = {
   onClearAllGames?: () => void | Promise<void>;
   onRegisterAccount?: (input: { email: string; username: string; password: string }) => void | Promise<void>;
   onSignInAccount?: (input: { login: string; password: string }) => void | Promise<void>;
+  onRequestPasswordReset?: (input: { email: string }) => void | Promise<void>;
+  onCompletePasswordReset?: (input: { token: string; password: string; passwordConfirmation: string }) => void | Promise<void>;
+  onChangePassword?: (input: { currentPassword: string; password: string }) => void | Promise<void>;
   onSignOutAccount?: () => void | Promise<void>;
 };
 
@@ -103,6 +106,9 @@ export default function OnlineGames({
   onClearAllGames,
   onRegisterAccount = () => undefined,
   onSignInAccount = () => undefined,
+  onRequestPasswordReset = () => undefined,
+  onCompletePasswordReset = () => undefined,
+  onChangePassword = () => undefined,
   onSignOutAccount = () => undefined
 }: OnlineGamesProps) {
   const [roomName, setRoomName] = useState("Polity Table");
@@ -164,6 +170,9 @@ export default function OnlineGames({
           statusMessage={accountStatusMessage}
           onRegister={onRegisterAccount}
           onSignIn={onSignInAccount}
+          onRequestPasswordReset={onRequestPasswordReset}
+          onCompletePasswordReset={onCompletePasswordReset}
+          onChangePassword={onChangePassword}
           onSignOut={onSignOutAccount}
         />
 

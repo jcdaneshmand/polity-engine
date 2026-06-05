@@ -17,8 +17,8 @@ import { handleBoardKeyDown } from "../controller/keyboardControls";
 import { getBotPiles, getCurrentPlayer, getInspectableLookedCards, getInspectableSharedPile, getInspectableZone, getMarketCards, getOwnerVisibleZoneIds, getPlayerZoneLabels, getRecentLogEntries, getSharedPiles } from "./uiSelectors";
 import { resourceLabelsForGame } from "./resourceDisplay";
 
-function viewerPlayerId(ctx: any, playerID?: string | null): string {
-  return playerID ?? ctx?.playerID ?? ctx?.currentPlayer ?? "0";
+function viewerPlayerId(ctx: any, viewerPlayerID?: string | null, playerID?: string | null): string {
+  return viewerPlayerID ?? ctx?.currentPlayer ?? playerID ?? ctx?.playerID ?? "0";
 }
 
 export function dispatchBoardAction({ action: a, moves, setDetailCardId, setSelection }: { action: any; moves: any; setDetailCardId: (cardId: string | null) => void; setSelection: (selection: Selection | null) => void }) {
@@ -69,10 +69,12 @@ export default function BoardLayout({
   ctx,
   moves,
   playerID,
+  viewerPlayerID,
   onCampaignProgress,
   accountResultContext,
   onAccountGameResult
 }: any & {
+  viewerPlayerID?: string | null;
   onCampaignProgress?: (progress: CampaignProgress) => void;
   accountResultContext?: AccountGameResultContext;
   onAccountGameResult?: (result: AccountGameResultInput) => void;
@@ -82,7 +84,7 @@ export default function BoardLayout({
   const [zoomCardId, setZoomCardId] = useState<string | null>(null);
   const [summaryDismissed, setSummaryDismissed] = useState(false);
   const [cleanupDiscardSlots, setCleanupDiscardSlots] = useState<number[]>([]);
-  const viewerId = viewerPlayerId(ctx, playerID);
+  const viewerId = viewerPlayerId(ctx, viewerPlayerID, playerID);
   const uiCtx = useMemo(() => ({ ...ctx, currentPlayer: viewerId }), [ctx, viewerId]);
   const player = getCurrentPlayer(G, uiCtx);
   const marketIds = getMarketCards(G);

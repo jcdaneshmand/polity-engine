@@ -66,6 +66,48 @@ describe("account middleware", () => {
     expect(me.body).toEqual({ error: "invalid_session" });
   });
 
+  it("uses a reset token for forgotten passwords", async () => {
+    const accountStore = store();
+    const middleware = createAccountMiddleware({ store: accountStore });
+    await middleware(context("POST", "/polity/accounts/register", { email: "jonah@example.com", username: "Jonah", password: "secret123" }), async () => undefined);
+
+    const request = context("POST", "/polity/accounts/forgot-password", { email: "JONAH@example.com", resetURLBase: "http://localhost/reset-password" });
+    await middleware(request, async () => undefined);
+    expect(request.body).toEqual({ ok: true, resetLink: "http://localhost/reset-password?token=token-3" });
+
+    const reset = context("POST", "/polity/accounts/reset-password", { token: "token-3", password: "changed123", passwordConfirmation: "changed123" });
+    await middleware(reset, async () => undefined);
+    expect(reset.body).toEqual({ ok: true });
+
+    const oldPassword = context("POST", "/polity/accounts/sign-in", { login: "jonah", password: "secret123" });
+    await middleware(oldPassword, async () => undefined);
+    expect(oldPassword.status).toBe(401);
+
+    const newPassword = context("POST", "/polity/accounts/sign-in", { login: "jonah", password: "changed123" });
+    await middleware(newPassword, async () => undefined);
+    expect(newPassword.body).toEqual({ account: expect.objectContaining({ username: "Jonah" }), token: expect.any(String) });
+  });
+
+  it("changes passwords for signed-in accounts", async () => {
+    const accountStore = store();
+    const middleware = createAccountMiddleware({ store: accountStore });
+    const register = context("POST", "/polity/accounts/register", { email: "jonah@example.com", username: "Jonah", password: "secret123" });
+    await middleware(register, async () => undefined);
+    const token = (register.body as { token: string }).token;
+
+    const change = context("POST", "/polity/accounts/change-password", { currentPassword: "secret123", password: "changed123" }, token);
+    await middleware(change, async () => undefined);
+    expect(change.body).toEqual({ ok: true });
+
+    const oldPassword = context("POST", "/polity/accounts/sign-in", { login: "jonah", password: "secret123" });
+    await middleware(oldPassword, async () => undefined);
+    expect(oldPassword.status).toBe(401);
+
+    const newPassword = context("POST", "/polity/accounts/sign-in", { login: "jonah", password: "changed123" });
+    await middleware(newPassword, async () => undefined);
+    expect(newPassword.body).toEqual({ account: expect.objectContaining({ username: "Jonah" }), token: expect.any(String) });
+  });
+
   it("returns expected account errors", async () => {
     const accountStore = store();
     const middleware = createAccountMiddleware({ store: accountStore });

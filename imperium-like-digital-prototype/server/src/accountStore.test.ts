@@ -30,6 +30,24 @@ describe("account store", () => {
     });
   });
 
+  it("ensures a default admin account exists", () => {
+    const store = accountStore();
+
+    expect(store.ensureDefaultAdmin({ email: "xenokinesis@local.admin", username: "Xenokinesis", password: "admin" })).toEqual({
+      ok: true,
+      account: expect.objectContaining({ email: "xenokinesis@local.admin", username: "Xenokinesis", role: "admin" })
+    });
+    expect(store.signIn({ login: "Xenokinesis", password: "admin" })).toEqual({
+      ok: true,
+      account: expect.objectContaining({ username: "Xenokinesis", role: "admin" }),
+      token: expect.any(String)
+    });
+    expect(store.ensureDefaultAdmin({ email: "xenokinesis@local.admin", username: "Xenokinesis", password: "admin" })).toEqual({
+      ok: true,
+      account: expect.objectContaining({ username: "Xenokinesis", role: "admin" })
+    });
+  });
+
   it("rejects duplicate email and username case-insensitively", () => {
     const store = accountStore();
     expect(store.createAccount({ email: "jonah@example.com", username: "Jonah", password: "secret123" }).ok).toBe(true);
@@ -53,6 +71,34 @@ describe("account store", () => {
     expect(store.resolveSession(byEmail.token)).toEqual({ ok: true, account: created.account });
     expect(store.signOut(byEmail.token)).toEqual({ ok: true });
     expect(store.resolveSession(byEmail.token)).toEqual({ ok: false, reason: "invalid_session" });
+  });
+
+  it("requires a reset token before changing a forgotten password", () => {
+    const store = accountStore();
+    const created = store.createAccount({ email: "jonah@example.com", username: "Jonah", password: "secret123" });
+    if (!created.ok) throw new Error("account create failed");
+
+    const requested = store.requestPasswordReset({ email: "JONAH@example.com", resetURLBase: "http://localhost/reset-password" });
+    expect(requested).toEqual({ ok: true, resetLink: "http://localhost/reset-password?token=token-3", resetToken: "token-3" });
+    expect(store.completePasswordReset({ token: "wrong", password: "changed123", passwordConfirmation: "changed123" })).toEqual({ ok: false, reason: "invalid_session" });
+    expect(store.completePasswordReset({ token: "token-3", password: "changed123", passwordConfirmation: "mismatch" })).toEqual({ ok: false, reason: "invalid_account" });
+    expect(store.completePasswordReset({ token: "token-3", password: "changed123", passwordConfirmation: "changed123" })).toEqual({ ok: true });
+    expect(store.signIn({ login: "jonah", password: "secret123" })).toEqual({ ok: false, reason: "invalid_credentials" });
+    expect(store.signIn({ login: "jonah", password: "changed123" })).toEqual({ ok: true, account: expect.objectContaining({ username: "Jonah" }), token: expect.any(String) });
+    expect(store.resolveSession(created.token)).toEqual({ ok: false, reason: "invalid_session" });
+    expect(store.completePasswordReset({ token: "token-3", password: "again123", passwordConfirmation: "again123" })).toEqual({ ok: false, reason: "invalid_session" });
+    expect(store.requestPasswordReset({ email: "missing@example.com", resetURLBase: "http://localhost/reset-password" })).toEqual({ ok: true });
+  });
+
+  it("changes a password for the signed-in account with the current password", () => {
+    const store = accountStore();
+    const created = store.createAccount({ email: "jonah@example.com", username: "Jonah", password: "secret123" });
+    if (!created.ok) throw new Error("account create failed");
+
+    expect(store.changePassword(created.account.id, { currentPassword: "wrong", password: "changed123" })).toEqual({ ok: false, reason: "invalid_credentials" });
+    expect(store.changePassword(created.account.id, { currentPassword: "secret123", password: "changed123" })).toEqual({ ok: true });
+    expect(store.signIn({ login: "jonah", password: "secret123" })).toEqual({ ok: false, reason: "invalid_credentials" });
+    expect(store.signIn({ login: "jonah", password: "changed123" })).toEqual({ ok: true, account: expect.objectContaining({ username: "Jonah" }), token: expect.any(String) });
   });
 
   it("records online results once and updates aggregate and nation stats", () => {

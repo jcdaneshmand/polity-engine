@@ -173,6 +173,59 @@ export function createAccountMiddleware(options: AccountMiddlewareOptions) {
       return;
     }
 
+    if (ctx.method === "POST" && ctx.path === "/polity/accounts/forgot-password") {
+      const body = await readJSONBody(ctx);
+      if (!isRecord(body) || !stringValue(body.email)) {
+        setError(ctx, 400, "invalid_request");
+        return;
+      }
+      const email = stringValue(body.email) as string;
+      const resetURLBase = stringValue(body.resetURLBase);
+      const requested = options.store.requestPasswordReset({ email, resetURLBase });
+      ctx.body = { ok: true, ...(requested.resetLink ? { resetLink: requested.resetLink } : {}) };
+      return;
+    }
+
+    if (ctx.method === "POST" && ctx.path === "/polity/accounts/reset-password") {
+      const body = await readJSONBody(ctx);
+      if (!isRecord(body) || !stringValue(body.token) || !stringValue(body.password) || !stringValue(body.passwordConfirmation)) {
+        setError(ctx, 400, "invalid_request");
+        return;
+      }
+      const token = stringValue(body.token) as string;
+      const password = stringValue(body.password) as string;
+      const passwordConfirmation = stringValue(body.passwordConfirmation) as string;
+      const reset = options.store.completePasswordReset({ token, password, passwordConfirmation });
+      if (!reset.ok) {
+        setError(ctx, accountErrorStatus(reset.reason), reset.reason);
+        return;
+      }
+      ctx.body = { ok: true };
+      return;
+    }
+
+    if (ctx.method === "POST" && ctx.path === "/polity/accounts/change-password") {
+      const account = requireAccount(ctx, options.store);
+      if (!account.ok) {
+        setError(ctx, account.status, account.reason);
+        return;
+      }
+      const body = await readJSONBody(ctx);
+      if (!isRecord(body) || !stringValue(body.currentPassword) || !stringValue(body.password)) {
+        setError(ctx, 400, "invalid_request");
+        return;
+      }
+      const currentPassword = stringValue(body.currentPassword) as string;
+      const password = stringValue(body.password) as string;
+      const changed = options.store.changePassword(account.account.id, { currentPassword, password });
+      if (!changed.ok) {
+        setError(ctx, accountErrorStatus(changed.reason), changed.reason);
+        return;
+      }
+      ctx.body = { ok: true };
+      return;
+    }
+
     if (ctx.method === "POST" && ctx.path === "/polity/accounts/sign-out") {
       const token = bearerToken(ctx);
       if (token) options.store.signOut(token);

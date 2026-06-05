@@ -6,7 +6,7 @@ import type { CampaignProgress } from "../../engine/src/options/gameOptions";
 import { ACCOUNT_SESSION_STORAGE_KEY, parseAccountSessionRecord, serializeAccountSessionRecord, type AccountSessionRecord } from "./accountSession";
 import AboutPage from "./AboutPage";
 import Board from "./Board";
-import { clearAllOnlineGames, closePolityOnlineMatch, computePrivateDataFingerprint, createLobbyRoom, heartbeatLobbyRoom, heartbeatPolityOnlineMatch, joinLobbyRoom, joinPolityOnlineMatch, leaveLobbyRoom, leavePolityOnlineMatch, listLobbyChat, listLobbyRooms, listOnlineChat, listOnlineMatches, loadCurrentAccount, ONLINE_SESSION_STORAGE_KEY, parseOnlineSessionRecord, recordAccountGameResult, registerAccount, rejoinLobbyRoom, resolveMultiplayerServerURL, selectLobbyNation, sendLobbyChat, sendOnlineChat, serializeOnlineSessionRecord, setLobbyReady, signInAccount, signOutAccount, spectateOnlineMatch, startAccountGameHistory, startLobbyGame, updateLobbySetup, type AccountGameResultInput, type AccountHistoryStartInput, type ChatMessage, type ListedLobby, type ListedMatch, type LobbyRoomDetails, type OnlineLobbySessionRecord, type OnlineSessionRecord, type OnlineStartedSessionRecord } from "./onlineSession";
+import { changeAccountPassword, clearAllOnlineGames, closePolityOnlineMatch, completePasswordReset, computePrivateDataFingerprint, createLobbyRoom, heartbeatLobbyRoom, heartbeatPolityOnlineMatch, joinLobbyRoom, joinPolityOnlineMatch, leaveLobbyRoom, leavePolityOnlineMatch, listLobbyChat, listLobbyRooms, listOnlineChat, listOnlineMatches, loadCurrentAccount, ONLINE_SESSION_STORAGE_KEY, parseOnlineSessionRecord, recordAccountGameResult, registerAccount, rejoinLobbyRoom, requestPasswordReset, resolveMultiplayerServerURL, selectLobbyNation, sendLobbyChat, sendOnlineChat, serializeOnlineSessionRecord, setLobbyReady, signInAccount, signOutAccount, spectateOnlineMatch, startAccountGameHistory, startLobbyGame, updateLobbySetup, type AccountGameResultInput, type AccountHistoryStartInput, type ChatMessage, type ListedLobby, type ListedMatch, type LobbyRoomDetails, type OnlineLobbySessionRecord, type OnlineSessionRecord, type OnlineStartedSessionRecord } from "./onlineSession";
 import PrivateCardEntry from "./ui/privateData/PrivateCardEntry";
 import LobbyRoom from "./ui/online/LobbyRoom";
 import OnlineGames from "./ui/online/OnlineGames";
@@ -120,6 +120,15 @@ function startAccountHistoryEntry(args: {
   });
 }
 
+function resetTokenFromInput(input: string): string {
+  const trimmed = input.trim();
+  try {
+    return new URL(trimmed).searchParams.get("token") || trimmed;
+  } catch {
+    return trimmed;
+  }
+}
+
 export default function App() {
   const [session, setSession] = useState<GameSession | null>(null);
   const [homeView, setHomeView] = useState<"setup" | "private-data" | "about" | "online" | "lobby" | "lobby-setup">("setup");
@@ -164,6 +173,7 @@ export default function App() {
         : props;
       return <Board
         {...boardProps}
+        viewerPlayerID={session.kind === "online" && session.role === "player" ? session.playerID : undefined}
         accountResultContext={session.accountHistoryEntryID && session.accountScope && session.accountVariant && session.accountPlayerID
           ? {
             historyEntryID: session.accountHistoryEntryID,
@@ -766,6 +776,63 @@ export default function App() {
     }
   };
 
+  const signInForOnlineGames = async (config: NewGameSessionConfig, input: { login: string; password: string }) => {
+    setAccountStatus("Signing in...");
+    try {
+      const signedIn = await signInAccount({ serverURL: multiplayerServerURL, ...input });
+      const record = { token: signedIn.token, account: signedIn.account };
+      saveAccountSessionRecord(record);
+      setAccountSession(record);
+      setOnlinePlayerName(signedIn.account.username);
+      openOnlineGames(config, signedIn.account.username);
+      setAccountStatus(`Signed in as ${signedIn.account.username}.`);
+    } catch (error) {
+      setAccountStatus(error instanceof Error ? error.message : "Could not sign in.");
+    }
+  };
+
+  const requestCurrentPasswordReset = async (input: { email: string }) => {
+    setAccountStatus("Sending reset link...");
+    try {
+      const resetURLBase = typeof window === "undefined" ? undefined : `${window.location.origin}/reset-password`;
+      const result = await requestPasswordReset({ serverURL: multiplayerServerURL, resetURLBase, ...input });
+      setAccountStatus(result.resetLink ? `Reset link: ${result.resetLink}` : "If that email exists, a reset link has been sent.");
+    } catch (error) {
+      setAccountStatus(error instanceof Error ? error.message : "Could not send reset link.");
+    }
+  };
+
+  const completeCurrentPasswordReset = async (input: { token: string; password: string; passwordConfirmation: string }) => {
+    setAccountStatus("Resetting password...");
+    try {
+      await completePasswordReset({
+        serverURL: multiplayerServerURL,
+        token: resetTokenFromInput(input.token),
+        password: input.password,
+        passwordConfirmation: input.passwordConfirmation
+      });
+      setAccountStatus("Password reset. Sign in with the new password.");
+    } catch (error) {
+      setAccountStatus(error instanceof Error ? error.message : "Could not reset password.");
+    }
+  };
+
+  const changeCurrentAccountPassword = async (input: { currentPassword: string; password: string }) => {
+    if (!accountSession) {
+      setAccountStatus("Sign in to change your password.");
+      return;
+    }
+    setAccountStatus("Changing password...");
+    try {
+      await changeAccountPassword({ serverURL: multiplayerServerURL, accountToken: accountSession.token, ...input });
+      clearAccountSessionRecord();
+      setAccountSession(undefined);
+      setAccountStatus("Password changed. Sign in with the new password.");
+    } catch (error) {
+      setAccountStatus(error instanceof Error ? error.message : "Could not change password.");
+    }
+  };
+
   const signOutCurrentAccount = async () => {
     const token = accountSession?.token;
     clearAccountSessionRecord();
@@ -880,6 +947,9 @@ export default function App() {
             onClearAllGames={() => void clearAllListedOnlineGames()}
             onRegisterAccount={(input) => void registerCurrentAccount(input)}
             onSignInAccount={(input) => void signInCurrentAccount(input)}
+            onRequestPasswordReset={(input) => void requestCurrentPasswordReset(input)}
+            onCompletePasswordReset={(input) => void completeCurrentPasswordReset(input)}
+            onChangePassword={(input) => void changeCurrentAccountPassword(input)}
             onSignOutAccount={() => void signOutCurrentAccount()}
           />
         </div>
@@ -898,6 +968,11 @@ export default function App() {
           initialCampaignProgress={pendingCampaignProgress}
           onStart={startLocalGame}
           onOpenOnlineGames={openOnlineGames}
+          account={accountSession?.account}
+          accountStatusMessage={accountStatus}
+          onSignInForOnline={(config, input) => void signInForOnlineGames(config, input)}
+          onRequestPasswordReset={(input) => void requestCurrentPasswordReset(input)}
+          onCompletePasswordReset={(input) => void completeCurrentPasswordReset(input)}
           onOpenCardEntry={() => setHomeView("private-data")}
         />
         {onlineStatus ? <p className="setup-help">{onlineStatus}</p> : null}

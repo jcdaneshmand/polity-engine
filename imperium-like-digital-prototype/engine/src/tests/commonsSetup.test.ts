@@ -75,6 +75,18 @@ describe("commons setup", () => {
     expect(G.cardDb.multiplayer_only).toBeUndefined();
   });
 
+  it("normalizes one-based setup player ids to boardgame player ids", () => {
+    const G = createInitialGameStateFromPipeline({
+      options: { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: [], commonsSetId: "classics", replacementPolicy: "none" },
+      playerNationIds: { "1": "test_nation_alpha", "2": "test_nation_alpha" },
+      cardDb: cardDb([card({ id: "market_a" }), card({ id: "market_b" })]),
+      nationDb
+    });
+
+    expect(G.playOrder).toEqual(["0", "1"]);
+    expect(Object.keys(G.players)).toEqual(["0", "1"]);
+  });
+
   it("Supreme Ruler campaign setup includes campaign-extra solo Commons cards", () => {
     const cards = cardDb([
       card({ id: "solo_base", allowedModes: ["solo"] }),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildJoinURL, clearAllOnlineGames, closePolityOnlineMatch, computePrivateDataFingerprint, createLobbyRoom, createOnlineMatch, createPolityOnlineMatch, heartbeatLobbyRoom, heartbeatPolityOnlineMatch, joinLobbyRoom, joinOnlineMatch, joinPolityOnlineMatch, leaveLobbyRoom, leavePolityOnlineMatch, listAccountHistory, listLobbyChat, listLobbyRooms, listOnlineChat, listOnlineMatches, loadCurrentAccount, ONLINE_SESSION_STORAGE_KEY, parseJoinURL, parseOnlineSessionRecord, recordAccountGameResult, registerAccount, rejoinLobbyRoom, resolveMultiplayerServerURL, selectLobbyNation, sendLobbyChat, sendOnlineChat, serializeOnlineSessionRecord, setLobbyReady, signInAccount, signOutAccount, sortListedMatches, spectateOnlineMatch, startAccountGameHistory, startLobbyGame, updateLobbySetup } from "./onlineSession";
+import { buildJoinURL, changeAccountPassword, clearAllOnlineGames, closePolityOnlineMatch, completePasswordReset, computePrivateDataFingerprint, createLobbyRoom, createOnlineMatch, createPolityOnlineMatch, heartbeatLobbyRoom, heartbeatPolityOnlineMatch, joinLobbyRoom, joinOnlineMatch, joinPolityOnlineMatch, leaveLobbyRoom, leavePolityOnlineMatch, listAccountHistory, listLobbyChat, listLobbyRooms, listOnlineChat, listOnlineMatches, loadCurrentAccount, ONLINE_SESSION_STORAGE_KEY, parseJoinURL, parseOnlineSessionRecord, recordAccountGameResult, registerAccount, rejoinLobbyRoom, requestPasswordReset, resolveMultiplayerServerURL, selectLobbyNation, sendLobbyChat, sendOnlineChat, serializeOnlineSessionRecord, setLobbyReady, signInAccount, signOutAccount, sortListedMatches, spectateOnlineMatch, startAccountGameHistory, startLobbyGame, updateLobbySetup } from "./onlineSession";
 
 function jsonResponse(body: unknown): Response {
   return {
@@ -246,6 +246,7 @@ describe("online session utilities", () => {
       if (url.endsWith("/history/start")) return jsonResponse({ entry });
       if (url.endsWith("/history/result")) return jsonResponse({ entry: { ...entry, status: "completed", outcome: "win" }, stats: account.stats });
       if (url.endsWith("/history")) return jsonResponse({ history: [entry], stats: account.stats });
+      if (url.endsWith("/forgot-password")) return jsonResponse({ ok: true, resetLink: "http://localhost/reset-password?token=reset-1" });
       return jsonResponse({ ok: true });
     };
 
@@ -255,6 +256,9 @@ describe("online session utilities", () => {
     await expect(listAccountHistory({ serverURL: "http://localhost:8000", accountToken: "token-1", fetcher })).resolves.toEqual({ history: [entry], stats: account.stats });
     await expect(startAccountGameHistory({ serverURL: "http://localhost:8000", accountToken: "token-1", entry: { id: "game-1", scope: "solo", variant: "practice", status: "started", outcome: "unknown" }, fetcher })).resolves.toEqual({ entry });
     await expect(recordAccountGameResult({ serverURL: "http://localhost:8000", accountToken: "token-1", result: { id: "game-1", outcome: "win" }, fetcher })).resolves.toEqual({ entry: { ...entry, status: "completed", outcome: "win" }, stats: account.stats });
+    await expect(changeAccountPassword({ serverURL: "http://localhost:8000", accountToken: "token-1", currentPassword: "secret123", password: "changed123", fetcher })).resolves.toEqual({ ok: true });
+    await expect(requestPasswordReset({ serverURL: "http://localhost:8000", email: "jonah@example.com", resetURLBase: "http://localhost/reset-password", fetcher })).resolves.toEqual({ ok: true, resetLink: "http://localhost/reset-password?token=reset-1" });
+    await expect(completePasswordReset({ serverURL: "http://localhost:8000", token: "reset-1", password: "reset123", passwordConfirmation: "reset123", fetcher })).resolves.toEqual({ ok: true });
     await expect(signOutAccount({ serverURL: "http://localhost:8000", accountToken: "token-1", fetcher })).resolves.toEqual({ ok: true });
 
     expect(calls.map((call) => call.url)).toEqual([
@@ -264,11 +268,22 @@ describe("online session utilities", () => {
       "http://localhost:8000/polity/accounts/history",
       "http://localhost:8000/polity/accounts/history/start",
       "http://localhost:8000/polity/accounts/history/result",
+      "http://localhost:8000/polity/accounts/change-password",
+      "http://localhost:8000/polity/accounts/forgot-password",
+      "http://localhost:8000/polity/accounts/reset-password",
       "http://localhost:8000/polity/accounts/sign-out"
     ]);
     expect(calls[2].authorization).toBe("Bearer token-1");
     expect(calls[4].body).toEqual({ id: "game-1", scope: "solo", variant: "practice", status: "started", outcome: "unknown" });
     expect(calls[5].body).toEqual({ id: "game-1", outcome: "win" });
+    expect(calls[6]).toEqual({
+      url: "http://localhost:8000/polity/accounts/change-password",
+      method: "POST",
+      body: { currentPassword: "secret123", password: "changed123" },
+      authorization: "Bearer token-1"
+    });
+    expect(calls[7].body).toEqual({ email: "jonah@example.com", resetURLBase: "http://localhost/reset-password" });
+    expect(calls[8].body).toEqual({ token: "reset-1", password: "reset123", passwordConfirmation: "reset123" });
   });
 
   it("sends chat with account bearer tokens", async () => {

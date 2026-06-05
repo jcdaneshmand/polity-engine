@@ -44,6 +44,7 @@ function renderForViewer(overrides: Record<string, unknown> = {}) {
       G={baseGame(overrides)}
       ctx={{ currentPlayer: "1" }}
       playerID="0"
+      viewerPlayerID="0"
       moves={{}}
     />
   );
@@ -55,6 +56,7 @@ function renderForWrongViewer(overrides: Record<string, unknown> = {}) {
       G={baseGame(overrides)}
       ctx={{ currentPlayer: "1" }}
       playerID="1"
+      viewerPlayerID="1"
       moves={{}}
     />
   );
@@ -74,6 +76,55 @@ describe("BoardLayout", () => {
     expect(html).toContain("Place cleanup resource on Market1");
     expect(html).toContain("is-valid-target");
     expect(html).not.toContain("waiting for player 0");
+  });
+
+  it("maps online boardgame seats to legacy one-based game player ids", () => {
+    const html = renderToStaticMarkup(
+      <BoardLayout
+        G={baseGame({
+          playOrder: ["1"],
+          players: {
+            "1": { ...emptyPlayer }
+          },
+          pendingCleanupMarketResourceChoice: {
+            playerId: "1",
+            resource: "knowledge",
+            amount: 1,
+            cardIds: ["m1"]
+          }
+        })}
+        ctx={{ currentPlayer: "1" }}
+        playerID="0"
+        viewerPlayerID="0"
+        moves={{}}
+      />
+    );
+
+    expect(html).toContain("Place cleanup resource on Market1");
+    expect(html).toContain("is-valid-target");
+    expect(html).not.toContain("waiting for player 1");
+  });
+
+  it("uses the active player for local cleanup market targets when boardgame.io supplies a stale playerID", () => {
+    const html = renderToStaticMarkup(
+      <BoardLayout
+        G={baseGame({
+          pendingCleanupMarketResourceChoice: {
+            playerId: "1",
+            resource: "knowledge",
+            amount: 1,
+            cardIds: ["m1"]
+          }
+        })}
+        ctx={{ currentPlayer: "1" }}
+        playerID="0"
+        moves={{}}
+      />
+    );
+
+    expect(html).toContain("Place cleanup resource on Market1");
+    expect(html).toContain("is-valid-target");
+    expect(html).not.toContain("waiting for player 1");
   });
 
   it.each([
@@ -272,6 +323,7 @@ describe("BoardLayout", () => {
         })}
         ctx={{ currentPlayer: "1" }}
         playerID="0"
+        viewerPlayerID="0"
         moves={{}}
       />
     );

@@ -97,4 +97,19 @@ describe("lobby store", () => {
 
     expect(store.listMatches().map((match) => match.matchID)).toEqual(["open", "watch", "full"]);
   });
+
+  it("removes listed games after the last occupied seat leaves", () => {
+    const store = createLobbyStore({ now: () => "2026-06-05T01:00:00.000Z" });
+    store.createMatchMetadata({ matchID: "match-1", roomName: "Leaving", playerCount: 2, setupData: {}, privateDataFingerprint: "placeholder" });
+    store.recordPlayerJoin({ matchID: "match-1", playerID: "0", playerName: "Host" });
+    store.recordPlayerJoin({ matchID: "match-1", playerID: "1", playerName: "Guest" });
+
+    expect(store.recordPlayerLeave({ matchID: "match-1", playerID: "0" })).toEqual(expect.objectContaining({
+      matchID: "match-1",
+      occupiedSeats: [expect.objectContaining({ playerID: "1" })],
+      availableSeats: ["0"]
+    }));
+    expect(store.recordPlayerLeave({ matchID: "match-1", playerID: "1" })).toBeUndefined();
+    expect(store.listMatches()).toEqual([]);
+  });
 });

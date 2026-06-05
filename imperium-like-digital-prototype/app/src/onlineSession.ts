@@ -398,6 +398,19 @@ export async function joinPolityOnlineMatch(args: {
   );
 }
 
+export async function leavePolityOnlineMatch(args: {
+  serverURL: string;
+  matchID: string;
+  playerID: string;
+  fetcher?: Fetcher;
+}): Promise<{ ok: true; match?: ListedMatch }> {
+  return postLobbyJSON<{ ok: true; match?: ListedMatch }>(
+    lobbyURL(args.serverURL, `/polity/lobby/matches/${encodeURIComponent(args.matchID)}/leave`),
+    { playerID: args.playerID },
+    args.fetcher ?? fetch
+  );
+}
+
 export async function spectateOnlineMatch(args: {
   serverURL: string;
   matchID: string;

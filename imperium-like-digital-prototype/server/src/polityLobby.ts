@@ -39,6 +39,10 @@ type JoinBody = {
   privateDataFingerprint?: unknown;
 };
 
+type LeaveBody = {
+  playerID?: unknown;
+};
+
 type SpectateBody = {
   password?: unknown;
   privateDataFingerprint?: unknown;
@@ -77,7 +81,7 @@ function setError(ctx: KoaLikeContext, status: number, error: string): void {
   ctx.body = { error };
 }
 
-function matchRoute(path: string, suffix: "join" | "spectate"): string | undefined {
+function matchRoute(path: string, suffix: "join" | "spectate" | "leave"): string | undefined {
   const match = path.match(new RegExp(`^/polity/lobby/matches/([^/]+)/${suffix}$`));
   return match?.[1] ? decodeURIComponent(match[1]) : undefined;
 }
@@ -183,6 +187,18 @@ export function createPolityLobbyMiddleware(options: PolityLobbyOptions) {
         return;
       }
       ctx.body = { spectatorCredentials: createSpectatorCredentials(), match };
+      return;
+    }
+
+    const leaveMatchID = matchRoute(ctx.path, "leave");
+    if (ctx.method === "POST" && leaveMatchID) {
+      const body = await readJSONBody(ctx) as LeaveBody;
+      if (!isRecord(body) || typeof body.playerID !== "string") {
+        setError(ctx, 400, "invalid_request");
+        return;
+      }
+      const match = options.store.recordPlayerLeave({ matchID: leaveMatchID, playerID: body.playerID });
+      ctx.body = match ? { ok: true, match } : { ok: true };
       return;
     }
 

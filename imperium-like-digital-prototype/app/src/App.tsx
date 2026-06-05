@@ -5,7 +5,7 @@ import { PrototypeGame } from "../../engine/src/game/game";
 import type { CampaignProgress } from "../../engine/src/options/gameOptions";
 import AboutPage from "./AboutPage";
 import Board from "./Board";
-import { computePrivateDataFingerprint, createLobbyRoom, createPolityOnlineMatch, joinLobbyRoom, joinPolityOnlineMatch, listLobbyRooms, listOnlineMatches, ONLINE_SESSION_STORAGE_KEY, parseOnlineSessionRecord, rejoinLobbyRoom, resolveMultiplayerServerURL, selectLobbyNation, serializeOnlineSessionRecord, setLobbyReady, spectateOnlineMatch, startLobbyGame, updateLobbySetup, type ListedLobby, type ListedMatch, type LobbyRoomDetails, type OnlineLobbySessionRecord, type OnlineSessionRecord, type OnlineStartedSessionRecord } from "./onlineSession";
+import { computePrivateDataFingerprint, createLobbyRoom, createPolityOnlineMatch, joinLobbyRoom, joinPolityOnlineMatch, leavePolityOnlineMatch, listLobbyRooms, listOnlineMatches, ONLINE_SESSION_STORAGE_KEY, parseOnlineSessionRecord, rejoinLobbyRoom, resolveMultiplayerServerURL, selectLobbyNation, serializeOnlineSessionRecord, setLobbyReady, spectateOnlineMatch, startLobbyGame, updateLobbySetup, type ListedLobby, type ListedMatch, type LobbyRoomDetails, type OnlineLobbySessionRecord, type OnlineSessionRecord, type OnlineStartedSessionRecord } from "./onlineSession";
 import PrivateCardEntry from "./ui/privateData/PrivateCardEntry";
 import LobbyRoom from "./ui/online/LobbyRoom";
 import OnlineGames from "./ui/online/OnlineGames";
@@ -414,6 +414,21 @@ export default function App() {
     setCurrentLobby(undefined);
   };
 
+  const leaveCurrentGame = () => {
+    if (session?.kind === "online" && session.role === "player") {
+      void leavePolityOnlineMatch({
+        serverURL: session.serverURL,
+        matchID: session.matchID,
+        playerID: session.playerID
+      }).catch(() => undefined);
+      if (savedOnlineSession?.kind !== "lobby" && savedOnlineSession?.matchID === session.matchID) {
+        if (typeof window !== "undefined") window.localStorage.removeItem(ONLINE_SESSION_STORAGE_KEY);
+        setSavedOnlineSession(undefined);
+      }
+    }
+    setSession(null);
+  };
+
   if (!session || !GameClient) {
     if (homeView === "private-data") {
       return <div className="app-home" data-theme="default"><PrivateCardEntry onBack={() => setHomeView("setup")} /></div>;
@@ -527,7 +542,7 @@ export default function App() {
               : `${session.options.mode} / ${session.options.playerCount} player${session.options.playerCount === 1 ? "" : "s"}`}
           </span>
         </div>
-        <button type="button" onClick={() => setSession(null)}>
+        <button type="button" onClick={leaveCurrentGame}>
           New Game
         </button>
       </div>

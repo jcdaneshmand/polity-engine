@@ -57,3 +57,8 @@ export type RecordPlayerJoinInput = {
   playerID: string;
   playerName: string;
 };
+
+export type RecordPlayerLeaveInput = {
+  matchID: string;
+  playerID: string;
+};

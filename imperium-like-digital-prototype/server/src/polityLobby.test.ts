@@ -134,6 +134,38 @@ describe("polity lobby middleware", () => {
     expect(joined).toEqual([{ matchID: "match-1", playerID: "0", playerName: "First" }]);
   });
 
+  it("clears occupied seats when players leave and removes empty matches", async () => {
+    const store = createLobbyStore({ now: () => "2026-06-05T01:00:00.000Z" });
+    const middleware = createPolityLobbyMiddleware({
+      store,
+      boardgameApi: {
+        createMatch: async () => ({ matchID: "match-1" }),
+        joinMatch: async (input) => ({ playerCredentials: `token-${input.playerID}` })
+      }
+    });
+
+    await middleware(context("POST", "/polity/lobby/matches", {
+      roomName: "Open",
+      numPlayers: 2,
+      setupData: {},
+      privateDataFingerprint: "placeholder"
+    }), async () => undefined);
+    await middleware(context("POST", "/polity/lobby/matches/match-1/join", { playerID: "0", playerName: "Host", privateDataFingerprint: "placeholder" }), async () => undefined);
+    await middleware(context("POST", "/polity/lobby/matches/match-1/join", { playerID: "1", playerName: "Guest", privateDataFingerprint: "placeholder" }), async () => undefined);
+
+    const firstLeave = context("POST", "/polity/lobby/matches/match-1/leave", { playerID: "0" });
+    await middleware(firstLeave, async () => undefined);
+    expect(firstLeave.body).toEqual({ ok: true, match: expect.objectContaining({ occupiedSeats: [expect.objectContaining({ playerID: "1" })] }) });
+
+    const secondLeave = context("POST", "/polity/lobby/matches/match-1/leave", { playerID: "1" });
+    await middleware(secondLeave, async () => undefined);
+    expect(secondLeave.body).toEqual({ ok: true });
+
+    const list = context("GET", "/polity/lobby/matches");
+    await middleware(list, async () => undefined);
+    expect(list.body).toEqual({ matches: [] });
+  });
+
   it("authorizes spectators without issuing player seats", async () => {
     const store = createLobbyStore({ now: () => "2026-06-05T01:00:00.000Z", hashPassword: (value) => `hash:${value}` });
     const middleware = createPolityLobbyMiddleware({

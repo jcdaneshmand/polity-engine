@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { CreateLobbyMatchInput, ListedMatch, ListedMatchStatus, LobbyAccessResult, RecordPlayerJoinInput } from "./lobbyTypes";
+import type { CreateLobbyMatchInput, ListedMatch, ListedMatchStatus, LobbyAccessResult, RecordPlayerJoinInput, RecordPlayerLeaveInput } from "./lobbyTypes";
 
 type LobbyStoreOptions = {
   now?: () => string;
@@ -138,6 +138,18 @@ export function createLobbyStore(options: LobbyStoreOptions = {}) {
         playerName: input.playerName,
         isConnected: true
       });
+      match.updatedAt = now();
+      return toListedMatch(match);
+    },
+
+    recordPlayerLeave(input: RecordPlayerLeaveInput): ListedMatch | undefined {
+      const match = matches.get(input.matchID);
+      if (!match) return undefined;
+      match.occupiedSeats.delete(input.playerID);
+      if (match.occupiedSeats.size === 0) {
+        matches.delete(input.matchID);
+        return undefined;
+      }
       match.updatedAt = now();
       return toListedMatch(match);
     },

@@ -19,6 +19,12 @@ type NewGameSetupProps = {
   onOpenOnlineGames?: (config: NewGameSessionConfig) => void;
   onOpenCardEntry?: () => void;
   initialCampaignProgress?: CampaignProgress;
+  initialConfig?: NewGameSessionConfig;
+  title?: string;
+  kicker?: string;
+  submitLabel?: string;
+  onCancel?: () => void;
+  onlineGamesEnabled?: boolean;
 };
 
 const DEFAULT_NATION_ID = "test_nation_sun_coast";
@@ -146,6 +152,10 @@ function isFreshCampaignProgress(progress: CampaignProgress | undefined): boolea
     && (progress.records?.length ?? 0) === 0);
 }
 
+function initialNationId(config: NewGameSessionConfig | undefined, playerId: string): string | undefined {
+  return config?.playerNationIds[playerId] ?? config?.playerNationIds[String(Number(playerId) - 1)];
+}
+
 export function buildCampaignGameOptions(args: {
   mode: GameMode;
   campaignMode: "none" | CampaignMode;
@@ -169,26 +179,39 @@ export function buildCampaignGameOptions(args: {
   };
 }
 
-export default function NewGameSetup({ onStart, onOpenOnlineGames, onOpenCardEntry, initialCampaignProgress }: NewGameSetupProps) {
-  const [mode, setMode] = useState<GameMode>(initialCampaignProgress ? "solo" : "multiplayer");
-  const [playerCount, setPlayerCount] = useState<1 | 2 | 3 | 4>(initialCampaignProgress ? 1 : 2);
-  const [enabledExpansions, setEnabledExpansions] = useState<ExpansionId[]>([]);
-  const [enabledVariants, setEnabledVariants] = useState<VariantId[]>([]);
-  const [commonsSetId, setCommonsSetId] = useState<CommonsSetId>("classics");
-  const [soloDifficulty, setSoloDifficulty] = useState<SoloDifficulty>(initialCampaignProgress?.currentDifficulty ?? "chieftain");
-  const [campaignMode, setCampaignMode] = useState<"none" | CampaignMode>(initialCampaignProgress?.mode ?? "none");
-  const [campaignProgress, setCampaignProgress] = useState<CampaignProgress | undefined>(initialCampaignProgress);
+export default function NewGameSetup({
+  onStart,
+  onOpenOnlineGames,
+  onOpenCardEntry,
+  initialCampaignProgress,
+  initialConfig,
+  title = "New Game",
+  kicker = "Polity Engine setup",
+  submitLabel = "Start Game",
+  onCancel,
+  onlineGamesEnabled = true
+}: NewGameSetupProps) {
+  const initialOptions = initialConfig?.options;
+  const initialMode = initialCampaignProgress ? "solo" : initialOptions?.mode ?? "multiplayer";
+  const [mode, setMode] = useState<GameMode>(initialMode);
+  const [playerCount, setPlayerCount] = useState<1 | 2 | 3 | 4>(initialCampaignProgress ? 1 : (initialOptions?.playerCount ?? 2) as 1 | 2 | 3 | 4);
+  const [enabledExpansions, setEnabledExpansions] = useState<ExpansionId[]>([...(initialOptions?.enabledExpansions ?? [])]);
+  const [enabledVariants, setEnabledVariants] = useState<VariantId[]>([...(initialOptions?.enabledVariants ?? [])]);
+  const [commonsSetId, setCommonsSetId] = useState<CommonsSetId>(initialOptions?.commonsSetId ?? "classics");
+  const [soloDifficulty, setSoloDifficulty] = useState<SoloDifficulty>(initialOptions?.soloDifficulty ?? initialCampaignProgress?.currentDifficulty ?? "chieftain");
+  const [campaignMode, setCampaignMode] = useState<"none" | CampaignMode>(initialCampaignProgress?.mode ?? initialOptions?.campaignMode ?? "none");
+  const [campaignProgress, setCampaignProgress] = useState<CampaignProgress | undefined>(initialCampaignProgress ?? initialOptions?.campaignProgress);
   const [campaignSheetText, setCampaignSheetText] = useState("");
   const [campaignImportMessage, setCampaignImportMessage] = useState(initialCampaignProgress ? "Campaign progress is ready for the next game." : "");
-  const [soloBotNationId, setSoloBotNationId] = useState<string>("random");
-  const [privateData, setPrivateData] = useState<PrivateDataBundle>({});
-  const [privateDataConfirmed, setPrivateDataConfirmed] = useState(false);
+  const [soloBotNationId, setSoloBotNationId] = useState<string>(initialConfig?.soloBotNationId ?? "random");
+  const [privateData, setPrivateData] = useState<PrivateDataBundle>(initialConfig?.privateData ?? {});
+  const [privateDataConfirmed, setPrivateDataConfirmed] = useState(Boolean(initialConfig?.privateData));
   const [privateFileStatuses, setPrivateFileStatuses] = useState<PrivateDataFileStatus[]>([]);
   const [playerNationIds, setPlayerNationIds] = useState<Record<string, string>>({
-    "1": initialCampaignProgress?.playerNationId ?? DEFAULT_NATION_ID,
-    "2": DEFAULT_NATION_ID,
-    "3": DEFAULT_NATION_ID,
-    "4": DEFAULT_NATION_ID
+    "1": initialNationId(initialConfig, "1") ?? initialCampaignProgress?.playerNationId ?? DEFAULT_NATION_ID,
+    "2": initialNationId(initialConfig, "2") ?? DEFAULT_NATION_ID,
+    "3": initialNationId(initialConfig, "3") ?? DEFAULT_NATION_ID,
+    "4": initialNationId(initialConfig, "4") ?? DEFAULT_NATION_ID
   });
 
   const normalizedPlayerCount = playerCountForMode(mode, playerCount);
@@ -349,12 +372,15 @@ export default function NewGameSetup({ onStart, onOpenOnlineGames, onOpenCardEnt
       <section className="setup-panel" aria-labelledby="setup-title">
         <div className="setup-heading">
           <div>
-            <p className="setup-kicker">Polity Engine setup</p>
-            <h1 id="setup-title">New Game</h1>
+            <p className="setup-kicker">{kicker}</p>
+            <h1 id="setup-title">{title}</h1>
           </div>
-          <button className="primary-action" type="button" onClick={startGame}>
-            Start Game
-          </button>
+          <div className="private-data-actions">
+            {onCancel ? <button type="button" onClick={onCancel}>Back</button> : null}
+            <button className="primary-action" type="button" onClick={startGame}>
+              {submitLabel}
+            </button>
+          </div>
         </div>
 
         <section className="setup-summary" aria-label="Launch Summary">
@@ -474,7 +500,7 @@ export default function NewGameSetup({ onStart, onOpenOnlineGames, onOpenCardEnt
               ) : null}
             </fieldset> : null}
 
-            {mode === "multiplayer" ? (
+            {mode === "multiplayer" && onlineGamesEnabled ? (
               <fieldset className="setup-section setup-section--wide">
                 <legend>Online</legend>
                 <p className="setup-help">Browse listed games, host a public or locked table, join by code, rejoin saved seats, or spectate public state.</p>

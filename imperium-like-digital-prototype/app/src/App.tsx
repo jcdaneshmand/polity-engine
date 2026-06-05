@@ -39,7 +39,7 @@ function isStartedSessionRecord(record: OnlineSessionRecord | undefined): record
 
 export default function App() {
   const [session, setSession] = useState<GameSession | null>(null);
-  const [homeView, setHomeView] = useState<"setup" | "private-data" | "about" | "online" | "lobby">("setup");
+  const [homeView, setHomeView] = useState<"setup" | "private-data" | "about" | "online" | "lobby" | "lobby-setup">("setup");
   const [pendingCampaignProgress, setPendingCampaignProgress] = useState<CampaignProgress | undefined>(undefined);
   const [savedOnlineSession, setSavedOnlineSession] = useState<OnlineSessionRecord | undefined>(loadOnlineSessionRecord());
   const [onlineSetupConfig, setOnlineSetupConfig] = useState<NewGameSessionConfig | undefined>(undefined);
@@ -345,6 +345,8 @@ export default function App() {
         privateDataFingerprint: computePrivateDataFingerprint(args.setupConfig.privateData)
       });
       if (updated.lobby) setCurrentLobby(updated.lobby);
+      setOnlineSetupConfig(args.setupConfig);
+      setHomeView("lobby");
       setOnlineStatus("Setup updated; players need to ready again.");
     } catch (error) {
       setOnlineStatus(error instanceof Error ? error.message : "Could not update setup.");
@@ -391,7 +393,7 @@ export default function App() {
         lobbyID: currentLobbySession.lobbyID,
         lobbyCredentials: currentLobbySession.lobbyCredentials
       });
-      startOnlineSession(currentOnlineConfig, {
+      startOnlineSession(currentLobbySetupConfig, {
         kind: "player",
         matchID: started.matchID,
         playerID: started.playerID,
@@ -443,11 +445,29 @@ export default function App() {
               void refreshOnlineMatches();
             }}
             onRefresh={refreshCurrentLobby}
-            onUpdateSetup={updateCurrentLobbySetup}
+            onEditSetup={() => setHomeView("lobby-setup")}
             onSelectNation={selectCurrentLobbyNation}
             onReady={setCurrentLobbyReady}
             onStart={startCurrentLobbyGame}
           />
+        </div>
+      );
+    }
+
+    if (homeView === "lobby-setup" && currentLobby) {
+      return (
+        <div className="app-home" data-theme="default">
+          <NewGameSetup
+            initialConfig={currentLobbySetupConfig}
+            title="Lobby Setup"
+            kicker="Pregame lobby"
+            submitLabel="Update Lobby"
+            onlineGamesEnabled={false}
+            onCancel={() => setHomeView("lobby")}
+            onStart={(setupConfig) => void updateCurrentLobbySetup({ roomName: currentLobby.roomName, setupConfig })}
+            onOpenCardEntry={() => setHomeView("private-data")}
+          />
+          {onlineStatus ? <p className="setup-help">{onlineStatus}</p> : null}
         </div>
       );
     }

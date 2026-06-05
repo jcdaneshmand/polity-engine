@@ -1,4 +1,3 @@
-import { useState } from "react";
 import type { LobbyRoomDetails } from "../../onlineSession";
 import { getNationOptions, type NewGameSessionConfig } from "../setup/NewGameSetup";
 
@@ -8,7 +7,7 @@ type LobbyRoomProps = {
   statusMessage: string;
   onBack: () => void;
   onRefresh: () => void | Promise<void>;
-  onUpdateSetup: (args: { roomName: string; setupConfig: NewGameSessionConfig }) => void | Promise<void>;
+  onEditSetup: () => void;
   onSelectNation: (nationID: string) => void | Promise<void>;
   onReady: (ready: boolean) => void | Promise<void>;
   onStart: () => void | Promise<void>;
@@ -29,12 +28,11 @@ export default function LobbyRoom({
   statusMessage,
   onBack,
   onRefresh,
-  onUpdateSetup,
+  onEditSetup,
   onSelectNation,
   onReady,
   onStart
 }: LobbyRoomProps) {
-  const [roomName, setRoomName] = useState(lobby.roomName);
   const selfSeat = lobby.seats.find((seat) => seat.isSelf);
   const nations = getNationOptions(setupConfig.options.enabledExpansions, setupConfig.privateData);
   const selectedNationID = selfSeat?.selectedNationID ?? nations[0]?.id ?? "test_nation_sun_coast";
@@ -59,11 +57,7 @@ export default function LobbyRoom({
           <section className="setup-stage" aria-labelledby="lobby-host-controls">
             <h2 id="lobby-host-controls">Host controls</h2>
             <div className="online-games-actions">
-              <label className="setup-field">
-                <span>Room name</span>
-                <input value={roomName} disabled={isLocked} onChange={(event: { target: HTMLInputElement }) => setRoomName(event.target.value)} />
-              </label>
-              <button type="button" disabled={isLocked} onClick={() => void onUpdateSetup({ roomName, setupConfig })}>Update Setup</button>
+              <button type="button" disabled={isLocked} onClick={onEditSetup}>Edit Setup</button>
               {isLocked ? <button type="button" onClick={() => void onReady(false)}>Unlock Setup</button> : null}
               {isLocked ? <button className="primary-action" type="button" onClick={() => void onStart()}>Start Game</button> : null}
             </div>

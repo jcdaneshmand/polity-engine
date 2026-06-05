@@ -17,6 +17,43 @@ describe("NewGameSetup summary", () => {
     expect(html).toContain("Content");
   });
 
+  it("can render as a lobby setup editor with an existing config", () => {
+    const html = renderToStaticMarkup(
+      <NewGameSetup
+        onStart={() => undefined}
+        initialConfig={{
+          options: {
+            playerCount: 3,
+            mode: "multiplayer",
+            commonsSetId: "legends",
+            enabledExpansions: ["trade_routes"],
+            enabledVariants: ["quick_setup"]
+          },
+          playerNationIds: {
+            "1": "test_nation_sun_coast",
+            "2": "test_nation_sun_coast",
+            "3": "test_nation_sun_coast"
+          }
+        }}
+        title="Lobby Setup"
+        kicker="Pregame lobby"
+        submitLabel="Update Lobby"
+        onCancel={() => undefined}
+        onlineGamesEnabled={false}
+      />
+    );
+
+    expect(html).toContain("Lobby Setup");
+    expect(html).toContain("Pregame lobby");
+    expect(html).toContain("Update Lobby");
+    expect(html).toContain("Back");
+    expect(html).toContain("<strong>3</strong>");
+    expect(html).toContain("<strong>Legends</strong>");
+    expect(html).toContain("Trade Routes");
+    expect(html).toContain("Quick Setup");
+    expect(html).not.toContain("Online Games");
+  });
+
   it("hides campaign controls until solo setup is active", () => {
     const html = renderToStaticMarkup(<NewGameSetup onStart={() => undefined} />);
 

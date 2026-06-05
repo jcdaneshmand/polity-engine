@@ -48,7 +48,7 @@ describe("LobbyRoom", () => {
         statusMessage=""
         onBack={() => undefined}
         onRefresh={() => undefined}
-        onUpdateSetup={() => undefined}
+        onEditSetup={() => undefined}
         onSelectNation={() => undefined}
         onReady={() => undefined}
         onStart={() => undefined}
@@ -61,6 +61,8 @@ describe("LobbyRoom", () => {
     expect(html).toContain("Guest");
     expect(html).toContain("Nation");
     expect(html).toContain("Ready");
+    expect(html).toContain("Edit Setup");
+    expect(html).not.toContain("Update Setup");
     expect(html).not.toContain("Spectate");
   });
 
@@ -72,7 +74,7 @@ describe("LobbyRoom", () => {
         statusMessage=""
         onBack={() => undefined}
         onRefresh={() => undefined}
-        onUpdateSetup={() => undefined}
+        onEditSetup={() => undefined}
         onSelectNation={() => undefined}
         onReady={() => undefined}
         onStart={() => undefined}
@@ -91,7 +93,7 @@ describe("LobbyRoom", () => {
         statusMessage=""
         onBack={() => undefined}
         onRefresh={() => undefined}
-        onUpdateSetup={() => undefined}
+        onEditSetup={() => undefined}
         onSelectNation={() => undefined}
         onReady={() => undefined}
         onStart={() => undefined}

@@ -40,6 +40,38 @@ const lobby: LobbyRoomDetails = {
 };
 
 describe("LobbyRoom", () => {
+  it("renders the current setup summary in the lobby", () => {
+    const html = renderToStaticMarkup(
+      <LobbyRoom
+        lobby={{
+          ...lobby,
+          playerCount: 3,
+          setupSummary: {
+            commonsSetId: "horizons",
+            enabledExpansions: ["trade_routes"],
+            enabledVariants: ["quick_setup"],
+            nationLabels: ["Sun Coast", "River League", "Highland Pact"]
+          }
+        }}
+        setupConfig={{ ...config, options: { ...config.options, playerCount: 3, commonsSetId: "horizons", enabledExpansions: ["trade_routes"], enabledVariants: ["quick_setup"] } }}
+        statusMessage=""
+        onBack={() => undefined}
+        onRefresh={() => undefined}
+        onEditSetup={() => undefined}
+        onSelectNation={() => undefined}
+        onReady={() => undefined}
+        onStart={() => undefined}
+      />
+    );
+
+    expect(html).toContain("Current setup");
+    expect(html).toContain("3 players");
+    expect(html).toContain("Commons: horizons");
+    expect(html).toContain("Expansions: trade_routes");
+    expect(html).toContain("Variants: quick_setup");
+    expect(html).toContain("Nations: Sun Coast, River League, Highland Pact");
+  });
+
   it("renders lobby seats, nation controls, and ready actions", () => {
     const html = renderToStaticMarkup(
       <LobbyRoom

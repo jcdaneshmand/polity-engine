@@ -22,6 +22,10 @@ function selectedNationLabel(nationID: string | undefined, nations: Array<{ id: 
   return nations.find((nation) => nation.id === nationID)?.label ?? nationID;
 }
 
+function formatSummaryList(values: string[]): string {
+  return values.length ? values.join(", ") : "None";
+}
+
 export async function readyWithSelectedNation(args: {
   currentSelectedNationID: string | undefined;
   displayedNationID: string;
@@ -65,6 +69,19 @@ export default function LobbyRoom({
           </div>
         </div>
         {statusMessage ? <p className="online-games-status">{statusMessage}</p> : null}
+
+        <section className="setup-stage" aria-labelledby="lobby-setup-summary">
+          <h2 id="lobby-setup-summary">Current setup</h2>
+          <div className="online-card-grid">
+            <article className="online-card">
+              <strong>{lobby.playerCount} players</strong>
+              <span>Commons: {lobby.setupSummary.commonsSetId}</span>
+              <small>Expansions: {formatSummaryList(lobby.setupSummary.enabledExpansions)}</small>
+              <small>Variants: {formatSummaryList(lobby.setupSummary.enabledVariants)}</small>
+              <small>Nations: {formatSummaryList(lobby.setupSummary.nationLabels)}</small>
+            </article>
+          </div>
+        </section>
 
         {lobby.viewer.isHost ? (
           <section className="setup-stage" aria-labelledby="lobby-host-controls">

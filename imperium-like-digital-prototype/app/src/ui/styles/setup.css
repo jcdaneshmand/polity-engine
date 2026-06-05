@@ -2,8 +2,19 @@
   min-height: 100vh;
   box-sizing: border-box;
   padding: 18px;
+  --ui-selection: #f0c36d;
+  --ui-ready: #9fca7b;
+  --ui-info: #83bdd6;
+  --ui-blocked: #dc8a74;
   color: #f3ead8;
   background: linear-gradient(#2d2a28, #1f1d1b);
+}
+
+[data-theme="high-contrast"] .setup-screen {
+  --ui-selection: #ffd166;
+  --ui-ready: #8cff98;
+  --ui-info: #80d8ff;
+  --ui-blocked: #ff8a80;
 }
 
 .setup-panel {
@@ -78,14 +89,26 @@
 }
 
 .setup-help a {
-  color: #ffe0a3;
+  color: var(--ui-info);
 }
 
 .setup-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+  margin-top: 0;
+}
+
+.setup-stage {
+  display: grid;
+  gap: 10px;
   margin-top: 16px;
+}
+
+.setup-stage h2 {
+  margin: 0;
+  color: #f3ead8;
+  font-size: 1rem;
 }
 
 .setup-section {
@@ -129,7 +152,7 @@
 
 .segmented-control button.is-active,
 .primary-action {
-  border-color: #e6b86a;
+  border-color: var(--ui-selection);
   background: #6a5138;
 }
 
@@ -224,7 +247,7 @@
 }
 
 .private-data-ready.is-confirmed {
-  border-color: #7d9478;
+  border-color: var(--ui-ready);
 }
 
 .private-file-list {
@@ -253,8 +276,8 @@
   white-space: nowrap;
 }
 
-.private-file-status--loaded { border-color: #7d9478; }
-.private-file-status--error { border-color: #b56d5e; }
+.private-file-status--loaded { border-color: var(--ui-ready); }
+.private-file-status--error { border-color: var(--ui-blocked); }
 .private-file-status--skipped { border-color: #8b7a65; }
 
 .setup-attribution {
@@ -265,7 +288,7 @@
 }
 
 .setup-attribution a {
-  color: #ffe0a3;
+  color: var(--ui-info);
 }
 
 .about-screen {
@@ -364,6 +387,14 @@
     align-items: flex-start;
     flex-direction: column;
     gap: 2px;
+  }
+}
+
+@media (min-width: 900px) {
+  .setup-summary {
+    position: sticky;
+    top: 10px;
+    z-index: 2;
   }
 }
 .app-home-bar {

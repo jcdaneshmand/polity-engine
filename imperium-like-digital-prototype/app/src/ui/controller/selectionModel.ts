@@ -341,6 +341,19 @@ export function getMarketCardClickAction(G: any, ctx: any, cardId: string): { ac
   return undefined;
 }
 
+export type ActionIntent = "ready" | "blocked" | "choice" | "neutral";
+
+export function getActionIntent(action: any): ActionIntent {
+  if (!action.enabled) return "blocked";
+  if (String(action.action).startsWith("resolve") || String(action.action).startsWith("skip")) return "choice";
+  if (["play", "profit", "exhaust", "innovate", "revolt"].includes(action.action)) return "ready";
+  return "neutral";
+}
+
+export function getPrimaryBlockedReason(actions: any[]): string | undefined {
+  return actions.find((action) => !action.enabled && action.reason)?.reason;
+}
+
 export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx: any) {
   const actions: Array<{ label:string; action:string; enabled:boolean; reason?:string; group?: string; cardId?:string; hostCardId?: string; marketCardId?: string; choiceIndex?: number; suit?: string; source?: "market" | "deck" | "discard" | "exile"; recipientPlayerId?: string; recipientPlayerIds?: string[]; cardIds?: string[] }> = [];
   const pendingCleanupDiscard = G.pendingCleanupDiscardChoice;

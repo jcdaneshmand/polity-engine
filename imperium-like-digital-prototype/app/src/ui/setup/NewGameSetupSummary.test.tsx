@@ -12,5 +12,7 @@ describe("NewGameSetup summary", () => {
     expect(html).toContain("Commons");
     expect(html).toContain("Private Data");
     expect(html).toContain("Placeholder data");
+    expect(html).toContain("Session");
+    expect(html).toContain("Content");
   });
 });

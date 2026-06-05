@@ -22,6 +22,13 @@ describe("card inspection", () => {
     expect(html).toContain('class="zoom-button"');
   });
 
+  it("shows the main blocked reason near selected card detail", () => {
+    const html = renderToStaticMarkup(<CardDetailPanel card={card} blockedReason="No Action tokens available" />);
+
+    expect(html).toContain("detail-blocked-reason");
+    expect(html).toContain("No Action tokens available");
+  });
+
   it("renders fullscreen card inspection as an accessible dialog", () => {
     const html = renderToStaticMarkup(<CardInspectionModal card={card} onClose={() => undefined} />);
 
@@ -30,5 +37,7 @@ describe("card inspection", () => {
     expect(html).toContain("Harbor Archive");
     expect(html).toContain("Close");
     expect(html).toContain("card-inspection-modal");
+    expect(html).toContain("detail-grid");
+    expect(html).toContain("detail-effects");
   });
 });

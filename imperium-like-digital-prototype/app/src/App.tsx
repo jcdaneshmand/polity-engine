@@ -47,12 +47,12 @@ export default function App() {
 
   if (!session || !GameClient) {
     if (homeView === "private-data") {
-      return <PrivateCardEntry onBack={() => setHomeView("setup")} />;
+      return <div className="app-home" data-theme="default"><PrivateCardEntry onBack={() => setHomeView("setup")} /></div>;
     }
 
     if (homeView === "about") {
       return (
-        <div className="app-home">
+        <div className="app-home" data-theme="default">
           <div className="app-home-bar">
             <strong>Polity Engine</strong>
             <button type="button" onClick={() => setHomeView("setup")}>
@@ -65,7 +65,7 @@ export default function App() {
     }
 
     return (
-      <div className="app-home">
+      <div className="app-home" data-theme="default">
         <div className="app-home-bar">
           <strong>Polity Engine</strong>
           <button type="button" onClick={() => setHomeView("about")}>
@@ -81,7 +81,7 @@ export default function App() {
   }
 
   return (
-    <div className="game-shell">
+    <div className="game-shell" data-theme="default">
       <div className="game-shell-bar">
         <div>
           <strong>Polity Engine</strong>

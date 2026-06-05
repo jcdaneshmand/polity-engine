@@ -10,7 +10,7 @@ import { BotRow } from "./BotRow";
 import { ZoneDetailPanel } from "./ZoneDetailPanel";
 import { TurnStatusBar } from "./TurnStatusBar";
 import EndGameSummary from "./EndGameSummary";
-import { getActionHintsByCardId, getAvailableActionsForSelection, getMarketCardClickAction, getPendingUiState, getSelectedCard, type Selection } from "../controller/selectionModel";
+import { getActionHintsByCardId, getAvailableActionsForSelection, getMarketCardClickAction, getPendingUiState, getPrimaryBlockedReason, getSelectedCard, type Selection } from "../controller/selectionModel";
 import { CONTROLLER_HINTS } from "../controller/controllerHints";
 import { handleBoardKeyDown } from "../controller/keyboardControls";
 import { getBotPiles, getCurrentPlayer, getInspectableLookedCards, getInspectableSharedPile, getInspectableZone, getMarketCards, getOwnerVisibleZoneIds, getPlayerZoneLabels, getRecentLogEntries, getSharedPiles } from "./uiSelectors";
@@ -42,6 +42,7 @@ export default function BoardLayout({ G, ctx, moves, onCampaignProgress }: any &
   const lookedZone = getInspectableLookedCards(G, ctx.currentPlayer);
   const actions = useMemo(() => getAvailableActionsForSelection(selection, G, ctx), [selection, G, ctx]);
   const pending = getPendingUiState(G, ctx);
+  const primaryBlockedReason = getPrimaryBlockedReason(actions);
   const handActionHintsByCardId = useMemo(() => getActionHintsByCardId(actions, "hand"), [actions]);
   const marketActionHintsByCardId = useMemo(() => getActionHintsByCardId(actions, "market"), [actions]);
 
@@ -127,7 +128,7 @@ export default function BoardLayout({ G, ctx, moves, onCampaignProgress }: any &
     </div>
     <div className="right">
       {lookedZone ? <ZoneDetailPanel title={`Looked ${lookedZone.source}`} cardIds={lookedZone.cardIds} hidden={lookedZone.hidden} count={lookedZone.count} cardDb={G.cardDb ?? {}} /> : null}
-      {pending ? <div className="panel choice-banner is-blocking">
+      {pending ? <div className="panel choice-banner is-secondary">
         <div className="eyebrow">{pending.title}</div>
         <strong>{pending.detail}</strong>
       </div> : null}
@@ -140,6 +141,7 @@ export default function BoardLayout({ G, ctx, moves, onCampaignProgress }: any &
           : <CardDetailPanel
             card={visibleDetailCard}
             pinned={!!detailCardId}
+            blockedReason={selectedCard ? primaryBlockedReason : undefined}
             onUnpin={() => setDetailCardId(null)}
             onZoom={visibleDetailCard?.id ? () => setZoomCardId(visibleDetailCard.id) : undefined}
           />}

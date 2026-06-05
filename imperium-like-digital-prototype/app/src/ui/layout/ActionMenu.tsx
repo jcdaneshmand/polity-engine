@@ -1,3 +1,5 @@
+import { getActionIntent } from "../controller/selectionModel";
+
 type ActionItem = { kind: "action"; label: string; action: any };
 type GroupItem = { kind: "group"; label: string; actions: any[] };
 type SectionItem = { kind: "section"; label: string; items: Array<ActionItem | GroupItem> };
@@ -51,10 +53,25 @@ export function groupActionsForMenu(actions: any[]): MenuItem[] {
   return sections;
 }
 
+function actionSymbol(action: any): string {
+  if (String(action.action).startsWith("resolve")) return "OK";
+  if (String(action.action).startsWith("skip")) return "SKIP";
+  if (action.action === "play") return "PLAY";
+  if (action.action === "profit") return "+";
+  if (action.action === "view") return "VIEW";
+  if (action.action === "exhaust") return "EXH";
+  if (action.action === "endTurn") return "NEXT";
+  if (action.action === "cancel") return "X";
+  return "ACT";
+}
+
 export function ActionMenu({ actions, onAction }: { actions: any[]; onAction: (a:any)=>void }) {
   const menuItems = groupActionsForMenu(actions);
-  const renderButton = (a: any) => <button key={a.label} disabled={!a.enabled} title={a.reason || ""} onClick={()=>onAction(a)}>
-    <span>{a.label}</span>
+  const renderButton = (a: any) => <button key={a.label} className={`action-button action-button--${getActionIntent(a)}`} disabled={!a.enabled} title={a.reason || ""} onClick={()=>onAction(a)}>
+    <span className="action-button-main">
+      <span className="action-symbol" aria-hidden="true">{actionSymbol(a)}</span>
+      <span>{a.label}</span>
+    </span>
     {!a.enabled ? <small>{compactReason(a.reason) || "Unavailable"}</small> : null}
   </button>;
 

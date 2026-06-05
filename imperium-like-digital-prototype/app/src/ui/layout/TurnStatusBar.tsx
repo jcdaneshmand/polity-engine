@@ -7,6 +7,12 @@ export function TurnStatusBar({ G, ctx, player, pending }: { G: any; ctx: any; p
     <div>{G.currentTurnType ?? "activate"}</div>
     <div>Actions {player?.actionTokensAvailable ?? 0}/{player?.actionTokensBase ?? 0}</div>
     <div>Exhaust {player?.exhaustTokensAvailable ?? 0}/{player?.exhaustTokensBase ?? 0}</div>
-    <div className={pending ? "turn-status-pending" : ""}>{pending ? pending.title : "No pending choice"}</div>
+    {!pending ? <div>No pending choice</div> : null}
+    {pending ? (
+      <div className="current-task-strip">
+        <span className="eyebrow">{pending.title}</span>
+        <strong>{pending.detail}</strong>
+      </div>
+    ) : null}
   </div>;
 }

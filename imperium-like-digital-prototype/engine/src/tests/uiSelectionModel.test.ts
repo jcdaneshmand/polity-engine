@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { getActionHintsByCardId, getAvailableActionsForSelection, getMarketCardClickAction, getPendingUiState, getSelectedCard } from "../../../app/src/ui/controller/selectionModel";
+import { getActionHintsByCardId, getActionIntent, getAvailableActionsForSelection, getMarketCardClickAction, getPendingUiState, getPrimaryBlockedReason, getSelectedCard } from "../../../app/src/ui/controller/selectionModel";
 import { compactReason, groupActionsForMenu } from "../../../app/src/ui/layout/ActionMenu";
 import { formatLogMessage } from "../../../app/src/ui/layout/GameLogPanel";
 import { marketResourceTokens } from "../../../app/src/ui/layout/MarketRow";
@@ -70,10 +70,18 @@ describe("selection model", () => {
     expect(compactReason("Innovate requires starting from an Activate turn")).toBe("Needs Activate turn");
     expect(compactReason("Resolve the pending Development choice first")).toBe("Resolve Development first");
   });
+  it("classifies action emphasis and blocked reasons for UI display",()=> {
+    expect(getPrimaryBlockedReason([{ enabled: false, reason: "No Action tokens available" }])).toBe("No Action tokens available");
+    expect(getActionIntent({ action: "play", enabled: true })).toBe("ready");
+    expect(getActionIntent({ action: "resolveChoice", enabled: true })).toBe("choice");
+    expect(getActionIntent({ action: "endTurn", enabled: true })).toBe("neutral");
+    expect(getActionIntent({ action: "play", enabled: false })).toBe("blocked");
+  });
   it("summarizes pending choices for the board banner",()=> {
-    expect(getPendingUiState({...G,pendingAcquireChoice:{playerId:"0",sourceCardId:"picker",source:"market",cardIds:["m1"],destination:"hand"}},ctx)).toMatchObject({
+    expect(getPendingUiState({...G,pendingAcquireChoice:{playerId:"0",sourceCardId:"picker",source:"market",cardIds:["m1"],destination:"hand"}},ctx)).toEqual({
       title:"Pending Acquire",
-      detail:"Choose 1 card"
+      detail:"Choose 1 card",
+      playerId:"0"
     });
   });
   it("summarizes pending Gain/Take market card choices for the board banner",()=> {

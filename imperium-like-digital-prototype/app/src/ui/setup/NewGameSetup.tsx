@@ -238,115 +238,126 @@ export default function NewGameSetup({ onStart, onOpenCardEntry }: NewGameSetupP
           </div>
         </section>
 
-        <div className="setup-grid">
-          <fieldset className="setup-section">
-            <legend>Mode</legend>
-            <div className="segmented-control">
-              {modes.map((item) => (
-                <button key={item.id} className={mode === item.id ? "is-active" : ""} type="button" onClick={() => updateMode(item.id)}>
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          </fieldset>
+        <section className="setup-stage" aria-labelledby="setup-stage-session">
+          <h2 id="setup-stage-session">Session</h2>
+          <div className="setup-grid">
+            <fieldset className="setup-section">
+              <legend>Mode</legend>
+              <div className="segmented-control">
+                {modes.map((item) => (
+                  <button key={item.id} className={mode === item.id ? "is-active" : ""} type="button" onClick={() => updateMode(item.id)}>
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
 
-          <fieldset className="setup-section">
-            <legend>Players</legend>
-            <div className="segmented-control">
-              {[1, 2, 3, 4].map((count) => (
-                <button
-                  key={count}
-                  className={normalizedPlayerCount === count ? "is-active" : ""}
-                  type="button"
-                  disabled={mode !== "multiplayer" && count !== 1}
-                  onClick={() => setPlayerCount(count as 1 | 2 | 3 | 4)}
-                >
-                  {count}
-                </button>
-              ))}
-            </div>
-          </fieldset>
+            <fieldset className="setup-section">
+              <legend>Players</legend>
+              <div className="segmented-control">
+                {[1, 2, 3, 4].map((count) => (
+                  <button
+                    key={count}
+                    className={normalizedPlayerCount === count ? "is-active" : ""}
+                    type="button"
+                    disabled={mode !== "multiplayer" && count !== 1}
+                    onClick={() => setPlayerCount(count as 1 | 2 | 3 | 4)}
+                  >
+                    {count}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
 
-          {mode === "solo" ? (
-            <>
-              <label className="setup-section setup-field">
-                <span>Solo difficulty</span>
-                <select value={soloDifficulty} onChange={(event: { target: HTMLSelectElement }) => setSoloDifficulty(event.target.value as SoloDifficulty)}>
-                  {soloDifficulties.map((difficulty) => (
-                    <option key={difficulty.id} value={difficulty.id}>
-                      {difficulty.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="setup-section setup-field">
-                <span>Bot nation</span>
-                <select value={soloBotNationId} onChange={(event: { target: HTMLSelectElement }) => setSoloBotNationId(event.target.value)}>
-                  <option value="random">Random</option>
-                  {botNationOptions.map((nation) => (
-                    <option key={nation.id} value={nation.id}>
-                      {nation.label} - {nation.statusLabel}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </>
-          ) : null}
-
-          <label className="setup-section setup-field">
-            <span>Commons set</span>
-            <select value={commonsSetId} onChange={(event: { target: HTMLSelectElement }) => setCommonsSetId(event.target.value as CommonsSetId)}>
-              {commonsSets.map((commonsSet) => (
-                <option key={commonsSet.id} value={commonsSet.id}>
-                  {commonsSet.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <fieldset className="setup-section">
-            <legend>Expansions</legend>
-            <div className="toggle-list">
-              {expansions.map((expansion) => (
-                <label key={expansion.id}>
-                  <input type="checkbox" checked={enabledExpansions.includes(expansion.id)} onChange={() => updateExpansions(expansion.id)} />
-                  <span>{expansion.label}</span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
-
-          <fieldset className="setup-section setup-section--wide">
-            <legend>Variants</legend>
-            <div className="toggle-list toggle-list--grid">
-              {variants.map((variant) => (
-                <label key={variant.id}>
-                  <input type="checkbox" checked={enabledVariants.includes(variant.id)} onChange={() => setEnabledVariants((current) => toggleItem(current, variant.id))} />
-                  <span>{variant.label}</span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
-
-          <fieldset className="setup-section setup-section--wide">
-            <legend>Nations</legend>
-            <div className="nation-grid">
-              {activePlayerIds.map((playerId) => (
-                <label key={playerId} className="setup-field">
-                  <span>Player {playerId}</span>
-                  <select value={playerNationIds[playerId] ?? DEFAULT_NATION_ID} onChange={(event: { target: HTMLSelectElement }) => setPlayerNationIds((current) => ({ ...current, [playerId]: event.target.value }))}>
-                    {availableNations.map((nation) => (
-                      <option key={nation.id} value={nation.id}>
-                        {nation.label}
+            {mode === "solo" ? (
+              <>
+                <label className="setup-section setup-field">
+                  <span>Solo difficulty</span>
+                  <select value={soloDifficulty} onChange={(event: { target: HTMLSelectElement }) => setSoloDifficulty(event.target.value as SoloDifficulty)}>
+                    {soloDifficulties.map((difficulty) => (
+                      <option key={difficulty.id} value={difficulty.id}>
+                        {difficulty.label}
                       </option>
                     ))}
                   </select>
                 </label>
-              ))}
-            </div>
-          </fieldset>
 
+                <label className="setup-section setup-field">
+                  <span>Bot nation</span>
+                  <select value={soloBotNationId} onChange={(event: { target: HTMLSelectElement }) => setSoloBotNationId(event.target.value)}>
+                    <option value="random">Random</option>
+                    {botNationOptions.map((nation) => (
+                      <option key={nation.id} value={nation.id}>
+                        {nation.label} - {nation.statusLabel}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            ) : null}
+          </div>
+        </section>
+
+        <section className="setup-stage" aria-labelledby="setup-stage-content">
+          <h2 id="setup-stage-content">Content</h2>
+          <div className="setup-grid">
+            <label className="setup-section setup-field">
+              <span>Commons set</span>
+              <select value={commonsSetId} onChange={(event: { target: HTMLSelectElement }) => setCommonsSetId(event.target.value as CommonsSetId)}>
+                {commonsSets.map((commonsSet) => (
+                  <option key={commonsSet.id} value={commonsSet.id}>
+                    {commonsSet.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <fieldset className="setup-section">
+              <legend>Expansions</legend>
+              <div className="toggle-list">
+                {expansions.map((expansion) => (
+                  <label key={expansion.id}>
+                    <input type="checkbox" checked={enabledExpansions.includes(expansion.id)} onChange={() => updateExpansions(expansion.id)} />
+                    <span>{expansion.label}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+            <fieldset className="setup-section setup-section--wide">
+              <legend>Variants</legend>
+              <div className="toggle-list toggle-list--grid">
+                {variants.map((variant) => (
+                  <label key={variant.id}>
+                    <input type="checkbox" checked={enabledVariants.includes(variant.id)} onChange={() => setEnabledVariants((current) => toggleItem(current, variant.id))} />
+                    <span>{variant.label}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+            <fieldset className="setup-section setup-section--wide">
+              <legend>Nations</legend>
+              <div className="nation-grid">
+                {activePlayerIds.map((playerId) => (
+                  <label key={playerId} className="setup-field">
+                    <span>Player {playerId}</span>
+                    <select value={playerNationIds[playerId] ?? DEFAULT_NATION_ID} onChange={(event: { target: HTMLSelectElement }) => setPlayerNationIds((current) => ({ ...current, [playerId]: event.target.value }))}>
+                      {availableNations.map((nation) => (
+                        <option key={nation.id} value={nation.id}>
+                          {nation.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          </div>
+        </section>
+
+        <section className="setup-stage" aria-labelledby="setup-stage-data">
+          <h2 id="setup-stage-data">Private Data</h2>
           <fieldset className="setup-section setup-section--wide">
             <legend>Private Data</legend>
             <p className="setup-help">
@@ -388,7 +399,7 @@ export default function NewGameSetup({ onStart, onOpenCardEntry }: NewGameSetupP
               </div>
             ) : null}
           </fieldset>
-        </div>
+        </section>
         <p className="setup-attribution">
           Imperium: Classics, Imperium: Legends, and Imperium: Horizons are owned by Osprey Games. Visit the{" "}
           <a href="https://www.ospreypublishing.com/uk/discover/osprey-games/imperium/" target="_blank" rel="noreferrer">

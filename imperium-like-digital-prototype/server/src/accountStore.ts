@@ -1,0 +1,310 @@
+import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import type {
+  AccountPublicView,
+  AccountRecord,
+  AccountSessionRecord,
+  AccountStats,
+  AccountStoreSnapshot,
+  GameHistoryEntry,
+  GameHistoryStartInput,
+  GameResultInput,
+  GameVariant,
+  StatBucket
+} from "./accountTypes";
+
+type AccountStoreOptions = {
+  now?: () => string;
+  createID?: () => string;
+  createToken?: () => string;
+  createSalt?: () => string;
+  saltPassword?: (password: string, salt: string) => string;
+  snapshot?: AccountStoreSnapshot;
+  storageFile?: string;
+};
+
+type AccountCreateInput = {
+  email: string;
+  username: string;
+  password: string;
+};
+
+type AccountFailureReason =
+  | "email_taken"
+  | "username_taken"
+  | "invalid_account"
+  | "invalid_credentials"
+  | "invalid_session"
+  | "account_not_found"
+  | "history_not_found";
+
+function key(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function tokenHash(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function defaultSaltPassword(password: string, salt: string): string {
+  return scryptSync(password, salt, 64).toString("hex");
+}
+
+function defaultStats(): AccountStats {
+  return {
+    solo: {
+      standard: defaultBucket(),
+      campaign: { ...defaultBucket(), campaignsStarted: 0, campaignsCompleted: 0 },
+      practice: defaultBucket()
+    },
+    online: defaultBucket(),
+    byNation: {}
+  };
+}
+
+function defaultBucket(): StatBucket {
+  return {
+    gamesPlayed: 0,
+    wins: 0,
+    losses: 0,
+    unfinished: 0
+  };
+}
+
+function publicAccount(account: AccountRecord): AccountPublicView {
+  return {
+    id: account.id,
+    email: account.email,
+    username: account.username,
+    role: account.role,
+    createdAt: account.createdAt,
+    updatedAt: account.updatedAt,
+    stats: account.stats
+  };
+}
+
+function updateBucket(bucket: StatBucket, outcome: "win" | "loss" | "unfinished", playedAt: string): void {
+  bucket.gamesPlayed += 1;
+  if (outcome === "win") bucket.wins += 1;
+  else if (outcome === "loss") bucket.losses += 1;
+  else bucket.unfinished += 1;
+  bucket.lastPlayedAt = playedAt;
+}
+
+function statOutcome(outcome: GameResultInput["outcome"]): "win" | "loss" | "unfinished" {
+  return outcome === "win" || outcome === "loss" ? outcome : "unfinished";
+}
+
+function soloVariantBucket(stats: AccountStats, variant: GameVariant): StatBucket {
+  if (variant === "campaign") return stats.solo.campaign;
+  if (variant === "practice") return stats.solo.practice;
+  return stats.solo.standard;
+}
+
+function nationBucket(stats: AccountStats, nationID: string): AccountStats["byNation"][string] {
+  stats.byNation[nationID] ??= {
+    ...defaultBucket(),
+    soloGamesPlayed: 0,
+    onlineGamesPlayed: 0,
+    campaignGamesPlayed: 0,
+    practiceGamesPlayed: 0
+  };
+  return stats.byNation[nationID];
+}
+
+function safePasswordMatch(left: string, right: string): boolean {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+export function createAccountStore(options: AccountStoreOptions = {}) {
+  const now = options.now ?? (() => new Date().toISOString());
+  const createID = options.createID ?? (() => randomUUID());
+  const createToken = options.createToken ?? (() => randomBytes(32).toString("base64url"));
+  const createSalt = options.createSalt ?? (() => randomBytes(16).toString("hex"));
+  const saltPassword = options.saltPassword ?? defaultSaltPassword;
+  const loadedSnapshot = options.snapshot ?? loadSnapshot(options.storageFile);
+  const accounts = new Map<string, AccountRecord>((loadedSnapshot?.accounts ?? []).map((account) => [account.id, account]));
+  const sessions = new Map<string, AccountSessionRecord>((loadedSnapshot?.sessions ?? []).map((session) => [session.tokenHash, session]));
+
+  function snapshot(): AccountStoreSnapshot {
+    return {
+      accounts: Array.from(accounts.values()),
+      sessions: Array.from(sessions.values())
+    };
+  }
+
+  function persist(): void {
+    if (!options.storageFile) return;
+    mkdirSync(dirname(options.storageFile), { recursive: true });
+    writeFileSync(options.storageFile, JSON.stringify(snapshot(), null, 2));
+  }
+
+  function findByEmail(email: string): AccountRecord | undefined {
+    const emailKey = key(email);
+    return Array.from(accounts.values()).find((account) => account.emailKey === emailKey);
+  }
+
+  function findByUsername(username: string): AccountRecord | undefined {
+    const usernameKey = key(username);
+    return Array.from(accounts.values()).find((account) => account.usernameKey === usernameKey);
+  }
+
+  function sessionForAccount(account: AccountRecord): { account: AccountPublicView; token: string } {
+    const token = createToken();
+    const timestamp = now();
+    sessions.set(tokenHash(token), {
+      tokenHash: tokenHash(token),
+      accountID: account.id,
+      createdAt: timestamp,
+      lastSeenAt: timestamp
+    });
+    persist();
+    return { account: publicAccount(account), token };
+  }
+
+  function countResult(account: AccountRecord, entry: GameHistoryEntry, result: GameResultInput, timestamp: string): void {
+    if (entry.countedAt) return;
+    const outcome = statOutcome(result.outcome);
+    if (entry.scope === "online") {
+      updateBucket(account.stats.online, outcome, timestamp);
+    } else {
+      const bucket = soloVariantBucket(account.stats, entry.variant);
+      updateBucket(bucket, outcome, timestamp);
+      if (entry.variant === "campaign") {
+        account.stats.solo.campaign.campaignsStarted += 1;
+        if (result.campaignCompleted) account.stats.solo.campaign.campaignsCompleted += 1;
+        account.stats.solo.campaign.bestRecord ??= `${account.stats.solo.campaign.wins}-${account.stats.solo.campaign.losses}`;
+      }
+      if (entry.variant === "practice" && result.practiceScore !== undefined) {
+        account.stats.solo.practice.bestScore = Math.max(account.stats.solo.practice.bestScore ?? result.practiceScore, result.practiceScore);
+      }
+    }
+    if (entry.nationID) {
+      const bucket = nationBucket(account.stats, entry.nationID);
+      updateBucket(bucket, outcome, timestamp);
+      if (entry.scope === "online") bucket.onlineGamesPlayed += 1;
+      else bucket.soloGamesPlayed += 1;
+      if (entry.variant === "campaign") bucket.campaignGamesPlayed += 1;
+      if (entry.variant === "practice") bucket.practiceGamesPlayed += 1;
+    }
+    entry.countedAt = timestamp;
+  }
+
+  return {
+    createAccount(input: AccountCreateInput): { ok: true; account: AccountPublicView; token: string } | { ok: false; reason: AccountFailureReason } {
+      const email = input.email.trim().toLowerCase();
+      const username = input.username.trim();
+      const password = input.password;
+      if (!email || !username || password.length < 8) return { ok: false, reason: "invalid_account" };
+      if (findByEmail(email)) return { ok: false, reason: "email_taken" };
+      if (findByUsername(username)) return { ok: false, reason: "username_taken" };
+      const timestamp = now();
+      const salt = createSalt();
+      const account: AccountRecord = {
+        id: createID(),
+        email,
+        username,
+        emailKey: key(email),
+        usernameKey: key(username),
+        passwordSalt: salt,
+        passwordHash: saltPassword(password, salt),
+        role: accounts.size === 0 ? "admin" : "player",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        stats: defaultStats(),
+        history: []
+      };
+      accounts.set(account.id, account);
+      return { ok: true, ...sessionForAccount(account) };
+    },
+
+    signIn(input: { login: string; password: string }): { ok: true; account: AccountPublicView; token: string } | { ok: false; reason: AccountFailureReason } {
+      const account = findByEmail(input.login) ?? findByUsername(input.login);
+      if (!account) return { ok: false, reason: "invalid_credentials" };
+      const candidate = saltPassword(input.password, account.passwordSalt);
+      if (!safePasswordMatch(candidate, account.passwordHash)) return { ok: false, reason: "invalid_credentials" };
+      return { ok: true, ...sessionForAccount(account) };
+    },
+
+    signOut(token: string): { ok: true } {
+      sessions.delete(tokenHash(token));
+      persist();
+      return { ok: true };
+    },
+
+    resolveSession(token: string): { ok: true; account: AccountPublicView } | { ok: false; reason: AccountFailureReason } {
+      const session = sessions.get(tokenHash(token));
+      if (!session) return { ok: false, reason: "invalid_session" };
+      const account = accounts.get(session.accountID);
+      if (!account) return { ok: false, reason: "account_not_found" };
+      session.lastSeenAt = now();
+      persist();
+      return { ok: true, account: publicAccount(account) };
+    },
+
+    getAccount(accountID: string): AccountPublicView | undefined {
+      const account = accounts.get(accountID);
+      return account ? publicAccount(account) : undefined;
+    },
+
+    listHistory(accountID: string): { ok: true; history: GameHistoryEntry[]; stats: AccountStats } | { ok: false; reason: AccountFailureReason } {
+      const account = accounts.get(accountID);
+      if (!account) return { ok: false, reason: "account_not_found" };
+      return { ok: true, history: [...account.history], stats: account.stats };
+    },
+
+    recordGameStart(accountID: string, input: GameHistoryStartInput): { ok: true; entry: GameHistoryEntry } | { ok: false; reason: AccountFailureReason } {
+      const account = accounts.get(accountID);
+      if (!account) return { ok: false, reason: "account_not_found" };
+      const existing = account.history.find((entry) => entry.id === input.id);
+      if (existing) return { ok: true, entry: existing };
+      const timestamp = input.startedAt ?? now();
+      const entry: GameHistoryEntry = {
+        ...input,
+        accountID,
+        startedAt: timestamp,
+        updatedAt: timestamp
+      };
+      account.history.push(entry);
+      account.updatedAt = timestamp;
+      persist();
+      return { ok: true, entry };
+    },
+
+    recordGameResult(accountID: string, input: GameResultInput): { ok: true; entry: GameHistoryEntry; stats: AccountStats } | { ok: false; reason: AccountFailureReason } {
+      const account = accounts.get(accountID);
+      if (!account) return { ok: false, reason: "account_not_found" };
+      const entry = account.history.find((candidate) => candidate.id === input.id);
+      if (!entry) return { ok: false, reason: "history_not_found" };
+      const timestamp = now();
+      Object.assign(entry, {
+        ...input,
+        status: "completed" as const,
+        updatedAt: timestamp,
+        endedAt: entry.endedAt ?? timestamp
+      });
+      countResult(account, entry, input, timestamp);
+      account.updatedAt = timestamp;
+      persist();
+      return { ok: true, entry, stats: account.stats };
+    },
+
+    toPublicAccount: publicAccount,
+
+    snapshot
+  };
+}
+
+export type AccountStore = ReturnType<typeof createAccountStore>;
+
+function loadSnapshot(storageFile: string | undefined): AccountStoreSnapshot | undefined {
+  if (!storageFile || !existsSync(storageFile)) return undefined;
+  const parsed = JSON.parse(readFileSync(storageFile, "utf8")) as AccountStoreSnapshot;
+  return {
+    accounts: Array.isArray(parsed.accounts) ? parsed.accounts : [],
+    sessions: Array.isArray(parsed.sessions) ? parsed.sessions : []
+  };
+}

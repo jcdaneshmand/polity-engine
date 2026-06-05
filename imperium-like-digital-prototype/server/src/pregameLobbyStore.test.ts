@@ -112,6 +112,22 @@ describe("pregame lobby store", () => {
     expect(store.getLobbyForCredentials(host.lobbyID, host.lobbyCredentials)?.status).toBe("locked");
   });
 
+  it("closes a lobby immediately when the last occupied seat leaves", () => {
+    const store = createPregameLobbyStore({
+      now: () => "2026-06-05T10:00:00.000Z",
+      createID: () => "id",
+      createCredential: () => "cred"
+    });
+    const host = store.createLobby({ playerCount: 2, setupData: setupData(), privateDataFingerprint: "placeholder", hostName: "Host" });
+    expect(store.postLobbyChat({ lobbyID: host.lobbyID, lobbyCredentials: host.lobbyCredentials, text: "Closing up." }).ok).toBe(true);
+
+    expect(store.leaveLobby({ lobbyID: host.lobbyID, lobbyCredentials: host.lobbyCredentials })).toEqual({ ok: true });
+
+    expect(store.listLobbies()).toEqual([]);
+    expect(store.getLobbyForCredentials(host.lobbyID, host.lobbyCredentials)).toBeUndefined();
+    expect(store.listLobbyChat({ lobbyID: host.lobbyID, lobbyCredentials: host.lobbyCredentials })).toEqual({ ok: false, reason: "lobby_not_found" });
+  });
+
   it("deletes empty unstarted lobbies after the cleanup grace period but keeps started lobbies", () => {
     let nowMs = Date.parse("2026-06-05T10:00:00.000Z");
     let id = 0;
@@ -119,18 +135,20 @@ describe("pregame lobby store", () => {
       now: () => new Date(nowMs).toISOString(),
       createID: () => `id-${id += 1}`,
       createCredential: () => `cred-${id += 1}`,
-      cleanupGraceMs: 10 * 60 * 1000
+      cleanupGraceMs: 10 * 60 * 1000,
+      playerStaleMs: 15_000
     });
     const abandoned = store.createLobby({ playerCount: 1, setupData: setupData(1), privateDataFingerprint: "placeholder", hostName: "Host" });
     const started = store.createLobby({ playerCount: 1, setupData: setupData(1), privateDataFingerprint: "placeholder", hostName: "Started" });
 
-    expect(store.leaveLobby({ lobbyID: abandoned.lobbyID, lobbyCredentials: abandoned.lobbyCredentials }).ok).toBe(true);
     store.markStarted({
       lobbyID: started.lobbyID,
       matchID: "match-1",
       playerCredentialsBySeat: { "0": "player-token" }
     });
 
+    nowMs += 20_000;
+    expect(store.listLobbies()).toEqual([expect.objectContaining({ lobbyID: abandoned.lobbyID, occupiedSeats: [] })]);
     nowMs += 9 * 60 * 1000;
     expect(store.cleanupEmptyLobbies()).toEqual([]);
     nowMs += 2 * 60 * 1000;

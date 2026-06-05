@@ -1,6 +1,8 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PrototypeGame } from "../../engine/src/game/game";
+import { createAccountStore } from "./accountStore";
+import { createAccountMiddleware } from "./accounts";
 import { getBoardgameServerPackage } from "./boardgameServer";
 import { createLobbyStore } from "./lobbyStore";
 import { createBoardgameHttpApi, createPolityLobbyMiddleware } from "./polityLobby";
@@ -13,6 +15,7 @@ const config = buildServerConfig(process.env);
 const currentDir = dirname(fileURLToPath(import.meta.url));
 const { FlatFile, Server, SocketIO } = getBoardgameServerPackage();
 const db = config.storageDir ? new FlatFile({ dir: config.storageDir }) : undefined;
+const accountStore = createAccountStore({ storageFile: config.accountStorageFile });
 const lobbyStore = createLobbyStore();
 const pregameLobbyStore = createPregameLobbyStore();
 const boardgameApi = createBoardgameHttpApi(`http://127.0.0.1:${config.port}`);
@@ -24,10 +27,12 @@ const server = Server({
   ...(db ? { db } : {})
 });
 
+server.app.use(createAccountMiddleware({ store: accountStore }));
 server.app.use(createPregameLobbyMiddleware({
   store: pregameLobbyStore,
   boardgameApi,
-  matchStore: lobbyStore
+  matchStore: lobbyStore,
+  accountStore
 }));
 server.app.use(createPolityLobbyMiddleware({
   store: lobbyStore,

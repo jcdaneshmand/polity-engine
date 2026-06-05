@@ -4,6 +4,7 @@ export type ServerConfig = {
   port: number;
   origins: Array<string | RegExp>;
   storageDir?: string;
+  accountStorageFile?: string;
 };
 
 const LOCALHOST_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
@@ -26,9 +27,11 @@ function parseOrigins(value: string | undefined): Array<string | RegExp> {
 }
 
 export function buildServerConfig(env: ServerEnvironment): ServerConfig {
+  const storageDir = env.POLITY_STORAGE_PATH?.trim() || undefined;
   return {
     port: parsePort(env.POLITY_SERVER_PORT),
     origins: parseOrigins(env.POLITY_SERVER_ORIGIN),
-    storageDir: env.POLITY_STORAGE_PATH?.trim() || undefined
+    storageDir,
+    accountStorageFile: storageDir ? `${storageDir.replace(/[\\/]+$/, "")}/accounts.json` : undefined
   };
 }

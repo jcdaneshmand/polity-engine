@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createAccountStore } from "./accountStore";
 import { createLobbyStore } from "./lobbyStore";
 import { createPregameLobbyMiddleware } from "./pregameLobby";
 import { createPregameLobbyStore } from "./pregameLobbyStore";
@@ -6,13 +7,24 @@ import { createPregameLobbyStore } from "./pregameLobbyStore";
 type TestContext = {
   method: string;
   path: string;
+  headers?: Record<string, string>;
   request: { body?: unknown };
   status?: number;
   body?: unknown;
 };
 
-function context(method: string, path: string, body?: unknown): TestContext {
-  return { method, path, request: { body } };
+function context(method: string, path: string, body?: unknown, token?: string): TestContext {
+  return { method, path, headers: token ? { authorization: `Bearer ${token}` } : {}, request: { body } };
+}
+
+function accountStore() {
+  let id = 0;
+  return createAccountStore({
+    now: () => "2026-06-05T10:00:00.000Z",
+    createID: () => `account-${id += 1}`,
+    createToken: () => `token-${id += 1}`,
+    saltPassword: (password, salt) => `hash:${salt}:${password}`
+  });
 }
 
 function setupData(playerCount = 2) {
@@ -191,8 +203,12 @@ describe("pregame lobby middleware", () => {
 
   it("serves lounge and lobby chat over HTTP", async () => {
     const store = createPregameLobbyStore({ now: () => "2026-06-05T10:00:00.000Z", createID: () => "id", createCredential: () => "cred" });
+    const accounts = accountStore();
+    const created = accounts.createAccount({ email: "jonah@example.com", username: "Jonah", password: "secret123" });
+    if (!created.ok) throw new Error("account create failed");
     const middleware = createPregameLobbyMiddleware({
       store,
+      accountStore: accounts,
       boardgameApi: {
         createMatch: async () => ({ matchID: "match-1" }),
         joinMatch: async () => ({ playerCredentials: "player-token" })
@@ -201,7 +217,12 @@ describe("pregame lobby middleware", () => {
     const create = context("POST", "/polity/lobby/rooms", { playerCount: 2, setupData: setupData(), privateDataFingerprint: "placeholder", hostName: "Host" });
     await middleware(create, async () => undefined);
 
-    const loungeSend = context("POST", "/polity/lobby/chat", { author: "Jonah", text: "Looking for a table." });
+    const guestLoungeSend = context("POST", "/polity/lobby/chat", { author: "Guest", text: "Looking for a table." });
+    await middleware(guestLoungeSend, async () => undefined);
+    expect(guestLoungeSend.status).toBe(401);
+    expect(guestLoungeSend.body).toEqual({ error: "missing_session" });
+
+    const loungeSend = context("POST", "/polity/lobby/chat", { author: "Guest", text: "Looking for a table." }, created.token);
     await middleware(loungeSend, async () => undefined);
     expect(loungeSend.body).toEqual({ message: expect.objectContaining({ author: "Jonah", text: "Looking for a table." }) });
 
@@ -209,13 +230,18 @@ describe("pregame lobby middleware", () => {
     await middleware(loungeList, async () => undefined);
     expect(loungeList.body).toEqual({ messages: [expect.objectContaining({ author: "Jonah" })] });
 
-    const lobbySend = context("POST", "/polity/lobby/rooms/id/chat/send", { lobbyCredentials: "cred", text: "Seat one checking in." });
+    const guestLobbySend = context("POST", "/polity/lobby/rooms/id/chat/send", { lobbyCredentials: "cred", text: "Seat one checking in." });
+    await middleware(guestLobbySend, async () => undefined);
+    expect(guestLobbySend.status).toBe(401);
+    expect(guestLobbySend.body).toEqual({ error: "missing_session" });
+
+    const lobbySend = context("POST", "/polity/lobby/rooms/id/chat/send", { lobbyCredentials: "cred", text: "Seat one checking in." }, created.token);
     await middleware(lobbySend, async () => undefined);
-    expect(lobbySend.body).toEqual({ message: expect.objectContaining({ author: "Host", text: "Seat one checking in." }) });
+    expect(lobbySend.body).toEqual({ message: expect.objectContaining({ author: "Jonah", text: "Seat one checking in." }) });
 
     const lobbyList = context("POST", "/polity/lobby/rooms/id/chat", { lobbyCredentials: "cred" });
     await middleware(lobbyList, async () => undefined);
-    expect(lobbyList.body).toEqual({ messages: [expect.objectContaining({ author: "Host" })] });
+    expect(lobbyList.body).toEqual({ messages: [expect.objectContaining({ author: "Jonah" })] });
   });
 
   it("records lobby heartbeats", async () => {
@@ -237,9 +263,14 @@ describe("pregame lobby middleware", () => {
   it("lets admin clear pregame lobbies and listed matches", async () => {
     const store = createPregameLobbyStore({ now: () => "2026-06-05T10:00:00.000Z", createID: () => "id", createCredential: () => "cred" });
     const matchStore = createLobbyStore({ now: () => "2026-06-05T10:00:00.000Z" });
+    const accounts = accountStore();
+    const admin = accounts.createAccount({ email: "admin@example.com", username: "Admin", password: "secret123" });
+    const player = accounts.createAccount({ email: "player@example.com", username: "Player", password: "secret123" });
+    if (!admin.ok || !player.ok) throw new Error("account create failed");
     const middleware = createPregameLobbyMiddleware({
       store,
       matchStore,
+      accountStore: accounts,
       boardgameApi: {
         createMatch: async () => ({ matchID: "match-1" }),
         joinMatch: async () => ({ playerCredentials: "player-token" })
@@ -248,7 +279,17 @@ describe("pregame lobby middleware", () => {
     await middleware(context("POST", "/polity/lobby/rooms", { playerCount: 2, setupData: setupData(), privateDataFingerprint: "placeholder", hostName: "Host" }), async () => undefined);
     matchStore.createMatchMetadata({ matchID: "match-1", roomName: "Started", playerCount: 2, setupData: setupData(), privateDataFingerprint: "placeholder" });
 
-    const clear = context("POST", "/polity/lobby/admin/clear", {});
+    const guestClear = context("POST", "/polity/lobby/admin/clear", {});
+    await middleware(guestClear, async () => undefined);
+    expect(guestClear.status).toBe(401);
+    expect(guestClear.body).toEqual({ error: "missing_session" });
+
+    const playerClear = context("POST", "/polity/lobby/admin/clear", {}, player.token);
+    await middleware(playerClear, async () => undefined);
+    expect(playerClear.status).toBe(403);
+    expect(playerClear.body).toEqual({ error: "not_admin" });
+
+    const clear = context("POST", "/polity/lobby/admin/clear", {}, admin.token);
     await middleware(clear, async () => undefined);
 
     expect(clear.body).toEqual({ ok: true, lobbiesCleared: 1, matchesCleared: 1 });

@@ -1,3 +1,5 @@
+import type { AccountPublicView, AccountStats } from "./accountSession";
+
 export const ONLINE_SESSION_STORAGE_KEY = "polity-engine.onlineSession.v1";
 
 export type OnlineStartedSessionRecord = {
@@ -96,6 +98,61 @@ export type LobbyRoomDetails = ListedLobby & {
   playerCredentials?: string;
 };
 
+export type AccountGameHistoryEntry = {
+  id: string;
+  accountID: string;
+  scope: "solo" | "online";
+  variant: "standard" | "campaign" | "practice" | "multiplayer";
+  status: "started" | "completed" | "abandoned";
+  outcome: "win" | "loss" | "unfinished" | "unknown";
+  sessionID?: string;
+  matchID?: string;
+  roomName?: string;
+  playerID?: string;
+  playerCount?: number;
+  nationID?: string;
+  nationName?: string;
+  opponentNationIDs?: string[];
+  opponentNationNames?: string[];
+  winnerID?: string;
+  winnerNationID?: string;
+  reason?: string;
+  scores?: Record<string, number>;
+  tieBreakScores?: Record<string, number>;
+  roundsPlayed?: number;
+  finalResources?: Record<string, number>;
+  finalDeckSize?: number;
+  finalCardsInPlay?: number;
+  finalUnrest?: number;
+  finalFame?: number;
+  rawSummaryStats?: Record<string, unknown>;
+  campaignCompleted?: boolean;
+  practiceScore?: number;
+  startedAt: string;
+  updatedAt: string;
+  endedAt?: string;
+};
+
+export type AccountHistoryStartInput = Omit<AccountGameHistoryEntry, "accountID" | "startedAt" | "updatedAt"> & { startedAt?: string };
+export type AccountGameResultInput = {
+  id: string;
+  outcome: "win" | "loss" | "unfinished";
+  winnerID?: string;
+  winnerNationID?: string;
+  reason?: string;
+  scores?: Record<string, number>;
+  tieBreakScores?: Record<string, number>;
+  roundsPlayed?: number;
+  finalResources?: Record<string, number>;
+  finalDeckSize?: number;
+  finalCardsInPlay?: number;
+  finalUnrest?: number;
+  finalFame?: number;
+  rawSummaryStats?: Record<string, unknown>;
+  campaignCompleted?: boolean;
+  practiceScore?: number;
+};
+
 function isOnlineSessionRecord(value: unknown): value is OnlineSessionRecord {
   if (!value || typeof value !== "object") return false;
   const record = value as OnlineSessionRecord;
@@ -181,24 +238,63 @@ export function computePrivateDataFingerprint(privateData: unknown): string {
   return `private:${fnv1a(JSON.stringify(canonicalize(privateData)))}`;
 }
 
-async function postLobbyJSON<T>(url: string, body: unknown, fetcher: Fetcher): Promise<T> {
+function requestHeaders(accountToken?: string): Record<string, string> {
+  return {
+    "content-type": "application/json",
+    ...(accountToken ? { authorization: `Bearer ${accountToken}` } : {})
+  };
+}
+
+async function postLobbyJSON<T>(url: string, body: unknown, fetcher: Fetcher, accountToken?: string): Promise<T> {
   const response = await fetcher(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: requestHeaders(accountToken),
     body: JSON.stringify(body)
   });
   if (!response.ok) {
-    throw new Error(`Lobby request failed (${response.status})`);
+    throw new Error(await lobbyErrorMessage(response));
   }
   return await parseLobbyJSON<T>(response);
 }
 
-async function getLobbyJSON<T>(url: string, fetcher: Fetcher): Promise<T> {
-  const response = await fetcher(url);
+async function getLobbyJSON<T>(url: string, fetcher: Fetcher, accountToken?: string): Promise<T> {
+  const response = await fetcher(url, accountToken ? { headers: { authorization: `Bearer ${accountToken}` } } : undefined);
   if (!response.ok) {
-    throw new Error(`Lobby request failed (${response.status})`);
+    throw new Error(await lobbyErrorMessage(response));
   }
   return await parseLobbyJSON<T>(response);
+}
+
+function formatLobbyError(error: string): string {
+  const messages: Record<string, string> = {
+    invalid_request: "Lobby request was invalid.",
+    lobby_not_found: "Lobby not found.",
+    match_not_found: "Match not found.",
+    invalid_credentials: "Lobby credentials are no longer valid.",
+    wrong_password: "Password is incorrect.",
+    private_data_mismatch: "Private data does not match this room.",
+    invalid_chat: "Chat message is empty or too long.",
+    missing_session: "Sign in to chat.",
+    invalid_session: "Your sign-in session is no longer valid.",
+    account_unavailable: "Accounts are not available from this server.",
+    not_admin: "Only admins can do that."
+  };
+  return messages[error] ?? error.replace(/_/g, " ");
+}
+
+async function lobbyErrorMessage(response: Response): Promise<string> {
+  const fallback = `Lobby request failed (${response.status})`;
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.toLowerCase().includes("application/json")) return fallback;
+  try {
+    const body = await response.json() as unknown;
+    if (body && typeof body === "object" && typeof (body as { error?: unknown }).error === "string") {
+      return formatLobbyError((body as { error: string }).error);
+    }
+  } catch {
+    return fallback;
+  }
+  return fallback;
 }
 
 async function parseLobbyJSON<T>(response: Response): Promise<T> {
@@ -253,6 +349,65 @@ export async function listOnlineMatches(args: { serverURL: string; fetcher?: Fet
   return sortListedMatches(result.matches);
 }
 
+export async function registerAccount(args: { serverURL: string; email: string; username: string; password: string; fetcher?: Fetcher }): Promise<{ account: AccountPublicView; token: string }> {
+  return postLobbyJSON<{ account: AccountPublicView; token: string }>(
+    lobbyURL(args.serverURL, "/polity/accounts/register"),
+    { email: args.email, username: args.username, password: args.password },
+    args.fetcher ?? fetch
+  );
+}
+
+export async function signInAccount(args: { serverURL: string; login: string; password: string; fetcher?: Fetcher }): Promise<{ account: AccountPublicView; token: string }> {
+  return postLobbyJSON<{ account: AccountPublicView; token: string }>(
+    lobbyURL(args.serverURL, "/polity/accounts/sign-in"),
+    { login: args.login, password: args.password },
+    args.fetcher ?? fetch
+  );
+}
+
+export async function signOutAccount(args: { serverURL: string; accountToken: string; fetcher?: Fetcher }): Promise<{ ok: true }> {
+  return postLobbyJSON<{ ok: true }>(
+    lobbyURL(args.serverURL, "/polity/accounts/sign-out"),
+    {},
+    args.fetcher ?? fetch,
+    args.accountToken
+  );
+}
+
+export async function loadCurrentAccount(args: { serverURL: string; accountToken: string; fetcher?: Fetcher }): Promise<{ account: AccountPublicView }> {
+  return getLobbyJSON<{ account: AccountPublicView }>(
+    lobbyURL(args.serverURL, "/polity/accounts/me"),
+    args.fetcher ?? fetch,
+    args.accountToken
+  );
+}
+
+export async function listAccountHistory(args: { serverURL: string; accountToken: string; fetcher?: Fetcher }): Promise<{ history: AccountGameHistoryEntry[]; stats: AccountStats }> {
+  return getLobbyJSON<{ history: AccountGameHistoryEntry[]; stats: AccountStats }>(
+    lobbyURL(args.serverURL, "/polity/accounts/history"),
+    args.fetcher ?? fetch,
+    args.accountToken
+  );
+}
+
+export async function startAccountGameHistory(args: { serverURL: string; accountToken: string; entry: AccountHistoryStartInput; fetcher?: Fetcher }): Promise<{ entry: AccountGameHistoryEntry }> {
+  return postLobbyJSON<{ entry: AccountGameHistoryEntry }>(
+    lobbyURL(args.serverURL, "/polity/accounts/history/start"),
+    args.entry,
+    args.fetcher ?? fetch,
+    args.accountToken
+  );
+}
+
+export async function recordAccountGameResult(args: { serverURL: string; accountToken: string; result: AccountGameResultInput; fetcher?: Fetcher }): Promise<{ entry: AccountGameHistoryEntry; stats: AccountStats }> {
+  return postLobbyJSON<{ entry: AccountGameHistoryEntry; stats: AccountStats }>(
+    lobbyURL(args.serverURL, "/polity/accounts/history/result"),
+    args.result,
+    args.fetcher ?? fetch,
+    args.accountToken
+  );
+}
+
 export async function listLobbyRooms(args: { serverURL: string; fetcher?: Fetcher }): Promise<ListedLobby[]> {
   const result = await getLobbyJSON<{ lobbies: ListedLobby[] }>(
     lobbyURL(args.serverURL, "/polity/lobby/rooms"),
@@ -269,11 +424,12 @@ export async function listOnlineChat(args: { serverURL: string; fetcher?: Fetche
   return result.messages;
 }
 
-export async function sendOnlineChat(args: { serverURL: string; author: string; text: string; fetcher?: Fetcher }): Promise<{ message: ChatMessage; messages?: ChatMessage[] }> {
+export async function sendOnlineChat(args: { serverURL: string; author: string; text: string; accountToken?: string; fetcher?: Fetcher }): Promise<{ message: ChatMessage; messages?: ChatMessage[] }> {
   return postLobbyJSON<{ message: ChatMessage; messages?: ChatMessage[] }>(
     lobbyURL(args.serverURL, "/polity/lobby/chat"),
     { author: args.author, text: args.text },
-    args.fetcher ?? fetch
+    args.fetcher ?? fetch,
+    args.accountToken
   );
 }
 
@@ -286,11 +442,12 @@ export async function listLobbyChat(args: { serverURL: string; lobbyID: string; 
   return result.messages;
 }
 
-export async function sendLobbyChat(args: { serverURL: string; lobbyID: string; lobbyCredentials: string; text: string; fetcher?: Fetcher }): Promise<{ message: ChatMessage; messages?: ChatMessage[] }> {
+export async function sendLobbyChat(args: { serverURL: string; lobbyID: string; lobbyCredentials: string; text: string; accountToken?: string; fetcher?: Fetcher }): Promise<{ message: ChatMessage; messages?: ChatMessage[] }> {
   return postLobbyJSON<{ message: ChatMessage; messages?: ChatMessage[] }>(
     lobbyURL(args.serverURL, `/polity/lobby/rooms/${encodeURIComponent(args.lobbyID)}/chat/send`),
     { lobbyCredentials: args.lobbyCredentials, text: args.text },
-    args.fetcher ?? fetch
+    args.fetcher ?? fetch,
+    args.accountToken
   );
 }
 
@@ -367,11 +524,12 @@ export async function leaveLobbyRoom(args: { serverURL: string; lobbyID: string;
   );
 }
 
-export async function clearAllOnlineGames(args: { serverURL: string; fetcher?: Fetcher }): Promise<{ ok: true; lobbiesCleared: number; matchesCleared: number }> {
+export async function clearAllOnlineGames(args: { serverURL: string; accountToken?: string; fetcher?: Fetcher }): Promise<{ ok: true; lobbiesCleared: number; matchesCleared: number }> {
   return postLobbyJSON<{ ok: true; lobbiesCleared: number; matchesCleared: number }>(
     lobbyURL(args.serverURL, "/polity/lobby/admin/clear"),
     {},
-    args.fetcher ?? fetch
+    args.fetcher ?? fetch,
+    args.accountToken
   );
 }
 

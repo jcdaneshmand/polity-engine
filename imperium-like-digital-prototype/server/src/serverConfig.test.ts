@@ -6,7 +6,8 @@ describe("server config", () => {
     expect(buildServerConfig({})).toEqual({
       port: 8000,
       origins: [/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/],
-      storageDir: undefined
+      storageDir: undefined,
+      accountStorageFile: undefined
     });
   });
 
@@ -18,7 +19,8 @@ describe("server config", () => {
     })).toEqual({
       port: 9001,
       origins: ["http://localhost:5173", "https://polity.example"],
-      storageDir: "tmp/multiplayer"
+      storageDir: "tmp/multiplayer",
+      accountStorageFile: "tmp/multiplayer/accounts.json"
     });
   });
 

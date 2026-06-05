@@ -1,3 +1,5 @@
+import { requireAccount, requireAdmin } from "./accounts";
+import type { AccountStore } from "./accountStore";
 import type { PregameLobbyStore } from "./pregameLobbyStore";
 import type { LobbyAccessFailureReason, LobbySetupData } from "./pregameLobbyTypes";
 import type { LobbyStore } from "./lobbyStore";
@@ -5,6 +7,7 @@ import type { LobbyStore } from "./lobbyStore";
 type KoaLikeContext = {
   method: string;
   path: string;
+  headers?: Record<string, string | string[] | undefined>;
   request?: { body?: unknown };
   req?: AsyncIterable<Buffer | string>;
   status?: number;
@@ -22,6 +25,7 @@ type PregameLobbyOptions = {
   store: PregameLobbyStore;
   boardgameApi: BoardgameApi;
   matchStore?: LobbyStore;
+  accountStore?: AccountStore;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -66,6 +70,16 @@ function setError(ctx: KoaLikeContext, status: number, error: string): void {
   ctx.body = { error };
 }
 
+function requireConfiguredAccount(ctx: KoaLikeContext, store: AccountStore | undefined) {
+  if (!store) return { ok: false as const, status: 503, reason: "account_unavailable" as const };
+  return requireAccount(ctx, store);
+}
+
+function requireConfiguredAdmin(ctx: KoaLikeContext, store: AccountStore | undefined) {
+  if (!store) return { ok: false as const, status: 503, reason: "account_unavailable" as const };
+  return requireAdmin(ctx, store);
+}
+
 function lobbyRoute(path: string, suffix: string): string | undefined {
   const match = path.match(new RegExp(`^/polity/lobby/rooms/([^/]+)/${suffix}$`));
   return match?.[1] ? decodeURIComponent(match[1]) : undefined;
@@ -90,6 +104,11 @@ export function createPregameLobbyMiddleware(options: PregameLobbyOptions) {
     }
 
     if (ctx.method === "POST" && ctx.path === "/polity/lobby/admin/clear") {
+      const admin = requireConfiguredAdmin(ctx, options.accountStore);
+      if (!admin.ok) {
+        setError(ctx, admin.status, admin.reason);
+        return;
+      }
       ctx.body = {
         ok: true,
         lobbiesCleared: options.store.clearLobbies(),
@@ -104,6 +123,11 @@ export function createPregameLobbyMiddleware(options: PregameLobbyOptions) {
     }
 
     if (ctx.method === "POST" && ctx.path === "/polity/lobby/chat") {
+      const account = requireConfiguredAccount(ctx, options.accountStore);
+      if (!account.ok) {
+        setError(ctx, account.status, account.reason);
+        return;
+      }
       const body = await readJSONBody(ctx);
       if (!isRecord(body) || !stringValue(body.text)) {
         setError(ctx, 400, "invalid_request");
@@ -111,7 +135,7 @@ export function createPregameLobbyMiddleware(options: PregameLobbyOptions) {
       }
       const text = stringValue(body.text) as string;
       const result = options.store.postLoungeChat({
-        author: stringValue(body.author) ?? "Player",
+        author: account.account.username,
         text
       });
       if (!result.ok) {
@@ -181,13 +205,18 @@ export function createPregameLobbyMiddleware(options: PregameLobbyOptions) {
 
     const sendChatLobbyID = lobbyRoute(ctx.path, "chat/send");
     if (ctx.method === "POST" && sendChatLobbyID) {
+      const account = requireConfiguredAccount(ctx, options.accountStore);
+      if (!account.ok) {
+        setError(ctx, account.status, account.reason);
+        return;
+      }
       const body = await readJSONBody(ctx);
       if (!isRecord(body) || !credential(body) || !stringValue(body.text)) {
         setError(ctx, 400, "invalid_request");
         return;
       }
       const text = stringValue(body.text) as string;
-      const result = options.store.postLobbyChat({ lobbyID: sendChatLobbyID, lobbyCredentials: credential(body) as string, text });
+      const result = options.store.postLobbyChat({ lobbyID: sendChatLobbyID, lobbyCredentials: credential(body) as string, author: account.account.username, text });
       if (!result.ok) {
         setError(ctx, accessStatus(result.reason), result.reason);
         return;

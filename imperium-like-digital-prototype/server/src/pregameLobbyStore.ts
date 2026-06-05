@@ -225,6 +225,11 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
     return `lobby:${lobbyID}`;
   }
 
+  function deleteLobby(lobbyID: string): void {
+    chatMessages.delete(lobbyChatScope(lobbyID));
+    lobbies.delete(lobbyID);
+  }
+
   return {
     listLoungeChat(): ChatMessage[] {
       return [...(chatMessages.get(LOUNGE_CHAT_KEY) ?? [])];
@@ -242,12 +247,12 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
       return { ok: true, messages: [...(chatMessages.get(lobbyChatScope(input.lobbyID)) ?? [])] };
     },
 
-    postLobbyChat(input: { lobbyID: string; lobbyCredentials: string; text: string }) {
+    postLobbyChat(input: { lobbyID: string; lobbyCredentials: string; text: string; author?: string }) {
       const lobby = lobbies.get(input.lobbyID);
       if (!lobby) return { ok: false as const, reason: "lobby_not_found" as const };
       const seat = findSeatByCredentials(lobby, input.lobbyCredentials);
       if (!seat) return { ok: false as const, reason: "invalid_credentials" as const };
-      return appendChat(lobbyChatScope(input.lobbyID), seat.displayName ?? `Player ${Number(seat.seatID) + 1}`, input.text);
+      return appendChat(lobbyChatScope(input.lobbyID), input.author ?? seat.displayName ?? `Player ${Number(seat.seatID) + 1}`, input.text);
     },
 
     createLobby(input: CreatePregameLobbyInput) {
@@ -401,15 +406,17 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
       const seat = findSeatByCredentials(lobby, input.lobbyCredentials);
       if (!seat) return { ok: false, reason: "invalid_credentials" };
       clearSeat(seat);
-      if (occupiedSeats(lobby).length === 0) lobby.emptySince = timestamp();
+      if (occupiedSeats(lobby).length === 0) {
+        deleteLobby(input.lobbyID);
+        return { ok: true };
+      }
       lobby.updatedAt = timestamp();
       return { ok: true };
     },
 
     clearLobbies(): number {
       const lobbyIDs = Array.from(lobbies.keys());
-      for (const lobbyID of lobbyIDs) chatMessages.delete(lobbyChatScope(lobbyID));
-      lobbies.clear();
+      for (const lobbyID of lobbyIDs) deleteLobby(lobbyID);
       return lobbyIDs.length;
     },
 
@@ -479,7 +486,7 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
           removed.push(lobby.lobbyID);
         }
       }
-      for (const lobbyID of removed) lobbies.delete(lobbyID);
+      for (const lobbyID of removed) deleteLobby(lobbyID);
       return removed;
     }
   };

@@ -16,38 +16,44 @@ import { handleBoardKeyDown } from "../controller/keyboardControls";
 import { getBotPiles, getCurrentPlayer, getInspectableLookedCards, getInspectableSharedPile, getInspectableZone, getMarketCards, getOwnerVisibleZoneIds, getPlayerZoneLabels, getRecentLogEntries, getSharedPiles } from "./uiSelectors";
 import { resourceLabelsForGame } from "./resourceDisplay";
 
-export default function BoardLayout({ G, ctx, moves, onCampaignProgress }: any & { onCampaignProgress?: (progress: CampaignProgress) => void }) {
+function viewerPlayerId(ctx: any, playerID?: string | null): string {
+  return playerID ?? ctx?.playerID ?? ctx?.currentPlayer ?? "0";
+}
+
+export default function BoardLayout({ G, ctx, moves, playerID, onCampaignProgress }: any & { onCampaignProgress?: (progress: CampaignProgress) => void }) {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [detailCardId, setDetailCardId] = useState<string | null>(null);
   const [zoomCardId, setZoomCardId] = useState<string | null>(null);
   const [summaryDismissed, setSummaryDismissed] = useState(false);
   const [cleanupDiscardSlots, setCleanupDiscardSlots] = useState<number[]>([]);
-  const player = getCurrentPlayer(G, ctx);
+  const viewerId = viewerPlayerId(ctx, playerID);
+  const uiCtx = useMemo(() => ({ ...ctx, currentPlayer: viewerId }), [ctx, viewerId]);
+  const player = getCurrentPlayer(G, uiCtx);
   const marketIds = getMarketCards(G);
   const marketCards = marketIds.map((id) => G.cardDb?.[id]).filter(Boolean);
   const shared = getSharedPiles(G);
-  const resourceLabels = resourceLabelsForGame(G, ctx.currentPlayer);
-  const playerZoneLabels = getPlayerZoneLabels(G, ctx.currentPlayer);
+  const resourceLabels = resourceLabelsForGame(G, viewerId);
+  const playerZoneLabels = getPlayerZoneLabels(G, viewerId);
   const selectedCard = getSelectedCard(selection, G);
-  const selectedZoneOwnerId = selection?.kind === "player_zone" ? (selection.playerId ?? ctx.currentPlayer) : undefined;
+  const selectedZoneOwnerId = selection?.kind === "player_zone" ? (selection.playerId ?? viewerId) : undefined;
   const ownerVisibleZoneIds = selectedZoneOwnerId ? getOwnerVisibleZoneIds(G, selectedZoneOwnerId) : undefined;
   const detailCard = selectedCard ?? G.cardDb?.[G.pendingChoice?.sourceCardId];
   const pinnedDetailCard = G.cardDb?.[detailCardId ?? ""];
   const visibleDetailCard = pinnedDetailCard ?? detailCard;
   const zoomCard = G.cardDb?.[zoomCardId ?? ""];
   const selectedZone = selection?.kind === "player_zone"
-    ? getInspectableZone(player, selection.id, { ownerPlayerId: selectedZoneOwnerId, viewerPlayerId: ctx.currentPlayer, ownerVisibleZoneIds })
+    ? getInspectableZone(player, selection.id, { ownerPlayerId: selectedZoneOwnerId, viewerPlayerId: viewerId, ownerVisibleZoneIds })
     : undefined;
   const selectedSharedPile = selection?.kind === "pile" ? getInspectableSharedPile(G, selection.id) : undefined;
   const selectedBotZone = selection?.kind === "bot_zone" ? getInspectableZone(G.solo?.bot, selection.id) : undefined;
-  const lookedZone = getInspectableLookedCards(G, ctx.currentPlayer);
+  const lookedZone = getInspectableLookedCards(G, viewerId);
   const cleanupDiscardCardIds: string[] = G.pendingCleanupDiscardChoice?.cardIds ?? [];
   const cleanupDiscardKey = cleanupDiscardCardIds.join("|");
   const cleanupDiscardSelection = cleanupDiscardSlots
     .map((slot) => cleanupDiscardCardIds[slot])
     .filter((cardId): cardId is string => !!cardId);
-  const actions = useMemo(() => getAvailableActionsForSelection(selection, G, ctx, { cleanupDiscardSelection }), [selection, G, ctx, cleanupDiscardSelection]);
-  const pending = getPendingUiState(G, ctx);
+  const actions = useMemo(() => getAvailableActionsForSelection(selection, G, uiCtx, { cleanupDiscardSelection }), [selection, G, uiCtx, cleanupDiscardSelection]);
+  const pending = getPendingUiState(G, uiCtx);
   const primaryBlockedReason = getPrimaryBlockedReason(actions);
   const handActionHintsByCardId = useMemo(() => {
     const hints = getActionHintsByCardId(actions, "hand");
@@ -136,7 +142,7 @@ export default function BoardLayout({ G, ctx, moves, onCampaignProgress }: any &
   };
 
   const onMarketCardClick = (id: string) => {
-    const directAction = getMarketCardClickAction(G, ctx, id);
+    const directAction = getMarketCardClickAction(G, uiCtx, id);
     if (directAction) {
       onAction(directAction);
       return;
@@ -146,8 +152,8 @@ export default function BoardLayout({ G, ctx, moves, onCampaignProgress }: any &
 
   const toggleCleanupDiscardCard = (id: string, index: number) => {
     if (!G.pendingCleanupDiscardChoice?.cardIds?.includes(id)) return;
-    if (G.pendingCleanupDiscardChoice.playerId !== ctx.currentPlayer) return;
-    setSelection({kind:"hand_card",id,playerId:ctx.currentPlayer});
+    if (G.pendingCleanupDiscardChoice.playerId !== viewerId) return;
+    setSelection({kind:"hand_card",id,playerId:viewerId});
     setCleanupDiscardSlots((prev) => prev.includes(index) ? prev.filter((slot) => slot !== index) : [...prev, index]);
   };
 
@@ -156,7 +162,7 @@ export default function BoardLayout({ G, ctx, moves, onCampaignProgress }: any &
       toggleCleanupDiscardCard(id, index);
       return;
     }
-    setSelection({kind:"hand_card",id,playerId:ctx.currentPlayer});
+    setSelection({kind:"hand_card",id,playerId:viewerId});
   };
 
   return <div className="board-layout">
@@ -165,7 +171,7 @@ export default function BoardLayout({ G, ctx, moves, onCampaignProgress }: any &
       <SharedAreaRow piles={shared} round={G.round ?? 1} selectedId={selection?.kind === "pile" ? selection.id : undefined} onSelectPile={(id)=>setSelection({kind:"pile",id})} />
       <MarketRow cards={marketCards} selectedId={selection?.id} resources={player?.resources} resourceLabels={resourceLabels} actionHintsByCardId={marketActionHintsByCardId} marketResources={G.marketResources ?? {}} onSelect={onMarketCardClick} />
       <BotRow bot={G.solo?.bot} cardDb={G.cardDb ?? {}} selectedId={selection?.kind === "bot_zone" ? selection.id : undefined} resourceLabels={resourceLabels} onSelectZone={(id)=>setSelection({kind:"bot_zone",id})} />
-      <PlayerArea player={player} cardDb={G.cardDb ?? {}} resourceLabels={resourceLabels} zoneLabels={playerZoneLabels} selectedId={selection?.id} selectedZoneId={selection?.kind === "player_zone" ? selection.id : undefined} cleanupSelectedSlots={cleanupDiscardSlots} actionHintsByCardId={handActionHintsByCardId} onSelectZone={(id:string)=>setSelection({kind:"player_zone",id,playerId:ctx.currentPlayer})} onSelect={onHandCardClick} />
+      <PlayerArea player={player} cardDb={G.cardDb ?? {}} resourceLabels={resourceLabels} zoneLabels={playerZoneLabels} selectedId={selection?.id} selectedZoneId={selection?.kind === "player_zone" ? selection.id : undefined} cleanupSelectedSlots={cleanupDiscardSlots} actionHintsByCardId={handActionHintsByCardId} onSelectZone={(id:string)=>setSelection({kind:"player_zone",id,playerId:viewerId})} onSelect={onHandCardClick} />
       <div className="panel hints">{CONTROLLER_HINTS.map((h)=> <div key={h}>{h}</div>)}</div>
     </div>
     <div className="right">

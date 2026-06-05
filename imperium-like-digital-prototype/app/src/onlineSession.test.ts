@@ -1,9 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { buildJoinURL, clearAllOnlineGames, closePolityOnlineMatch, computePrivateDataFingerprint, createLobbyRoom, createOnlineMatch, createPolityOnlineMatch, heartbeatLobbyRoom, heartbeatPolityOnlineMatch, joinLobbyRoom, joinOnlineMatch, joinPolityOnlineMatch, leaveLobbyRoom, leavePolityOnlineMatch, listLobbyChat, listLobbyRooms, listOnlineChat, listOnlineMatches, ONLINE_SESSION_STORAGE_KEY, parseJoinURL, parseOnlineSessionRecord, rejoinLobbyRoom, resolveMultiplayerServerURL, selectLobbyNation, sendLobbyChat, sendOnlineChat, serializeOnlineSessionRecord, setLobbyReady, sortListedMatches, spectateOnlineMatch, startLobbyGame, updateLobbySetup } from "./onlineSession";
+import { buildJoinURL, clearAllOnlineGames, closePolityOnlineMatch, computePrivateDataFingerprint, createLobbyRoom, createOnlineMatch, createPolityOnlineMatch, heartbeatLobbyRoom, heartbeatPolityOnlineMatch, joinLobbyRoom, joinOnlineMatch, joinPolityOnlineMatch, leaveLobbyRoom, leavePolityOnlineMatch, listAccountHistory, listLobbyChat, listLobbyRooms, listOnlineChat, listOnlineMatches, loadCurrentAccount, ONLINE_SESSION_STORAGE_KEY, parseJoinURL, parseOnlineSessionRecord, recordAccountGameResult, registerAccount, rejoinLobbyRoom, resolveMultiplayerServerURL, selectLobbyNation, sendLobbyChat, sendOnlineChat, serializeOnlineSessionRecord, setLobbyReady, signInAccount, signOutAccount, sortListedMatches, spectateOnlineMatch, startAccountGameHistory, startLobbyGame, updateLobbySetup } from "./onlineSession";
 
 function jsonResponse(body: unknown): Response {
   return {
     ok: true,
+    headers: new Headers({ "content-type": "application/json" }),
+    json: async () => body
+  } as Response;
+}
+
+function errorResponse(status: number, body: unknown): Response {
+  return {
+    ok: false,
+    status,
     headers: new Headers({ "content-type": "application/json" }),
     json: async () => body
   } as Response;
@@ -199,17 +208,83 @@ describe("online session utilities", () => {
   });
 
   it("uses the admin API to clear all online games", async () => {
-    const calls: Array<{ url: string; body?: unknown }> = [];
+    const calls: Array<{ url: string; body?: unknown; authorization?: string | null }> = [];
     const fetcher = async (url: string, init?: RequestInit) => {
-      calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined, authorization: init?.headers instanceof Headers ? init.headers.get("authorization") : (init?.headers as Record<string, string> | undefined)?.authorization });
       return jsonResponse({ ok: true, lobbiesCleared: 1, matchesCleared: 2 });
     };
 
-    await expect(clearAllOnlineGames({ serverURL: "http://localhost:8000", fetcher }))
+    await expect(clearAllOnlineGames({ serverURL: "http://localhost:8000", accountToken: "token-1", fetcher }))
       .resolves.toEqual({ ok: true, lobbiesCleared: 1, matchesCleared: 2 });
 
     expect(calls).toEqual([
-      { url: "http://localhost:8000/polity/lobby/admin/clear", body: {} }
+      { url: "http://localhost:8000/polity/lobby/admin/clear", body: {}, authorization: "Bearer token-1" }
+    ]);
+  });
+
+  it("uses account APIs with bearer tokens", async () => {
+    const calls: Array<{ url: string; body?: unknown; authorization?: string | null; method?: string }> = [];
+    const account = {
+      id: "account-1",
+      email: "jonah@example.com",
+      username: "Jonah",
+      role: "admin",
+      createdAt: "2026-06-05T12:00:00.000Z",
+      updatedAt: "2026-06-05T12:00:00.000Z",
+      stats: { solo: { standard: { gamesPlayed: 0, wins: 0, losses: 0, unfinished: 0 }, campaign: { gamesPlayed: 0, wins: 0, losses: 0, unfinished: 0, campaignsStarted: 0, campaignsCompleted: 0 }, practice: { gamesPlayed: 0, wins: 0, losses: 0, unfinished: 0 } }, online: { gamesPlayed: 0, wins: 0, losses: 0, unfinished: 0 }, byNation: {} }
+    };
+    const entry = { id: "game-1", accountID: "account-1", scope: "solo", variant: "practice", status: "started", outcome: "unknown", startedAt: "a", updatedAt: "a" };
+    const fetcher = async (url: string, init?: RequestInit) => {
+      calls.push({
+        url,
+        method: init?.method,
+        body: init?.body ? JSON.parse(String(init.body)) : undefined,
+        authorization: init?.headers instanceof Headers ? init.headers.get("authorization") : (init?.headers as Record<string, string> | undefined)?.authorization
+      });
+      if (url.endsWith("/register") || url.endsWith("/sign-in")) return jsonResponse({ account, token: "token-1" });
+      if (url.endsWith("/me")) return jsonResponse({ account });
+      if (url.endsWith("/history/start")) return jsonResponse({ entry });
+      if (url.endsWith("/history/result")) return jsonResponse({ entry: { ...entry, status: "completed", outcome: "win" }, stats: account.stats });
+      if (url.endsWith("/history")) return jsonResponse({ history: [entry], stats: account.stats });
+      return jsonResponse({ ok: true });
+    };
+
+    await expect(registerAccount({ serverURL: "http://localhost:8000", email: "jonah@example.com", username: "Jonah", password: "secret123", fetcher })).resolves.toEqual({ account, token: "token-1" });
+    await expect(signInAccount({ serverURL: "http://localhost:8000", login: "jonah", password: "secret123", fetcher })).resolves.toEqual({ account, token: "token-1" });
+    await expect(loadCurrentAccount({ serverURL: "http://localhost:8000", accountToken: "token-1", fetcher })).resolves.toEqual({ account });
+    await expect(listAccountHistory({ serverURL: "http://localhost:8000", accountToken: "token-1", fetcher })).resolves.toEqual({ history: [entry], stats: account.stats });
+    await expect(startAccountGameHistory({ serverURL: "http://localhost:8000", accountToken: "token-1", entry: { id: "game-1", scope: "solo", variant: "practice", status: "started", outcome: "unknown" }, fetcher })).resolves.toEqual({ entry });
+    await expect(recordAccountGameResult({ serverURL: "http://localhost:8000", accountToken: "token-1", result: { id: "game-1", outcome: "win" }, fetcher })).resolves.toEqual({ entry: { ...entry, status: "completed", outcome: "win" }, stats: account.stats });
+    await expect(signOutAccount({ serverURL: "http://localhost:8000", accountToken: "token-1", fetcher })).resolves.toEqual({ ok: true });
+
+    expect(calls.map((call) => call.url)).toEqual([
+      "http://localhost:8000/polity/accounts/register",
+      "http://localhost:8000/polity/accounts/sign-in",
+      "http://localhost:8000/polity/accounts/me",
+      "http://localhost:8000/polity/accounts/history",
+      "http://localhost:8000/polity/accounts/history/start",
+      "http://localhost:8000/polity/accounts/history/result",
+      "http://localhost:8000/polity/accounts/sign-out"
+    ]);
+    expect(calls[2].authorization).toBe("Bearer token-1");
+    expect(calls[4].body).toEqual({ id: "game-1", scope: "solo", variant: "practice", status: "started", outcome: "unknown" });
+    expect(calls[5].body).toEqual({ id: "game-1", outcome: "win" });
+  });
+
+  it("sends chat with account bearer tokens", async () => {
+    const calls: Array<{ url: string; body?: unknown; authorization?: string | null }> = [];
+    const message = { id: "chat-1", author: "Jonah", text: "Hello", createdAt: "2026-06-05T10:00:00.000Z" };
+    const fetcher = async (url: string, init?: RequestInit) => {
+      calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined, authorization: init?.headers instanceof Headers ? init.headers.get("authorization") : (init?.headers as Record<string, string> | undefined)?.authorization });
+      return jsonResponse({ message });
+    };
+
+    await sendOnlineChat({ serverURL: "http://localhost:8000", accountToken: "token-1", author: "Ignored", text: "Hello", fetcher });
+    await sendLobbyChat({ serverURL: "http://localhost:8000", accountToken: "token-1", lobbyID: "lobby-1", lobbyCredentials: "cred", text: "Hello", fetcher });
+
+    expect(calls).toEqual([
+      { url: "http://localhost:8000/polity/lobby/chat", body: { author: "Ignored", text: "Hello" }, authorization: "Bearer token-1" },
+      { url: "http://localhost:8000/polity/lobby/rooms/lobby-1/chat/send", body: { lobbyCredentials: "cred", text: "Hello" }, authorization: "Bearer token-1" }
     ]);
   });
 
@@ -258,6 +333,18 @@ describe("online session utilities", () => {
 
     await expect(listOnlineMatches({ serverURL: "http://localhost:5173", fetcher }))
       .rejects.toThrow("Online lobby is not available from this app server.");
+  });
+
+  it("reports JSON lobby errors from the server instead of only the HTTP status", async () => {
+    const fetcher = async () => errorResponse(404, { error: "lobby_not_found" });
+
+    await expect(sendLobbyChat({
+      serverURL: "http://localhost:8000",
+      lobbyID: "missing",
+      lobbyCredentials: "cred",
+      text: "Hello",
+      fetcher
+    })).rejects.toThrow("Lobby not found.");
   });
 
   it("sorts listed matches by joinability before spectation and full games", () => {

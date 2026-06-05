@@ -58,6 +58,51 @@ describe("AccountPanel", () => {
     expect(html).not.toContain("Create Account");
   });
 
+  it("renders account stats by solo variant, online games, and nation", () => {
+    const html = renderToStaticMarkup(
+      <AccountPanel
+        account={{
+          ...account,
+          stats: {
+            solo: {
+              standard: { gamesPlayed: 3, wins: 2, losses: 1, unfinished: 0 },
+              campaign: { gamesPlayed: 4, wins: 3, losses: 1, unfinished: 0, campaignsStarted: 1, campaignsCompleted: 1 },
+              practice: { gamesPlayed: 5, wins: 4, losses: 1, unfinished: 0 }
+            },
+            online: { gamesPlayed: 6, wins: 2, losses: 4, unfinished: 0 },
+            byNation: {
+              test_nation_sun_coast: {
+                gamesPlayed: 7,
+                wins: 5,
+                losses: 2,
+                unfinished: 0,
+                soloGamesPlayed: 3,
+                onlineGamesPlayed: 2,
+                campaignGamesPlayed: 1,
+                practiceGamesPlayed: 1
+              }
+            }
+          }
+        }}
+        statusMessage=""
+        onRegister={() => undefined}
+        onSignIn={() => undefined}
+        onSignOut={() => undefined}
+      />
+    );
+
+    expect(html).toContain("Solo Standard");
+    expect(html).toContain("2-1");
+    expect(html).toContain("Campaign");
+    expect(html).toContain("3-1");
+    expect(html).toContain("Practice");
+    expect(html).toContain("4-1");
+    expect(html).toContain("Online");
+    expect(html).toContain("2-4");
+    expect(html).toContain("Test Nation Sun Coast");
+    expect(html).toContain("5-2");
+  });
+
   it("marks admin accounts", () => {
     const html = renderToStaticMarkup(
       <AccountPanel

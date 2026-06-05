@@ -9,6 +9,24 @@ type AccountPanelProps = {
   onSignOut: () => void | Promise<void>;
 };
 
+function titleWords(value: string): string {
+  return value
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function statRecord(label: string, stats: { gamesPlayed: number; wins: number; losses: number; unfinished: number }) {
+  return (
+    <div key={label}>
+      <span>{label}</span>
+      <strong>{stats.wins}-{stats.losses}</strong>
+      <small>{stats.gamesPlayed} played{stats.unfinished ? ` / ${stats.unfinished} unfinished` : ""}</small>
+    </div>
+  );
+}
+
 export default function AccountPanel({ account, statusMessage, onRegister, onSignIn, onSignOut }: AccountPanelProps) {
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
@@ -27,6 +45,13 @@ export default function AccountPanel({ account, statusMessage, onRegister, onSig
             <small>{account.email}</small>
           </div>
           <button type="button" onClick={() => void onSignOut()}>Sign Out</button>
+        </div>
+        <div className="summary-stats">
+          {statRecord("Solo Standard", account.stats.solo.standard)}
+          {statRecord("Campaign", account.stats.solo.campaign)}
+          {statRecord("Practice", account.stats.solo.practice)}
+          {statRecord("Online", account.stats.online)}
+          {Object.entries(account.stats.byNation).map(([nationID, stats]) => statRecord(titleWords(nationID), stats))}
         </div>
         {statusMessage ? <p className="setup-help">{statusMessage}</p> : null}
       </section>

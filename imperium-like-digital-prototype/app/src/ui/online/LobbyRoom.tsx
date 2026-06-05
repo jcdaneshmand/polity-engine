@@ -22,6 +22,19 @@ function selectedNationLabel(nationID: string | undefined, nations: Array<{ id: 
   return nations.find((nation) => nation.id === nationID)?.label ?? nationID;
 }
 
+export async function readyWithSelectedNation(args: {
+  currentSelectedNationID: string | undefined;
+  displayedNationID: string;
+  nextReady: boolean;
+  onSelectNation: (nationID: string) => void | Promise<void>;
+  onReady: (ready: boolean) => void | Promise<void>;
+}): Promise<void> {
+  if (!args.currentSelectedNationID) {
+    await args.onSelectNation(args.displayedNationID);
+  }
+  await args.onReady(args.nextReady);
+}
+
 export default function LobbyRoom({
   lobby,
   setupConfig,
@@ -87,7 +100,17 @@ export default function LobbyRoom({
                 {nations.map((nation) => <option key={nation.id} value={nation.id}>{nation.label}</option>)}
               </select>
             </label>
-            <button type="button" disabled={!selfSeat?.selectedNationID && !selectedNationID} onClick={() => void onReady(!selfSeat?.ready)}>
+            <button
+              type="button"
+              disabled={!selectedNationID}
+              onClick={() => void readyWithSelectedNation({
+                currentSelectedNationID: selfSeat?.selectedNationID,
+                displayedNationID: selectedNationID,
+                nextReady: !selfSeat?.ready,
+                onSelectNation,
+                onReady
+              })}
+            >
               {selfSeat?.ready ? "Unready" : "Ready"}
             </button>
           </div>

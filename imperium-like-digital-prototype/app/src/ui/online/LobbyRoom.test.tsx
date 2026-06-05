@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { LobbyRoomDetails } from "../../onlineSession";
 import type { NewGameSessionConfig } from "../setup/NewGameSetup";
-import LobbyRoom from "./LobbyRoom";
+import LobbyRoom, { readyWithSelectedNation } from "./LobbyRoom";
 
 const config: NewGameSessionConfig = {
   options: {
@@ -102,5 +102,23 @@ describe("LobbyRoom", () => {
 
     expect(html).not.toContain("Host controls");
     expect(html).not.toContain("Start Game");
+  });
+
+  it("selects the displayed fallback nation before readying a seat", async () => {
+    const calls: string[] = [];
+
+    await readyWithSelectedNation({
+      currentSelectedNationID: undefined,
+      displayedNationID: "test_nation_sun_coast",
+      nextReady: true,
+      onSelectNation: async (nationID) => {
+        calls.push(`select:${nationID}`);
+      },
+      onReady: async (ready) => {
+        calls.push(`ready:${ready}`);
+      }
+    });
+
+    expect(calls).toEqual(["select:test_nation_sun_coast", "ready:true"]);
   });
 });

@@ -32,7 +32,10 @@ export type LobbyAccessFailureReason =
   | "match_not_found"
   | "missing_password"
   | "wrong_password"
-  | "private_data_mismatch";
+  | "private_data_mismatch"
+  | "match_not_joinable"
+  | "match_full"
+  | "seat_unavailable";
 
 export type LobbyAccessResult = { ok: true } | { ok: false; reason: LobbyAccessFailureReason };
 

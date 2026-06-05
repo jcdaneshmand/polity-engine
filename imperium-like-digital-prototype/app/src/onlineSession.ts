@@ -201,18 +201,18 @@ export async function createPolityOnlineMatch(args: {
 export async function joinPolityOnlineMatch(args: {
   serverURL: string;
   matchID: string;
-  playerID: string;
+  playerID?: string;
   playerName: string;
   privateDataFingerprint: string;
   password?: string;
   fetcher?: Fetcher;
-}): Promise<{ playerCredentials: string; match?: ListedMatch }> {
-  return postLobbyJSON<{ playerCredentials: string; match?: ListedMatch }>(
+}): Promise<{ playerCredentials: string; playerID: string; match?: ListedMatch }> {
+  return postLobbyJSON<{ playerCredentials: string; playerID: string; match?: ListedMatch }>(
     lobbyURL(args.serverURL, `/polity/lobby/matches/${encodeURIComponent(args.matchID)}/join`),
     {
-      playerID: args.playerID,
       playerName: args.playerName,
       privateDataFingerprint: args.privateDataFingerprint,
+      ...(args.playerID ? { playerID: args.playerID } : {}),
       ...(args.password?.trim() ? { password: args.password.trim() } : {})
     },
     args.fetcher ?? fetch

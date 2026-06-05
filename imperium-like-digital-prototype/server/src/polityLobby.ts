@@ -68,6 +68,7 @@ function playerCount(value: unknown): number {
 function accessStatus(reason: LobbyAccessFailureReason): number {
   if (reason === "match_not_found") return 404;
   if (reason === "private_data_mismatch") return 409;
+  if (reason === "match_not_joinable" || reason === "match_full" || reason === "seat_unavailable") return 409;
   return 403;
 }
 
@@ -121,7 +122,7 @@ export function createPolityLobbyMiddleware(options: PolityLobbyOptions) {
     const joinMatchID = matchRoute(ctx.path, "join");
     if (ctx.method === "POST" && joinMatchID) {
       const body = await readJSONBody(ctx) as JoinBody;
-      if (!isRecord(body) || typeof body.playerID !== "string") {
+      if (!isRecord(body)) {
         setError(ctx, 400, "invalid_request");
         return;
       }
@@ -134,10 +135,29 @@ export function createPolityLobbyMiddleware(options: PolityLobbyOptions) {
         setError(ctx, accessStatus(access.reason), access.reason);
         return;
       }
-      const playerName = stringValue(body.playerName)?.trim() || `Player ${Number(body.playerID) + 1}`;
-      const joined = await options.boardgameApi.joinMatch({ matchID: joinMatchID, playerID: body.playerID, playerName });
-      const match = options.store.recordPlayerJoin({ matchID: joinMatchID, playerID: body.playerID, playerName }) as ListedMatch;
-      ctx.body = { ...joined, match };
+      const currentMatch = options.store.getMatch(joinMatchID);
+      if (!currentMatch) {
+        setError(ctx, 404, "match_not_found");
+        return;
+      }
+      if (currentMatch.status !== "setup") {
+        setError(ctx, 409, "match_not_joinable");
+        return;
+      }
+      const requestedPlayerID = stringValue(body.playerID);
+      const playerID = requestedPlayerID ?? currentMatch.availableSeats[0];
+      if (!playerID) {
+        setError(ctx, 409, "match_full");
+        return;
+      }
+      if (!currentMatch.availableSeats.includes(playerID)) {
+        setError(ctx, 409, "seat_unavailable");
+        return;
+      }
+      const playerName = stringValue(body.playerName)?.trim() || `Player ${Number(playerID) + 1}`;
+      const joined = await options.boardgameApi.joinMatch({ matchID: joinMatchID, playerID, playerName });
+      const match = options.store.recordPlayerJoin({ matchID: joinMatchID, playerID, playerName }) as ListedMatch;
+      ctx.body = { ...joined, playerID, match };
       return;
     }
 

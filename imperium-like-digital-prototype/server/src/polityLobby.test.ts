@@ -91,8 +91,47 @@ describe("polity lobby middleware", () => {
       privateDataFingerprint: "fp-a"
     });
     await middleware(success, async () => undefined);
-    expect(success.body).toEqual({ playerCredentials: "seat-token", match: expect.objectContaining({ occupiedSeats: [expect.objectContaining({ playerID: "1" })] }) });
+    expect(success.body).toEqual({ playerCredentials: "seat-token", playerID: "1", match: expect.objectContaining({ occupiedSeats: [expect.objectContaining({ playerID: "1" })] }) });
     expect(joined).toEqual([{ matchID: "match-1", playerID: "1", playerName: "Joiner" }]);
+  });
+
+  it("assigns the first open seat for join-by-code and rejects occupied seats", async () => {
+    const store = createLobbyStore({ now: () => "2026-06-05T01:00:00.000Z" });
+    const joined: unknown[] = [];
+    const middleware = createPolityLobbyMiddleware({
+      store,
+      boardgameApi: {
+        createMatch: async () => ({ matchID: "match-1" }),
+        joinMatch: async (input) => {
+          joined.push(input);
+          return { playerCredentials: `token-${input.playerID}` };
+        }
+      }
+    });
+
+    await middleware(context("POST", "/polity/lobby/matches", {
+      roomName: "Open",
+      numPlayers: 2,
+      setupData: {},
+      privateDataFingerprint: "placeholder"
+    }), async () => undefined);
+
+    const firstJoin = context("POST", "/polity/lobby/matches/match-1/join", {
+      playerName: "First",
+      privateDataFingerprint: "placeholder"
+    });
+    await middleware(firstJoin, async () => undefined);
+    expect(firstJoin.body).toEqual({ playerCredentials: "token-0", playerID: "0", match: expect.objectContaining({ availableSeats: ["1"] }) });
+
+    const occupied = context("POST", "/polity/lobby/matches/match-1/join", {
+      playerID: "0",
+      playerName: "Duplicate",
+      privateDataFingerprint: "placeholder"
+    });
+    await middleware(occupied, async () => undefined);
+    expect(occupied.status).toBe(409);
+    expect(occupied.body).toEqual({ error: "seat_unavailable" });
+    expect(joined).toEqual([{ matchID: "match-1", playerID: "0", playerName: "First" }]);
   });
 
   it("authorizes spectators without issuing player seats", async () => {

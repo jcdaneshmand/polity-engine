@@ -11,7 +11,7 @@ type OnlineGamesProps = {
   onBackToSetup: () => void;
   onRefresh: () => void | Promise<void>;
   onHost: (args: { roomName: string; password?: string; setupConfig: NewGameSessionConfig; privateDataFingerprint: string }) => void | Promise<void>;
-  onJoin: (args: { matchID: string; playerID: string; playerName: string; password?: string; privateDataFingerprint: string; setupConfig: NewGameSessionConfig }) => void | Promise<void>;
+  onJoin: (args: { matchID: string; playerID?: string; playerName: string; password?: string; privateDataFingerprint: string; setupConfig: NewGameSessionConfig }) => void | Promise<void>;
   onSpectate: (args: { matchID: string; password?: string; privateDataFingerprint: string }) => void | Promise<void>;
   onRejoin: (record: OnlineSessionRecord) => void;
   onForgetSession: (record: OnlineSessionRecord) => void;
@@ -22,9 +22,9 @@ function playerLabel(playerID: string | undefined): string {
   return `Player ${Number(playerID) + 1}`;
 }
 
-function privateDataStatus(match: ListedMatch, privateDataFingerprint: string): "compatible" | "mismatch" {
+function privateDataStatus(match: ListedMatch, privateDataFingerprint: string): "compatible" | "missing" | "server_check" {
   if (match.privateDataLabel === "placeholder") return "compatible";
-  return privateDataFingerprint === "placeholder" ? "mismatch" : "compatible";
+  return privateDataFingerprint === "placeholder" ? "missing" : "server_check";
 }
 
 function statusLabel(status: ListedMatch["status"]): string {
@@ -74,7 +74,6 @@ export default function OnlineGames({
     if (!matchID) return;
     void onJoin({
       matchID,
-      playerID: "0",
       playerName: playerName.trim() || "Player",
       password: joinPassword.trim() || undefined,
       privateDataFingerprint,
@@ -158,7 +157,7 @@ export default function OnlineGames({
           <div className="online-match-list">
             {matches.length ? matches.map((match) => {
               const dataStatus = privateDataStatus(match, privateDataFingerprint);
-              const blockedByData = dataStatus === "mismatch";
+              const blockedByData = dataStatus === "missing";
               const password = matchPasswords[match.matchID] ?? "";
               const openSeat = match.availableSeats[0];
               const canJoin = match.status === "setup" && Boolean(openSeat) && !blockedByData && (!match.isLocked || password.trim());
@@ -170,7 +169,8 @@ export default function OnlineGames({
                     <span>{statusLabel(match.status)} - {match.isLocked ? "Locked" : "Open"} - {match.occupiedSeats.length}/{match.playerCount} seats</span>
                     <small>{formatSeatList(match)}</small>
                     <small>{match.privateDataLabel === "private_data_required" ? "Private data required" : "Placeholder data"}</small>
-                    {blockedByData ? <small className="online-warning">Different private data loaded</small> : null}
+                    {dataStatus === "missing" ? <small className="online-warning">Import matching private data to enter</small> : null}
+                    {dataStatus === "server_check" ? <small>Server will verify exact private data before entry</small> : null}
                   </div>
                   <div className="online-match-actions">
                     {match.isLocked ? (

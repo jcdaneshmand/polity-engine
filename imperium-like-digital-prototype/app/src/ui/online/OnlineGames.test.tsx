@@ -92,7 +92,35 @@ describe("OnlineGames", () => {
     expect(html).toContain("Locked Table");
     expect(html).toContain("Locked");
     expect(html).toContain("Private data required");
-    expect(html).toContain("Different private data loaded");
+    expect(html).toContain("Import matching private data to enter");
+  });
+
+  it("explains that exact private data is server-verified when private data is loaded", () => {
+    const locked: ListedMatch = {
+      ...baseMatch,
+      matchID: "locked",
+      roomName: "Locked Table",
+      isLocked: true,
+      privateDataLabel: "private_data_required"
+    };
+    const html = renderToStaticMarkup(
+      <OnlineGames
+        setupConfig={config}
+        privateDataFingerprint="private:abc"
+        savedSessions={[]}
+        matches={[locked]}
+        statusMessage=""
+        onBackToSetup={() => undefined}
+        onRefresh={() => undefined}
+        onHost={() => undefined}
+        onJoin={() => undefined}
+        onSpectate={() => undefined}
+        onRejoin={() => undefined}
+        onForgetSession={() => undefined}
+      />
+    );
+
+    expect(html).toContain("Server will verify exact private data before entry");
   });
 
   it("renders saved rejoin sessions", () => {

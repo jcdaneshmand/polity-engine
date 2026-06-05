@@ -217,17 +217,18 @@ export default function App() {
     }
   };
 
-  const joinOnlineGame = async (args: { matchID: string; playerID: string; playerName: string; password?: string; privateDataFingerprint: string; setupConfig: NewGameSessionConfig }) => {
+  const joinOnlineGame = async (args: { matchID: string; playerID?: string; playerName: string; password?: string; privateDataFingerprint: string; setupConfig: NewGameSessionConfig }) => {
     setOnlineStatus("Joining online game...");
     try {
       const joined = await joinPolityOnlineMatch({ serverURL: multiplayerServerURL, ...args });
+      const playerID = joined.playerID ?? args.playerID ?? "0";
       startOnlineSession(args.setupConfig, {
         kind: "player",
         matchID: args.matchID,
-        playerID: args.playerID,
+        playerID,
         credentials: joined.playerCredentials,
         serverURL: multiplayerServerURL,
-        numPlayers: args.setupConfig.options.playerCount,
+        numPlayers: joined.match?.playerCount ?? args.setupConfig.options.playerCount,
         savedAt: new Date().toISOString()
       });
     } catch (error) {

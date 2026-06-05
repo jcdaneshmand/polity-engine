@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { ListedLobby, ListedMatch, OnlineSessionRecord } from "../../onlineSession";
 import type { NewGameSessionConfig } from "../setup/NewGameSetup";
-import OnlineGames from "./OnlineGames";
+import OnlineGames, { findSavedLobbySession, findSavedMatchSession } from "./OnlineGames";
 
 const config: NewGameSessionConfig = {
   options: {
@@ -56,6 +56,31 @@ const baseLobby: ListedLobby = {
 };
 
 describe("OnlineGames", () => {
+  it("finds saved sessions for listed games so joins can become rejoins", () => {
+    const savedLobby: OnlineSessionRecord = {
+      kind: "lobby",
+      lobbyID: "lobby-open",
+      seatID: "0",
+      lobbyCredentials: "lobby-token",
+      serverURL: "http://localhost:8000",
+      savedAt: "2026-06-05T01:00:00.000Z"
+    };
+    const savedMatch: OnlineSessionRecord = {
+      kind: "player",
+      matchID: "match-open",
+      playerID: "0",
+      credentials: "match-token",
+      serverURL: "http://localhost:8000",
+      numPlayers: 2,
+      savedAt: "2026-06-05T01:00:00.000Z"
+    };
+
+    expect(findSavedLobbySession([savedLobby, savedMatch], "lobby-open")).toBe(savedLobby);
+    expect(findSavedMatchSession([savedLobby, savedMatch], "match-open")).toBe(savedMatch);
+    expect(findSavedLobbySession([savedMatch], "lobby-open")).toBeUndefined();
+    expect(findSavedMatchSession([savedLobby], "match-open")).toBeUndefined();
+  });
+
   it("renders the action-first hub sections", () => {
     const html = renderToStaticMarkup(
       <OnlineGames
@@ -109,6 +134,71 @@ describe("OnlineGames", () => {
     expect(html).toContain("Pregame Table");
     expect(html).toContain("Lobby");
     expect(html).toContain("Join Lobby");
+  });
+
+  it("renders saved listed lobbies as rejoinable instead of another join", () => {
+    const saved: OnlineSessionRecord = {
+      kind: "lobby",
+      lobbyID: "lobby-open",
+      seatID: "0",
+      lobbyCredentials: "token",
+      serverURL: "http://localhost:8000",
+      savedAt: "2026-06-05T01:00:00.000Z"
+    };
+
+    const html = renderToStaticMarkup(
+      <OnlineGames
+        setupConfig={config}
+        privateDataFingerprint="placeholder"
+        savedSessions={[saved]}
+        lobbies={[baseLobby]}
+        matches={[]}
+        statusMessage=""
+        onBackToSetup={() => undefined}
+        onRefresh={() => undefined}
+        onHost={() => undefined}
+        onJoinLobby={() => undefined}
+        onJoin={() => undefined}
+        onSpectate={() => undefined}
+        onRejoin={() => undefined}
+        onForgetSession={() => undefined}
+      />
+    );
+
+    expect(html).toContain("Rejoin Lobby");
+  });
+
+  it("renders saved listed matches as rejoinable instead of another seat join", () => {
+    const saved: OnlineSessionRecord = {
+      kind: "player",
+      matchID: "match-open",
+      playerID: "0",
+      credentials: "token",
+      serverURL: "http://localhost:8000",
+      numPlayers: 2,
+      savedAt: "2026-06-05T01:00:00.000Z"
+    };
+
+    const html = renderToStaticMarkup(
+      <OnlineGames
+        setupConfig={config}
+        privateDataFingerprint="placeholder"
+        savedSessions={[saved]}
+        lobbies={[]}
+        matches={[baseMatch]}
+        statusMessage=""
+        onBackToSetup={() => undefined}
+        onRefresh={() => undefined}
+        onHost={() => undefined}
+        onJoinLobby={() => undefined}
+        onJoin={() => undefined}
+        onSpectate={() => undefined}
+        onRejoin={() => undefined}
+        onForgetSession={() => undefined}
+      />
+    );
+
+    expect(html).toContain("Rejoin Seat");
   });
 
   it("shows locked games and private-data mismatch states", () => {

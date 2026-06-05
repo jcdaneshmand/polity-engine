@@ -29,6 +29,14 @@ function privateDataStatus(match: ListedMatch, privateDataFingerprint: string): 
   return privateDataFingerprint === "placeholder" ? "missing" : "server_check";
 }
 
+export function findSavedLobbySession(savedSessions: OnlineSessionRecord[], lobbyID: string): OnlineSessionRecord | undefined {
+  return savedSessions.find((record) => record.kind === "lobby" && record.lobbyID === lobbyID);
+}
+
+export function findSavedMatchSession(savedSessions: OnlineSessionRecord[], matchID: string): OnlineSessionRecord | undefined {
+  return savedSessions.find((record) => record.kind !== "lobby" && record.matchID === matchID);
+}
+
 function savedSessionLabel(record: OnlineSessionRecord): string {
   if (record.kind === "lobby") return record.lobbyID;
   return record.matchID;
@@ -170,9 +178,10 @@ export default function OnlineGames({
           <div className="online-match-list">
             {lobbies.map((lobby) => {
               const password = matchPasswords[lobby.lobbyID] ?? "";
+              const savedLobbySession = findSavedLobbySession(savedSessions, lobby.lobbyID);
               const needsPassword = lobby.isLocked && !password.trim();
               const blockedByData = lobby.privateDataLabel === "private_data_required" && privateDataFingerprint === "placeholder";
-              const canJoinLobby = lobby.availableSeats.length > 0 && !needsPassword && !blockedByData;
+              const canJoinLobby = Boolean(savedLobbySession) || lobby.availableSeats.length > 0 && !needsPassword && !blockedByData;
               return (
                 <article className="online-match-row" key={lobby.lobbyID}>
                   <div>
@@ -192,14 +201,20 @@ export default function OnlineGames({
                     <button
                       type="button"
                       disabled={!canJoinLobby}
-                      onClick={() => void onJoinLobby({
-                        lobbyID: lobby.lobbyID,
-                        playerName,
-                        password: password.trim() || undefined,
-                        privateDataFingerprint
-                      })}
+                      onClick={() => {
+                        if (savedLobbySession) {
+                          onRejoin(savedLobbySession);
+                          return;
+                        }
+                        void onJoinLobby({
+                          lobbyID: lobby.lobbyID,
+                          playerName,
+                          password: password.trim() || undefined,
+                          privateDataFingerprint
+                        });
+                      }}
                     >
-                      Join Lobby
+                      {savedLobbySession ? "Rejoin Lobby" : "Join Lobby"}
                     </button>
                   </div>
                 </article>
@@ -209,8 +224,9 @@ export default function OnlineGames({
               const dataStatus = privateDataStatus(match, privateDataFingerprint);
               const blockedByData = dataStatus === "missing";
               const password = matchPasswords[match.matchID] ?? "";
+              const savedMatchSession = findSavedMatchSession(savedSessions, match.matchID);
               const openSeat = match.availableSeats[0];
-              const canJoin = match.status === "setup" && Boolean(openSeat) && !blockedByData && (!match.isLocked || password.trim());
+              const canJoin = Boolean(savedMatchSession) || match.status === "setup" && Boolean(openSeat) && !blockedByData && (!match.isLocked || password.trim());
               const canSpectate = match.spectatingAllowed && !blockedByData && (!match.isLocked || password.trim());
               return (
                 <article className="online-match-row" key={match.matchID}>
@@ -232,16 +248,23 @@ export default function OnlineGames({
                     <button
                       type="button"
                       disabled={!canJoin}
-                      onClick={() => openSeat && void onJoin({
-                        matchID: match.matchID,
-                        playerID: openSeat,
-                        playerName,
-                        password: password.trim() || undefined,
-                        privateDataFingerprint,
-                        setupConfig
-                      })}
+                      onClick={() => {
+                        if (savedMatchSession) {
+                          onRejoin(savedMatchSession);
+                          return;
+                        }
+                        if (!openSeat) return;
+                        void onJoin({
+                          matchID: match.matchID,
+                          playerID: openSeat,
+                          playerName,
+                          password: password.trim() || undefined,
+                          privateDataFingerprint,
+                          setupConfig
+                        });
+                      }}
                     >
-                      Join Seat
+                      {savedMatchSession ? "Rejoin Seat" : "Join Seat"}
                     </button>
                     <button
                       type="button"

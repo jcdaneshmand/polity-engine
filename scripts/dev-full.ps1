@@ -56,15 +56,21 @@ function Start-DevJob {
 
 $jobs = @()
 try {
-  Write-Host "Starting multiplayer server on $ServerUrl" -ForegroundColor Cyan
-  $jobs += Start-DevJob -Name "polity-server" -ArgumentList @($ProjectRoot, $ServerPort) -Script {
-    param($ProjectRoot, $ServerPort)
-    Set-Location $ProjectRoot
-    $env:POLITY_SERVER_PORT = [string]$ServerPort
-    npm run server:dev
+  Write-Host "Checking multiplayer server on $ServerUrl" -ForegroundColor Cyan
+  try {
+    Wait-HttpOk "$ServerUrl/polity/lobby/rooms" -TimeoutSeconds 1
+    Write-Host "Using existing multiplayer server on $ServerUrl" -ForegroundColor Green
   }
-
-  Wait-HttpOk "$ServerUrl/polity/lobby/rooms"
+  catch {
+    Write-Host "Starting multiplayer server on $ServerUrl" -ForegroundColor Cyan
+    $jobs += Start-DevJob -Name "polity-server" -ArgumentList @($ProjectRoot, $ServerPort) -Script {
+      param($ProjectRoot, $ServerPort)
+      Set-Location $ProjectRoot
+      $env:POLITY_SERVER_PORT = [string]$ServerPort
+      npm run server:dev
+    }
+    Wait-HttpOk "$ServerUrl/polity/lobby/rooms"
+  }
 
   Write-Host "Starting app on $AppUrl" -ForegroundColor Cyan
   $jobs += Start-DevJob -Name "polity-app" -ArgumentList @($ProjectRoot, $ServerUrl, $AppPort) -Script {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { test } from "node:test";
-import { buildChildEnv, createDevFullController, waitForHTTP } from "./dev-full.mjs";
+import { buildChildEnv, createDevFullController, ensureServerReady, waitForHTTP } from "./dev-full.mjs";
 
 test("waitForHTTP retries until the endpoint returns ok", async () => {
   const calls = [];
@@ -76,6 +76,42 @@ test("dev-full controller stops the other process when one exits", () => {
     ["server", "SIGTERM"],
     ["app", "SIGTERM"]
   ]);
+});
+
+test("ensureServerReady reuses an already healthy server", async () => {
+  let serverStarted = false;
+  const controller = {
+    startServer() {
+      serverStarted = true;
+    }
+  };
+
+  const result = await ensureServerReady(controller, "http://127.0.0.1:8000", {
+    waitForHTTP: async () => undefined
+  });
+
+  assert.equal(result, "reused");
+  assert.equal(serverStarted, false);
+});
+
+test("ensureServerReady starts the server when no healthy server exists", async () => {
+  let serverStarted = false;
+  let attempts = 0;
+  const controller = {
+    startServer() {
+      serverStarted = true;
+    }
+  };
+
+  const result = await ensureServerReady(controller, "http://127.0.0.1:8000", {
+    waitForHTTP: async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error("unreachable");
+    }
+  });
+
+  assert.equal(result, "started");
+  assert.equal(serverStarted, true);
 });
 
 test("buildChildEnv removes duplicate Windows path keys", () => {

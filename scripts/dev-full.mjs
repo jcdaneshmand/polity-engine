@@ -92,9 +92,23 @@ export function createDevFullController(options = {}) {
   };
 }
 
+export async function ensureServerReady(controller, serverURL, options = {}) {
+  const healthURL = `${serverURL}/polity/lobby/rooms`;
+  const wait = options.waitForHTTP ?? waitForHTTP;
+  try {
+    await wait(healthURL, { timeoutMs: options.reuseTimeoutMs ?? 1_000 });
+    return "reused";
+  } catch {
+    controller.startServer();
+    await wait(healthURL, { timeoutMs: options.startTimeoutMs ?? 30_000 });
+    return "started";
+  }
+}
+
 async function main() {
   const serverPort = process.env.POLITY_SERVER_PORT || DEFAULT_SERVER_PORT;
   const appPort = process.env.VITE_APP_PORT || DEFAULT_APP_PORT;
+  const serverURL = `http://127.0.0.1:${serverPort}`;
   const controller = createDevFullController({ serverPort, appPort });
   let stopping = false;
 
@@ -108,9 +122,9 @@ async function main() {
   process.on("SIGTERM", () => stop("SIGTERM"));
   process.on("exit", () => controller.stopAll("SIGTERM"));
 
-  console.log(`Starting multiplayer server on http://127.0.0.1:${serverPort}`);
-  controller.startServer();
-  await waitForHTTP(`http://127.0.0.1:${serverPort}/polity/lobby/rooms`);
+  console.log(`Checking multiplayer server on ${serverURL}`);
+  const serverMode = await ensureServerReady(controller, serverURL);
+  console.log(serverMode === "reused" ? `Using existing multiplayer server on ${serverURL}` : `Started multiplayer server on ${serverURL}`);
 
   console.log(`Starting app on http://127.0.0.1:${appPort}`);
   controller.startApp();

@@ -655,6 +655,30 @@ describe("selection model", () => {
     expect(acts[0]).toMatchObject({ label:"Place cleanup resource on Market1", enabled:true, cardId:"m1" });
     expect(acts[1].enabled).toBe(false);
   });
+  it("treats supplied currentPlayer as the viewer identity for pending choices",()=> {
+    const activeTurnCtx:any={currentPlayer:"1"};
+    const viewerCtx:any={...activeTurnCtx,currentPlayer:"0"};
+    const withPending={...G,pendingCleanupMarketResourceChoice:{playerId:"0",resource:"knowledge",amount:1,cardIds:["m1"]}};
+
+    expect(getPendingUiState(withPending,viewerCtx)).toMatchObject({
+      title:"Pending Cleanup Resource",
+      detail:"Choose a market card for 1 cleanup resource"
+    });
+    expect(getMarketCardClickAction(withPending,viewerCtx,"m1")).toEqual({action:"resolveCleanupMarketResource",cardId:"m1",enabled:true});
+    expect(getAvailableActionsForSelection(null,withPending,viewerCtx)[0]).toMatchObject({action:"resolveCleanupMarketResource",enabled:true,cardId:"m1"});
+  });
+  it("keeps pending choices disabled when the supplied viewer identity does not own them",()=> {
+    const wrongViewerCtx:any={currentPlayer:"1"};
+    const withPending={...G,pendingCleanupMarketResourceChoice:{playerId:"0",resource:"knowledge",amount:1,cardIds:["m1"]}};
+
+    expect(getPendingUiState(withPending,wrongViewerCtx)?.detail).toContain("waiting for player 0");
+    expect(getMarketCardClickAction(withPending,wrongViewerCtx,"m1")).toBeUndefined();
+    expect(getAvailableActionsForSelection(null,withPending,wrongViewerCtx)[0]).toMatchObject({
+      action:"resolveCleanupMarketResource",
+      enabled:false,
+      reason:"Waiting for player 0"
+    });
+  });
   it("does not expose direct market Acquire when materials are too low",()=> {
     const poor = {...G,players:{"0":{...G.players["0"],resources:{materials:1}}}};
     const acquire=getAvailableActionsForSelection({kind:"market_slot",id:"m1"},poor,ctx).find(a=>a.action==="acquire");

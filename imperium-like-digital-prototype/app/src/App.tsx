@@ -6,13 +6,20 @@ import type { CampaignProgress } from "../../engine/src/options/gameOptions";
 import { ACCOUNT_SESSION_STORAGE_KEY, parseAccountSessionRecord, serializeAccountSessionRecord, type AccountSessionRecord } from "./accountSession";
 import AboutPage from "./AboutPage";
 import Board from "./Board";
-import { clearAllOnlineGames, closePolityOnlineMatch, computePrivateDataFingerprint, createLobbyRoom, heartbeatLobbyRoom, heartbeatPolityOnlineMatch, joinLobbyRoom, joinPolityOnlineMatch, leaveLobbyRoom, leavePolityOnlineMatch, listLobbyChat, listLobbyRooms, listOnlineChat, listOnlineMatches, loadCurrentAccount, ONLINE_SESSION_STORAGE_KEY, parseOnlineSessionRecord, registerAccount, rejoinLobbyRoom, resolveMultiplayerServerURL, selectLobbyNation, sendLobbyChat, sendOnlineChat, serializeOnlineSessionRecord, setLobbyReady, signInAccount, signOutAccount, spectateOnlineMatch, startLobbyGame, updateLobbySetup, type ChatMessage, type ListedLobby, type ListedMatch, type LobbyRoomDetails, type OnlineLobbySessionRecord, type OnlineSessionRecord, type OnlineStartedSessionRecord } from "./onlineSession";
+import { clearAllOnlineGames, closePolityOnlineMatch, computePrivateDataFingerprint, createLobbyRoom, heartbeatLobbyRoom, heartbeatPolityOnlineMatch, joinLobbyRoom, joinPolityOnlineMatch, leaveLobbyRoom, leavePolityOnlineMatch, listLobbyChat, listLobbyRooms, listOnlineChat, listOnlineMatches, loadCurrentAccount, ONLINE_SESSION_STORAGE_KEY, parseOnlineSessionRecord, recordAccountGameResult, registerAccount, rejoinLobbyRoom, resolveMultiplayerServerURL, selectLobbyNation, sendLobbyChat, sendOnlineChat, serializeOnlineSessionRecord, setLobbyReady, signInAccount, signOutAccount, spectateOnlineMatch, startAccountGameHistory, startLobbyGame, updateLobbySetup, type AccountGameResultInput, type AccountHistoryStartInput, type ChatMessage, type ListedLobby, type ListedMatch, type LobbyRoomDetails, type OnlineLobbySessionRecord, type OnlineSessionRecord, type OnlineStartedSessionRecord } from "./onlineSession";
 import PrivateCardEntry from "./ui/privateData/PrivateCardEntry";
 import LobbyRoom from "./ui/online/LobbyRoom";
 import OnlineGames from "./ui/online/OnlineGames";
 import NewGameSetup, { type NewGameSessionConfig } from "./ui/setup/NewGameSetup";
 
-type GameSession = NewGameSessionConfig & {
+type AccountGameTracking = {
+  accountHistoryEntryID?: string;
+  accountScope?: "solo" | "online";
+  accountVariant?: "standard" | "campaign" | "practice" | "multiplayer";
+  accountPlayerID?: string;
+};
+
+type GameSession = NewGameSessionConfig & AccountGameTracking & {
   id: number;
 } & (
   | { kind: "local" }
@@ -88,6 +95,31 @@ function isStartedSessionRecord(record: OnlineSessionRecord | undefined): record
   return Boolean(record && record.kind !== "lobby");
 }
 
+function createAccountHistoryID(scope: "solo" | "online"): string {
+  return `${scope}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function localAccountVariant(config: NewGameSessionConfig): "standard" | "campaign" | "practice" | undefined {
+  if (config.options.mode === "practice") return "practice";
+  if (config.options.mode === "solo") return config.options.campaignProgress ? "campaign" : "standard";
+  return undefined;
+}
+
+function startAccountHistoryEntry(args: {
+  serverURL: string;
+  accountToken: string;
+  entry: AccountHistoryStartInput;
+  onError: (message: string) => void;
+}): void {
+  void startAccountGameHistory({
+    serverURL: args.serverURL,
+    accountToken: args.accountToken,
+    entry: args.entry
+  }).catch((error) => {
+    args.onError(error instanceof Error ? error.message : "Could not save game history.");
+  });
+}
+
 export default function App() {
   const [session, setSession] = useState<GameSession | null>(null);
   const [homeView, setHomeView] = useState<"setup" | "private-data" | "about" | "online" | "lobby" | "lobby-setup">("setup");
@@ -132,6 +164,24 @@ export default function App() {
         : props;
       return <Board
         {...boardProps}
+        accountResultContext={session.accountHistoryEntryID && session.accountScope && session.accountVariant && session.accountPlayerID
+          ? {
+            historyEntryID: session.accountHistoryEntryID,
+            scope: session.accountScope,
+            variant: session.accountVariant,
+            playerID: session.accountPlayerID
+          }
+          : undefined}
+        onAccountGameResult={(result: AccountGameResultInput) => {
+          if (!accountSession) return;
+          void recordAccountGameResult({
+            serverURL: multiplayerServerURL,
+            accountToken: accountSession.token,
+            result
+          }).catch((error) => {
+            setOnlineStatus(error instanceof Error ? error.message : "Could not save game result.");
+          });
+        }}
         onCampaignProgress={(campaignProgress: CampaignProgress) => {
           setPendingCampaignProgress(campaignProgress);
           setSession(null);
@@ -152,7 +202,7 @@ export default function App() {
         credentials: session.credentials
       } : {})
     });
-  }, [session]);
+  }, [accountSession, multiplayerServerURL, session]);
 
   useEffect(() => {
     if (!accountSession) return;
@@ -201,7 +251,32 @@ export default function App() {
   const startLocalGame = (config: NewGameSessionConfig) => {
     setPendingCampaignProgress(undefined);
     setOnlineStatus("");
-    setSession({ ...config, id: Date.now(), kind: "local" });
+    const variant = localAccountVariant(config);
+    const tracking = accountSession && variant
+      ? {
+        accountHistoryEntryID: createAccountHistoryID("solo"),
+        accountScope: "solo" as const,
+        accountVariant: variant,
+        accountPlayerID: "0"
+      }
+      : {};
+    if (accountSession && tracking.accountHistoryEntryID && tracking.accountVariant) {
+      startAccountHistoryEntry({
+        serverURL: multiplayerServerURL,
+        accountToken: accountSession.token,
+        entry: {
+          id: tracking.accountHistoryEntryID,
+          scope: "solo",
+          variant: tracking.accountVariant,
+          status: "started",
+          outcome: "unknown",
+          playerCount: config.options.playerCount,
+          nationID: config.playerNationIds["0"]
+        },
+        onError: setOnlineStatus
+      });
+    }
+    setSession({ ...config, ...tracking, id: Date.now(), kind: "local" });
   };
 
   const startOnlineSession = (config: NewGameSessionConfig, record: OnlineStartedSessionRecord) => {
@@ -221,8 +296,36 @@ export default function App() {
       });
       return;
     }
+    const tracking = accountSession
+      ? {
+        accountHistoryEntryID: createAccountHistoryID("online"),
+        accountScope: "online" as const,
+        accountVariant: "multiplayer" as const,
+        accountPlayerID: record.playerID ?? "0"
+      }
+      : {};
+    if (accountSession && tracking.accountHistoryEntryID) {
+      const playerID = record.playerID ?? "0";
+      startAccountHistoryEntry({
+        serverURL: multiplayerServerURL,
+        accountToken: accountSession.token,
+        entry: {
+          id: tracking.accountHistoryEntryID,
+          scope: "online",
+          variant: "multiplayer",
+          status: "started",
+          outcome: "unknown",
+          matchID: record.matchID,
+          playerID,
+          playerCount: record.numPlayers,
+          nationID: config.playerNationIds[playerID]
+        },
+        onError: setOnlineStatus
+      });
+    }
     setSession({
       ...config,
+      ...tracking,
       id: Date.now(),
       kind: "online",
       role: "player",

@@ -9,7 +9,8 @@ import { GameLogPanel } from "./GameLogPanel";
 import { BotRow } from "./BotRow";
 import { ZoneDetailPanel } from "./ZoneDetailPanel";
 import { TurnStatusBar } from "./TurnStatusBar";
-import EndGameSummary from "./EndGameSummary";
+import EndGameSummary, { type AccountGameResultContext } from "./EndGameSummary";
+import type { AccountGameResultInput } from "../../onlineSession";
 import { getActionHintsByCardId, getAvailableActionsForSelection, getMarketCardClickAction, getPendingUiState, getPrimaryBlockedReason, getSelectedCard, type Selection } from "../controller/selectionModel";
 import { CONTROLLER_HINTS } from "../controller/controllerHints";
 import { handleBoardKeyDown } from "../controller/keyboardControls";
@@ -20,7 +21,62 @@ function viewerPlayerId(ctx: any, playerID?: string | null): string {
   return playerID ?? ctx?.playerID ?? ctx?.currentPlayer ?? "0";
 }
 
-export default function BoardLayout({ G, ctx, moves, playerID, onCampaignProgress }: any & { onCampaignProgress?: (progress: CampaignProgress) => void }) {
+export function dispatchBoardAction({ action: a, moves, setDetailCardId, setSelection }: { action: any; moves: any; setDetailCardId: (cardId: string | null) => void; setSelection: (selection: Selection | null) => void }) {
+  if (!a.enabled) return;
+  if (a.action === "view" && a.cardId) setDetailCardId(a.cardId);
+  if (a.action === "play" && a.cardId) moves.playCard?.(a.cardId);
+  if (a.action === "profit" && a.cardId) moves.profitCard?.(a.cardId);
+  if (a.action === "resolveChoice" && typeof a.choiceIndex === "number") moves.resolveChoice?.(a.choiceIndex);
+  if (a.action === "resolveDrawChoice" && a.cardId) moves.resolveDrawChoice?.(a.cardId);
+  if (a.action === "resolveFindChoice" && a.cardId) moves.resolveFindChoice?.(a.cardId);
+  if (a.action === "resolveAcquireChoice" && a.cardId) moves.resolveAcquireChoice?.(a.cardId);
+  if (a.action === "resolveMarketCardChoice" && a.cardId) moves.resolveMarketCardChoice?.(a.cardId);
+  if (a.action === "resolveExileChoice" && a.cardId) moves.resolveExileChoice?.(a.cardId);
+  if (a.action === "skipExileChoice") moves.skipExileChoice?.();
+  if (a.action === "resolveBreakThroughChoice" && a.cardId) moves.resolveBreakThroughChoice?.(a.cardId);
+  if (a.action === "resolveGarrisonChoice" && a.hostCardId && a.cardId) moves.resolveGarrisonChoice?.(a.hostCardId, a.cardId);
+  if (a.action === "resolveRegionChoice" && a.cardId) moves.resolveRegionChoice?.(a.cardId);
+  if (a.action === "resolveDevelopmentChoice" && a.cardId) moves.resolveDevelopmentChoice?.(a.cardId);
+  if (a.action === "skipDevelopmentChoice") moves.skipDevelopmentChoice?.();
+  if (a.action === "resolveShortGameDevelopmentExileChoice" && a.cardId) moves.resolveShortGameDevelopmentExileChoice?.(a.cardId);
+  if (a.action === "resolveTradeChoice") moves.resolveTradeChoice?.(a.cardId);
+  if (a.action === "resolveDiscardChoice" && a.cardIds) moves.resolveDiscardChoice?.(a.cardIds);
+  if (a.action === "resolveReturnUnrestChoice" && a.cardId) moves.resolveReturnUnrestChoice?.(a.cardId);
+  if (a.action === "resolveReturnFameChoice" && a.cardId) moves.resolveReturnFameChoice?.(a.cardId);
+  if (a.action === "resolvePlaceOnDeckChoice" && a.cardId) moves.resolvePlaceOnDeckChoice?.(a.cardId);
+  if (a.action === "resolveReturnExhaustTokenChoice" && a.cardId) moves.resolveReturnExhaustTokenChoice?.(a.cardId);
+  if (a.action === "resolveGiveCardChoice" && a.cardId && a.recipientPlayerId) moves.resolveGiveCardChoice?.(a.cardId, a.recipientPlayerId);
+  if (a.action === "resolveSwapChoice" && a.cardId && a.marketCardId) moves.resolveSwapChoice?.(a.cardId, a.marketCardId);
+  if (a.action === "resolveUnrestAllocationChoice" && a.recipientPlayerIds) moves.resolveUnrestAllocationChoice?.(a.recipientPlayerIds);
+  if (a.action === "resolveSolsticeOrderChoice" && a.cardIds) moves.resolveSolsticeOrderChoice?.(a.cardIds);
+  if (a.action === "resolveLookOrderChoice" && a.cardIds) moves.resolveLookOrderChoice?.(a.cardIds);
+  if (a.action === "resolveLookTakeChoice" && a.cardId) moves.resolveLookTakeChoice?.(a.cardId, a.returnOrder);
+  if (a.action === "resolveMarketResourcePlacement" && a.cardIds) moves.resolveMarketResourcePlacement?.(a.cardIds);
+  if (a.action === "resolveCleanupMarketResource" && a.cardId) moves.resolveCleanupMarketResource?.(a.cardId);
+  if (a.action === "resolveCleanupDiscard") moves.resolveCleanupDiscard?.(a.cardIds ?? (a.cardId ? [a.cardId] : []));
+  if (a.action === "resolveReactiveExhaustChoice" && a.cardId) moves.resolveReactiveExhaustChoice?.(a.cardId);
+  if (a.action === "skipReactiveExhaustChoice") moves.skipReactiveExhaustChoice?.();
+  if (a.action === "exhaust" && a.cardId) moves.exhaustCard?.(a.cardId);
+  if (a.action === "innovate" && a.suit && a.source) moves.innovateTurn?.({ suit: a.suit, source: a.source, cardId: a.cardId });
+  if (a.action === "revolt" && a.cardIds) moves.revoltTurn?.(a.cardIds);
+  if (a.action === "revolt" && a.cardId) moves.revoltTurn?.([a.cardId]);
+  if (a.action === "endTurn") moves.endTurn?.();
+  if (a.action === "cancel") { setSelection(null); setDetailCardId(null); }
+}
+
+export default function BoardLayout({
+  G,
+  ctx,
+  moves,
+  playerID,
+  onCampaignProgress,
+  accountResultContext,
+  onAccountGameResult
+}: any & {
+  onCampaignProgress?: (progress: CampaignProgress) => void;
+  accountResultContext?: AccountGameResultContext;
+  onAccountGameResult?: (result: AccountGameResultInput) => void;
+}) {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [detailCardId, setDetailCardId] = useState<string | null>(null);
   const [zoomCardId, setZoomCardId] = useState<string | null>(null);
@@ -98,48 +154,7 @@ export default function BoardLayout({ G, ctx, moves, playerID, onCampaignProgres
     return () => window.removeEventListener("keydown", onKey);
   }, [detailCard?.id, detailCardId, moves, zoomCardId]);
 
-  const onAction = (a: any) => {
-    if (!a.enabled) return;
-    if (a.action === "view" && a.cardId) setDetailCardId(a.cardId);
-    if (a.action === "play" && a.cardId) moves.playCard?.(a.cardId);
-    if (a.action === "profit" && a.cardId) moves.profitCard?.(a.cardId);
-    if (a.action === "resolveChoice" && typeof a.choiceIndex === "number") moves.resolveChoice?.(a.choiceIndex);
-    if (a.action === "resolveDrawChoice" && a.cardId) moves.resolveDrawChoice?.(a.cardId);
-    if (a.action === "resolveFindChoice" && a.cardId) moves.resolveFindChoice?.(a.cardId);
-    if (a.action === "resolveAcquireChoice" && a.cardId) moves.resolveAcquireChoice?.(a.cardId);
-    if (a.action === "resolveMarketCardChoice" && a.cardId) moves.resolveMarketCardChoice?.(a.cardId);
-    if (a.action === "resolveExileChoice" && a.cardId) moves.resolveExileChoice?.(a.cardId);
-    if (a.action === "skipExileChoice") moves.skipExileChoice?.();
-    if (a.action === "resolveBreakThroughChoice" && a.cardId) moves.resolveBreakThroughChoice?.(a.cardId);
-    if (a.action === "resolveGarrisonChoice" && a.hostCardId && a.cardId) moves.resolveGarrisonChoice?.(a.hostCardId, a.cardId);
-    if (a.action === "resolveRegionChoice" && a.cardId) moves.resolveRegionChoice?.(a.cardId);
-    if (a.action === "resolveDevelopmentChoice" && a.cardId) moves.resolveDevelopmentChoice?.(a.cardId);
-    if (a.action === "skipDevelopmentChoice") moves.skipDevelopmentChoice?.();
-    if (a.action === "resolveShortGameDevelopmentExileChoice" && a.cardId) moves.resolveShortGameDevelopmentExileChoice?.(a.cardId);
-    if (a.action === "resolveTradeChoice") moves.resolveTradeChoice?.(a.cardId);
-    if (a.action === "resolveDiscardChoice" && a.cardIds) moves.resolveDiscardChoice?.(a.cardIds);
-    if (a.action === "resolveReturnUnrestChoice" && a.cardId) moves.resolveReturnUnrestChoice?.(a.cardId);
-    if (a.action === "resolveReturnFameChoice" && a.cardId) moves.resolveReturnFameChoice?.(a.cardId);
-    if (a.action === "resolvePlaceOnDeckChoice" && a.cardId) moves.resolvePlaceOnDeckChoice?.(a.cardId);
-    if (a.action === "resolveReturnExhaustTokenChoice" && a.cardId) moves.resolveReturnExhaustTokenChoice?.(a.cardId);
-    if (a.action === "resolveGiveCardChoice" && a.cardId && a.recipientPlayerId) moves.resolveGiveCardChoice?.(a.cardId, a.recipientPlayerId);
-    if (a.action === "resolveSwapChoice" && a.cardId && a.marketCardId) moves.resolveSwapChoice?.(a.cardId, a.marketCardId);
-    if (a.action === "resolveUnrestAllocationChoice" && a.recipientPlayerIds) moves.resolveUnrestAllocationChoice?.(a.recipientPlayerIds);
-    if (a.action === "resolveSolsticeOrderChoice" && a.cardIds) moves.resolveSolsticeOrderChoice?.(a.cardIds);
-    if (a.action === "resolveLookOrderChoice" && a.cardIds) moves.resolveLookOrderChoice?.(a.cardIds);
-    if (a.action === "resolveLookTakeChoice" && a.cardId) moves.resolveLookTakeChoice?.(a.cardId, a.returnOrder);
-    if (a.action === "resolveMarketResourcePlacement" && a.cardIds) moves.resolveMarketResourcePlacement?.(a.cardIds);
-    if (a.action === "resolveCleanupMarketResource" && a.cardId) moves.resolveCleanupMarketResource?.(a.cardId);
-    if (a.action === "resolveCleanupDiscard") moves.resolveCleanupDiscard?.(a.cardIds ?? (a.cardId ? [a.cardId] : []));
-    if (a.action === "resolveReactiveExhaustChoice" && a.cardId) moves.resolveReactiveExhaustChoice?.(a.cardId);
-    if (a.action === "skipReactiveExhaustChoice") moves.skipReactiveExhaustChoice?.();
-    if (a.action === "exhaust" && a.cardId) moves.exhaustCard?.(a.cardId);
-    if (a.action === "innovate" && a.suit && a.source) moves.innovateTurn?.({ suit: a.suit, source: a.source, cardId: a.cardId });
-    if (a.action === "revolt" && a.cardIds) moves.revoltTurn?.(a.cardIds);
-    if (a.action === "revolt" && a.cardId) moves.revoltTurn?.([a.cardId]);
-    if (a.action === "endTurn") moves.endTurn?.();
-    if (a.action === "cancel") { setSelection(null); setDetailCardId(null); }
-  };
+  const onAction = (action: any) => dispatchBoardAction({ action, moves, setDetailCardId, setSelection });
 
   const onMarketCardClick = (id: string) => {
     const directAction = getMarketCardClickAction(G, uiCtx, id);
@@ -198,7 +213,14 @@ export default function BoardLayout({ G, ctx, moves, playerID, onCampaignProgres
     </div>
     <CardInspectionModal card={zoomCard} onClose={() => setZoomCardId(null)} />
     {G.gameover && !summaryDismissed ? (
-      <EndGameSummary G={G} ctx={ctx} onReviewBoard={() => setSummaryDismissed(true)} onCampaignProgress={onCampaignProgress} />
+      <EndGameSummary
+        G={G}
+        ctx={ctx}
+        onReviewBoard={() => setSummaryDismissed(true)}
+        onCampaignProgress={onCampaignProgress}
+        accountResultContext={accountResultContext}
+        onAccountGameResult={onAccountGameResult}
+      />
     ) : null}
   </div>;
 }

@@ -1,8 +1,15 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { applyCampaignResult } from "../../../../engine/src/game/campaign";
 import type { CampaignCardChoice, CampaignGameOutcome, CampaignProgress } from "../../../../engine/src/options/gameOptions";
+import type { AccountGameResultInput } from "../../onlineSession";
 
 type ResourceMap = Record<string, number | undefined>;
+export type AccountGameResultContext = {
+  historyEntryID: string;
+  playerID: string;
+  scope: "solo" | "online";
+  variant: "standard" | "campaign" | "practice" | "multiplayer";
+};
 
 const PLAYER_CARD_ZONES = ["hand", "deck", "discard", "playArea", "history", "exile", "powerArea", "stateArea", "developmentArea", "nationDeck"];
 const BOT_CARD_ZONES = ["botDeck", "botDiscard", "botPlayArea", "botHistory"];
@@ -28,6 +35,64 @@ function zoneCardCount(entity: Record<string, any> | undefined, zones: string[])
 
 function resourceTotal(resources: ResourceMap | undefined): number {
   return Object.values(resources ?? {}).reduce<number>((total, value) => total + Number(value ?? 0), 0);
+}
+
+function numericRecord(value: unknown): Record<string, number> | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, entry]) => typeof entry === "number");
+  return entries.length > 0 ? Object.fromEntries(entries) as Record<string, number> : undefined;
+}
+
+function nationIdForPlayer(G: any, playerId: string | undefined): string | undefined {
+  if (!playerId) return undefined;
+  const report = (G?.rulesetReports ?? []).find((entry: any) => String(entry?.playerId) === playerId);
+  return typeof report?.nationId === "string" ? report.nationId : undefined;
+}
+
+export function accountGameResultFromSummary({
+  G,
+  historyEntryID,
+  playerID,
+  scope,
+  variant
+}: {
+  G: any;
+  historyEntryID: string;
+  playerID: string;
+  scope: "solo" | "online";
+  variant: "standard" | "campaign" | "practice" | "multiplayer";
+}): AccountGameResultInput {
+  const gameover = G?.gameover ?? {};
+  const winnerID = typeof gameover.winner === "string" ? gameover.winner : String(gameover.winner ?? "");
+  const player = G?.players?.[playerID];
+  const resources = numericRecord(player?.resources);
+  const nationID = nationIdForPlayer(G, playerID);
+  const opponentNationIDs = (G?.rulesetReports ?? [])
+    .filter((entry: any) => String(entry?.playerId) !== playerID && typeof entry?.nationId === "string")
+    .map((entry: any) => entry.nationId);
+
+  return {
+    id: historyEntryID,
+    outcome: winnerID ? (winnerID === playerID ? "win" : "loss") : "unfinished",
+    winnerID: winnerID || undefined,
+    winnerNationID: nationIdForPlayer(G, winnerID),
+    reason: typeof gameover.reason === "string" ? gameover.reason : undefined,
+    scores: numericRecord(gameover.scores),
+    tieBreakScores: numericRecord(gameover.tieBreakScores),
+    roundsPlayed: typeof G?.round === "number" ? G.round : undefined,
+    finalResources: resources,
+    finalDeckSize: Array.isArray(player?.deck) ? player.deck.length : undefined,
+    finalCardsInPlay: Array.isArray(player?.playArea) ? player.playArea.length : undefined,
+    finalUnrest: Number(resources?.unrest ?? 0),
+    finalFame: Number(resources?.fame ?? 0),
+    rawSummaryStats: {
+      scope,
+      variant,
+      nationID,
+      opponentNationIDs
+    }
+  };
 }
 
 function botCardCount(bot: Record<string, any> | undefined): number {
@@ -118,15 +183,20 @@ export default function EndGameSummary({
   G,
   onReviewBoard,
   campaignProgress,
-  onCampaignProgress
+  onCampaignProgress,
+  accountResultContext,
+  onAccountGameResult
 }: {
   G: any;
   ctx?: any;
   onReviewBoard?: () => void;
   campaignProgress?: CampaignProgress;
   onCampaignProgress?: (progress: CampaignProgress) => void;
+  accountResultContext?: AccountGameResultContext;
+  onAccountGameResult?: (result: AccountGameResultInput) => void;
 }) {
   const gameover = G?.gameover;
+  const [reportedAccountResultKey, setReportedAccountResultKey] = useState<string | undefined>(undefined);
   const campaignOutcome = gameover?.campaignOutcome as CampaignGameOutcome | undefined;
   const activeCampaignProgress = campaignProgress ?? G?.options?.campaignProgress;
   const campaignChoices = useMemo(
@@ -148,6 +218,17 @@ export default function EndGameSummary({
   const tieBreakScores = gameover?.tieBreakScores ?? {};
   const playerEntries = Object.entries(G?.players ?? {}) as Array<[string, any]>;
   const bot = G?.solo?.bot;
+
+  useEffect(() => {
+    if (!gameover || !accountResultContext || !onAccountGameResult) return;
+    const key = `${accountResultContext.historyEntryID}:${String(gameover.winner ?? "")}:${String(gameover.reason ?? "")}`;
+    if (reportedAccountResultKey === key) return;
+    setReportedAccountResultKey(key);
+    onAccountGameResult(accountGameResultFromSummary({
+      G,
+      ...accountResultContext
+    }));
+  }, [G, accountResultContext, gameover, onAccountGameResult, reportedAccountResultKey]);
 
   return <section className="panel end-game-summary">
     <div className="eyebrow">Game Complete</div>

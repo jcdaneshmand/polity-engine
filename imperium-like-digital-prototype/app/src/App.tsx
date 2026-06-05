@@ -478,6 +478,7 @@ export default function App() {
             kicker="Pregame lobby"
             submitLabel="Update Lobby"
             onlineGamesEnabled={false}
+            allowedModes={["multiplayer"]}
             onCancel={() => setHomeView("lobby")}
             onStart={(setupConfig) => void updateCurrentLobbySetup({ roomName: currentLobby.roomName, setupConfig })}
             onOpenCardEntry={() => setHomeView("private-data")}

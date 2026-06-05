@@ -40,6 +40,7 @@ describe("NewGameSetup summary", () => {
         submitLabel="Update Lobby"
         onCancel={() => undefined}
         onlineGamesEnabled={false}
+        allowedModes={["multiplayer"]}
       />
     );
 
@@ -51,6 +52,8 @@ describe("NewGameSetup summary", () => {
     expect(html).toContain("<strong>Legends</strong>");
     expect(html).toContain("Trade Routes");
     expect(html).toContain("Quick Setup");
+    expect(html).not.toContain(">Solo</button>");
+    expect(html).not.toContain(">Practice</button>");
     expect(html).not.toContain("Online Games");
   });
 

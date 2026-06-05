@@ -25,6 +25,7 @@ type NewGameSetupProps = {
   submitLabel?: string;
   onCancel?: () => void;
   onlineGamesEnabled?: boolean;
+  allowedModes?: GameMode[];
 };
 
 const DEFAULT_NATION_ID = "test_nation_sun_coast";
@@ -189,10 +190,13 @@ export default function NewGameSetup({
   kicker = "Polity Engine setup",
   submitLabel = "Start Game",
   onCancel,
-  onlineGamesEnabled = true
+  onlineGamesEnabled = true,
+  allowedModes
 }: NewGameSetupProps) {
   const initialOptions = initialConfig?.options;
-  const initialMode = initialCampaignProgress ? "solo" : initialOptions?.mode ?? "multiplayer";
+  const modeChoices = modes.filter((item) => !allowedModes || allowedModes.includes(item.id));
+  const requestedInitialMode = initialCampaignProgress ? "solo" : initialOptions?.mode ?? "multiplayer";
+  const initialMode = modeChoices.some((item) => item.id === requestedInitialMode) ? requestedInitialMode : modeChoices[0]?.id ?? "multiplayer";
   const [mode, setMode] = useState<GameMode>(initialMode);
   const [playerCount, setPlayerCount] = useState<1 | 2 | 3 | 4>(initialCampaignProgress ? 1 : (initialOptions?.playerCount ?? 2) as 1 | 2 | 3 | 4);
   const [enabledExpansions, setEnabledExpansions] = useState<ExpansionId[]>([...(initialOptions?.enabledExpansions ?? [])]);
@@ -420,7 +424,7 @@ export default function NewGameSetup({
             <fieldset className="setup-section">
               <legend>Mode</legend>
               <div className="segmented-control">
-                {modes.map((item) => (
+                {modeChoices.map((item) => (
                   <button key={item.id} className={mode === item.id ? "is-active" : ""} type="button" onClick={() => updateMode(item.id)}>
                     {item.label}
                   </button>

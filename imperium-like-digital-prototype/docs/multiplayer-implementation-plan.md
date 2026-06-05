@@ -65,7 +65,9 @@ The engine owns rule behavior and private-state redaction helpers so both tests 
   - `POLITY_SERVER_PORT`
   - `POLITY_SERVER_ORIGIN`
   - `POLITY_STORAGE_PATH` or database URL
-  - `VITE_MULTIPLAYER_SERVER_URL`
+  - `VITE_MULTIPLAYER_SERVER_URL` only when the multiplayer API is hosted away from the app origin
+
+Product decision: normal users should not see or type a server URL. The app should default multiplayer requests to its own origin so a hosted Polity Engine deployment can serve the app, lobby API, and Socket.IO transport together. `VITE_MULTIPLAYER_SERVER_URL` remains a developer/deployment override for split app/API hosting.
 
 ### Acceptance Criteria
 
@@ -136,6 +138,7 @@ The engine owns rule behavior and private-state redaction helpers so both tests 
   - Host Online Game.
   - Join Online Game.
   - Rejoin Previous Online Game when saved credentials exist.
+- Use the app's configured server origin automatically; keep server URL out of the default user flow.
 - Implement match creation through the server lobby API.
 - Store reconnect data in `localStorage`:
 

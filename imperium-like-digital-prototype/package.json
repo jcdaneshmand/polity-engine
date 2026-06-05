@@ -4,12 +4,14 @@
   "version": "0.1.0",
   "workspaces": [
     "app",
-    "engine"
+    "engine",
+    "server"
   ],
   "scripts": {
     "dev": "npm run dev -w app",
+    "server:dev": "npm run dev -w server",
     "test": "npm run test -w engine",
-    "typecheck": "npm run typecheck -w engine && npm run typecheck -w app",
+    "typecheck": "npm run typecheck -w engine && npm run typecheck -w app && npm run typecheck -w server",
     "cards:validate": "tsx tools/card-import/validatePrivateCards.ts",
     "cards:import": "tsx tools/card-import/importPrivateCards.ts",
     "cards:report": "tsx tools/card-import/importPrivateCards.ts --print-report generated-private/card-import-report.json",

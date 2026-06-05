@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": ["node", "vitest/globals"],
+    "paths": {
+      "boardgame.io/core": ["../node_modules/boardgame.io/dist/cjs/core.js"]
+    }
+  },
+  "include": ["src/**/*", "../engine/src/**/*", "../data/**/*.json", "../types/**/*.d.ts"],
+  "exclude": ["../engine/src/tests/**/*"]
+}

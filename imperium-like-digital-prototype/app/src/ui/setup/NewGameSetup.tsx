@@ -16,6 +16,11 @@ export type NewGameSessionConfig = {
 
 type NewGameSetupProps = {
   onStart: (config: NewGameSessionConfig) => void;
+  onHostOnline?: (config: NewGameSessionConfig, serverURL: string) => void | Promise<void>;
+  onJoinOnline?: (args: { config: NewGameSessionConfig; matchID: string; playerID: string; playerName: string; serverURL: string }) => void | Promise<void>;
+  onRejoinOnline?: () => void;
+  canRejoinOnline?: boolean;
+  onlineServerURL?: string;
   onOpenCardEntry?: () => void;
   initialCampaignProgress?: CampaignProgress;
 };
@@ -134,6 +139,17 @@ export function parseCampaignSheetText(text: string): CampaignProgress | undefin
   }
 }
 
+function isFreshCampaignProgress(progress: CampaignProgress | undefined): boolean {
+  return Boolean(progress
+    && progress.wins === 0
+    && progress.losses === 0
+    && progress.defeatedBotNationIds.length === 0
+    && progress.startingDeckAdditions.length === 0
+    && progress.startingDeckRemovals.length === 0
+    && progress.setAsideCommonsCardIds.length === 0
+    && (progress.records?.length ?? 0) === 0);
+}
+
 export function buildCampaignGameOptions(args: {
   mode: GameMode;
   campaignMode: "none" | CampaignMode;
@@ -143,7 +159,7 @@ export function buildCampaignGameOptions(args: {
 }): Pick<GameOptions, "campaignMode" | "campaignProgress" | "soloDifficulty"> {
   const soloDifficulty = args.campaignMode === "supreme_ruler" ? "supreme_ruler" : args.soloDifficulty;
   if (args.mode !== "solo" || args.campaignMode === "none") return { soloDifficulty };
-  const campaignProgress = args.campaignProgress?.mode === args.campaignMode
+  const campaignProgress = args.campaignProgress?.mode === args.campaignMode && !isFreshCampaignProgress(args.campaignProgress)
     ? args.campaignProgress
     : createCampaignProgress({
       mode: args.campaignMode,
@@ -157,7 +173,7 @@ export function buildCampaignGameOptions(args: {
   };
 }
 
-export default function NewGameSetup({ onStart, onOpenCardEntry, initialCampaignProgress }: NewGameSetupProps) {
+export default function NewGameSetup({ onStart, onHostOnline, onJoinOnline, onRejoinOnline, canRejoinOnline, onlineServerURL = "http://localhost:8000", onOpenCardEntry, initialCampaignProgress }: NewGameSetupProps) {
   const [mode, setMode] = useState<GameMode>(initialCampaignProgress ? "solo" : "multiplayer");
   const [playerCount, setPlayerCount] = useState<1 | 2 | 3 | 4>(initialCampaignProgress ? 1 : 2);
   const [enabledExpansions, setEnabledExpansions] = useState<ExpansionId[]>([]);
@@ -172,6 +188,9 @@ export default function NewGameSetup({ onStart, onOpenCardEntry, initialCampaign
   const [privateData, setPrivateData] = useState<PrivateDataBundle>({});
   const [privateDataConfirmed, setPrivateDataConfirmed] = useState(false);
   const [privateFileStatuses, setPrivateFileStatuses] = useState<PrivateDataFileStatus[]>([]);
+  const [joinMatchID, setJoinMatchID] = useState("");
+  const [joinPlayerID, setJoinPlayerID] = useState("1");
+  const [joinPlayerName, setJoinPlayerName] = useState("Player");
   const [playerNationIds, setPlayerNationIds] = useState<Record<string, string>>({
     "1": initialCampaignProgress?.playerNationId ?? DEFAULT_NATION_ID,
     "2": DEFAULT_NATION_ID,
@@ -202,10 +221,19 @@ export default function NewGameSetup({ onStart, onOpenCardEntry, initialCampaign
   ].join(", ") || "Core rules";
   const privateDataSummary = privateDataConfirmed && hasPrivateData(privateData) ? privateDataReadyMessage : "Placeholder data";
   const effectiveCampaignMode = mode === "solo" ? campaignMode : "none";
+  const selectedPlayerOneNationId = playerNationIds["1"] ?? DEFAULT_NATION_ID;
+  const launchCampaignOptions = buildCampaignGameOptions({
+    mode,
+    campaignMode: effectiveCampaignMode,
+    selectedPlayerNationId: selectedPlayerOneNationId,
+    soloDifficulty,
+    campaignProgress
+  });
+  const launchCampaignProgress = launchCampaignOptions.campaignProgress;
   const campaignSummary = effectiveCampaignMode === "none"
     ? "Off"
-    : campaignProgress
-      ? `${labelFor(campaignModes, campaignProgress.mode)} ${campaignProgress.wins}-${campaignProgress.losses}`
+    : launchCampaignProgress
+      ? `${labelFor(campaignModes, launchCampaignProgress.mode)} ${launchCampaignProgress.wins}-${launchCampaignProgress.losses}`
       : labelFor(campaignModes, effectiveCampaignMode);
 
   const updateMode = (nextMode: GameMode) => {
@@ -231,29 +259,41 @@ export default function NewGameSetup({ onStart, onOpenCardEntry, initialCampaign
     });
   };
 
-  const startGame = () => {
+  const buildLaunchConfig = (): NewGameSessionConfig => {
     const selectedNations = Object.fromEntries(activePlayerIds.map((playerId) => [playerId, playerNationIds[playerId] ?? DEFAULT_NATION_ID]));
-    const campaignOptions = buildCampaignGameOptions({
-      mode,
-      campaignMode: effectiveCampaignMode,
-      selectedPlayerNationId: selectedNations["1"] ?? DEFAULT_NATION_ID,
-      soloDifficulty,
-      campaignProgress
-    });
     const options: GameOptions = {
       playerCount: normalizedPlayerCount,
       mode,
       enabledExpansions,
       enabledVariants,
       commonsSetId,
-      ...(mode === "solo" ? campaignOptions : {})
+      ...(mode === "solo" ? launchCampaignOptions : {})
     };
 
-    onStart({
+    return {
       options,
       playerNationIds: selectedNations,
       ...(mode === "solo" ? { soloBotNationId } : {}),
       ...(privateDataConfirmed && hasPrivateData(privateData) ? { privateData } : {})
+    };
+  };
+
+  const startGame = () => {
+    onStart(buildLaunchConfig());
+  };
+
+  const hostOnlineGame = () => {
+    void onHostOnline?.(buildLaunchConfig(), onlineServerURL);
+  };
+
+  const joinOnlineGame = () => {
+    if (!joinMatchID.trim()) return;
+    void onJoinOnline?.({
+      config: buildLaunchConfig(),
+      matchID: joinMatchID.trim(),
+      playerID: joinPlayerID,
+      playerName: joinPlayerName.trim() || `Player ${joinPlayerID}`,
+      serverURL: onlineServerURL
     });
   };
 
@@ -428,7 +468,7 @@ export default function NewGameSetup({ onStart, onOpenCardEntry, initialCampaign
               </>
             ) : null}
 
-            <fieldset className="setup-section setup-section--wide">
+            {mode === "solo" ? <fieldset className="setup-section setup-section--wide">
               <legend>Campaign</legend>
               <div className="segmented-control">
                 {campaignModes.map((item) => (
@@ -443,14 +483,57 @@ export default function NewGameSetup({ onStart, onOpenCardEntry, initialCampaign
                   </button>
                 ))}
               </div>
-              {campaignProgress ? (
+              <div className="campaign-mode-help">
+                <span>Standard campaign advances through the solo difficulty ladder and carries win/loss rewards into the next game.</span>
+                <span>Supreme Ruler campaign locks the Bot to Supreme Ruler and uses the set-aside Commons challenge rules.</span>
+              </div>
+              {launchCampaignProgress ? (
                 <div className="campaign-setup-status">
-                  <span>{labelFor(campaignModes, campaignProgress.mode)}</span>
-                  <strong>{campaignProgress.wins} wins / {campaignProgress.losses} losses</strong>
-                  <small>Next difficulty: {labelFor(soloDifficulties, campaignProgress.currentDifficulty)}</small>
+                  <span>{labelFor(campaignModes, launchCampaignProgress.mode)}</span>
+                  <strong>{launchCampaignProgress.wins} wins / {launchCampaignProgress.losses} losses</strong>
+                  <small>Next difficulty: {labelFor(soloDifficulties, launchCampaignProgress.currentDifficulty)}</small>
                 </div>
               ) : null}
-            </fieldset>
+            </fieldset> : null}
+
+            {mode === "multiplayer" ? (
+              <fieldset className="setup-section setup-section--wide">
+                <legend>Online</legend>
+                <div className="private-data-actions">
+                  <button className="primary-action" type="button" onClick={hostOnlineGame} disabled={!onHostOnline}>
+                    Host Online Game
+                  </button>
+                  <button type="button" onClick={onRejoinOnline} disabled={!canRejoinOnline || !onRejoinOnline}>
+                    Rejoin Online Game
+                  </button>
+                </div>
+                <div className="nation-grid">
+                  <label className="setup-field">
+                    <span>Match ID</span>
+                    <input value={joinMatchID} onChange={(event: { target: HTMLInputElement }) => setJoinMatchID(event.target.value)} />
+                  </label>
+                  <label className="setup-field">
+                    <span>Seat</span>
+                    <select value={joinPlayerID} onChange={(event: { target: HTMLSelectElement }) => setJoinPlayerID(event.target.value)}>
+                      {Array.from({ length: normalizedPlayerCount }, (_, index) => String(index)).map((playerId) => (
+                        <option key={playerId} value={playerId}>
+                          Player {Number(playerId) + 1}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="setup-field">
+                    <span>Name</span>
+                    <input value={joinPlayerName} onChange={(event: { target: HTMLInputElement }) => setJoinPlayerName(event.target.value)} />
+                  </label>
+                </div>
+                <div className="private-data-actions">
+                  <button type="button" onClick={joinOnlineGame} disabled={!onJoinOnline || !joinMatchID.trim()}>
+                    Join Online Game
+                  </button>
+                </div>
+              </fieldset>
+            ) : null}
           </div>
         </section>
 
@@ -557,7 +640,7 @@ export default function NewGameSetup({ onStart, onOpenCardEntry, initialCampaign
           </fieldset>
         </section>
 
-        <section className="setup-stage" aria-labelledby="setup-stage-campaign-data">
+        {mode === "solo" ? <section className="setup-stage" aria-labelledby="setup-stage-campaign-data">
           <h2 id="setup-stage-campaign-data">Campaign Data</h2>
           <fieldset className="setup-section setup-section--wide">
             <legend>Campaign Sheet</legend>
@@ -572,7 +655,7 @@ export default function NewGameSetup({ onStart, onOpenCardEntry, initialCampaign
             </div>
             {campaignImportMessage ? <p className="setup-help">{campaignImportMessage}</p> : null}
           </fieldset>
-        </section>
+        </section> : null}
         <p className="setup-attribution">
           Imperium: Classics, Imperium: Legends, and Imperium: Horizons are owned by Osprey Games. Visit the{" "}
           <a href="https://www.ospreypublishing.com/uk/discover/osprey-games/imperium/" target="_blank" rel="noreferrer">

@@ -108,6 +108,12 @@ export function campaignSheetExportText(progress: CampaignProgress): string {
   }, null, 2);
 }
 
+function campaignRecordLabel(record: { won: boolean; botNationId: string; difficulty: string; score?: number }, index: number): string {
+  const result = record.won ? "Win" : "Loss";
+  const score = typeof record.score === "number" ? ` / ${record.score}` : "";
+  return `Game ${index + 1}: ${result} vs ${titleWords(record.botNationId)} (${titleWords(record.difficulty)}${score})`;
+}
+
 export default function EndGameSummary({
   G,
   onReviewBoard,
@@ -137,6 +143,7 @@ export default function EndGameSummary({
   const previewCampaignProgress = activeCampaignProgress && campaignOutcome && campaignCanUpdate
     ? completeCampaignProgressFromSummary(activeCampaignProgress, campaignOutcome, activeCampaignChoice)
     : undefined;
+  const campaignComplete = previewCampaignProgress?.complete;
   const scores = gameover?.scores ?? {};
   const tieBreakScores = gameover?.tieBreakScores ?? {};
   const playerEntries = Object.entries(G?.players ?? {}) as Array<[string, any]>;
@@ -185,15 +192,30 @@ export default function EndGameSummary({
         <div><span>Campaign Losses</span><strong>{String(previewCampaignProgress.losses)}</strong></div>
         <div><span>Next Difficulty</span><strong>{titleWords(previewCampaignProgress.currentDifficulty)}</strong></div>
       </div> : null}
+      {previewCampaignProgress && campaignComplete ? <div className="campaign-complete">
+        <div className="eyebrow">Campaign Complete</div>
+        <h3>Campaign {titleWords(campaignComplete)}</h3>
+        <div className="summary-stats">
+          <div><span>Games Played</span><strong>{String(previewCampaignProgress.wins + previewCampaignProgress.losses)}</strong></div>
+          <div><span>Final Record</span><strong>{previewCampaignProgress.wins}-{previewCampaignProgress.losses}</strong></div>
+          <div><span>Bots Defeated</span><strong>{String(previewCampaignProgress.defeatedBotNationIds.length)}</strong></div>
+          <div><span>Starting Deck Changes</span><strong>{String(previewCampaignProgress.startingDeckAdditions.length + previewCampaignProgress.startingDeckRemovals.length)}</strong></div>
+        </div>
+        {previewCampaignProgress.records?.length ? <div className="campaign-record-list">
+          {previewCampaignProgress.records.map((record, index) => <span key={`${record.botNationId}:${index}`}>
+            {campaignRecordLabel(record, index)}
+          </span>)}
+        </div> : null}
+      </div> : null}
       {previewCampaignProgress ? <div className="campaign-export">
-        <div className="eyebrow">Campaign Sheet Export</div>
+        <div className="eyebrow">{campaignComplete ? "Final Campaign Sheet" : "Campaign Sheet Export"}</div>
         <textarea
           aria-label="Campaign sheet export"
           readOnly
           value={campaignSheetExportText(previewCampaignProgress)}
         />
       </div> : null}
-      {activeCampaignProgress && campaignOutcome ? <button
+      {activeCampaignProgress && campaignOutcome && !campaignComplete ? <button
         type="button"
         disabled={!campaignCanUpdate}
         onClick={() => {

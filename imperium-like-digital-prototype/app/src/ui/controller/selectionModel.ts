@@ -364,7 +364,7 @@ export function getPrimaryBlockedReason(actions: any[]): string | undefined {
 }
 
 export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx: any, uiState: { cleanupDiscardSelection?: string[] } = {}) {
-  const actions: Array<{ label:string; action:string; enabled:boolean; reason?:string; group?: string; cardId?:string; hostCardId?: string; marketCardId?: string; choiceIndex?: number; suit?: string; source?: "market" | "deck" | "discard" | "exile"; recipientPlayerId?: string; recipientPlayerIds?: string[]; cardIds?: string[] }> = [];
+  const actions: Array<{ label:string; action:string; enabled:boolean; reason?:string; group?: string; cardId?:string; hostCardId?: string; marketCardId?: string; choiceIndex?: number; suit?: string; source?: "market" | "deck" | "discard" | "exile"; recipientPlayerId?: string; recipientPlayerIds?: string[]; cardIds?: string[]; returnOrder?: string[] }> = [];
   const pendingCleanupDiscard = G.pendingCleanupDiscardChoice;
   if (pendingCleanupDiscard) {
     const isCurrentPlayer = pendingCleanupDiscard.playerId === ctx.currentPlayer;

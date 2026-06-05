@@ -1,11 +1,10 @@
 {
-  "name": "@polity-engine/app",
+  "name": "@polity-engine/server",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "tsx src/index.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   }

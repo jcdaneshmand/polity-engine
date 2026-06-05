@@ -2459,9 +2459,9 @@ describe("effectRunner", () => {
     const G = createInitialState();
     G.market = ["market_a", "market_b", "market_c"];
     G.marketSlots = [
-      { cardId: "market_a", sourceDeck: "mainDeck", resourceMarkers: {}, tuckedUnrest: [] },
-      { cardId: "market_b", sourceDeck: "mainDeck", resourceMarkers: {}, tuckedUnrest: [] },
-      { cardId: "market_c", sourceDeck: "mainDeck", resourceMarkers: {}, tuckedUnrest: [] }
+      { index: 0, cardId: "market_a", resourceMarkers: {}, attachedUnrestCardIds: [] },
+      { index: 1, cardId: "market_b", resourceMarkers: {}, attachedUnrestCardIds: [] },
+      { index: 2, cardId: "market_c", resourceMarkers: {}, attachedUnrestCardIds: [] }
     ];
     G.players["0"].resources.materials = 2;
 

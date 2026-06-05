@@ -279,4 +279,70 @@ describe("EndGameSummary", () => {
     expect(html).toContain("&quot;campaignSheetVersion&quot;: 1");
     expect(html).toContain("&quot;losses&quot;: 2");
   });
+
+  it("renders a campaign complete ceremony with final statistics", () => {
+    const html = renderToStaticMarkup(
+      <EndGameSummary
+        G={{
+          round: 6,
+          log: [],
+          options: {
+            campaignProgress: {
+              mode: "standard",
+              playerNationId: "human_nation",
+              wins: 4,
+              losses: 1,
+              currentDifficulty: "overlord",
+              defeatedBotNationIds: ["bot_persians", "bot_rome", "bot_carthage", "bot_greeks"],
+              startingDeckAdditions: ["commons_gain"],
+              startingDeckRemovals: ["starter_card"],
+              setAsideCommonsCardIds: [],
+              records: [
+                { won: true, botNationId: "bot_persians", difficulty: "chieftain", score: 41 },
+                { won: false, botNationId: "bot_rome", difficulty: "warlord", score: 29 }
+              ]
+            }
+          },
+          gameover: {
+            winner: "0",
+            reason: "normal_scoring:deck_empty",
+            scores: { "0": 70, bot_0: 52 },
+            campaignOutcome: {
+              mode: "standard",
+              won: true,
+              humanPlayerId: "0",
+              botId: "bot_0",
+              botNationId: "bot_macedonians",
+              difficulty: "overlord",
+              score: 70,
+              botScore: 52,
+              scoreKind: "victory_points",
+              requiresCampaignChoice: false,
+              result: {
+                won: true,
+                botNationId: "bot_macedonians",
+                difficulty: "overlord",
+                score: 70,
+                choice: { kind: "add_gained_commons_to_starting_deck", cardId: "final_commons" }
+              }
+            }
+          },
+          players: {},
+          cardDb: {}
+        }}
+      />
+    );
+
+    expect(html).toContain("Campaign Complete");
+    expect(html).toContain("Campaign Won");
+    expect(html).toContain("Games Played");
+    expect(html).toContain("5");
+    expect(html).toContain("Final Record");
+    expect(html).toContain("5-1");
+    expect(html).toContain("Bots Defeated");
+    expect(html).toContain("Starting Deck Changes");
+    expect(html).toContain("Final Campaign Sheet");
+    expect(html).toContain("&quot;complete&quot;: &quot;won&quot;");
+    expect(html).not.toContain("Update Campaign");
+  });
 });

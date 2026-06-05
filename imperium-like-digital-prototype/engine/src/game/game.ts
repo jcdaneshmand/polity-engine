@@ -6,6 +6,7 @@ import { endTurnMove, exhaustCard, innovateTurn, playCard, profitCard, resolveAc
 import { onTurnBegin, onTurnEnd } from "./turn";
 import type { GameOptions } from "../options/gameOptions";
 import type { PrivateDataBundle } from "../setup/privateDataBundle";
+import { redactGameStateForPlayer } from "./playerView";
 
 export const PrototypeGame: Game<GameState> = {
   name: "polity-engine",
@@ -25,6 +26,7 @@ export const PrototypeGame: Game<GameState> = {
       privateBotTradeRoutesTablePath: setupData?.privateBotTradeRoutesTablePath
     }),
   endIf: ({ G }) => G.gameover,
+  playerView: ({ G, playerID }) => redactGameStateForPlayer(G, playerID),
   turn: { order: TurnOrder.CUSTOM_FROM("playOrder"), onBegin: ({ G, ctx, random }) => onTurnBegin(G, ctx, random?.Number), onEnd: ({ G, ctx, random }) => onTurnEnd(G, ctx, random?.Number) },
   moves: { playCard, profitCard, exhaustCard, innovateTurn, revoltTurn, resolveChoice, resolveDrawChoice, resolveFindChoice, resolveAcquireChoice, resolveMarketCardChoice, resolveExileChoice, skipExileChoice, resolveBreakThroughChoice, resolveGarrisonChoice, resolveRegionChoice, resolveDevelopmentChoice, skipDevelopmentChoice, resolveShortGameDevelopmentExileChoice, resolveTradeChoice, resolveDiscardChoice, resolveMarketResourcePlacement, resolveReturnUnrestChoice, resolveReturnFameChoice, resolvePlaceOnDeckChoice, resolveReturnExhaustTokenChoice, resolveFreePlayChoice, resolveGiveCardChoice, resolveSwapChoice, resolveLookOrderChoice, resolveLookTakeChoice, resolveUnrestAllocationChoice, resolveReactiveExhaustChoice, skipReactiveExhaustChoice, resolveSolsticeOrderChoice, resolveCleanupMarketResource, resolveCleanupDiscard, endTurn: endTurnMove }
 };

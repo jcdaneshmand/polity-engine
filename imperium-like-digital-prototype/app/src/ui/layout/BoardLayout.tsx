@@ -21,7 +21,7 @@ export default function BoardLayout({ G, ctx, moves, onCampaignProgress }: any &
   const [detailCardId, setDetailCardId] = useState<string | null>(null);
   const [zoomCardId, setZoomCardId] = useState<string | null>(null);
   const [summaryDismissed, setSummaryDismissed] = useState(false);
-  const [cleanupDiscardSelection, setCleanupDiscardSelection] = useState<string[]>([]);
+  const [cleanupDiscardSlots, setCleanupDiscardSlots] = useState<number[]>([]);
   const player = getCurrentPlayer(G, ctx);
   const marketIds = getMarketCards(G);
   const marketCards = marketIds.map((id) => G.cardDb?.[id]).filter(Boolean);
@@ -43,6 +43,9 @@ export default function BoardLayout({ G, ctx, moves, onCampaignProgress }: any &
   const lookedZone = getInspectableLookedCards(G, ctx.currentPlayer);
   const cleanupDiscardCardIds: string[] = G.pendingCleanupDiscardChoice?.cardIds ?? [];
   const cleanupDiscardKey = cleanupDiscardCardIds.join("|");
+  const cleanupDiscardSelection = cleanupDiscardSlots
+    .map((slot) => cleanupDiscardCardIds[slot])
+    .filter((cardId): cardId is string => !!cardId);
   const actions = useMemo(() => getAvailableActionsForSelection(selection, G, ctx, { cleanupDiscardSelection }), [selection, G, ctx, cleanupDiscardSelection]);
   const pending = getPendingUiState(G, ctx);
   const primaryBlockedReason = getPrimaryBlockedReason(actions);
@@ -52,20 +55,20 @@ export default function BoardLayout({ G, ctx, moves, onCampaignProgress }: any &
     const next = { ...hints };
     cleanupDiscardCardIds.forEach((cardId) => {
       next[cardId] = {
-        labels: [cleanupDiscardSelection.includes(cardId) ? "Selected" : "Select to discard"],
+        labels: ["Select to discard"],
         highlighted: true
       };
     });
     return next;
-  }, [G.pendingCleanupDiscardChoice, actions, cleanupDiscardCardIds, cleanupDiscardSelection]);
+  }, [G.pendingCleanupDiscardChoice, actions, cleanupDiscardCardIds]);
   const marketActionHintsByCardId = useMemo(() => getActionHintsByCardId(actions, "market"), [actions]);
 
   useEffect(() => {
     if (!G.pendingCleanupDiscardChoice) {
-      setCleanupDiscardSelection([]);
+      setCleanupDiscardSlots([]);
       return;
     }
-    setCleanupDiscardSelection((prev) => prev.filter((cardId) => cleanupDiscardCardIds.includes(cardId)));
+    setCleanupDiscardSlots((prev) => prev.filter((slot) => slot >= 0 && slot < cleanupDiscardCardIds.length));
   }, [G.pendingCleanupDiscardChoice, cleanupDiscardKey]);
 
   useEffect(() => {
@@ -139,16 +142,16 @@ export default function BoardLayout({ G, ctx, moves, onCampaignProgress }: any &
     setSelection({kind:"market_slot",id});
   };
 
-  const toggleCleanupDiscardCard = (id: string) => {
+  const toggleCleanupDiscardCard = (id: string, index: number) => {
     if (!G.pendingCleanupDiscardChoice?.cardIds?.includes(id)) return;
     if (G.pendingCleanupDiscardChoice.playerId !== ctx.currentPlayer) return;
     setSelection({kind:"hand_card",id,playerId:ctx.currentPlayer});
-    setCleanupDiscardSelection((prev) => prev.includes(id) ? prev.filter((cardId) => cardId !== id) : [...prev, id]);
+    setCleanupDiscardSlots((prev) => prev.includes(index) ? prev.filter((slot) => slot !== index) : [...prev, index]);
   };
 
-  const onHandCardClick = (id: string) => {
+  const onHandCardClick = (id: string, index: number) => {
     if (G.pendingCleanupDiscardChoice) {
-      toggleCleanupDiscardCard(id);
+      toggleCleanupDiscardCard(id, index);
       return;
     }
     setSelection({kind:"hand_card",id,playerId:ctx.currentPlayer});
@@ -160,7 +163,7 @@ export default function BoardLayout({ G, ctx, moves, onCampaignProgress }: any &
       <SharedAreaRow piles={shared} round={G.round ?? 1} selectedId={selection?.kind === "pile" ? selection.id : undefined} onSelectPile={(id)=>setSelection({kind:"pile",id})} />
       <MarketRow cards={marketCards} selectedId={selection?.id} resources={player?.resources} resourceLabels={resourceLabels} actionHintsByCardId={marketActionHintsByCardId} marketResources={G.marketResources ?? {}} onSelect={onMarketCardClick} />
       <BotRow bot={G.solo?.bot} cardDb={G.cardDb ?? {}} selectedId={selection?.kind === "bot_zone" ? selection.id : undefined} resourceLabels={resourceLabels} onSelectZone={(id)=>setSelection({kind:"bot_zone",id})} />
-      <PlayerArea player={player} cardDb={G.cardDb ?? {}} resourceLabels={resourceLabels} zoneLabels={playerZoneLabels} selectedId={selection?.id} selectedZoneId={selection?.kind === "player_zone" ? selection.id : undefined} cleanupSelectedIds={cleanupDiscardSelection} actionHintsByCardId={handActionHintsByCardId} onSelectZone={(id:string)=>setSelection({kind:"player_zone",id,playerId:ctx.currentPlayer})} onSelect={onHandCardClick} />
+      <PlayerArea player={player} cardDb={G.cardDb ?? {}} resourceLabels={resourceLabels} zoneLabels={playerZoneLabels} selectedId={selection?.id} selectedZoneId={selection?.kind === "player_zone" ? selection.id : undefined} cleanupSelectedSlots={cleanupDiscardSlots} actionHintsByCardId={handActionHintsByCardId} onSelectZone={(id:string)=>setSelection({kind:"player_zone",id,playerId:ctx.currentPlayer})} onSelect={onHandCardClick} />
       <div className="panel hints">{CONTROLLER_HINTS.map((h)=> <div key={h}>{h}</div>)}</div>
     </div>
     <div className="right">

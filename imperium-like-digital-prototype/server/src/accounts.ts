@@ -19,7 +19,7 @@ type AccountMiddlewareOptions = {
 
 type AuthResult =
   | { ok: true; account: AccountPublicView }
-  | { ok: false; status: number; reason: "missing_session" | "invalid_session" | "not_admin" | "account_not_found" };
+  | { ok: false; status: number; reason: string };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object");
@@ -143,7 +143,10 @@ export function createAccountMiddleware(options: AccountMiddlewareOptions) {
         setError(ctx, 400, "invalid_request");
         return;
       }
-      const created = options.store.createAccount({ email: body.email, username: body.username, password: body.password });
+      const email = stringValue(body.email) as string;
+      const username = stringValue(body.username) as string;
+      const password = stringValue(body.password) as string;
+      const created = options.store.createAccount({ email, username, password });
       if (!created.ok) {
         setError(ctx, accountErrorStatus(created.reason), created.reason);
         return;
@@ -159,7 +162,9 @@ export function createAccountMiddleware(options: AccountMiddlewareOptions) {
         setError(ctx, 400, "invalid_request");
         return;
       }
-      const signedIn = options.store.signIn({ login: body.login, password: body.password });
+      const login = stringValue(body.login) as string;
+      const password = stringValue(body.password) as string;
+      const signedIn = options.store.signIn({ login, password });
       if (!signedIn.ok) {
         setError(ctx, accountErrorStatus(signedIn.reason), signedIn.reason);
         return;

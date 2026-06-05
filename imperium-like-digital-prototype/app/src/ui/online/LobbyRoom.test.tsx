@@ -131,6 +131,29 @@ describe("LobbyRoom", () => {
     expect(html).toContain("Unlock Setup");
   });
 
+  it("disables lobby chat for guests", () => {
+    const html = renderToStaticMarkup(
+      <LobbyRoom
+        lobby={lobby}
+        setupConfig={config}
+        chatMessages={chatMessages}
+        statusMessage=""
+        canChat={false}
+        onBack={() => undefined}
+        onRefresh={() => undefined}
+        onLeave={() => undefined}
+        onEditSetup={() => undefined}
+        onSelectNation={() => undefined}
+        onReady={() => undefined}
+        onStart={() => undefined}
+        onSendChat={() => undefined}
+      />
+    );
+
+    expect(html).toContain("Sign in to chat.");
+    expect(html).toContain("disabled");
+  });
+
   it("hides host setup controls from non-host players", () => {
     const html = renderToStaticMarkup(
       <LobbyRoom

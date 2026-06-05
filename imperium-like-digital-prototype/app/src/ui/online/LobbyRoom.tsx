@@ -7,6 +7,7 @@ type LobbyRoomProps = {
   setupConfig: NewGameSessionConfig;
   statusMessage: string;
   chatMessages?: ChatMessage[];
+  canChat?: boolean;
   onBack: () => void;
   onRefresh: () => void | Promise<void>;
   onLeave: () => void | Promise<void>;
@@ -48,6 +49,7 @@ export default function LobbyRoom({
   setupConfig,
   statusMessage,
   chatMessages = [],
+  canChat = true,
   onBack,
   onRefresh,
   onLeave,
@@ -65,7 +67,7 @@ export default function LobbyRoom({
 
   const submitChat = () => {
     const text = chatText.trim();
-    if (!text) return;
+    if (!text || !canChat) return;
     setChatText("");
     void onSendChat?.(text);
   };
@@ -92,6 +94,7 @@ export default function LobbyRoom({
 
         <section className="setup-stage" aria-labelledby="lobby-chat">
           <h2 id="lobby-chat">Lobby Chat</h2>
+          {!canChat ? <p className="setup-help">Sign in to chat.</p> : null}
           <div className="online-chat-log">
             {chatMessages.length ? chatMessages.map((message) => (
               <div className="online-chat-message" key={message.id}>
@@ -103,9 +106,9 @@ export default function LobbyRoom({
           <div className="online-games-actions">
             <label className="setup-field">
               <span>Message</span>
-              <input value={chatText} onChange={(event: { target: HTMLInputElement }) => setChatText(event.target.value)} />
+              <input value={chatText} disabled={!canChat} onChange={(event: { target: HTMLInputElement }) => setChatText(event.target.value)} />
             </label>
-            <button type="button" disabled={!chatText.trim() || !onSendChat} onClick={submitChat}>Send</button>
+            <button type="button" disabled={!chatText.trim() || !onSendChat || !canChat} onClick={submitChat}>Send</button>
           </div>
         </section>
 

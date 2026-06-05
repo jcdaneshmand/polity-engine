@@ -3,9 +3,10 @@ import { Client } from "boardgame.io/react";
 import { SocketIO } from "boardgame.io/multiplayer";
 import { PrototypeGame } from "../../engine/src/game/game";
 import type { CampaignProgress } from "../../engine/src/options/gameOptions";
+import { ACCOUNT_SESSION_STORAGE_KEY, parseAccountSessionRecord, serializeAccountSessionRecord, type AccountSessionRecord } from "./accountSession";
 import AboutPage from "./AboutPage";
 import Board from "./Board";
-import { clearAllOnlineGames, closePolityOnlineMatch, computePrivateDataFingerprint, createLobbyRoom, heartbeatLobbyRoom, heartbeatPolityOnlineMatch, joinLobbyRoom, joinPolityOnlineMatch, leaveLobbyRoom, leavePolityOnlineMatch, listLobbyChat, listLobbyRooms, listOnlineChat, listOnlineMatches, ONLINE_SESSION_STORAGE_KEY, parseOnlineSessionRecord, rejoinLobbyRoom, resolveMultiplayerServerURL, selectLobbyNation, sendLobbyChat, sendOnlineChat, serializeOnlineSessionRecord, setLobbyReady, spectateOnlineMatch, startLobbyGame, updateLobbySetup, type ChatMessage, type ListedLobby, type ListedMatch, type LobbyRoomDetails, type OnlineLobbySessionRecord, type OnlineSessionRecord, type OnlineStartedSessionRecord } from "./onlineSession";
+import { clearAllOnlineGames, closePolityOnlineMatch, computePrivateDataFingerprint, createLobbyRoom, heartbeatLobbyRoom, heartbeatPolityOnlineMatch, joinLobbyRoom, joinPolityOnlineMatch, leaveLobbyRoom, leavePolityOnlineMatch, listLobbyChat, listLobbyRooms, listOnlineChat, listOnlineMatches, loadCurrentAccount, ONLINE_SESSION_STORAGE_KEY, parseOnlineSessionRecord, registerAccount, rejoinLobbyRoom, resolveMultiplayerServerURL, selectLobbyNation, sendLobbyChat, sendOnlineChat, serializeOnlineSessionRecord, setLobbyReady, signInAccount, signOutAccount, spectateOnlineMatch, startLobbyGame, updateLobbySetup, type ChatMessage, type ListedLobby, type ListedMatch, type LobbyRoomDetails, type OnlineLobbySessionRecord, type OnlineSessionRecord, type OnlineStartedSessionRecord } from "./onlineSession";
 import PrivateCardEntry from "./ui/privateData/PrivateCardEntry";
 import LobbyRoom from "./ui/online/LobbyRoom";
 import OnlineGames from "./ui/online/OnlineGames";
@@ -55,6 +56,21 @@ function saveOnlineSessionRecord(record: OnlineSessionRecord): void {
   window.localStorage.setItem(ONLINE_SESSION_STORAGE_KEY, serializeOnlineSessionRecord(record));
 }
 
+function loadAccountSessionRecord(): AccountSessionRecord | undefined {
+  if (typeof window === "undefined") return undefined;
+  return parseAccountSessionRecord(window.localStorage.getItem(ACCOUNT_SESSION_STORAGE_KEY));
+}
+
+function saveAccountSessionRecord(record: AccountSessionRecord): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(ACCOUNT_SESSION_STORAGE_KEY, serializeAccountSessionRecord(record));
+}
+
+function clearAccountSessionRecord(): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(ACCOUNT_SESSION_STORAGE_KEY);
+}
+
 function loadOnlineClientID(): string {
   if (typeof window === "undefined") return "server-render-client";
   const existing = window.localStorage.getItem(ONLINE_CLIENT_STORAGE_KEY);
@@ -79,6 +95,8 @@ export default function App() {
   const [savedOnlineSession, setSavedOnlineSession] = useState<OnlineSessionRecord | undefined>(loadOnlineSessionRecord());
   const [onlineSetupConfig, setOnlineSetupConfig] = useState<NewGameSessionConfig | undefined>(undefined);
   const [onlinePlayerName, setOnlinePlayerName] = useState("Player");
+  const [accountSession, setAccountSession] = useState<AccountSessionRecord | undefined>(loadAccountSessionRecord());
+  const [accountStatus, setAccountStatus] = useState("");
   const [onlineClientID] = useState<string>(loadOnlineClientID());
   const [listedLobbies, setListedLobbies] = useState<ListedLobby[]>([]);
   const [listedMatches, setListedMatches] = useState<ListedMatch[]>([]);
@@ -135,6 +153,21 @@ export default function App() {
       } : {})
     });
   }, [session]);
+
+  useEffect(() => {
+    if (!accountSession) return;
+    void loadCurrentAccount({ serverURL: multiplayerServerURL, accountToken: accountSession.token })
+      .then(({ account }) => {
+        const next = { token: accountSession.token, account };
+        saveAccountSessionRecord(next);
+        setAccountSession(next);
+      })
+      .catch(() => {
+        clearAccountSessionRecord();
+        setAccountSession(undefined);
+        setAccountStatus("Signed out.");
+      });
+  }, [accountSession?.token, multiplayerServerURL]);
 
   useEffect(() => {
     if (homeView !== "lobby" || !currentLobbySession) return;
@@ -483,8 +516,12 @@ export default function App() {
   };
 
   const sendOnlineLoungeMessage = async (text: string) => {
+    if (!accountSession) {
+      setOnlineStatus("Sign in to chat.");
+      return;
+    }
     try {
-      const sent = await sendOnlineChat({ serverURL: multiplayerServerURL, author: onlinePlayerName, text });
+      const sent = await sendOnlineChat({ serverURL: multiplayerServerURL, accountToken: accountSession.token, author: onlinePlayerName, text });
       setOnlineChatMessages((current) => [...current, sent.message]);
     } catch (error) {
       setOnlineStatus(error instanceof Error ? error.message : "Could not send chat message.");
@@ -493,11 +530,16 @@ export default function App() {
 
   const sendCurrentLobbyMessage = async (text: string) => {
     if (!currentLobbySession) return;
+    if (!accountSession) {
+      setOnlineStatus("Sign in to chat.");
+      return;
+    }
     try {
       const sent = await sendLobbyChat({
         serverURL: multiplayerServerURL,
         lobbyID: currentLobbySession.lobbyID,
         lobbyCredentials: currentLobbySession.lobbyCredentials,
+        accountToken: accountSession.token,
         text
       });
       setLobbyChatMessages((current) => [...current, sent.message]);
@@ -573,9 +615,13 @@ export default function App() {
   };
 
   const clearAllListedOnlineGames = async () => {
+    if (!accountSession || accountSession.account.role !== "admin") {
+      setOnlineStatus("Admin account required.");
+      return;
+    }
     setOnlineStatus("Clearing online games...");
     try {
-      const cleared = await clearAllOnlineGames({ serverURL: multiplayerServerURL });
+      const cleared = await clearAllOnlineGames({ serverURL: multiplayerServerURL, accountToken: accountSession.token });
       forgetOnlineSession();
       setLobbyChatMessages([]);
       setOnlineChatMessages([]);
@@ -587,6 +633,43 @@ export default function App() {
     } catch (error) {
       setOnlineStatus(error instanceof Error ? error.message : "Could not clear online games.");
     }
+  };
+
+  const registerCurrentAccount = async (input: { email: string; username: string; password: string }) => {
+    setAccountStatus("Creating account...");
+    try {
+      const created = await registerAccount({ serverURL: multiplayerServerURL, ...input });
+      const record = { token: created.token, account: created.account };
+      saveAccountSessionRecord(record);
+      setAccountSession(record);
+      setOnlinePlayerName(created.account.username);
+      setAccountStatus(`Signed in as ${created.account.username}.`);
+    } catch (error) {
+      setAccountStatus(error instanceof Error ? error.message : "Could not create account.");
+    }
+  };
+
+  const signInCurrentAccount = async (input: { login: string; password: string }) => {
+    setAccountStatus("Signing in...");
+    try {
+      const signedIn = await signInAccount({ serverURL: multiplayerServerURL, ...input });
+      const record = { token: signedIn.token, account: signedIn.account };
+      saveAccountSessionRecord(record);
+      setAccountSession(record);
+      setOnlinePlayerName(signedIn.account.username);
+      setAccountStatus(`Signed in as ${signedIn.account.username}.`);
+    } catch (error) {
+      setAccountStatus(error instanceof Error ? error.message : "Could not sign in.");
+    }
+  };
+
+  const signOutCurrentAccount = async () => {
+    const token = accountSession?.token;
+    clearAccountSessionRecord();
+    setAccountSession(undefined);
+    setAccountStatus("Signed out.");
+    if (!token) return;
+    await signOutAccount({ serverURL: multiplayerServerURL, accountToken: token }).catch(() => undefined);
   };
 
   const leaveCurrentGame = () => {
@@ -637,6 +720,7 @@ export default function App() {
             }}
             onRefresh={refreshCurrentLobby}
             onLeave={leaveCurrentLobby}
+            canChat={Boolean(accountSession)}
             onEditSetup={() => setHomeView("lobby-setup")}
             onSelectNation={selectCurrentLobbyNation}
             onReady={setCurrentLobbyReady}
@@ -677,6 +761,8 @@ export default function App() {
             lobbies={listedLobbies}
             matches={listedMatches}
             chatMessages={onlineChatMessages}
+            account={accountSession?.account}
+            accountStatusMessage={accountStatus}
             statusMessage={onlineStatus}
             onBackToSetup={() => setHomeView("setup")}
             onRefresh={refreshOnlineMatches}
@@ -689,6 +775,9 @@ export default function App() {
             onCloseSession={(record) => void closeSavedOnlineMatch(record)}
             onSendChat={sendOnlineLoungeMessage}
             onClearAllGames={() => void clearAllListedOnlineGames()}
+            onRegisterAccount={(input) => void registerCurrentAccount(input)}
+            onSignInAccount={(input) => void signInCurrentAccount(input)}
+            onSignOutAccount={() => void signOutCurrentAccount()}
           />
         </div>
       );

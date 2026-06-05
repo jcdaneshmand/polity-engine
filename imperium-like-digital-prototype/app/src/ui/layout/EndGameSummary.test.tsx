@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import EndGameSummary, { campaignSheetExportText, completeCampaignProgressFromSummary } from "./EndGameSummary";
+import EndGameSummary, { accountGameResultFromSummary, campaignSheetExportText, completeCampaignProgressFromSummary } from "./EndGameSummary";
 
 describe("EndGameSummary", () => {
   it("renders outcome, scores, tie-breaks, and game statistics", () => {
@@ -80,6 +80,63 @@ describe("EndGameSummary", () => {
     expect(html).toContain("Bot Cards");
     expect(html).toContain("5");
     expect(html).toContain("Review Board");
+  });
+
+  it("extracts an account game result payload from the summary state", () => {
+    expect(accountGameResultFromSummary({
+      G: {
+        round: 7,
+        gameover: {
+          winner: "0",
+          reason: "normal_scoring:deck_empty",
+          scores: { "0": 42, "1": 38 },
+          tieBreakScores: { "0": 12, "1": 8 }
+        },
+        players: {
+          "0": {
+            hand: ["card-a"],
+            deck: ["card-b", "card-c"],
+            discard: [],
+            playArea: ["card-d"],
+            history: ["card-e", "card-f"],
+            exile: [],
+            powerArea: [],
+            stateArea: [],
+            developmentArea: [],
+            nationDeck: [],
+            resources: { materials: 2, knowledge: 5, influence: 1, unrest: 0, goods: 3 }
+          }
+        },
+        rulesetReports: [
+          { playerId: "0", nationId: "test_nation_sun_coast" },
+          { playerId: "1", nationId: "test_nation_river" }
+        ]
+      },
+      historyEntryID: "game-1",
+      playerID: "0",
+      scope: "solo",
+      variant: "standard"
+    })).toEqual({
+      id: "game-1",
+      outcome: "win",
+      winnerID: "0",
+      winnerNationID: "test_nation_sun_coast",
+      reason: "normal_scoring:deck_empty",
+      scores: { "0": 42, "1": 38 },
+      tieBreakScores: { "0": 12, "1": 8 },
+      roundsPlayed: 7,
+      finalResources: { materials: 2, knowledge: 5, influence: 1, unrest: 0, goods: 3 },
+      finalDeckSize: 2,
+      finalCardsInPlay: 1,
+      finalUnrest: 0,
+      finalFame: 0,
+      rawSummaryStats: {
+        scope: "solo",
+        variant: "standard",
+        nationID: "test_nation_sun_coast",
+        opponentNationIDs: ["test_nation_river"]
+      }
+    });
   });
 
   it("renders campaign outcome and reward choices", () => {

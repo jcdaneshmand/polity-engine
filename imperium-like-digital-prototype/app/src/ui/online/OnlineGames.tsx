@@ -1,6 +1,8 @@
 import { useState } from "react";
+import type { AccountPublicView } from "../../accountSession";
 import type { ChatMessage, ListedLobby, ListedMatch, OnlineSessionRecord } from "../../onlineSession";
 import type { NewGameSessionConfig } from "../setup/NewGameSetup";
+import AccountPanel from "./AccountPanel";
 
 type OnlineGamesProps = {
   setupConfig: NewGameSessionConfig;
@@ -10,6 +12,8 @@ type OnlineGamesProps = {
   lobbies: ListedLobby[];
   matches: ListedMatch[];
   chatMessages?: ChatMessage[];
+  account?: AccountPublicView;
+  accountStatusMessage?: string;
   statusMessage: string;
   onBackToSetup: () => void;
   onRefresh: () => void | Promise<void>;
@@ -22,6 +26,9 @@ type OnlineGamesProps = {
   onCloseSession?: (record: OnlineSessionRecord) => void;
   onSendChat?: (text: string) => void | Promise<void>;
   onClearAllGames?: () => void | Promise<void>;
+  onRegisterAccount?: (input: { email: string; username: string; password: string }) => void | Promise<void>;
+  onSignInAccount?: (input: { login: string; password: string }) => void | Promise<void>;
+  onSignOutAccount?: () => void | Promise<void>;
 };
 
 function playerLabel(playerID: string | undefined): string {
@@ -80,6 +87,8 @@ export default function OnlineGames({
   lobbies,
   matches,
   chatMessages = [],
+  account,
+  accountStatusMessage = "",
   statusMessage,
   onBackToSetup,
   onRefresh,
@@ -91,7 +100,10 @@ export default function OnlineGames({
   onForgetSession,
   onCloseSession,
   onSendChat,
-  onClearAllGames
+  onClearAllGames,
+  onRegisterAccount = () => undefined,
+  onSignInAccount = () => undefined,
+  onSignOutAccount = () => undefined
 }: OnlineGamesProps) {
   const [roomName, setRoomName] = useState("Polity Table");
   const [hostPassword, setHostPassword] = useState("");
@@ -100,6 +112,7 @@ export default function OnlineGames({
   const [playerName, setPlayerName] = useState(initialPlayerName.trim() || "Player");
   const [matchPasswords, setMatchPasswords] = useState<Record<string, string>>({});
   const [chatText, setChatText] = useState("");
+  const canChat = Boolean(account && onSendChat);
 
   const submitHost = () => {
     void onHost({
@@ -126,6 +139,7 @@ export default function OnlineGames({
     const text = chatText.trim();
     if (!text) return;
     setChatText("");
+    if (!canChat) return;
     void onSendChat?.(text);
   };
 
@@ -139,14 +153,23 @@ export default function OnlineGames({
           </div>
           <div className="private-data-actions">
             <button type="button" onClick={onRefresh}>Refresh</button>
-            {onClearAllGames ? <button type="button" onClick={() => void onClearAllGames()}>Clear All Games</button> : null}
+            {account?.role === "admin" && onClearAllGames ? <button type="button" onClick={() => void onClearAllGames()}>Clear All Games</button> : null}
             <button type="button" onClick={onBackToSetup}>Setup</button>
           </div>
         </div>
         {statusMessage ? <p className="online-games-status">{statusMessage}</p> : null}
 
+        <AccountPanel
+          account={account}
+          statusMessage={accountStatusMessage}
+          onRegister={onRegisterAccount}
+          onSignIn={onSignInAccount}
+          onSignOut={onSignOutAccount}
+        />
+
         <section className="setup-stage" aria-labelledby="online-chat">
           <h2 id="online-chat">Online Chat</h2>
+          {!account ? <p className="setup-help">Sign in to chat.</p> : null}
           <div className="online-chat-log">
             {chatMessages.length ? chatMessages.map((message) => (
               <div className="online-chat-message" key={message.id}>
@@ -160,6 +183,7 @@ export default function OnlineGames({
               <span>Message</span>
               <input
                 value={chatText}
+                disabled={!canChat}
                 onChange={(event: { target: HTMLInputElement }) => setChatText(event.target.value)}
                 onKeyDown={(event: { key: string; shiftKey: boolean; preventDefault: () => void }) => {
                   if (!isChatSubmitKey(event)) return;
@@ -168,7 +192,7 @@ export default function OnlineGames({
                 }}
               />
             </label>
-            <button type="button" disabled={!chatText.trim() || !onSendChat} onClick={submitChat}>Send</button>
+            <button type="button" disabled={!chatText.trim() || !canChat} onClick={submitChat}>Send</button>
           </div>
         </section>
 

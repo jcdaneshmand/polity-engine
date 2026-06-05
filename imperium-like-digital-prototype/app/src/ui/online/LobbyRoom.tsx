@@ -1,16 +1,19 @@
-import type { LobbyRoomDetails } from "../../onlineSession";
+import { useState } from "react";
+import type { ChatMessage, LobbyRoomDetails } from "../../onlineSession";
 import { getNationOptions, type NewGameSessionConfig } from "../setup/NewGameSetup";
 
 type LobbyRoomProps = {
   lobby: LobbyRoomDetails;
   setupConfig: NewGameSessionConfig;
   statusMessage: string;
+  chatMessages?: ChatMessage[];
   onBack: () => void;
   onRefresh: () => void | Promise<void>;
   onEditSetup: () => void;
   onSelectNation: (nationID: string) => void | Promise<void>;
   onReady: (ready: boolean) => void | Promise<void>;
   onStart: () => void | Promise<void>;
+  onSendChat?: (text: string) => void | Promise<void>;
 };
 
 function seatLabel(seatID: string): string {
@@ -43,17 +46,27 @@ export default function LobbyRoom({
   lobby,
   setupConfig,
   statusMessage,
+  chatMessages = [],
   onBack,
   onRefresh,
   onEditSetup,
   onSelectNation,
   onReady,
-  onStart
+  onStart,
+  onSendChat
 }: LobbyRoomProps) {
+  const [chatText, setChatText] = useState("");
   const selfSeat = lobby.seats.find((seat) => seat.isSelf);
   const nations = getNationOptions(setupConfig.options.enabledExpansions, setupConfig.privateData);
   const selectedNationID = selfSeat?.selectedNationID ?? nations[0]?.id ?? "test_nation_sun_coast";
   const isLocked = lobby.status === "locked";
+
+  const submitChat = () => {
+    const text = chatText.trim();
+    if (!text) return;
+    setChatText("");
+    void onSendChat?.(text);
+  };
 
   return (
     <main className="setup-screen online-games-screen">
@@ -69,6 +82,25 @@ export default function LobbyRoom({
           </div>
         </div>
         {statusMessage ? <p className="online-games-status">{statusMessage}</p> : null}
+
+        <section className="setup-stage" aria-labelledby="lobby-chat">
+          <h2 id="lobby-chat">Lobby Chat</h2>
+          <div className="online-chat-log">
+            {chatMessages.length ? chatMessages.map((message) => (
+              <div className="online-chat-message" key={message.id}>
+                <strong>{message.author}</strong>
+                <span>{message.text}</span>
+              </div>
+            )) : <p className="setup-help">No messages yet.</p>}
+          </div>
+          <div className="online-games-actions">
+            <label className="setup-field">
+              <span>Message</span>
+              <input value={chatText} onChange={(event: { target: HTMLInputElement }) => setChatText(event.target.value)} />
+            </label>
+            <button type="button" disabled={!chatText.trim() || !onSendChat} onClick={submitChat}>Send</button>
+          </div>
+        </section>
 
         <section className="setup-stage" aria-labelledby="lobby-setup-summary">
           <h2 id="lobby-setup-summary">Current setup</h2>

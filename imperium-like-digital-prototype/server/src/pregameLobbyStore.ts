@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import type {
+  ChatMessage,
   CreatePregameLobbyInput,
   JoinPregameLobbyInput,
   ListedLobby,
@@ -41,6 +42,10 @@ type PrivateLobby = {
 
 const PLACEHOLDER_FINGERPRINTS = new Set(["placeholder", "placeholder:v1"]);
 const DEFAULT_CLEANUP_GRACE_MS = 10 * 60 * 1000;
+const LOUNGE_CHAT_KEY = "lounge";
+const MAX_CHAT_MESSAGES = 50;
+const MAX_CHAT_AUTHOR_LENGTH = 40;
+const MAX_CHAT_TEXT_LENGTH = 240;
 
 function defaultHashPassword(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -106,6 +111,10 @@ function findSeatByCredentials(lobby: PrivateLobby, lobbyCredentials: string): P
   return lobby.seats.find((seat) => seat.lobbyCredentials === lobbyCredentials);
 }
 
+function trimChatValue(value: string, maxLength: number): string {
+  return value.trim().slice(0, maxLength);
+}
+
 function allOccupiedSeatsReady(lobby: PrivateLobby): boolean {
   const occupied = occupiedSeats(lobby);
   return occupied.length === lobby.seats.length && occupied.every((seat) => seat.ready && seat.selectedNationID);
@@ -147,6 +156,8 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
   const hashPassword = options.hashPassword ?? defaultHashPassword;
   const cleanupGraceMs = options.cleanupGraceMs ?? DEFAULT_CLEANUP_GRACE_MS;
   const lobbies = new Map<string, PrivateLobby>();
+  const chatMessages = new Map<string, ChatMessage[]>();
+  let nextChatID = 0;
 
   function timestamp(): string {
     return now();
@@ -165,7 +176,50 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
     if (lobby.status === "locked") lobby.status = "waiting";
   }
 
+  function appendChat(scope: string, author: string, text: string): { ok: true; message: ChatMessage } | { ok: false; reason: "invalid_chat" } {
+    const cleanAuthor = trimChatValue(author, MAX_CHAT_AUTHOR_LENGTH) || "Player";
+    const cleanText = trimChatValue(text, MAX_CHAT_TEXT_LENGTH);
+    if (!cleanText) return { ok: false, reason: "invalid_chat" };
+    const message: ChatMessage = {
+      id: `chat-${nextChatID += 1}`,
+      author: cleanAuthor,
+      text: cleanText,
+      createdAt: timestamp()
+    };
+    const current = [...(chatMessages.get(scope) ?? []), message].slice(-MAX_CHAT_MESSAGES);
+    chatMessages.set(scope, current);
+    return { ok: true, message };
+  }
+
+  function lobbyChatScope(lobbyID: string): string {
+    return `lobby:${lobbyID}`;
+  }
+
   return {
+    listLoungeChat(): ChatMessage[] {
+      return [...(chatMessages.get(LOUNGE_CHAT_KEY) ?? [])];
+    },
+
+    postLoungeChat(input: { author: string; text: string }) {
+      return appendChat(LOUNGE_CHAT_KEY, input.author, input.text);
+    },
+
+    listLobbyChat(input: { lobbyID: string; lobbyCredentials: string }): { ok: true; messages: ChatMessage[] } | { ok: false; reason: "lobby_not_found" | "invalid_credentials" } {
+      const lobby = lobbies.get(input.lobbyID);
+      if (!lobby) return { ok: false, reason: "lobby_not_found" };
+      const seat = findSeatByCredentials(lobby, input.lobbyCredentials);
+      if (!seat) return { ok: false, reason: "invalid_credentials" };
+      return { ok: true, messages: [...(chatMessages.get(lobbyChatScope(input.lobbyID)) ?? [])] };
+    },
+
+    postLobbyChat(input: { lobbyID: string; lobbyCredentials: string; text: string }) {
+      const lobby = lobbies.get(input.lobbyID);
+      if (!lobby) return { ok: false as const, reason: "lobby_not_found" as const };
+      const seat = findSeatByCredentials(lobby, input.lobbyCredentials);
+      if (!seat) return { ok: false as const, reason: "invalid_credentials" as const };
+      return appendChat(lobbyChatScope(input.lobbyID), seat.displayName ?? `Player ${Number(seat.seatID) + 1}`, input.text);
+    },
+
     createLobby(input: CreatePregameLobbyInput) {
       const ts = timestamp();
       const lobbyID = createID();

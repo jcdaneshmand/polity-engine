@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import NewGameSetup, { buildCampaignGameOptions, parseCampaignSheetText } from "./NewGameSetup";
+import NewGameSetup, { buildCampaignGameOptions, getPlayerCountSelectionUpdate, parseCampaignSheetText } from "./NewGameSetup";
 
 describe("NewGameSetup summary", () => {
   it("shows a scan-friendly launch summary before starting a game", () => {
@@ -55,6 +55,30 @@ describe("NewGameSetup summary", () => {
     expect(html).not.toContain(">Solo</button>");
     expect(html).not.toContain(">Practice</button>");
     expect(html).not.toContain("Online Games");
+  });
+
+  it("switches setup mode when player count crosses the solo boundary", () => {
+    expect(getPlayerCountSelectionUpdate("multiplayer", 1)).toEqual({
+      mode: "solo",
+      playerCount: 1
+    });
+    expect(getPlayerCountSelectionUpdate("multiplayer", 3)).toEqual({
+      mode: "multiplayer",
+      playerCount: 3
+    });
+    expect(getPlayerCountSelectionUpdate("solo", 2)).toEqual({
+      mode: "multiplayer",
+      playerCount: 2
+    });
+  });
+
+  it("requires an online player name before entering online games", () => {
+    const html = renderToStaticMarkup(<NewGameSetup onStart={() => undefined} onOpenOnlineGames={() => undefined} />);
+
+    expect(html).toContain("Online name");
+    expect(html).toContain("name=\"online-player-name\"");
+    expect(html).toContain("disabled=\"\"");
+    expect(html).toContain("Online Games");
   });
 
   it("hides campaign controls until solo setup is active", () => {

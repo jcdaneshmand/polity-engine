@@ -502,6 +502,31 @@
   font-size: 0.8rem;
 }
 
+.online-chat-log {
+  border: 1px solid #6e5f50;
+  border-radius: 8px;
+  background: #2f2a26;
+  display: grid;
+  gap: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.online-chat-message {
+  display: grid;
+  gap: 2px;
+}
+
+.online-chat-message strong {
+  color: #f3ead8;
+}
+
+.online-chat-message span {
+  color: #d9c7a7;
+  overflow-wrap: anywhere;
+}
+
 .online-match-list {
   display: grid;
   gap: 10px;

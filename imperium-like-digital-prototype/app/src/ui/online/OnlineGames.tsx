@@ -1,22 +1,25 @@
 import { useState } from "react";
-import type { ListedLobby, ListedMatch, OnlineSessionRecord } from "../../onlineSession";
+import type { ChatMessage, ListedLobby, ListedMatch, OnlineSessionRecord } from "../../onlineSession";
 import type { NewGameSessionConfig } from "../setup/NewGameSetup";
 
 type OnlineGamesProps = {
   setupConfig: NewGameSessionConfig;
+  initialPlayerName?: string;
   privateDataFingerprint: string;
   savedSessions: OnlineSessionRecord[];
   lobbies: ListedLobby[];
   matches: ListedMatch[];
+  chatMessages?: ChatMessage[];
   statusMessage: string;
   onBackToSetup: () => void;
   onRefresh: () => void | Promise<void>;
-  onHost: (args: { roomName: string; password?: string; setupConfig: NewGameSessionConfig; privateDataFingerprint: string }) => void | Promise<void>;
+  onHost: (args: { roomName: string; playerName: string; password?: string; setupConfig: NewGameSessionConfig; privateDataFingerprint: string }) => void | Promise<void>;
   onJoinLobby: (args: { lobbyID: string; playerName: string; password?: string; privateDataFingerprint: string }) => void | Promise<void>;
   onJoin: (args: { matchID: string; playerID?: string; playerName: string; password?: string; privateDataFingerprint: string; setupConfig: NewGameSessionConfig }) => void | Promise<void>;
   onSpectate: (args: { matchID: string; password?: string; privateDataFingerprint: string }) => void | Promise<void>;
   onRejoin: (record: OnlineSessionRecord) => void;
   onForgetSession: (record: OnlineSessionRecord) => void;
+  onSendChat?: (text: string) => void | Promise<void>;
 };
 
 function playerLabel(playerID: string | undefined): string {
@@ -61,10 +64,12 @@ function formatSeatList(match: ListedMatch): string {
 
 export default function OnlineGames({
   setupConfig,
+  initialPlayerName = "Player",
   privateDataFingerprint,
   savedSessions,
   lobbies,
   matches,
+  chatMessages = [],
   statusMessage,
   onBackToSetup,
   onRefresh,
@@ -73,18 +78,21 @@ export default function OnlineGames({
   onJoin,
   onSpectate,
   onRejoin,
-  onForgetSession
+  onForgetSession,
+  onSendChat
 }: OnlineGamesProps) {
   const [roomName, setRoomName] = useState("Polity Table");
   const [hostPassword, setHostPassword] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [joinPassword, setJoinPassword] = useState("");
-  const [playerName, setPlayerName] = useState("Player");
+  const [playerName, setPlayerName] = useState(initialPlayerName.trim() || "Player");
   const [matchPasswords, setMatchPasswords] = useState<Record<string, string>>({});
+  const [chatText, setChatText] = useState("");
 
   const submitHost = () => {
     void onHost({
       roomName,
+      playerName: playerName.trim() || "Player",
       password: hostPassword.trim() || undefined,
       setupConfig,
       privateDataFingerprint
@@ -102,6 +110,13 @@ export default function OnlineGames({
     });
   };
 
+  const submitChat = () => {
+    const text = chatText.trim();
+    if (!text) return;
+    setChatText("");
+    void onSendChat?.(text);
+  };
+
   return (
     <main className="setup-screen online-games-screen">
       <section className="setup-panel online-games-panel" aria-labelledby="online-games-title">
@@ -116,6 +131,25 @@ export default function OnlineGames({
           </div>
         </div>
         {statusMessage ? <p className="online-games-status">{statusMessage}</p> : null}
+
+        <section className="setup-stage" aria-labelledby="online-chat">
+          <h2 id="online-chat">Online Chat</h2>
+          <div className="online-chat-log">
+            {chatMessages.length ? chatMessages.map((message) => (
+              <div className="online-chat-message" key={message.id}>
+                <strong>{message.author}</strong>
+                <span>{message.text}</span>
+              </div>
+            )) : <p className="setup-help">No messages yet.</p>}
+          </div>
+          <div className="online-games-actions">
+            <label className="setup-field">
+              <span>Message</span>
+              <input value={chatText} onChange={(event: { target: HTMLInputElement }) => setChatText(event.target.value)} />
+            </label>
+            <button type="button" disabled={!chatText.trim() || !onSendChat} onClick={submitChat}>Send</button>
+          </div>
+        </section>
 
         <section className="setup-stage" aria-labelledby="online-resume">
           <h2 id="online-resume">Resume Games</h2>

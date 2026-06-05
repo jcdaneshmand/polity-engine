@@ -5,7 +5,7 @@ import { PrototypeGame } from "../../engine/src/game/game";
 import type { CampaignProgress } from "../../engine/src/options/gameOptions";
 import AboutPage from "./AboutPage";
 import Board from "./Board";
-import { computePrivateDataFingerprint, createLobbyRoom, createPolityOnlineMatch, joinLobbyRoom, joinPolityOnlineMatch, leavePolityOnlineMatch, listLobbyRooms, listOnlineMatches, ONLINE_SESSION_STORAGE_KEY, parseOnlineSessionRecord, rejoinLobbyRoom, resolveMultiplayerServerURL, selectLobbyNation, serializeOnlineSessionRecord, setLobbyReady, spectateOnlineMatch, startLobbyGame, updateLobbySetup, type ListedLobby, type ListedMatch, type LobbyRoomDetails, type OnlineLobbySessionRecord, type OnlineSessionRecord, type OnlineStartedSessionRecord } from "./onlineSession";
+import { computePrivateDataFingerprint, createLobbyRoom, joinLobbyRoom, joinPolityOnlineMatch, leavePolityOnlineMatch, listLobbyChat, listLobbyRooms, listOnlineChat, listOnlineMatches, ONLINE_SESSION_STORAGE_KEY, parseOnlineSessionRecord, rejoinLobbyRoom, resolveMultiplayerServerURL, selectLobbyNation, sendLobbyChat, sendOnlineChat, serializeOnlineSessionRecord, setLobbyReady, spectateOnlineMatch, startLobbyGame, updateLobbySetup, type ChatMessage, type ListedLobby, type ListedMatch, type LobbyRoomDetails, type OnlineLobbySessionRecord, type OnlineSessionRecord, type OnlineStartedSessionRecord } from "./onlineSession";
 import PrivateCardEntry from "./ui/privateData/PrivateCardEntry";
 import LobbyRoom from "./ui/online/LobbyRoom";
 import OnlineGames from "./ui/online/OnlineGames";
@@ -43,8 +43,11 @@ export default function App() {
   const [pendingCampaignProgress, setPendingCampaignProgress] = useState<CampaignProgress | undefined>(undefined);
   const [savedOnlineSession, setSavedOnlineSession] = useState<OnlineSessionRecord | undefined>(loadOnlineSessionRecord());
   const [onlineSetupConfig, setOnlineSetupConfig] = useState<NewGameSessionConfig | undefined>(undefined);
+  const [onlinePlayerName, setOnlinePlayerName] = useState("Player");
   const [listedLobbies, setListedLobbies] = useState<ListedLobby[]>([]);
   const [listedMatches, setListedMatches] = useState<ListedMatch[]>([]);
+  const [onlineChatMessages, setOnlineChatMessages] = useState<ChatMessage[]>([]);
+  const [lobbyChatMessages, setLobbyChatMessages] = useState<ChatMessage[]>([]);
   const [currentLobby, setCurrentLobby] = useState<LobbyRoomDetails | undefined>(undefined);
   const [currentLobbySession, setCurrentLobbySession] = useState<OnlineLobbySessionRecord | undefined>(isLobbySessionRecord(savedOnlineSession) ? savedOnlineSession : undefined);
   const [onlineStatus, setOnlineStatus] = useState("");
@@ -142,8 +145,14 @@ export default function App() {
           lobbyID: savedOnlineSession.lobbyID,
           lobbyCredentials: savedOnlineSession.lobbyCredentials
         });
+        const chatMessages = await listLobbyChat({
+          serverURL: savedOnlineSession.serverURL,
+          lobbyID: savedOnlineSession.lobbyID,
+          lobbyCredentials: savedOnlineSession.lobbyCredentials
+        });
         setCurrentLobbySession(savedOnlineSession);
         setCurrentLobby(rejoined.lobby);
+        setLobbyChatMessages(chatMessages);
         setHomeView("lobby");
       } catch (error) {
         setOnlineStatus(error instanceof Error ? error.message : "Could not rejoin lobby.");
@@ -186,12 +195,14 @@ export default function App() {
   const refreshOnlineMatches = async () => {
     setOnlineStatus("Refreshing online games...");
     try {
-      const [lobbies, matches] = await Promise.all([
+      const [lobbies, matches, chatMessages] = await Promise.all([
         listLobbyRooms({ serverURL: multiplayerServerURL }),
-        listOnlineMatches({ serverURL: multiplayerServerURL })
+        listOnlineMatches({ serverURL: multiplayerServerURL }),
+        listOnlineChat({ serverURL: multiplayerServerURL })
       ]);
       setListedLobbies(lobbies);
       setListedMatches(matches);
+      setOnlineChatMessages(chatMessages);
       const total = lobbies.length + matches.length;
       setOnlineStatus(total ? `Loaded ${total} online room${total === 1 ? "" : "s"}.` : "No online games are listed yet.");
     } catch (error) {
@@ -199,8 +210,9 @@ export default function App() {
     }
   };
 
-  const openOnlineGames = (config: NewGameSessionConfig) => {
+  const openOnlineGames = (config: NewGameSessionConfig, playerName: string) => {
     setOnlineSetupConfig(config);
+    setOnlinePlayerName(playerName.trim() || "Player");
     setHomeView("online");
     void refreshOnlineMatches();
   };
@@ -217,7 +229,7 @@ export default function App() {
 
   const currentPrivateDataFingerprint = computePrivateDataFingerprint(currentOnlineConfig.privateData);
 
-  const hostOnlineGame = async (args: { roomName: string; password?: string; setupConfig: NewGameSessionConfig; privateDataFingerprint: string }) => {
+  const hostOnlineGame = async (args: { roomName: string; playerName: string; password?: string; setupConfig: NewGameSessionConfig; privateDataFingerprint: string }) => {
     setOnlineStatus("Creating lobby...");
     try {
       const created = await createLobbyRoom({
@@ -226,7 +238,8 @@ export default function App() {
         playerCount: args.setupConfig.options.playerCount,
         setupData: args.setupConfig,
         privateDataFingerprint: args.privateDataFingerprint,
-        password: args.password
+        password: args.password,
+        hostName: args.playerName
       });
       const record: OnlineLobbySessionRecord = {
         kind: "lobby",
@@ -240,6 +253,7 @@ export default function App() {
       setSavedOnlineSession(record);
       setCurrentLobbySession(record);
       setCurrentLobby(created.lobby);
+      setLobbyChatMessages([]);
       setOnlineSetupConfig(args.setupConfig);
       setHomeView("lobby");
       setOnlineStatus(`Lobby ${created.lobbyID} created.`);
@@ -274,6 +288,7 @@ export default function App() {
       setSavedOnlineSession(record);
       setCurrentLobbySession(record);
       setCurrentLobby(joined.lobby);
+      setLobbyChatMessages([]);
       setHomeView("lobby");
       setOnlineStatus(`Joined lobby ${joined.lobbyID}.`);
     } catch (error) {
@@ -325,7 +340,13 @@ export default function App() {
         lobbyID: currentLobbySession.lobbyID,
         lobbyCredentials: currentLobbySession.lobbyCredentials
       });
+      const chatMessages = await listLobbyChat({
+        serverURL: multiplayerServerURL,
+        lobbyID: currentLobbySession.lobbyID,
+        lobbyCredentials: currentLobbySession.lobbyCredentials
+      });
       setCurrentLobby(rejoined.lobby);
+      setLobbyChatMessages(chatMessages);
       setOnlineStatus(`Lobby ${currentLobbySession.lobbyID} refreshed.`);
     } catch (error) {
       setOnlineStatus(error instanceof Error ? error.message : "Could not refresh lobby.");
@@ -382,6 +403,30 @@ export default function App() {
       setOnlineStatus(ready ? "Ready." : "Setup unlocked.");
     } catch (error) {
       setOnlineStatus(error instanceof Error ? error.message : "Could not update ready state.");
+    }
+  };
+
+  const sendOnlineLoungeMessage = async (text: string) => {
+    try {
+      const sent = await sendOnlineChat({ serverURL: multiplayerServerURL, author: onlinePlayerName, text });
+      setOnlineChatMessages((current) => [...current, sent.message]);
+    } catch (error) {
+      setOnlineStatus(error instanceof Error ? error.message : "Could not send chat message.");
+    }
+  };
+
+  const sendCurrentLobbyMessage = async (text: string) => {
+    if (!currentLobbySession) return;
+    try {
+      const sent = await sendLobbyChat({
+        serverURL: multiplayerServerURL,
+        lobbyID: currentLobbySession.lobbyID,
+        lobbyCredentials: currentLobbySession.lobbyCredentials,
+        text
+      });
+      setLobbyChatMessages((current) => [...current, sent.message]);
+    } catch (error) {
+      setOnlineStatus(error instanceof Error ? error.message : "Could not send chat message.");
     }
   };
 
@@ -454,6 +499,7 @@ export default function App() {
           <LobbyRoom
             lobby={currentLobby}
             setupConfig={currentLobbySetupConfig}
+            chatMessages={lobbyChatMessages}
             statusMessage={onlineStatus}
             onBack={() => {
               setHomeView("online");
@@ -464,6 +510,7 @@ export default function App() {
             onSelectNation={selectCurrentLobbyNation}
             onReady={setCurrentLobbyReady}
             onStart={startCurrentLobbyGame}
+            onSendChat={sendCurrentLobbyMessage}
           />
         </div>
       );
@@ -493,10 +540,12 @@ export default function App() {
         <div className="app-home" data-theme="default">
           <OnlineGames
             setupConfig={currentOnlineConfig}
+            initialPlayerName={onlinePlayerName}
             privateDataFingerprint={currentPrivateDataFingerprint}
             savedSessions={savedOnlineSession ? [savedOnlineSession] : []}
             lobbies={listedLobbies}
             matches={listedMatches}
+            chatMessages={onlineChatMessages}
             statusMessage={onlineStatus}
             onBackToSetup={() => setHomeView("setup")}
             onRefresh={refreshOnlineMatches}
@@ -506,6 +555,7 @@ export default function App() {
             onSpectate={spectateOnlineGame}
             onRejoin={() => void rejoinOnlineGame()}
             onForgetSession={() => forgetOnlineSession()}
+            onSendChat={sendOnlineLoungeMessage}
           />
         </div>
       );

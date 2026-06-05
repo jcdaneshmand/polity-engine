@@ -131,4 +131,32 @@ describe("pregame lobby store", () => {
     expect(store.listLobbies().map((lobby) => lobby.lobbyID)).toEqual([]);
     expect(store.getStartedMatch(started.lobbyID)).toEqual(expect.objectContaining({ matchID: "match-1" }));
   });
+
+  it("stores lounge and credentialed lobby chat messages", () => {
+    let id = 0;
+    const store = createPregameLobbyStore({
+      now: () => "2026-06-05T10:00:00.000Z",
+      createID: () => `id-${id += 1}`,
+      createCredential: () => `cred-${id += 1}`
+    });
+    const host = store.createLobby({ playerCount: 2, setupData: setupData(), privateDataFingerprint: "placeholder", hostName: "Host" });
+
+    expect(store.postLoungeChat({ author: "Jonah", text: "Anyone up for a game?" })).toEqual({
+      ok: true,
+      message: expect.objectContaining({ author: "Jonah", text: "Anyone up for a game?", createdAt: "2026-06-05T10:00:00.000Z" })
+    });
+    expect(store.listLoungeChat()).toEqual([
+      expect.objectContaining({ author: "Jonah", text: "Anyone up for a game?" })
+    ]);
+
+    expect(store.postLobbyChat({ lobbyID: host.lobbyID, lobbyCredentials: host.lobbyCredentials, text: "Ready when you are." })).toEqual({
+      ok: true,
+      message: expect.objectContaining({ author: "Host", text: "Ready when you are." })
+    });
+    expect(store.listLobbyChat({ lobbyID: host.lobbyID, lobbyCredentials: host.lobbyCredentials })).toEqual({
+      ok: true,
+      messages: [expect.objectContaining({ author: "Host", text: "Ready when you are." })]
+    });
+    expect(store.postLobbyChat({ lobbyID: host.lobbyID, lobbyCredentials: "wrong", text: "Nope" })).toEqual({ ok: false, reason: "invalid_credentials" });
+  });
 });

@@ -56,6 +56,7 @@ function setupData(value: unknown): LobbySetupData {
 function accessStatus(reason: LobbyAccessFailureReason | string): number {
   if (reason === "lobby_not_found") return 404;
   if (reason === "private_data_mismatch" || reason === "seat_unavailable" || reason === "lobby_already_started" || reason === "not_ready" || reason === "invalid_setup" || reason === "invalid_nation" || reason === "spectation_unavailable") return 409;
+  if (reason === "invalid_chat") return 400;
   if (reason === "not_host" || reason === "invalid_credentials") return 403;
   return 403;
 }
@@ -83,8 +84,32 @@ function finalizedSetup(baseSetup: LobbySetupData, seats: Array<{ seatID: string
 
 export function createPregameLobbyMiddleware(options: PregameLobbyOptions) {
   return async (ctx: KoaLikeContext, next: KoaLikeNext): Promise<void> => {
-    if (!ctx.path.startsWith("/polity/lobby/rooms")) {
+    if (!ctx.path.startsWith("/polity/lobby/rooms") && ctx.path !== "/polity/lobby/chat") {
       await next();
+      return;
+    }
+
+    if (ctx.method === "GET" && ctx.path === "/polity/lobby/chat") {
+      ctx.body = { messages: options.store.listLoungeChat() };
+      return;
+    }
+
+    if (ctx.method === "POST" && ctx.path === "/polity/lobby/chat") {
+      const body = await readJSONBody(ctx);
+      if (!isRecord(body) || !stringValue(body.text)) {
+        setError(ctx, 400, "invalid_request");
+        return;
+      }
+      const text = stringValue(body.text) as string;
+      const result = options.store.postLoungeChat({
+        author: stringValue(body.author) ?? "Player",
+        text
+      });
+      if (!result.ok) {
+        setError(ctx, accessStatus(result.reason), result.reason);
+        return;
+      }
+      ctx.body = { message: result.message };
       return;
     }
 
@@ -125,6 +150,39 @@ export function createPregameLobbyMiddleware(options: PregameLobbyOptions) {
         return;
       }
       ctx.body = { lobby };
+      return;
+    }
+
+    const chatLobbyID = lobbyRoute(ctx.path, "chat");
+    if (ctx.method === "POST" && chatLobbyID) {
+      const body = await readJSONBody(ctx);
+      if (!isRecord(body) || !credential(body)) {
+        setError(ctx, 400, "invalid_request");
+        return;
+      }
+      const result = options.store.listLobbyChat({ lobbyID: chatLobbyID, lobbyCredentials: credential(body) as string });
+      if (!result.ok) {
+        setError(ctx, accessStatus(result.reason), result.reason);
+        return;
+      }
+      ctx.body = { messages: result.messages };
+      return;
+    }
+
+    const sendChatLobbyID = lobbyRoute(ctx.path, "chat/send");
+    if (ctx.method === "POST" && sendChatLobbyID) {
+      const body = await readJSONBody(ctx);
+      if (!isRecord(body) || !credential(body) || !stringValue(body.text)) {
+        setError(ctx, 400, "invalid_request");
+        return;
+      }
+      const text = stringValue(body.text) as string;
+      const result = options.store.postLobbyChat({ lobbyID: sendChatLobbyID, lobbyCredentials: credential(body) as string, text });
+      if (!result.ok) {
+        setError(ctx, accessStatus(result.reason), result.reason);
+        return;
+      }
+      ctx.body = { message: result.message };
       return;
     }
 

@@ -39,6 +39,10 @@ const lobby: LobbyRoomDetails = {
   viewer: { seatID: "0", isHost: true }
 };
 
+const chatMessages = [
+  { id: "chat-1", author: "Guest", text: "I can take seat two.", createdAt: "2026-06-05T10:00:00.000Z" }
+];
+
 describe("LobbyRoom", () => {
   it("renders the current setup summary in the lobby", () => {
     const html = renderToStaticMarkup(
@@ -77,6 +81,7 @@ describe("LobbyRoom", () => {
       <LobbyRoom
         lobby={lobby}
         setupConfig={config}
+        chatMessages={chatMessages}
         statusMessage=""
         onBack={() => undefined}
         onRefresh={() => undefined}
@@ -84,6 +89,7 @@ describe("LobbyRoom", () => {
         onSelectNation={() => undefined}
         onReady={() => undefined}
         onStart={() => undefined}
+        onSendChat={() => undefined}
       />
     );
 
@@ -94,6 +100,8 @@ describe("LobbyRoom", () => {
     expect(html).toContain("Nation");
     expect(html).toContain("Ready");
     expect(html).toContain("Edit Setup");
+    expect(html).toContain("Lobby Chat");
+    expect(html).toContain("I can take seat two.");
     expect(html).not.toContain("Update Setup");
     expect(html).not.toContain("Spectate");
   });

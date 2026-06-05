@@ -16,7 +16,7 @@ export type NewGameSessionConfig = {
 
 type NewGameSetupProps = {
   onStart: (config: NewGameSessionConfig) => void;
-  onOpenOnlineGames?: (config: NewGameSessionConfig) => void;
+  onOpenOnlineGames?: (config: NewGameSessionConfig, playerName: string) => void;
   onOpenCardEntry?: () => void;
   initialCampaignProgress?: CampaignProgress;
   initialConfig?: NewGameSessionConfig;
@@ -86,6 +86,23 @@ function firstNationId(nations: NationOption[]): string {
 function playerCountForMode(mode: GameMode, requested: 1 | 2 | 3 | 4): 1 | 2 | 3 | 4 {
   if (mode === "solo" || mode === "practice") return 1;
   return requested < 2 ? 2 : requested;
+}
+
+export function getPlayerCountSelectionUpdate(
+  currentMode: GameMode,
+  requested: 1 | 2 | 3 | 4,
+  soloAllowed = true,
+  multiplayerAllowed = true
+): { mode: GameMode; playerCount: 1 | 2 | 3 | 4 } {
+  const mode = currentMode === "multiplayer" && requested === 1 && soloAllowed
+    ? "solo"
+    : currentMode !== "multiplayer" && requested > 1 && multiplayerAllowed
+      ? "multiplayer"
+      : currentMode;
+  return {
+    mode,
+    playerCount: playerCountForMode(mode, requested)
+  };
 }
 
 function toggleItem<T extends string>(items: T[], item: T): T[] {
@@ -211,6 +228,7 @@ export default function NewGameSetup({
   const [privateData, setPrivateData] = useState<PrivateDataBundle>(initialConfig?.privateData ?? {});
   const [privateDataConfirmed, setPrivateDataConfirmed] = useState(Boolean(initialConfig?.privateData));
   const [privateFileStatuses, setPrivateFileStatuses] = useState<PrivateDataFileStatus[]>([]);
+  const [onlinePlayerName, setOnlinePlayerName] = useState("");
   const [playerNationIds, setPlayerNationIds] = useState<Record<string, string>>({
     "1": initialNationId(initialConfig, "1") ?? initialCampaignProgress?.playerNationId ?? DEFAULT_NATION_ID,
     "2": initialNationId(initialConfig, "2") ?? DEFAULT_NATION_ID,
@@ -259,6 +277,19 @@ export default function NewGameSetup({
   const updateMode = (nextMode: GameMode) => {
     setMode(nextMode);
     setPlayerCount(playerCountForMode(nextMode, playerCount));
+  };
+
+  const updatePlayerCount = (nextPlayerCount: 1 | 2 | 3 | 4) => {
+    const soloAllowed = modeChoices.some((item) => item.id === "solo");
+    const multiplayerAllowed = modeChoices.some((item) => item.id === "multiplayer");
+    const next = getPlayerCountSelectionUpdate(
+      mode,
+      nextPlayerCount,
+      soloAllowed,
+      multiplayerAllowed
+    );
+    setMode(next.mode);
+    setPlayerCount(next.playerCount);
   };
 
   const updateExpansions = (expansionId: ExpansionId) => {
@@ -440,8 +471,8 @@ export default function NewGameSetup({
                     key={count}
                     className={normalizedPlayerCount === count ? "is-active" : ""}
                     type="button"
-                    disabled={mode !== "multiplayer" && count !== 1}
-                    onClick={() => setPlayerCount(count as 1 | 2 | 3 | 4)}
+                    disabled={mode !== "multiplayer" && count !== 1 && !modeChoices.some((item) => item.id === "multiplayer")}
+                    onClick={() => updatePlayerCount(count as 1 | 2 | 3 | 4)}
                   >
                     {count}
                   </button>
@@ -508,8 +539,12 @@ export default function NewGameSetup({
               <fieldset className="setup-section setup-section--wide">
                 <legend>Online</legend>
                 <p className="setup-help">Browse listed games, host a public or locked table, join by code, rejoin saved seats, or spectate public state.</p>
+                <label className="setup-field">
+                  <span>Online name</span>
+                  <input name="online-player-name" value={onlinePlayerName} onChange={(event: { target: HTMLInputElement }) => setOnlinePlayerName(event.target.value)} />
+                </label>
                 <div className="private-data-actions">
-                  <button className="primary-action" type="button" onClick={() => onOpenOnlineGames?.(buildLaunchConfig())} disabled={!onOpenOnlineGames}>
+                  <button className="primary-action" type="button" onClick={() => onOpenOnlineGames?.(buildLaunchConfig(), onlinePlayerName.trim())} disabled={!onOpenOnlineGames || !onlinePlayerName.trim()}>
                     Online Games
                   </button>
                 </div>

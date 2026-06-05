@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildJoinURL, computePrivateDataFingerprint, createLobbyRoom, createOnlineMatch, createPolityOnlineMatch, joinLobbyRoom, joinOnlineMatch, joinPolityOnlineMatch, leavePolityOnlineMatch, listLobbyRooms, listOnlineMatches, ONLINE_SESSION_STORAGE_KEY, parseJoinURL, parseOnlineSessionRecord, rejoinLobbyRoom, resolveMultiplayerServerURL, selectLobbyNation, serializeOnlineSessionRecord, setLobbyReady, sortListedMatches, spectateOnlineMatch, startLobbyGame, updateLobbySetup } from "./onlineSession";
+import { buildJoinURL, computePrivateDataFingerprint, createLobbyRoom, createOnlineMatch, createPolityOnlineMatch, joinLobbyRoom, joinOnlineMatch, joinPolityOnlineMatch, leavePolityOnlineMatch, listLobbyChat, listLobbyRooms, listOnlineChat, listOnlineMatches, ONLINE_SESSION_STORAGE_KEY, parseJoinURL, parseOnlineSessionRecord, rejoinLobbyRoom, resolveMultiplayerServerURL, selectLobbyNation, sendLobbyChat, sendOnlineChat, serializeOnlineSessionRecord, setLobbyReady, sortListedMatches, spectateOnlineMatch, startLobbyGame, updateLobbySetup } from "./onlineSession";
 
 function jsonResponse(body: unknown): Response {
   return {
@@ -179,6 +179,28 @@ describe("online session utilities", () => {
       "http://localhost:8000/polity/lobby/rooms/lobby-1/select-nation",
       "http://localhost:8000/polity/lobby/rooms/lobby-1/ready",
       "http://localhost:8000/polity/lobby/rooms/lobby-1/start"
+    ]);
+  });
+
+  it("uses HTTP chat APIs for the online lounge and pregame lobbies", async () => {
+    const calls: Array<{ url: string; body?: unknown }> = [];
+    const message = { id: "chat-1", author: "Jonah", text: "Hello", createdAt: "2026-06-05T10:00:00.000Z" };
+    const fetcher = async (url: string, init?: RequestInit) => {
+      calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      if (url.endsWith("/chat/send") || init?.method === "POST" && url.endsWith("/chat")) return jsonResponse({ message, messages: [message] });
+      return jsonResponse({ messages: [message] });
+    };
+
+    await expect(listOnlineChat({ serverURL: "http://localhost:8000", fetcher })).resolves.toEqual([message]);
+    await expect(sendOnlineChat({ serverURL: "http://localhost:8000", author: "Jonah", text: "Hello", fetcher })).resolves.toEqual({ message, messages: [message] });
+    await expect(listLobbyChat({ serverURL: "http://localhost:8000", lobbyID: "lobby-1", lobbyCredentials: "cred", fetcher })).resolves.toEqual([message]);
+    await expect(sendLobbyChat({ serverURL: "http://localhost:8000", lobbyID: "lobby-1", lobbyCredentials: "cred", text: "Hello", fetcher })).resolves.toEqual({ message, messages: [message] });
+
+    expect(calls).toEqual([
+      { url: "http://localhost:8000/polity/lobby/chat", body: undefined },
+      { url: "http://localhost:8000/polity/lobby/chat", body: { author: "Jonah", text: "Hello" } },
+      { url: "http://localhost:8000/polity/lobby/rooms/lobby-1/chat", body: { lobbyCredentials: "cred" } },
+      { url: "http://localhost:8000/polity/lobby/rooms/lobby-1/chat/send", body: { lobbyCredentials: "cred", text: "Hello" } }
     ]);
   });
 

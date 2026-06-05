@@ -188,4 +188,33 @@ describe("pregame lobby middleware", () => {
     expect(spectate.status).toBe(409);
     expect(spectate.body).toEqual({ error: "spectation_unavailable" });
   });
+
+  it("serves lounge and lobby chat over HTTP", async () => {
+    const store = createPregameLobbyStore({ now: () => "2026-06-05T10:00:00.000Z", createID: () => "id", createCredential: () => "cred" });
+    const middleware = createPregameLobbyMiddleware({
+      store,
+      boardgameApi: {
+        createMatch: async () => ({ matchID: "match-1" }),
+        joinMatch: async () => ({ playerCredentials: "player-token" })
+      }
+    });
+    const create = context("POST", "/polity/lobby/rooms", { playerCount: 2, setupData: setupData(), privateDataFingerprint: "placeholder", hostName: "Host" });
+    await middleware(create, async () => undefined);
+
+    const loungeSend = context("POST", "/polity/lobby/chat", { author: "Jonah", text: "Looking for a table." });
+    await middleware(loungeSend, async () => undefined);
+    expect(loungeSend.body).toEqual({ message: expect.objectContaining({ author: "Jonah", text: "Looking for a table." }) });
+
+    const loungeList = context("GET", "/polity/lobby/chat");
+    await middleware(loungeList, async () => undefined);
+    expect(loungeList.body).toEqual({ messages: [expect.objectContaining({ author: "Jonah" })] });
+
+    const lobbySend = context("POST", "/polity/lobby/rooms/id/chat/send", { lobbyCredentials: "cred", text: "Seat one checking in." });
+    await middleware(lobbySend, async () => undefined);
+    expect(lobbySend.body).toEqual({ message: expect.objectContaining({ author: "Host", text: "Seat one checking in." }) });
+
+    const lobbyList = context("POST", "/polity/lobby/rooms/id/chat", { lobbyCredentials: "cred" });
+    await middleware(lobbyList, async () => undefined);
+    expect(lobbyList.body).toEqual({ messages: [expect.objectContaining({ author: "Host" })] });
+  });
 });

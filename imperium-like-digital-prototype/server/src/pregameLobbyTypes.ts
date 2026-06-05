@@ -3,6 +3,13 @@ import type { ListedMatch } from "./lobbyTypes";
 export type PregameLobbyStatus = "waiting" | "locked" | "starting" | "started" | "abandoned";
 export type PrivateDataLabel = "placeholder" | "private_data_required";
 
+export type ChatMessage = {
+  id: string;
+  author: string;
+  text: string;
+  createdAt: string;
+};
+
 export type LobbySetupData = {
   options?: {
     playerCount?: number;
@@ -82,6 +89,7 @@ export type LobbyAccessFailureReason =
   | "not_ready"
   | "invalid_setup"
   | "invalid_nation"
+  | "invalid_chat"
   | "spectation_unavailable";
 
 export type LobbyAccessResult = { ok: true } | { ok: false; reason: LobbyAccessFailureReason };

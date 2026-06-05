@@ -55,6 +55,10 @@ const baseLobby: ListedLobby = {
   }
 };
 
+const chatMessages = [
+  { id: "chat-1", author: "Jonah", text: "Anyone free?", createdAt: "2026-06-05T10:00:00.000Z" }
+];
+
 describe("OnlineGames", () => {
   it("finds saved sessions for listed games so joins can become rejoins", () => {
     const savedLobby: OnlineSessionRecord = {
@@ -85,10 +89,12 @@ describe("OnlineGames", () => {
     const html = renderToStaticMarkup(
       <OnlineGames
         setupConfig={config}
+        initialPlayerName="Jonah"
         privateDataFingerprint="placeholder"
         savedSessions={[]}
         lobbies={[]}
         matches={[baseMatch]}
+        chatMessages={chatMessages}
         statusMessage=""
         onBackToSetup={() => undefined}
         onRefresh={() => undefined}
@@ -98,10 +104,14 @@ describe("OnlineGames", () => {
         onSpectate={() => undefined}
         onRejoin={() => undefined}
         onForgetSession={() => undefined}
+        onSendChat={() => undefined}
       />
     );
 
     expect(html).toContain("Online Games");
+    expect(html).toContain("value=\"Jonah\"");
+    expect(html).toContain("Online Chat");
+    expect(html).toContain("Anyone free?");
     expect(html).toContain("Resume Games");
     expect(html).toContain("Host Game");
     expect(html).toContain("Join By Code");

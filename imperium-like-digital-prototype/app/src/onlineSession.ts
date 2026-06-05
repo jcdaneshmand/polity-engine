@@ -33,6 +33,13 @@ const PLACEHOLDER_FINGERPRINT = "placeholder";
 
 export type PrivateDataLabel = "placeholder" | "private_data_required";
 
+export type ChatMessage = {
+  id: string;
+  author: string;
+  text: string;
+  createdAt: string;
+};
+
 export type ListedMatch = {
   matchID: string;
   roomName: string;
@@ -249,6 +256,39 @@ export async function listLobbyRooms(args: { serverURL: string; fetcher?: Fetche
     args.fetcher ?? fetch
   );
   return result.lobbies;
+}
+
+export async function listOnlineChat(args: { serverURL: string; fetcher?: Fetcher }): Promise<ChatMessage[]> {
+  const result = await getLobbyJSON<{ messages: ChatMessage[] }>(
+    lobbyURL(args.serverURL, "/polity/lobby/chat"),
+    args.fetcher ?? fetch
+  );
+  return result.messages;
+}
+
+export async function sendOnlineChat(args: { serverURL: string; author: string; text: string; fetcher?: Fetcher }): Promise<{ message: ChatMessage; messages?: ChatMessage[] }> {
+  return postLobbyJSON<{ message: ChatMessage; messages?: ChatMessage[] }>(
+    lobbyURL(args.serverURL, "/polity/lobby/chat"),
+    { author: args.author, text: args.text },
+    args.fetcher ?? fetch
+  );
+}
+
+export async function listLobbyChat(args: { serverURL: string; lobbyID: string; lobbyCredentials: string; fetcher?: Fetcher }): Promise<ChatMessage[]> {
+  const result = await postLobbyJSON<{ messages: ChatMessage[] }>(
+    lobbyURL(args.serverURL, `/polity/lobby/rooms/${encodeURIComponent(args.lobbyID)}/chat`),
+    { lobbyCredentials: args.lobbyCredentials },
+    args.fetcher ?? fetch
+  );
+  return result.messages;
+}
+
+export async function sendLobbyChat(args: { serverURL: string; lobbyID: string; lobbyCredentials: string; text: string; fetcher?: Fetcher }): Promise<{ message: ChatMessage; messages?: ChatMessage[] }> {
+  return postLobbyJSON<{ message: ChatMessage; messages?: ChatMessage[] }>(
+    lobbyURL(args.serverURL, `/polity/lobby/rooms/${encodeURIComponent(args.lobbyID)}/chat/send`),
+    { lobbyCredentials: args.lobbyCredentials, text: args.text },
+    args.fetcher ?? fetch
+  );
 }
 
 export async function createLobbyRoom(args: {

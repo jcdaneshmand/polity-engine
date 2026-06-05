@@ -1,6 +1,6 @@
 import type { Ctx } from "boardgame.io";
 import { createReactiveExhaustChoice, resolvePendingTradeChoice, runAcquireTriggers, runEffects, runTriggeredEffects } from "../cards/effectRunner";
-import type { DrawSourceZone, Effect, EffectTrigger, FindSourceZone, GameState, LookSourceZone, PlaceOnDeckSourceZone, PlayerExileSource, ReactiveExhaustCondition, ResourceGainSource, ResourceName, ReturnFameSourceZone, ReturnUnrestSourceZone, Suit, SwapSourceZone, ZoneName } from "./state";
+import type { DrawSourceZone, Effect, EffectTrigger, FindSourceZone, GameState, LookSourceZone, PendingPlayedCardResolution, PlaceOnDeckSourceZone, PlayerExileSource, ReactiveExhaustCondition, ResourceGainSource, ResourceName, ReturnFameSourceZone, ReturnUnrestSourceZone, Suit, SwapSourceZone, TargetPlayerScope, ZoneName } from "./state";
 import { continuePendingNationHooks, runNationHooks } from "../nations/nationRulesetHooks";
 import { continuePausedBotTurn } from "../solo/botTurn";
 import { canUseDevelopmentArea, continuePendingReshuffleLifecycle, continuePendingShortGameDevelopmentExileQueue, resolvePendingDevelopmentChoice, resolvePendingShortGameDevelopmentExileChoice, skipPendingDevelopmentChoice } from "./zones";
@@ -12,6 +12,7 @@ import { continuePendingScoringFinalization } from "./scoring";
 import { continuePausedSolstice, continuePendingTurnEndCleanup, prepareCleanupBeforeOptionalDiscard, resetCleanupTokensBeforeOptionalDiscard, resolveCleanupDiscardChoice, resolvePendingSolsticeOrderChoice, startCleanupDiscardChoice } from "./turn";
 import {
   abandonRegionToDiscard,
+  canBeGarrisoned,
   collectAndClearCardStateToPlayer,
   collectCardResourcesToPlayer,
   detachGarrisonedCard,
@@ -175,6 +176,7 @@ function blockingPendingChoice(G: GameState): string | undefined {
   if (G.pendingReturnFameChoice) return "pending_return_fame_choice";
   if (G.pendingPlaceOnDeckChoice) return "pending_place_on_deck_choice";
   if (G.pendingReturnExhaustTokenChoice) return "pending_return_exhaust_token_choice";
+  if (G.pendingFreePlayChoice) return "pending_free_play_choice";
   if (G.pendingGiveCardChoice) return "pending_give_card_choice";
   if (G.pendingSwapChoice) return "pending_swap_choice";
   if (G.pendingLookOrderChoice) return "pending_look_order_choice";
@@ -227,6 +229,7 @@ type ResumablePendingChoice =
   | NonNullable<GameState["pendingReturnFameChoice"]>
   | NonNullable<GameState["pendingPlaceOnDeckChoice"]>
   | NonNullable<GameState["pendingReturnExhaustTokenChoice"]>
+  | NonNullable<GameState["pendingFreePlayChoice"]>
   | NonNullable<GameState["pendingGiveCardChoice"]>
   | NonNullable<GameState["pendingSwapChoice"]>
   | NonNullable<GameState["pendingLookOrderChoice"]>
@@ -252,6 +255,7 @@ function pendingEffectInterruption(G: GameState, options: { includeRegionContinu
     ?? G.pendingReturnFameChoice
     ?? G.pendingPlaceOnDeckChoice
     ?? G.pendingReturnExhaustTokenChoice
+    ?? G.pendingFreePlayChoice
     ?? G.pendingGiveCardChoice
     ?? G.pendingSwapChoice
     ?? G.pendingLookOrderChoice
@@ -542,7 +546,15 @@ function runTriggeredEffectsWithPayment(ctx: { G: GameState; playerId: string; s
   return runEffects(ctx, orderedEffectsAfterPrefixPayment(triggeredEffects, prefix));
 }
 
-function finishPlayCardResolution(moveCtx: MoveCtx, cardId: string, freePlay: boolean, payment?: ResourceCost): boolean {
+function finishPlayCardResolution(
+  moveCtx: MoveCtx,
+  cardId: string,
+  freePlay: boolean,
+  payment?: ResourceCost,
+  sourceCardId?: string,
+  resumeEffects?: Effect[],
+  resumePlayedCardResolution?: PendingPlayedCardResolution
+): boolean {
   const { G, ctx, random } = moveCtx;
   const p = G.players[ctx.currentPlayer];
   const snapshot = cloneGameState(G);
@@ -554,7 +566,7 @@ function finishPlayCardResolution(moveCtx: MoveCtx, cardId: string, freePlay: bo
   }
   const handIndex = p.hand.indexOf(cardId);
   if (handIndex < 0) {
-    p.actionsRemaining += 1;
+    if (!freePlay) p.actionsRemaining += 1;
     if (!freePlay) p.actionTokensAvailable += 1;
     return false;
   }
@@ -581,7 +593,7 @@ function finishPlayCardResolution(moveCtx: MoveCtx, cardId: string, freePlay: bo
     return false;
   }
   if (G.gameover) return true;
-  G.pendingPlayedCardResolution = { playerId: ctx.currentPlayer, cardId, freePlay, rollbackSnapshot: snapshot };
+  G.pendingPlayedCardResolution = { playerId: ctx.currentPlayer, cardId, freePlay, rollbackSnapshot: snapshot, sourceCardId, resumeEffects, resumePlayedCardResolution };
   if (pendingEffectInterruption(G)) return true;
   return finishPendingPlayedCardResolution(moveCtx);
 }
@@ -590,10 +602,11 @@ function finishPendingPlayCardResolution(moveCtx: MoveCtx): boolean {
   const pending = moveCtx.G.pendingPlayCardResolution;
   if (!pending || pending.playerId !== moveCtx.ctx.currentPlayer || pendingEffectInterruption(moveCtx.G)) return true;
   moveCtx.G.pendingPlayCardResolution = undefined;
-  return finishPlayCardResolution(moveCtx, pending.cardId, pending.freePlay, pending.payment);
+  return finishPlayCardResolution(moveCtx, pending.cardId, pending.freePlay, pending.payment, pending.sourceCardId, pending.resumeEffects, pending.resumePlayedCardResolution);
 }
 
-function finishPendingPlayedCardResolution({ G, ctx, random }: MoveCtx): boolean {
+function finishPendingPlayedCardResolution(moveCtx: MoveCtx): boolean {
+  const { G, ctx, random } = moveCtx;
   const pending = G.pendingPlayedCardResolution;
   if (!pending || pending.playerId !== ctx.currentPlayer || pendingEffectInterruption(G)) return true;
   if (!pending.afterPlayReactiveChecked) {
@@ -621,6 +634,14 @@ function finishPendingPlayedCardResolution({ G, ctx, random }: MoveCtx): boolean
     { G, playerId: ctx.currentPlayer, selfCardId: pending.cardId, randomNumber: random?.Number, enabledExpansions: G.options?.enabledExpansions },
     resourceGainSources
   );
+  if (pendingEffectInterruption(G)) {
+    appendResumeEffectsToPending(G, pending.resumeEffects);
+    if (pending.resumePlayedCardResolution) G.pendingPlayedCardResolution = pending.resumePlayedCardResolution;
+    return true;
+  }
+  if (pending.resumePlayedCardResolution) G.pendingPlayedCardResolution = pending.resumePlayedCardResolution;
+  if ((pending.resumeEffects ?? []).length > 0) return resumeEffectsAfterPendingChoice(moveCtx, pending.sourceCardId, pending.resumeEffects);
+  if (pending.resumePlayedCardResolution) return finishPendingPlayedCardResolution(moveCtx);
   return true;
 }
 
@@ -1079,6 +1100,39 @@ function giveCardRecipients(G: GameState, playerId: string, effect: Extract<Effe
     .filter((candidatePlayerId) => candidatePlayerId !== playerId && Boolean(G.players[candidatePlayerId]));
 }
 
+function playerIdsForScope(G: GameState, playerId: string, scope: TargetPlayerScope | undefined): string[] {
+  if (scope === "all") return Object.keys(G.players);
+  if (scope === "others") return Object.keys(G.players).filter((candidatePlayerId) => candidatePlayerId !== playerId);
+  return [playerId];
+}
+
+function canResolveDrawEffect(G: GameState, playerId: string, effect: Extract<Effect, { op: "draw" }>): boolean {
+  if (effect.count <= 0) return false;
+  const source = effect.source ?? "deck";
+  const targetPlayerIds = effect.targetPlayerIds ?? playerIdsForScope(G, playerId, effect.targetPlayerScope);
+  return targetPlayerIds.some((targetPlayerId) => {
+    if (!G.players[targetPlayerId]) return false;
+    if (source === "fameDeck") return canGainFameCard(G, targetPlayerId);
+    if (source !== "deck") return drawChoiceSourceCards(G, targetPlayerId, source).length > 0;
+    return canDrawAtLeastOneCardOrReshuffle(G, targetPlayerId);
+  });
+}
+
+function stealSourcePlayerIds(G: GameState, playerId: string, effect: Extract<Effect, { op: "steal_resource" }>): string[] {
+  if (effect.fromPlayerIds?.length) return effect.fromPlayerIds;
+  if (effect.fromPlayerId) return [effect.fromPlayerId];
+  if (effect.targetPlayerScope) return playerIdsForScope(G, playerId, effect.targetPlayerScope);
+  return [];
+}
+
+function canResolveStealEffect(G: GameState, playerId: string, effect: Extract<Effect, { op: "steal_resource" }>): boolean {
+  if (effect.amount <= 0) return false;
+  return stealSourcePlayerIds(G, playerId, effect).some((targetPlayerId) => {
+    if (!G.players[targetPlayerId]) return false;
+    return resourceAmount(G.players[targetPlayerId].resources, effect.resource) > 0 || (effect.ifUnable ?? []).length > 0;
+  });
+}
+
 function canResolveGiveCardEffect(G: GameState, playerId: string, effect: Extract<Effect, { op: "give_card" }>): boolean {
   const p = G.players[playerId];
   return giveCardRecipients(G, playerId, effect).length > 0
@@ -1096,7 +1150,7 @@ function canResolveSwapEffect(G: GameState, playerId: string, effect: Extract<Ef
 
 function canResolveTakeUnrestEffect(G: GameState, playerId: string, effect: Extract<Effect, { op: "take_unrest" }>): boolean {
   if (effect.count <= 0) return false;
-  const recipients = effect.targetPlayerIds ?? [playerId];
+  const recipients = effect.targetPlayerIds ?? playerIdsForScope(G, playerId, effect.targetPlayerScope);
   return recipients.some((candidatePlayerId) => Boolean(G.players[candidatePlayerId]));
 }
 
@@ -1143,6 +1197,7 @@ function canCreatePlayerChoice(effect: Effect): boolean {
     "return_fame",
     "place_card_on_deck",
     "return_exhaust_token",
+    "free_play_card",
     "give_card",
     "swap_card",
     "look_cards",
@@ -1153,7 +1208,7 @@ function canCreatePlayerChoice(effect: Effect): boolean {
 function canCreateResourceGainReactiveBoundary(G: GameState, playerId: string, effect: Effect, selfCardId?: string): boolean {
   if (effect.op !== "gain_resource" && effect.op !== "steal_resource") return false;
   if (effect.amount <= 0) return false;
-  if (effect.op === "steal_resource" && resourceAmount(G.players[effect.fromPlayerId]?.resources, effect.resource) <= 0) return false;
+  if (effect.op === "steal_resource" && !stealSourcePlayerIds(G, playerId, effect).some((targetPlayerId) => resourceAmount(G.players[targetPlayerId]?.resources, effect.resource) > 0)) return false;
   const sourceWasInPlay = sourceCardIsInPlay(G, playerId, selfCardId);
   for (const [ownerPlayerId, owner] of Object.entries(G.players)) {
     if (owner.exhaustTokensAvailable < 1) continue;
@@ -1211,15 +1266,30 @@ function canResolveGarrisonEffect(G: GameState, playerId: string, effect: Extrac
     if (!effect.hostCardId || !effect.cardId) return false;
     return p.playArea.includes(effect.hostCardId)
       && isRegionCard(G, effect.hostCardId)
-      && p.hand.includes(effect.cardId);
+      && p.hand.includes(effect.cardId)
+      && canBeGarrisoned(G, effect.cardId);
   }
-  const handCardIds = p.hand.filter((cardId) => cardId !== selfCardId);
+  const handCardIds = p.hand.filter((cardId) => cardId !== selfCardId && canBeGarrisoned(G, cardId));
   return defaultGarrisonHostCardsForResolution(G, playerId, selfCardId).length > 0 && handCardIds.length > 0;
 }
 
 function regionActionCardIds(G: GameState, playerId: string): string[] {
   const p = G.players[playerId];
   return [...p.playArea, ...garrisonedCardsInPlay(G, playerId)].filter((cardId) => isRegionCard(G, cardId));
+}
+
+function regionTargetPlayerIds(G: GameState, playerId: string, effect: Extract<Effect, { op: "recall_region" | "abandon_region" }>): string[] {
+  return effect.targetPlayerIds ?? playerIdsForScope(G, playerId, effect.targetPlayerScope);
+}
+
+function canResolveRegionEffect(G: GameState, playerId: string, effect: Extract<Effect, { op: "recall_region" | "abandon_region" }>): boolean {
+  return regionTargetPlayerIds(G, playerId, effect).some((targetPlayerId) => {
+    const p = G.players[targetPlayerId];
+    if (!p) return false;
+    return effect.cardId
+      ? (p.playArea.includes(effect.cardId) || garrisonedCardsInPlay(G, targetPlayerId).includes(effect.cardId)) && isRegionCard(G, effect.cardId)
+      : regionActionCardIds(G, targetPlayerId).length > 0;
+  });
 }
 
 function marketCardCanBeExiled(G: GameState, cardId: string): boolean {
@@ -1253,11 +1323,7 @@ function canResolveChoiceEffectText(G: GameState, playerId: string, effect: Effe
   const p = G.players[playerId];
   switch (effect.op) {
     case "draw":
-      return effect.count > 0 && (effect.source === "fameDeck"
-        ? canGainFameCard(G, playerId)
-        : effect.source && effect.source !== "deck"
-          ? drawChoiceSourceCards(G, playerId, effect.source).length > 0
-          : canDrawAtLeastOneCardOrReshuffle(G, playerId));
+      return canResolveDrawEffect(G, playerId, effect);
     case "draw_if_able":
       return effect.count > 0 && p.deck.length > 0;
     case "gain_resource":
@@ -1268,7 +1334,7 @@ function canResolveChoiceEffectText(G: GameState, playerId: string, effect: Effe
     case "return_resource":
       return effect.amount > 0 && resourceAmount(p.resources, effect.resource) > 0;
     case "steal_resource":
-      return effect.amount > 0 && resourceAmount(G.players[effect.fromPlayerId]?.resources, effect.resource) > 0;
+      return canResolveStealEffect(G, playerId, effect);
     case "spend_resource":
       return effect.amount > 0 && canPayResourceCost(G, playerId, effect.resource, effect.amount);
     case "discard_cards":
@@ -1308,11 +1374,7 @@ function canResolveEffectText(G: GameState, playerId: string, effect: Effect, se
   const p = G.players[playerId];
   switch (effect.op) {
     case "draw":
-      return effect.count > 0 && (effect.source === "fameDeck"
-        ? canGainFameCard(G, playerId)
-        : effect.source && effect.source !== "deck"
-          ? drawChoiceSourceCards(G, playerId, effect.source).length > 0
-          : canDrawAtLeastOneCardOrReshuffle(G, playerId));
+      return canResolveDrawEffect(G, playerId, effect);
     case "draw_if_able":
       return effect.count > 0 && p.deck.length > 0;
     case "trigger_scoring":
@@ -1335,7 +1397,7 @@ function canResolveEffectText(G: GameState, playerId: string, effect: Effect, se
       return effect.amount <= 0 || resourceAmount(p.resources, effect.resource) > 0;
     case "steal_resource":
       if (effect.trigger === "on_exhaust") return true;
-      return effect.amount <= 0 || resourceAmount(G.players[effect.fromPlayerId]?.resources, effect.resource) > 0;
+      return effect.amount <= 0 || canResolveStealEffect(G, playerId, effect);
     case "discard_random":
       return p.hand.length > (effect.trigger === "on_play" ? 1 : 0);
     case "discard_cards":
@@ -1368,9 +1430,7 @@ function canResolveEffectText(G: GameState, playerId: string, effect: Effect, se
       return canResolveGarrisonEffect(G, playerId, effect, selfCardId);
     case "recall_region":
     case "abandon_region":
-      return effect.cardId
-        ? (p.playArea.includes(effect.cardId) || garrisonedCardsInPlay(G, playerId).includes(effect.cardId)) && isRegionCard(G, effect.cardId)
-        : regionActionCardIds(G, playerId).length > 0;
+      return canResolveRegionEffect(G, playerId, effect);
     case "develop":
       return canResolveDevelopEffect(G, playerId, effect);
     case "move_self_to_history":
@@ -1706,6 +1766,62 @@ export function playCard({ G, ctx, random }: MoveCtx, cardId: string, payment?: 
     return;
   }
   finishPlayCardResolution({ G, ctx, random }, cardId, freePlay, payment);
+}
+
+export function resolveFreePlayChoice({ G, ctx, random }: MoveCtx, cardId: string, payment?: ResourceCost): void {
+  const pending = G.pendingFreePlayChoice;
+  if (!pending || pending.playerId !== ctx.currentPlayer) {
+    logInvalidMove(G, ctx.currentPlayer, "resolveFreePlayChoice", "no_pending_free_play_choice");
+    return;
+  }
+  if (!pending.cardIds.includes(cardId)) {
+    logInvalidMove(G, ctx.currentPlayer, "resolveFreePlayChoice", `card_not_eligible(${cardId})`);
+    return;
+  }
+  const p = G.players[ctx.currentPlayer];
+  if (!p.hand.includes(cardId)) {
+    logInvalidMove(G, ctx.currentPlayer, "resolveFreePlayChoice", `card_not_in_hand(${cardId})`);
+    return;
+  }
+  if (hasFreePlayedThisTurn(G, ctx.currentPlayer, cardId)) {
+    logInvalidMove(G, ctx.currentPlayer, "resolveFreePlayChoice", `free_play_already_used(${cardId})`);
+    return;
+  }
+  if (!pending.ignoreStateRequirement && !cardMeetsStateRequirement(G, ctx.currentPlayer, cardId)) {
+    logInvalidMove(G, ctx.currentPlayer, "resolveFreePlayChoice", `state_requirement_not_met(${G.cardDb[cardId]?.stateRequirement})`);
+    return;
+  }
+  if (!cardHasResolvableOnPlayText(G, ctx.currentPlayer, cardId, payment)) {
+    logInvalidMove(G, ctx.currentPlayer, "resolveFreePlayChoice", `no_resolvable_on_play_effects(${cardId})`);
+    return;
+  }
+
+  const sourcePlayedResolution = G.pendingPlayedCardResolution;
+  G.pendingFreePlayChoice = undefined;
+  G.pendingPlayedCardResolution = undefined;
+  if (!runNationHooks({ G, playerId: ctx.currentPlayer, trigger: "before_play_card", payload: { cardId }, randomNumber: random?.Number })) return;
+  if (G.gameover) return;
+  if (pendingEffectInterruption(G)) {
+    G.pendingPlayCardResolution = {
+      playerId: ctx.currentPlayer,
+      cardId,
+      freePlay: true,
+      payment,
+      sourceCardId: pending.sourceCardId,
+      resumeEffects: pending.resumeEffects,
+      resumePlayedCardResolution: sourcePlayedResolution
+    };
+    return;
+  }
+  finishPlayCardResolution(
+    { G, ctx, random },
+    cardId,
+    true,
+    payment,
+    pending.sourceCardId,
+    pending.resumeEffects,
+    sourcePlayedResolution
+  );
 }
 
 export function acquireCard({ G, ctx, random }: MoveCtx, cardId: string, payment?: ResourceCost): void {
@@ -2046,6 +2162,10 @@ export function resolveChoice({ G, ctx, random }: MoveCtx, choiceIndex: number, 
 
   const snapshot = cloneGameState(G);
   const resumeEffects = pending.resumeEffects ?? [];
+  const resumePlayerId = pending.resolvingPlayerId ?? ctx.currentPlayer;
+  const resumeCtx = resumePlayerId === ctx.currentPlayer
+    ? ctx
+    : ({ ...ctx, currentPlayer: resumePlayerId } as Ctx);
   G.pendingChoice = undefined;
   const cost = explicitSpendCost(choice);
   const choiceEffects = resourceCostHasPositiveAmount(cost) ? removeExplicitSpendEffects(choice) : choice;
@@ -2062,9 +2182,12 @@ export function resolveChoice({ G, ctx, random }: MoveCtx, choiceIndex: number, 
   const followupPendingChoice = pendingEffectInterruption(G);
   if (resolved && followupPendingChoice && resumeEffects.length > 0) {
     followupPendingChoice.resumeEffects = [...(followupPendingChoice.resumeEffects ?? []), ...resumeEffects];
+    if (pending.resolvingPlayerId && "resolvingPlayerId" in followupPendingChoice && !followupPendingChoice.resolvingPlayerId) {
+      followupPendingChoice.resolvingPlayerId = pending.resolvingPlayerId;
+    }
   }
   const resumed = resolved && !followupPendingChoice
-    ? resumeEffectsAfterPendingChoice({ G, ctx, random }, pending.sourceCardId, resumeEffects)
+    ? resumeEffectsAfterPendingChoice({ G, ctx: resumeCtx, random }, pending.sourceCardId, resumeEffects)
     : true;
   if (!resolved || !resumed) {
     if (returnIfGameover(G)) return;
@@ -2584,6 +2707,10 @@ export function resolveRegionChoice({ G, ctx, random }: MoveCtx, cardId: string)
   }
   const snapshot = cloneGameState(G);
   const resumeEffects = pending.resumeEffects ?? [];
+  const resumePlayerId = pending.resolvingPlayerId ?? ctx.currentPlayer;
+  const resumeCtx = resumePlayerId === ctx.currentPlayer
+    ? ctx
+    : ({ ...ctx, currentPlayer: resumePlayerId } as Ctx);
   const collectedResources: Partial<Record<ResourceName, number>> = {};
   const collectedResourceSources: ResourceGainSource[] = [];
   const resolved = pending.op === "recall_region"
@@ -2621,9 +2748,12 @@ export function resolveRegionChoice({ G, ctx, random }: MoveCtx, cardId: string)
   const resourcePending = pendingEffectInterruption(G);
   if (resourcePending) {
     resourcePending.resumeEffects = [...(resourcePending.resumeEffects ?? []), ...resumeEffects];
+    if (pending.resolvingPlayerId && "resolvingPlayerId" in resourcePending && !resourcePending.resolvingPlayerId) {
+      resourcePending.resolvingPlayerId = pending.resolvingPlayerId;
+    }
     return;
   }
-  if (!resumeEffectsAfterPendingChoice({ G, ctx, random }, pending.sourceCardId, resumeEffects)) {
+  if (!resumeEffectsAfterPendingChoice({ G, ctx: resumeCtx, random }, pending.sourceCardId, resumeEffects)) {
     if (returnIfGameover(G)) return;
     if (handleAfterReshuffleHookFailure(G, ctx.currentPlayer, "resolveRegionChoice")) return;
     restoreGameState(G, snapshot);

@@ -248,6 +248,7 @@ export function getPendingUiState(G: any, ctx: any): { title: string; detail: st
     G.pendingReturnFameChoice ? { title: "Pending Return Fame", detail: `Choose ${plural(G.pendingReturnFameChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingReturnFameChoice.playerId } :
     G.pendingPlaceOnDeckChoice ? { title: "Pending Deck Placement", detail: `Choose ${plural(G.pendingPlaceOnDeckChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingPlaceOnDeckChoice.playerId } :
     G.pendingReturnExhaustTokenChoice ? { title: "Pending Return Exhaust", detail: `Choose ${plural(G.pendingReturnExhaustTokenChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingReturnExhaustTokenChoice.playerId } :
+    G.pendingFreePlayChoice ? { title: "Pending Free Play", detail: `Choose ${plural(G.pendingFreePlayChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingFreePlayChoice.playerId } :
     G.pendingGiveCardChoice ? { title: "Pending Give Card", detail: `${plural(G.pendingGiveCardChoice.cardIds?.length ?? 0, "card")} / ${plural(G.pendingGiveCardChoice.recipientPlayerIds?.length ?? 0, "recipient")}`, playerId: G.pendingGiveCardChoice.playerId } :
     G.pendingSwapChoice ? { title: "Pending Swap", detail: plural(G.pendingSwapChoice.choices?.length ?? 0, "option"), playerId: G.pendingSwapChoice.playerId } :
     G.pendingReactiveExhaustChoice ? { title: "Pending Reactive Exhaust", detail: `Choose ${plural(G.pendingReactiveExhaustChoice.cardIds?.length ?? 0, "card")}, or skip`, playerId: G.pendingReactiveExhaustChoice.playerId } :
@@ -699,6 +700,22 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Return Exhaust choice first" });
+    return actions;
+  }
+  const pendingFreePlayChoice = G.pendingFreePlayChoice;
+  if (pendingFreePlayChoice) {
+    const isCurrentPlayer = pendingFreePlayChoice.playerId === ctx.currentPlayer;
+    (pendingFreePlayChoice.cardIds ?? []).forEach((cardId: string) => {
+      const card = getCardById(G, cardId);
+      actions.push({
+        label: `Free Play ${card?.displayName ?? cardId}`,
+        action: "resolveFreePlayChoice",
+        enabled: isCurrentPlayer,
+        reason: isCurrentPlayer ? undefined : `Waiting for player ${pendingFreePlayChoice.playerId}`,
+        cardId
+      });
+    });
+    actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Free Play choice first" });
     return actions;
   }
   const pendingGiveCardChoice = G.pendingGiveCardChoice;

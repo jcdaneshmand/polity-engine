@@ -1,4 +1,4 @@
-import type { DrawSourceZone, Effect, EffectTrigger, FindSourceZone, GameState, LookSourceZone, PlaceOnDeckSourceZone, PlayerExileSource, PlayerState, ReactiveExhaustCondition, ResourceGainSource, ResourceName, ReturnFameSourceZone, ReturnUnrestSourceZone, Suit, SwapSourceZone, ZoneName } from "../game/state";
+import type { CardType, DrawSourceZone, Effect, EffectTrigger, FindSourceZone, GameState, LookSourceZone, PlaceOnDeckSourceZone, PlayerExileSource, PlayerState, ReactiveExhaustCondition, ResourceGainSource, ResourceName, ReturnFameSourceZone, ReturnUnrestSourceZone, Suit, SwapSourceZone, TargetPlayerScope, ZoneName } from "../game/state";
 import { canUseDevelopmentArea, createCardDrivenDevelopmentChoice, drawCard, drawCardWithReshuffleLifecycle } from "../game/zones";
 import { breakThrough, visibleTributaryBreakThroughCards } from "../game/breakThrough";
 import { canPayResourceCosts, canPayResourceCost, payResourceCost, payResourceCosts } from "../game/payments";
@@ -11,7 +11,7 @@ import { returnableExhaustTokenCardIds, returnExhaustToken } from "../game/exhau
 import { giveCardToPlayer } from "../game/giveCard";
 import { availableSwapChoices, swapCardWithMarket } from "../game/swap";
 import { cardHasSuitIcon, cardHasSuitIconForPlayer } from "../game/suitIcons";
-import { abandonRegionToDiscard, collectAndClearCardStateToPlayer, collectCardResourcesToPlayer, detachGarrisonedCard, detachGarrisonedCards, garrisonCardOnRegion, garrisonedCardsInPlay, isRegionCard, recallRegionToHand } from "../game/regions";
+import { abandonRegionToDiscard, canBeGarrisoned, collectAndClearCardStateToPlayer, collectCardResourcesToPlayer, detachGarrisonedCard, detachGarrisonedCards, garrisonCardOnRegion, garrisonedCardsInPlay, isRegionCard, recallRegionToHand } from "../game/regions";
 import { addResourceAmount, canonicalResourceName, gainPlayerResource, resourceAmount, returnResourceToSupply, setResourceAmount, takeResourceFromSupply } from "../game/resources";
 import { triggerScoring } from "../game/scoring";
 import { currentStateMatches } from "../game/stateMatching";
@@ -32,6 +32,12 @@ interface Ctx {
 
 const RESOURCE_NAMES: ResourceName[] = ["materials", "knowledge", "influence", "unrest", "goods"];
 
+function playerIdsForScope(G: GameState, playerId: string, scope: TargetPlayerScope | undefined): string[] {
+  if (scope === "all") return Object.keys(G.players);
+  if (scope === "others") return Object.keys(G.players).filter((candidatePlayerId) => candidatePlayerId !== playerId);
+  return [playerId];
+}
+
 function playerResourceSnapshot(G: GameState, playerId: string): Record<ResourceName, number> {
   return Object.fromEntries(
     RESOURCE_NAMES.map((resource) => [resource, resourceAmount(G.players[playerId]?.resources, resource)])
@@ -45,6 +51,28 @@ function playerResourceGainsSince(G: GameState, playerId: string, before: Record
     if (delta > 0) gainedResources[resource] = delta;
   }
   return gainedResources;
+}
+
+function playerHasAttackProtection(G: GameState, playerId: string): boolean {
+  const player = G.players[playerId];
+  if (!player) return false;
+  if (player.attackProtected) return true;
+  return [...player.playArea, ...player.powerArea, ...player.stateArea].some((cardId) =>
+    (G.cardDb[cardId]?.tags ?? []).some((tag) => tag.toLowerCase().replace(/[_\s-]+/g, "_") === "attack_protection")
+  );
+}
+
+function targetedAttackRecipients(ctx: Ctx, effect: Effect & { attackTargeted?: boolean }, targetPlayerIds: string[]): string[] {
+  if (!effect.attackTargeted || !ctx.selfCardId) return targetPlayerIds;
+  const recipients: string[] = [];
+  for (const targetPlayerId of targetPlayerIds) {
+    if (playerHasAttackProtection(ctx.G, targetPlayerId)) {
+      ctx.G.log.push({ round: ctx.G.round, playerId: targetPlayerId, message: `AttackEffectIgnored(${ctx.selfCardId ?? "unknown"}/player=${targetPlayerId}/${effect.op})` });
+      continue;
+    }
+    recipients.push(targetPlayerId);
+  }
+  return recipients;
 }
 
 function resolveOrQueueDeferredDevelopment(ctx: Ctx, effect: Extract<Effect, { op: "develop" }> | undefined): void {
@@ -76,6 +104,7 @@ type ResumablePendingChoice =
   | NonNullable<GameState["pendingReturnFameChoice"]>
   | NonNullable<GameState["pendingPlaceOnDeckChoice"]>
   | NonNullable<GameState["pendingReturnExhaustTokenChoice"]>
+  | NonNullable<GameState["pendingFreePlayChoice"]>
   | NonNullable<GameState["pendingGiveCardChoice"]>
   | NonNullable<GameState["pendingSwapChoice"]>
   | NonNullable<GameState["pendingLookOrderChoice"]>
@@ -104,6 +133,7 @@ function pendingEffectInterruption(G: GameState): ResumablePendingChoice | undef
     ?? G.pendingReturnFameChoice
     ?? G.pendingPlaceOnDeckChoice
     ?? G.pendingReturnExhaustTokenChoice
+    ?? G.pendingFreePlayChoice
     ?? G.pendingGiveCardChoice
     ?? G.pendingSwapChoice
     ?? G.pendingLookOrderChoice
@@ -767,14 +797,28 @@ function drawFameCards(ctx: Ctx, count: number): void {
   });
 }
 
-function createPendingRegionChoice(ctx: Ctx, op: "recall_region" | "abandon_region", count = 1): boolean {
-  const p = ctx.G.players[ctx.playerId];
+function regionTargetPlayerIds(G: GameState, playerId: string, effect: Extract<Effect, { op: "recall_region" | "abandon_region" }>): string[] {
+  return effect.targetPlayerIds ?? playerIdsForScope(G, playerId, effect.targetPlayerScope);
+}
+
+function regionCardIdsForPlayer(G: GameState, playerId: string): string[] {
+  const p = G.players[playerId];
+  if (!p) return [];
+  return [
+    ...p.playArea,
+    ...garrisonedCardsInPlay(G, playerId)
+  ].filter((cardId) => isRegionCard(G, cardId));
+}
+
+function createPendingRegionChoice(ctx: Ctx, op: "recall_region" | "abandon_region", count = 1, ownerPlayerId = ctx.playerId, resolvingPlayerId = ctx.playerId): boolean {
+  const p = ctx.G.players[ownerPlayerId];
+  if (!p) return true;
   const cardIds = [
     ...p.playArea,
-    ...garrisonedCardsInPlay(ctx.G, ctx.playerId)
+    ...garrisonedCardsInPlay(ctx.G, ownerPlayerId)
   ].filter((cardId) => isRegionCard(ctx.G, cardId));
   if (cardIds.length === 0) {
-    ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `RegionChoiceSkipped(${op}/no_eligible_regions)` });
+    ctx.G.log.push({ round: ctx.G.round, playerId: ownerPlayerId, message: `RegionChoiceSkipped(${op}/no_eligible_regions)` });
     return true;
   }
   if (cardIds.length === 1) {
@@ -782,18 +826,25 @@ function createPendingRegionChoice(ctx: Ctx, op: "recall_region" | "abandon_regi
     const collectedResources: Partial<Record<ResourceName, number>> = {};
     const collectedResourceSources: ResourceGainSource[] = [];
     const resolved = op === "recall_region"
-      ? recallRegionToHand(ctx.G, ctx.playerId, cardId, collectedResources, collectedResourceSources)
-      : abandonRegionToDiscard(ctx.G, ctx.playerId, cardId, collectedResources, collectedResourceSources);
+      ? recallRegionToHand(ctx.G, ownerPlayerId, cardId, collectedResources, collectedResourceSources)
+      : abandonRegionToDiscard(ctx.G, ownerPlayerId, cardId, collectedResources, collectedResourceSources);
     if (!resolved) {
-      ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `${op === "recall_region" ? "Recall" : "Abandon"}Failed(${cardId})` });
+      ctx.G.log.push({ round: ctx.G.round, playerId: ownerPlayerId, message: `${op === "recall_region" ? "Recall" : "Abandon"}Failed(${cardId})` });
       return false;
     }
-    createReactiveExhaustChoicesForResourceGainSources(ctx, collectedResourceSources, collectedResources);
+    createReactiveExhaustChoicesForResourceGainSources({ ...ctx, playerId: ownerPlayerId }, collectedResourceSources, collectedResources);
     return true;
   }
   const requiredCount = Math.max(1, Math.min(count, cardIds.length));
-  ctx.G.pendingRegionChoice = { playerId: ctx.playerId, sourceCardId: ctx.selfCardId, op, cardIds, ...(requiredCount > 1 ? { count: requiredCount } : {}) };
-  ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `RegionChoicePending(${ctx.selfCardId ?? "unknown"}/${op}/options=${cardIds.length})` });
+  ctx.G.pendingRegionChoice = {
+    playerId: ownerPlayerId,
+    ...(resolvingPlayerId !== ownerPlayerId ? { resolvingPlayerId } : {}),
+    sourceCardId: ctx.selfCardId,
+    op,
+    cardIds,
+    ...(requiredCount > 1 ? { count: requiredCount } : {})
+  };
+  ctx.G.log.push({ round: ctx.G.round, playerId: ownerPlayerId, message: `RegionChoicePending(${ctx.selfCardId ?? "unknown"}/${op}/options=${cardIds.length})` });
   return true;
 }
 
@@ -844,6 +895,7 @@ function canCreatePlayerChoice(effect: Effect): boolean {
     "return_fame",
     "place_card_on_deck",
     "return_exhaust_token",
+    "free_play_card",
     "give_card",
     "swap_card",
     "look_cards",
@@ -855,7 +907,7 @@ function canCreateCostBoundary(ctx: Ctx, effect: Effect): boolean {
   if (canCreatePlayerChoice(effect)) return true;
   if (effect.op !== "gain_resource" && effect.op !== "steal_resource") return false;
   if (effect.amount <= 0) return false;
-  if (effect.op === "steal_resource" && resourceAmount(ctx.G.players[effect.fromPlayerId]?.resources, effect.resource) <= 0) return false;
+  if (effect.op === "steal_resource" && !stealSourcePlayerIds(ctx.G, ctx.playerId, effect).some((targetPlayerId) => resourceAmount(ctx.G.players[targetPlayerId]?.resources, effect.resource) > 0)) return false;
   return Boolean(reactiveExhaustCardsForEvent(ctx, {
     trigger: "after_gain_resource",
     resource: effect.resource,
@@ -927,9 +979,29 @@ function canGainFameCard(G: GameState, playerId: string): boolean {
 function canResolveDrawEffect(ctx: Ctx, effect: Extract<Effect, { op: "draw" }>): boolean {
   if (effect.count <= 0) return false;
   const source = effect.source ?? "deck";
-  if (source === "fameDeck") return canGainFameCard(ctx.G, ctx.playerId);
-  if (source !== "deck") return drawSourceCards(ctx.G, ctx.playerId, ctx.G.players[ctx.playerId], source).length > 0;
-  return canDrawAtLeastOneCardOrReshuffle(ctx.G, ctx.playerId);
+  const targetPlayerIds = effect.targetPlayerIds ?? playerIdsForScope(ctx.G, ctx.playerId, effect.targetPlayerScope);
+  return targetPlayerIds.some((targetPlayerId) => {
+    const target = ctx.G.players[targetPlayerId];
+    if (!target) return false;
+    if (source === "fameDeck") return canGainFameCard(ctx.G, targetPlayerId);
+    if (source !== "deck") return drawSourceCards(ctx.G, targetPlayerId, target, source).length > 0;
+    return canDrawAtLeastOneCardOrReshuffle(ctx.G, targetPlayerId);
+  });
+}
+
+function stealSourcePlayerIds(G: GameState, playerId: string, effect: Extract<Effect, { op: "steal_resource" }>): string[] {
+  if (effect.fromPlayerIds?.length) return effect.fromPlayerIds;
+  if (effect.fromPlayerId) return [effect.fromPlayerId];
+  if (effect.targetPlayerScope) return playerIdsForScope(G, playerId, effect.targetPlayerScope);
+  return [];
+}
+
+function canResolveStealEffect(ctx: Ctx, effect: Extract<Effect, { op: "steal_resource" }>): boolean {
+  if (effect.amount <= 0) return false;
+  return targetedAttackRecipients(ctx, effect, stealSourcePlayerIds(ctx.G, ctx.playerId, effect)).some((targetPlayerId) => {
+    if (!ctx.G.players[targetPlayerId]) return false;
+    return resourceAmount(ctx.G.players[targetPlayerId].resources, effect.resource) > 0 || (effect.ifUnable ?? []).length > 0;
+  });
 }
 
 function canResolveReturnUnrestEffect(ctx: Ctx, effect: Extract<Effect, { op: "return_unrest" }>): boolean {
@@ -965,6 +1037,36 @@ function canResolveReturnExhaustTokenEffect(ctx: Ctx, effect: Extract<Effect, { 
   return effect.cardId ? cardIds.includes(effect.cardId) : cardIds.length > 0;
 }
 
+function freePlayCardMatchesCriteria(G: GameState, playerId: string, cardId: string, effect: Extract<Effect, { op: "free_play_card" }>): boolean {
+  const card = G.cardDb[cardId];
+  if (!card) return false;
+  if (effect.cardId && cardId !== effect.cardId) return false;
+  if (effect.suit && !cardHasSuitIconForPlayer(G, playerId, card, effect.suit)) return false;
+  if (effect.cardType) {
+    const cardType: CardType = card.cardType ?? card.type;
+    if (cardType !== effect.cardType) return false;
+  }
+  if (!effect.ignoreStateRequirement && card.stateRequirement && !currentStateMatches(G, playerId, card.stateRequirement)) return false;
+  if ((G.freePlayedThisTurn?.[playerId] ?? []).includes(cardId)) return false;
+  return true;
+}
+
+function cardHasResolvableFreePlayOnPlayText(ctx: Ctx, cardId: string): boolean {
+  const onPlayEffects = (ctx.G.cardDb[cardId]?.effects ?? []).filter((effect) => effect.trigger === "on_play");
+  if (onPlayEffects.length === 0) return true;
+  const targetCtx = { ...ctx, selfCardId: cardId };
+  if (!canPayResourceCosts(ctx.G, ctx.playerId, explicitSpendCost(costPaymentPrefix(targetCtx, onPlayEffects)))) return false;
+  return onPlayEffects.some((effect) => canResolveEffectText(targetCtx, effect));
+}
+
+function freePlayableCardIds(ctx: Ctx, effect: Extract<Effect, { op: "free_play_card" }>): string[] {
+  return ctx.G.players[ctx.playerId].hand.filter((cardId) =>
+    cardId !== ctx.selfCardId
+      && freePlayCardMatchesCriteria(ctx.G, ctx.playerId, cardId, effect)
+      && cardHasResolvableFreePlayOnPlayText(ctx, cardId)
+  );
+}
+
 function canResolveGiveCardEffect(ctx: Ctx, effect: Extract<Effect, { op: "give_card" }>): boolean {
   const p = ctx.G.players[ctx.playerId];
   const candidates = effect.targetPlayerId
@@ -986,7 +1088,7 @@ function canResolveSwapEffect(ctx: Ctx, effect: Extract<Effect, { op: "swap_card
 
 function canResolveTakeUnrestEffect(ctx: Ctx, effect: Extract<Effect, { op: "take_unrest" }>): boolean {
   if (effect.count <= 0) return false;
-  const recipients = effect.targetPlayerIds ?? [ctx.playerId];
+  const recipients = effect.targetPlayerIds ?? playerIdsForScope(ctx.G, ctx.playerId, effect.targetPlayerScope);
   return recipients.some((candidatePlayerId) => Boolean(ctx.G.players[candidatePlayerId]));
 }
 
@@ -1012,17 +1114,21 @@ function canResolveGarrisonEffect(ctx: Ctx, effect: Extract<Effect, { op: "garri
     if (!effect.hostCardId || !effect.cardId) return false;
     return p.playArea.includes(effect.hostCardId)
       && isRegionCard(ctx.G, effect.hostCardId)
-      && p.hand.includes(effect.cardId);
+      && p.hand.includes(effect.cardId)
+      && canBeGarrisoned(ctx.G, effect.cardId);
   }
-  const handCardIds = p.hand.filter((cardId) => cardId !== ctx.selfCardId);
+  const handCardIds = p.hand.filter((cardId) => cardId !== ctx.selfCardId && canBeGarrisoned(ctx.G, cardId));
   return defaultGarrisonHostCardIds(ctx).length > 0 && handCardIds.length > 0;
 }
 
 function canResolveRegionEffect(ctx: Ctx, effect: Extract<Effect, { op: "recall_region" | "abandon_region" }>): boolean {
-  const p = ctx.G.players[ctx.playerId];
-  return effect.cardId
-    ? (p.playArea.includes(effect.cardId) || garrisonedCardsInPlay(ctx.G, ctx.playerId).includes(effect.cardId)) && isRegionCard(ctx.G, effect.cardId)
-    : [...p.playArea, ...garrisonedCardsInPlay(ctx.G, ctx.playerId)].some((cardId) => isRegionCard(ctx.G, cardId));
+  return regionTargetPlayerIds(ctx.G, ctx.playerId, effect).some((targetPlayerId) => {
+    const p = ctx.G.players[targetPlayerId];
+    if (!p) return false;
+    return effect.cardId
+      ? (p.playArea.includes(effect.cardId) || garrisonedCardsInPlay(ctx.G, targetPlayerId).includes(effect.cardId)) && isRegionCard(ctx.G, effect.cardId)
+      : regionCardIdsForPlayer(ctx.G, targetPlayerId).length > 0;
+  });
 }
 
 function canResolveExileEffect(ctx: Ctx, effect: Extract<Effect, { op: "exile_card" }>): boolean {
@@ -1106,7 +1212,7 @@ function canResolveEffectText(ctx: Ctx, effect: Effect): boolean {
       return effect.amount <= 0 || resourceAmount(p.resources, effect.resource) > 0;
     case "steal_resource":
       if (effect.trigger === "on_exhaust") return true;
-      return effect.amount <= 0 || resourceAmount(ctx.G.players[effect.fromPlayerId]?.resources, effect.resource) > 0;
+      return effect.amount <= 0 || canResolveStealEffect(ctx, effect);
     case "spend_resource":
       return effect.amount > 0 && canPayResourceCost(ctx.G, ctx.playerId, effect.resource, effect.amount);
     case "discard_random":
@@ -1121,6 +1227,8 @@ function canResolveEffectText(ctx: Ctx, effect: Effect): boolean {
       return canResolvePlaceOnDeckEffect(ctx, effect);
     case "return_exhaust_token":
       return canResolveReturnExhaustTokenEffect(ctx, effect);
+    case "free_play_card":
+      return freePlayableCardIds(ctx, effect).length > 0;
     case "give_card":
       return canResolveGiveCardEffect(ctx, effect);
     case "swap_card":
@@ -1191,7 +1299,7 @@ function canResolveChoiceEffectText(ctx: Ctx, effect: Effect): boolean {
     case "return_resource":
       return effect.amount > 0 && resourceAmount(p.resources, effect.resource) > 0;
     case "steal_resource":
-      return effect.amount > 0 && resourceAmount(ctx.G.players[effect.fromPlayerId]?.resources, effect.resource) > 0;
+      return canResolveStealEffect(ctx, effect);
     case "spend_resource":
       return effect.amount > 0 && canPayResourceCost(ctx.G, ctx.playerId, effect.resource, effect.amount);
     case "discard_cards":
@@ -1271,6 +1379,123 @@ function appendResumeEffectsToPending(G: GameState, effects: Effect[] | undefine
   pending.resumeEffects = [...(pending.resumeEffects ?? []), ...effects];
 }
 
+function targetScopedEffect(effect: Extract<Effect, { op: "draw" }>, targetPlayerIds: string[]): Extract<Effect, { op: "draw" }> | undefined {
+  if (targetPlayerIds.length === 0) return undefined;
+  return {
+    ...effect,
+    targetPlayerScope: undefined,
+    targetPlayerIds,
+  };
+}
+
+function sourceScopedStealEffect(effect: Extract<Effect, { op: "steal_resource" }>, fromPlayerIds: string[]): Extract<Effect, { op: "steal_resource" }> | undefined {
+  if (fromPlayerIds.length === 0) return undefined;
+  return {
+    ...effect,
+    fromPlayerId: undefined,
+    fromPlayerIds,
+    targetPlayerScope: undefined,
+  };
+}
+
+function remainingStealSourceEffects(effect: Extract<Effect, { op: "steal_resource" }>, fromPlayerIds: string[], targetIndex: number): Effect[] {
+  const later = sourceScopedStealEffect(effect, fromPlayerIds.slice(targetIndex + 1));
+  return later ? [later] : [];
+}
+
+function targetScopedRegionEffect(effect: Extract<Effect, { op: "recall_region" | "abandon_region" }>, targetPlayerIds: string[]): Extract<Effect, { op: "recall_region" | "abandon_region" }> | undefined {
+  if (targetPlayerIds.length === 0) return undefined;
+  return {
+    ...effect,
+    targetPlayerIds,
+    targetPlayerScope: undefined,
+  };
+}
+
+function remainingRegionTargetEffects(effect: Extract<Effect, { op: "recall_region" | "abandon_region" }>, targetPlayerIds: string[], targetIndex: number): Effect[] {
+  const later = targetScopedRegionEffect(effect, targetPlayerIds.slice(targetIndex + 1));
+  return later ? [later] : [];
+}
+
+function remainingDrawTargetEffects(effect: Extract<Effect, { op: "draw" }>, targetPlayerIds: string[], targetIndex: number, remainingCountForCurrent = 0): Effect[] {
+  const effects: Effect[] = [];
+  if (remainingCountForCurrent > 0) {
+    const current = targetScopedEffect({ ...effect, count: remainingCountForCurrent, optionalForTargets: false }, [targetPlayerIds[targetIndex]]);
+    if (current) effects.push(current);
+  }
+  const later = targetScopedEffect(effect, targetPlayerIds.slice(targetIndex + 1));
+  if (later) effects.push(later);
+  return effects;
+}
+
+function drawLifecyclePendingForPlayer(G: GameState, playerId: string): boolean {
+  return G.pendingDevelopmentChoice?.playerId === playerId
+    || G.pendingShortGameDevelopmentExileChoice?.playerId === playerId
+    || G.pendingPostDevelopmentResolution?.playerId === playerId
+    || G.pendingReshuffleResolution?.playerId === playerId
+    || G.pendingAfterReshuffleEffects?.playerId === playerId
+    || G.pendingReshuffleDraw?.playerId === playerId;
+}
+
+function queueOptionalTargetDraw(ctx: Ctx, effect: Extract<Effect, { op: "draw" }>, targetPlayerIds: string[], targetIndex: number): void {
+  const targetPlayerId = targetPlayerIds[targetIndex];
+  const drawEffect: Extract<Effect, { op: "draw" }> = {
+    ...effect,
+    targetPlayerIds: undefined,
+    targetPlayerScope: undefined,
+    optionalForTargets: false,
+  };
+  ctx.G.pendingChoice = {
+    playerId: targetPlayerId,
+    resolvingPlayerId: ctx.playerId,
+    sourceCardId: ctx.selfCardId,
+    choices: [[drawEffect], []],
+    resumeEffects: remainingDrawTargetEffects(effect, targetPlayerIds, targetIndex)
+  };
+  ctx.G.log.push({ round: ctx.G.round, playerId: targetPlayerId, message: `OptionalTargetDrawPending(${ctx.selfCardId ?? "unknown"}/count=${effect.count})` });
+}
+
+function queueUpToDrawChoice(ctx: Ctx, effect: Extract<Effect, { op: "draw" }>): void {
+  const choices: Effect[][] = [[]];
+  for (let count = 1; count <= effect.count; count += 1) {
+    choices.push([{
+      trigger: effect.trigger,
+      op: "draw",
+      count,
+      source: effect.source,
+      targetPlayerIds: effect.targetPlayerIds,
+      targetPlayerScope: effect.targetPlayerScope,
+      optionalForTargets: effect.optionalForTargets,
+      upTo: undefined
+    }]);
+  }
+  ctx.G.pendingChoice = {
+    playerId: ctx.playerId,
+    sourceCardId: ctx.selfCardId,
+    choices
+  };
+  ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `DrawUpToChoicePending(${ctx.selfCardId ?? "unknown"}/count=${effect.count})` });
+}
+
+function queueUpToDrawIfAbleChoice(ctx: Ctx, effect: Extract<Effect, { op: "draw_if_able" }>): void {
+  const choices: Effect[][] = [[]];
+  const maxCount = Math.min(effect.count, ctx.G.players[ctx.playerId].deck.length);
+  for (let count = 1; count <= maxCount; count += 1) {
+    choices.push([{
+      trigger: effect.trigger,
+      op: "draw_if_able",
+      count,
+      upTo: undefined
+    }]);
+  }
+  ctx.G.pendingChoice = {
+    playerId: ctx.playerId,
+    sourceCardId: ctx.selfCardId,
+    choices
+  };
+  ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `DrawIfAbleUpToChoicePending(${ctx.selfCardId ?? "unknown"}/count=${maxCount})` });
+}
+
 function runEffect(ctx: Ctx, effect: Effect): boolean {
   const p = ctx.G.players[ctx.playerId];
 
@@ -1282,23 +1507,51 @@ function runEffect(ctx: Ctx, effect: Effect): boolean {
 
   switch (effect.op) {
     case "draw": {
+      if (effect.upTo) {
+        queueUpToDrawChoice(ctx, effect);
+        break;
+      }
       const source = effect.source ?? "deck";
-      if (source === "fameDeck") {
-        drawFameCards(ctx, effect.count);
-        break;
-      }
-      if (source !== "deck") {
-        startFaceUpDrawChoice(ctx, source, effect.count);
-        break;
-      }
-      for (let i = 0; i < effect.count; i++) {
-        const card = drawCardWithReshuffleLifecycle(ctx.G, ctx.playerId, ctx.randomNumber, effect.count - i);
-        ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: card ? `Drew ${card}` : "Draw failed (no deck/discard cards)." });
+      const targetPlayerIds = (effect.targetPlayerIds ?? playerIdsForScope(ctx.G, ctx.playerId, effect.targetPlayerScope))
+        .filter((targetPlayerId) => Boolean(ctx.G.players[targetPlayerId]));
+      for (let targetIndex = 0; targetIndex < targetPlayerIds.length; targetIndex += 1) {
+        const targetPlayerId = targetPlayerIds[targetIndex];
+        if (effect.optionalForTargets) {
+          queueOptionalTargetDraw(ctx, effect, targetPlayerIds, targetIndex);
+          break;
+        }
+        const targetCtx = { ...ctx, playerId: targetPlayerId };
+        if (source === "fameDeck") {
+          drawFameCards(targetCtx, effect.count);
+          if (ctx.G.gameover || pendingEffectInterruption(ctx.G)) {
+            appendResumeEffectsToPending(ctx.G, remainingDrawTargetEffects(effect, targetPlayerIds, targetIndex));
+            break;
+          }
+          continue;
+        }
+        if (source !== "deck") {
+          startFaceUpDrawChoice(targetCtx, source, effect.count);
+          if (pendingEffectInterruption(ctx.G)) appendResumeEffectsToPending(ctx.G, remainingDrawTargetEffects(effect, targetPlayerIds, targetIndex));
+          break;
+        }
+        for (let i = 0; i < effect.count; i++) {
+          const card = drawCardWithReshuffleLifecycle(ctx.G, targetPlayerId, ctx.randomNumber, effect.count - i);
+          ctx.G.log.push({ round: ctx.G.round, playerId: targetPlayerId, message: card ? `Drew ${card}` : "Draw failed (no deck/discard cards)." });
+          if (ctx.G.gameover || pendingEffectInterruption(ctx.G)) {
+            const remainingCountForCurrent = drawLifecyclePendingForPlayer(ctx.G, targetPlayerId) ? 0 : effect.count - i - 1;
+            appendResumeEffectsToPending(ctx.G, remainingDrawTargetEffects(effect, targetPlayerIds, targetIndex, remainingCountForCurrent));
+            break;
+          }
+        }
         if (ctx.G.gameover || pendingEffectInterruption(ctx.G)) break;
       }
       break;
     }
     case "draw_if_able": {
+      if (effect.upTo) {
+        queueUpToDrawIfAbleChoice(ctx, effect);
+        break;
+      }
       for (let i = 0; i < effect.count; i++) {
         const card = drawCard(p, ctx.randomNumber, false);
         if (!card) {
@@ -1312,10 +1565,14 @@ function runEffect(ctx: Ctx, effect: Effect): boolean {
     case "gain_resource": {
       const sourceCardId = ctx.selfCardId;
       const sourceWasInPlay = sourceCardIsInPlay(ctx.G, ctx.playerId, sourceCardId);
-      const gained = gainPlayerResource(ctx.G, ctx.playerId, effect.resource, effect.amount);
-      const prefix = gained === effect.amount ? `${effect.amount}` : `${gained}/${effect.amount}`;
-      ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `Gained ${prefix} ${effect.resource}.` });
-      if (gained > 0) createReactiveExhaustChoice(ctx, { trigger: "after_gain_resource", resource: effect.resource, sourceCardId, sourceWasInPlay });
+      for (const targetPlayerId of playerIdsForScope(ctx.G, ctx.playerId, effect.targetPlayerScope)) {
+        if (!ctx.G.players[targetPlayerId]) continue;
+        const gained = gainPlayerResource(ctx.G, targetPlayerId, effect.resource, effect.amount);
+        const prefix = gained === effect.amount ? `${effect.amount}` : `${gained}/${effect.amount}`;
+        ctx.G.log.push({ round: ctx.G.round, playerId: targetPlayerId, message: `Gained ${prefix} ${effect.resource}.` });
+        if (gained > 0) createReactiveExhaustChoice(ctx, { trigger: "after_gain_resource", resource: effect.resource, sourceCardId, sourceWasInPlay });
+        if (pendingEffectInterruption(ctx.G)) break;
+      }
       break;
     }
     case "spend_resource": return payResourceCost(ctx.G, ctx.playerId, effect.resource, effect.amount);
@@ -1353,23 +1610,40 @@ function runEffect(ctx: Ctx, effect: Effect): boolean {
       break;
     }
     case "steal_resource": {
-      const target = ctx.G.players[effect.fromPlayerId];
-      if (!target) {
-        ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `StealSkipped(player_not_found/${effect.fromPlayerId}).` });
-        break;
-      }
-      const available = resourceAmount(target.resources, effect.resource);
-      const stolen = Math.min(available, effect.amount);
-      setResourceAmount(target.resources, effect.resource, available - stolen);
-      addResourceAmount(p.resources, effect.resource, stolen);
-      ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `Stole ${stolen}/${effect.amount} ${effect.resource} from player ${effect.fromPlayerId}.` });
-      if (stolen > 0) {
-        createReactiveExhaustChoice(ctx, {
-          trigger: "after_gain_resource",
-          resource: effect.resource,
-          sourceCardId: ctx.selfCardId,
-          sourceWasInPlay: sourceCardIsInPlay(ctx.G, ctx.playerId, ctx.selfCardId)
-        });
+      const targetPlayerIds = targetedAttackRecipients(ctx, effect, stealSourcePlayerIds(ctx.G, ctx.playerId, effect));
+      for (let targetIndex = 0; targetIndex < targetPlayerIds.length; targetIndex += 1) {
+        const targetPlayerId = targetPlayerIds[targetIndex];
+        const target = ctx.G.players[targetPlayerId];
+        if (!target) {
+          ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `StealSkipped(player_not_found/${targetPlayerId}).` });
+          continue;
+        }
+        const available = resourceAmount(target.resources, effect.resource);
+        if (available < effect.amount && (effect.ifUnable ?? []).length > 0) {
+          const resolved = runEffects({ ...ctx, playerId: targetPlayerId }, effect.ifUnable ?? []);
+          if (!resolved || ctx.G.gameover || pendingEffectInterruption(ctx.G)) {
+            appendResumeEffectsToPending(ctx.G, remainingStealSourceEffects(effect, targetPlayerIds, targetIndex));
+            return resolved;
+          }
+          ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `StealFallbackResolved(player=${targetPlayerId}/${effect.resource}).` });
+          continue;
+        }
+        const stolen = Math.min(available, effect.amount);
+        setResourceAmount(target.resources, effect.resource, available - stolen);
+        addResourceAmount(p.resources, effect.resource, stolen);
+        ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `Stole ${stolen}/${effect.amount} ${effect.resource} from player ${targetPlayerId}.` });
+        if (stolen > 0) {
+          createReactiveExhaustChoice(ctx, {
+            trigger: "after_gain_resource",
+            resource: effect.resource,
+            sourceCardId: ctx.selfCardId,
+            sourceWasInPlay: sourceCardIsInPlay(ctx.G, ctx.playerId, ctx.selfCardId)
+          });
+        }
+        if (ctx.G.gameover || pendingEffectInterruption(ctx.G)) {
+          appendResumeEffectsToPending(ctx.G, remainingStealSourceEffects(effect, targetPlayerIds, targetIndex));
+          break;
+        }
       }
       break;
     }
@@ -1498,6 +1772,21 @@ function runEffect(ctx: Ctx, effect: Effect): boolean {
       if (!returnExhaustToken(ctx.G, ctx.playerId, cardIds[0])) return false;
       break;
     }
+    case "free_play_card": {
+      const cardIds = freePlayableCardIds(ctx, effect);
+      if (cardIds.length === 0) {
+        ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `FreePlaySkipped(${ctx.selfCardId ?? "unknown"}/no_eligible_card)` });
+        break;
+      }
+      ctx.G.pendingFreePlayChoice = {
+        playerId: ctx.playerId,
+        sourceCardId: ctx.selfCardId,
+        cardIds,
+        ignoreStateRequirement: effect.ignoreStateRequirement
+      };
+      ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `FreePlayChoicePending(${ctx.selfCardId ?? "unknown"}/options=${cardIds.length})` });
+      break;
+    }
     case "give_card": {
       const recipientCandidates = effect.targetPlayerId
         ? [effect.targetPlayerId]
@@ -1562,7 +1851,8 @@ function runEffect(ctx: Ctx, effect: Effect): boolean {
       break;
     }
     case "take_unrest": {
-      const targetPlayerIds = effect.targetPlayerIds ?? [ctx.playerId];
+      const targetPlayerIds = targetedAttackRecipients(ctx, effect, effect.targetPlayerIds ?? playerIdsForScope(ctx.G, ctx.playerId, effect.targetPlayerScope));
+      if (targetPlayerIds.length === 0) return true;
       const handCountsBefore = new Map(targetPlayerIds.map((playerId) => [playerId, ctx.G.players[playerId]?.hand.length ?? 0]));
       const resolved = takeUnrest(ctx.G, { playerIds: targetPlayerIds, count: effect.count, triggeredBy: ctx.playerId, randomNumber: ctx.randomNumber });
       if (!resolved || ctx.G.gameover || pendingEffectInterruption(ctx.G)) return resolved;
@@ -1662,7 +1952,7 @@ function runEffect(ctx: Ctx, effect: Effect): boolean {
     case "garrison_card": {
       if (!effect.hostCardId || !effect.cardId) {
         const hostCardIds = defaultGarrisonHostCardIds(ctx);
-        const cardIds = p.hand.filter((cardId) => cardId !== ctx.selfCardId);
+        const cardIds = p.hand.filter((cardId) => cardId !== ctx.selfCardId && canBeGarrisoned(ctx.G, cardId));
         if (hostCardIds.length === 0 || cardIds.length === 0) {
           ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: "GarrisonSkipped(no_eligible_host_or_card)" });
           break;
@@ -1685,31 +1975,55 @@ function runEffect(ctx: Ctx, effect: Effect): boolean {
       break;
     }
     case "recall_region": {
-      if (!effect.cardId) {
-        if (!createPendingRegionChoice(ctx, effect.op, effect.count)) return false;
-        break;
+      const targetPlayerIds = regionTargetPlayerIds(ctx.G, ctx.playerId, effect).filter((targetPlayerId) => Boolean(ctx.G.players[targetPlayerId]));
+      for (let targetIndex = 0; targetIndex < targetPlayerIds.length; targetIndex += 1) {
+        const targetPlayerId = targetPlayerIds[targetIndex];
+        if (!effect.cardId) {
+          if (!createPendingRegionChoice(ctx, effect.op, effect.count, targetPlayerId, ctx.playerId)) return false;
+          if (pendingEffectInterruption(ctx.G)) {
+            appendResumeEffectsToPending(ctx.G, remainingRegionTargetEffects(effect, targetPlayerIds, targetIndex));
+            break;
+          }
+          continue;
+        }
+        const collectedResources: Partial<Record<ResourceName, number>> = {};
+        const collectedResourceSources: ResourceGainSource[] = [];
+        if (!recallRegionToHand(ctx.G, targetPlayerId, effect.cardId, collectedResources, collectedResourceSources)) {
+          ctx.G.log.push({ round: ctx.G.round, playerId: targetPlayerId, message: `RecallFailed(${effect.cardId})` });
+          return false;
+        }
+        createReactiveExhaustChoicesForResourceGainSources({ ...ctx, playerId: targetPlayerId }, collectedResourceSources, collectedResources);
+        if (ctx.G.gameover || pendingEffectInterruption(ctx.G)) {
+          appendResumeEffectsToPending(ctx.G, remainingRegionTargetEffects(effect, targetPlayerIds, targetIndex));
+          break;
+        }
       }
-      const collectedResources: Partial<Record<ResourceName, number>> = {};
-      const collectedResourceSources: ResourceGainSource[] = [];
-      if (!recallRegionToHand(ctx.G, ctx.playerId, effect.cardId, collectedResources, collectedResourceSources)) {
-        ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `RecallFailed(${effect.cardId})` });
-        return false;
-      }
-      createReactiveExhaustChoicesForResourceGainSources(ctx, collectedResourceSources, collectedResources);
       break;
     }
     case "abandon_region": {
-      if (!effect.cardId) {
-        if (!createPendingRegionChoice(ctx, effect.op, effect.count)) return false;
-        break;
+      const targetPlayerIds = regionTargetPlayerIds(ctx.G, ctx.playerId, effect).filter((targetPlayerId) => Boolean(ctx.G.players[targetPlayerId]));
+      for (let targetIndex = 0; targetIndex < targetPlayerIds.length; targetIndex += 1) {
+        const targetPlayerId = targetPlayerIds[targetIndex];
+        if (!effect.cardId) {
+          if (!createPendingRegionChoice(ctx, effect.op, effect.count, targetPlayerId, ctx.playerId)) return false;
+          if (pendingEffectInterruption(ctx.G)) {
+            appendResumeEffectsToPending(ctx.G, remainingRegionTargetEffects(effect, targetPlayerIds, targetIndex));
+            break;
+          }
+          continue;
+        }
+        const collectedResources: Partial<Record<ResourceName, number>> = {};
+        const collectedResourceSources: ResourceGainSource[] = [];
+        if (!abandonRegionToDiscard(ctx.G, targetPlayerId, effect.cardId, collectedResources, collectedResourceSources)) {
+          ctx.G.log.push({ round: ctx.G.round, playerId: targetPlayerId, message: `AbandonFailed(${effect.cardId})` });
+          return false;
+        }
+        createReactiveExhaustChoicesForResourceGainSources({ ...ctx, playerId: targetPlayerId }, collectedResourceSources, collectedResources);
+        if (ctx.G.gameover || pendingEffectInterruption(ctx.G)) {
+          appendResumeEffectsToPending(ctx.G, remainingRegionTargetEffects(effect, targetPlayerIds, targetIndex));
+          break;
+        }
       }
-      const collectedResources: Partial<Record<ResourceName, number>> = {};
-      const collectedResourceSources: ResourceGainSource[] = [];
-      if (!abandonRegionToDiscard(ctx.G, ctx.playerId, effect.cardId, collectedResources, collectedResourceSources)) {
-        ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `AbandonFailed(${effect.cardId})` });
-        return false;
-      }
-      createReactiveExhaustChoicesForResourceGainSources(ctx, collectedResourceSources, collectedResources);
       break;
     }
     case "develop": {

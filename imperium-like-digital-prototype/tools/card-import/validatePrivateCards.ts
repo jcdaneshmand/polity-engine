@@ -19,6 +19,7 @@ const req = ["card_id","public_placeholder_name","suit","card_type","starting_lo
 const effectTriggers = new Set(["on_play","on_exhaust","on_acquire","on_solstice","end_of_solstice"]);
 const reactiveTriggers = new Set(["after_gain_resource","after_take_unrest","after_acquire_card","after_play_card","after_break_through_card"]);
 const reactiveTargets = new Set(["self","opponent","any"]);
+const targetPlayerScopes = new Set(["self","all","others"]);
 const reactiveFields = new Set(["trigger","target","sourceSuit","resource"]);
 const vpDetailFields = new Set(["condition","formula","trueValue","falseValue"]);
 const vpConditionFields = new Set(["op","zoneId"]);
@@ -44,6 +45,7 @@ const effectOps = new Set([
   "gain_action",
   "spend_action",
   "return_exhaust_token",
+  "free_play_card",
   "trigger_scoring",
   "trade",
   "treat_suit_as",
@@ -80,17 +82,21 @@ const swapSources = new Set(["hand","discard","deck"]);
 const findDestinations = new Set(["deck","hand","discard","playArea","history","exile"]);
 const gainDestinations = new Set(["hand","discard"]);
 const profitDestinations = new Set(["discard","history"]);
-const cardIdEffectOps = new Set(["return_unrest","return_fame","place_card_on_deck","give_card","swap_card","return_exhaust_token","garrison_card","recall_region","abandon_region","exile_card","acquire_card","gain_card","take_card","break_through","find_card"]);
+const cardIdEffectOps = new Set(["return_unrest","return_fame","place_card_on_deck","give_card","swap_card","return_exhaust_token","free_play_card","garrison_card","recall_region","abandon_region","exile_card","acquire_card","gain_card","take_card","break_through","find_card"]);
 const hostCardIdEffectOps = new Set(["garrison_card"]);
 const marketCardIdEffectOps = new Set(["swap_card"]);
 const targetPlayerIdEffectOps = new Set(["give_card"]);
-const targetPlayerIdsEffectOps = new Set(["give_card","take_unrest"]);
+const targetPlayerIdsEffectOps = new Set(["draw","give_card","recall_region","abandon_region","take_unrest"]);
+const targetPlayerScopeEffectOps = new Set(["draw","gain_resource","steal_resource","recall_region","abandon_region","take_unrest"]);
 const fromPlayerIdEffectOps = new Set(["steal_resource"]);
+const fromPlayerIdsEffectOps = new Set(["steal_resource"]);
 const reasonEffectOps = new Set(["trigger_scoring"]);
 const stateEffectOps = new Set(["conditional_state_is"]);
 const fromEffectOps = new Set(["treat_suit_as"]);
 const toEffectOps = new Set(["treat_suit_as"]);
 const effectsEffectOps = new Set(["optional","commerce","profit"]);
+const ifUnableEffectOps = new Set(["steal_resource"]);
+const attackTargetedEffectOps = new Set(["take_unrest","steal_resource"]);
 const choicesEffectOps = new Set(["choose_one"]);
 const thenEffectOps = new Set(["conditional_resource_at_least","conditional_state_is"]);
 const elseEffectOps = new Set(["conditional_resource_at_least","conditional_state_is"]);
@@ -98,8 +104,8 @@ const sourceEffectOps = new Set(["draw","draw_if_able","exile_card","acquire_car
 const sourceZonesEffectOps = new Set(["return_unrest","return_fame","find_card"]);
 const sourceZoneEffectOps = new Set(["place_card_on_deck","swap_card"]);
 const destinationEffectOps = new Set(["find_card","acquire_card","gain_card","take_card","profit"]);
-const suitEffectOps = new Set(["acquire_card","gain_card","take_card","find_card","exile_card","break_through"]);
-const cardTypeEffectOps = new Set(["acquire_card","gain_card","take_card","find_card","exile_card","break_through"]);
+const suitEffectOps = new Set(["free_play_card","acquire_card","gain_card","take_card","find_card","exile_card","break_through"]);
+const cardTypeEffectOps = new Set(["free_play_card","acquire_card","gain_card","take_card","find_card","exile_card","break_through"]);
 const resourceEffectOps = new Set(["gain_resource","spend_resource","remove_resource","return_resource","steal_resource","conditional_resource_at_least"]);
 const countEffectOps = new Set(["draw","draw_if_able","discard_random","discard_cards","take_unrest","gain_fame","recall_region","abandon_region","exile_card","acquire_card","gain_card","take_card","break_through","look_cards"]);
 const amountEffectOps = new Set(["gain_resource","spend_resource","remove_resource","return_resource","steal_resource","gain_action","spend_action"]);
@@ -112,16 +118,19 @@ const effectFields = new Set([
   "resource",
   "amount",
   "fromPlayerId",
+  "fromPlayerIds",
   "cardId",
   "sourceZones",
   "sourceZone",
   "targetPlayerId",
   "targetPlayerIds",
+  "targetPlayerScope",
   "marketCardId",
   "reason",
   "from",
   "to",
   "effects",
+  "ifUnable",
   "destination",
   "hostCardId",
   "suit",
@@ -132,6 +141,10 @@ const effectFields = new Set([
   "state",
   "choices",
   "free",
+  "optionalForTargets",
+  "upTo",
+  "attackTargeted",
+  "ignoreStateRequirement",
   "reactive"
 ]);
 
@@ -330,14 +343,14 @@ function validateEffectOps(errors: CardImportError[], row: number, effects: unkn
         fatal = true;
       }
     };
-    const validateOptionalStringArray = (fieldName: "targetPlayerIds") => {
+    const validateOptionalStringArray = (fieldName: "targetPlayerIds" | "fromPlayerIds") => {
       const value = record[fieldName];
       if (value !== undefined && (!Array.isArray(value) || value.length === 0 || value.some((entry) => typeof entry !== "string" || entry.trim().length === 0))) {
         errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid ${fieldName} for ${op} at ${path}[${index}]` });
         fatal = true;
       }
     };
-    const validateOptionalBoolean = (fieldName: "free") => {
+    const validateOptionalBoolean = (fieldName: "free" | "optionalForTargets" | "upTo" | "attackTargeted" | "ignoreStateRequirement") => {
       const value = record[fieldName];
       if (value !== undefined && typeof value !== "boolean") {
         errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid ${fieldName} for ${op} at ${path}[${index}]: ${String(value)}` });
@@ -404,7 +417,7 @@ function validateEffectOps(errors: CardImportError[], row: number, effects: unkn
     if (op === "acquire_card" || op === "gain_card" || op === "take_card") validateDestination(gainDestinations);
     if (op === "profit") validateDestination(profitDestinations);
     if (op === "break_through") validateRequiredBreakThroughSuitField();
-    if (["acquire_card","gain_card","take_card","find_card","exile_card"].includes(op)) validateSuitField("suit");
+    if (["free_play_card","acquire_card","gain_card","take_card","find_card","exile_card"].includes(op)) validateSuitField("suit");
     if (op === "break_through" && record.cardType !== undefined) {
       errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid cardType for ${op} at ${path}[${index}]: ${String(record.cardType)}` });
       fatal = true;
@@ -429,6 +442,18 @@ function validateEffectOps(errors: CardImportError[], row: number, effects: unkn
       errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid targetPlayerIds for ${op} at ${path}[${index}]` });
       fatal = true;
     }
+    if (record.fromPlayerIds !== undefined && !fromPlayerIdsEffectOps.has(op)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid fromPlayerIds for ${op} at ${path}[${index}]` });
+      fatal = true;
+    }
+    if (record.targetPlayerScope !== undefined && !targetPlayerScopeEffectOps.has(op)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid targetPlayerScope for ${op} at ${path}[${index}]: ${String(record.targetPlayerScope)}` });
+      fatal = true;
+    }
+    if (record.targetPlayerScope !== undefined && (typeof record.targetPlayerScope !== "string" || !targetPlayerScopes.has(record.targetPlayerScope))) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid targetPlayerScope for ${op} at ${path}[${index}]: ${String(record.targetPlayerScope)}` });
+      fatal = true;
+    }
     if (record.fromPlayerId !== undefined && !fromPlayerIdEffectOps.has(op)) {
       errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid fromPlayerId for ${op} at ${path}[${index}]: ${String(record.fromPlayerId)}` });
       fatal = true;
@@ -451,6 +476,10 @@ function validateEffectOps(errors: CardImportError[], row: number, effects: unkn
     }
     if (record.effects !== undefined && !effectsEffectOps.has(op)) {
       errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid effects for ${op} at ${path}[${index}]` });
+      fatal = true;
+    }
+    if (record.ifUnable !== undefined && !ifUnableEffectOps.has(op)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid ifUnable for ${op} at ${path}[${index}]` });
       fatal = true;
     }
     if (record.choices !== undefined && !choicesEffectOps.has(op)) {
@@ -509,14 +538,34 @@ function validateEffectOps(errors: CardImportError[], row: number, effects: unkn
       errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid free for ${op} at ${path}[${index}]: ${String(record.free)}` });
       fatal = true;
     }
+    if (record.optionalForTargets !== undefined && op !== "draw") {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid optionalForTargets for ${op} at ${path}[${index}]: ${String(record.optionalForTargets)}` });
+      fatal = true;
+    }
+    if (record.upTo !== undefined && op !== "draw" && op !== "draw_if_able") {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid upTo for ${op} at ${path}[${index}]: ${String(record.upTo)}` });
+      fatal = true;
+    }
+    if (record.ignoreStateRequirement !== undefined && op !== "free_play_card") {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid ignoreStateRequirement for ${op} at ${path}[${index}]: ${String(record.ignoreStateRequirement)}` });
+      fatal = true;
+    }
+    if (record.attackTargeted !== undefined && !attackTargetedEffectOps.has(op)) {
+      errors.push({ level: "fatal", row, field: "effect_ops_json", message: `Invalid attackTargeted for ${op} at ${path}[${index}]: ${String(record.attackTargeted)}` });
+      fatal = true;
+    }
     if (op === "develop") validateOptionalBoolean("free");
-    if (["acquire_card","gain_card","take_card","find_card","exile_card"].includes(op)) validateCardTypeField();
+    if (op === "draw") validateOptionalBoolean("optionalForTargets");
+    if (op === "draw" || op === "draw_if_able") validateOptionalBoolean("upTo");
+    if (op === "free_play_card") validateOptionalBoolean("ignoreStateRequirement");
+    if (op === "take_unrest" || op === "steal_resource") validateOptionalBoolean("attackTargeted");
+    if (["free_play_card","acquire_card","gain_card","take_card","find_card","exile_card"].includes(op)) validateCardTypeField();
     if (op === "find_card") validateSourceZones(findSources, "sourceZones");
     if (op === "treat_suit_as") {
       validateRequiredIconSuitField("from");
       validateIconSuitArray("to");
     }
-    if (fromPlayerIdEffectOps.has(op)) validateRequiredString("fromPlayerId");
+    if (fromPlayerIdEffectOps.has(op) && record.fromPlayerIds === undefined && record.targetPlayerScope === undefined) validateRequiredString("fromPlayerId");
     if (op === "trigger_scoring") validateRequiredString("reason");
     if (op === "conditional_state_is") validateRequiredString("state");
     if (["gain_resource","spend_resource","remove_resource","return_resource","steal_resource","conditional_resource_at_least"].includes(op)) validateRequiredResource();
@@ -527,7 +576,10 @@ function validateEffectOps(errors: CardImportError[], row: number, effects: unkn
       validateOptionalString("targetPlayerId");
       validateOptionalStringArray("targetPlayerIds");
     }
+    if (op === "draw") validateOptionalStringArray("targetPlayerIds");
+    if (op === "recall_region" || op === "abandon_region") validateOptionalStringArray("targetPlayerIds");
     if (op === "take_unrest") validateOptionalStringArray("targetPlayerIds");
+    if (op === "steal_resource") validateOptionalStringArray("fromPlayerIds");
     validateReactiveMetadata();
     if (op === "optional" || op === "commerce" || op === "profit") {
       const nestedEffects = (effect as { effects?: unknown }).effects;
@@ -568,6 +620,16 @@ function validateEffectOps(errors: CardImportError[], row: number, effects: unkn
         fatal = true;
       }
       if (elseEffects !== undefined) fatal = validateEffectOps(errors, row, elseEffects, `${path}[${index}].else`, false) || fatal;
+    }
+    if (op === "steal_resource") {
+      const fallbackEffects = (effect as { ifUnable?: unknown }).ifUnable;
+      if (fallbackEffects !== undefined) {
+        if (Array.isArray(fallbackEffects) && fallbackEffects.length === 0) {
+          errors.push({ level: "fatal", row, field: "effect_ops_json", message: `${path}[${index}].ifUnable must contain at least one effect` });
+          fatal = true;
+        }
+        fatal = validateEffectOps(errors, row, fallbackEffects, `${path}[${index}].ifUnable`, false) || fatal;
+      }
     }
   });
   return fatal;

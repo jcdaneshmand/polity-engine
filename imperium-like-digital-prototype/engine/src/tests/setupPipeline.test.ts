@@ -159,6 +159,52 @@ describe("setup pipeline",()=>{
 
     expect(G.players["1"].hand).toContain("minimal_starter");
   });
+  it("rejects a selected nation when its imported ruleset requires disabled Trade Routes",()=> {
+    expect(() => createInitialGameState({
+      options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[],commonsSetId:"custom"},
+      playerNationIds:{"0":"trade_rules_nation","1":"trade_rules_nation"},
+      privateData:{
+        cards:[
+          card({id:"trade_rules_starter",ownership:"nation",startingLocation:"draw_deck"})
+        ],
+        nations:[{
+          id:"trade_rules_nation",
+          displayName:"Trade Rules Nation",
+          powerCardIds:[],
+          stateCardIds:[],
+          startingDeckCardIds:["trade_rules_starter"],
+          nationDeckCardIds:[],
+          developmentCardIds:[],
+          setupRules:[],
+          passiveRules:[],
+          actionTokensBase:3,
+          exhaustTokensBase:5,
+          requiredExpansions:[],
+          implemented:true,
+          tested:true
+        }],
+        nationRulesets:[{
+          nationId:"trade_rules_nation",
+          displayName:"Trade Rules",
+          rulesetTags:["trade_routes_required"],
+          requiredExpansions:[],
+          setupOverrides:[],
+          zoneOverrides:[],
+          stateOverrides:[],
+          reshuffleOverrides:[],
+          cleanupOverrides:[],
+          solsticeOverrides:[],
+          scoringOverrides:[],
+          collapseOverrides:[],
+          botOverrides:[],
+          shortGameOverrides:[],
+          hookRules:[],
+          implemented:true,
+          tested:true
+        }]
+      }
+    } as any)).toThrow("Ruleset requires disabled expansion trade_routes");
+  });
   it("rejects a selected nation outside its allowed modes",()=> {
     const commons = Array.from({ length: 5 }, (_, index) =>
       card({id:`mode_market_${index + 1}`,displayName:`Mode Market ${index + 1}`,ownership:"commons",startingLocation:"market",commonsSetId:"custom"})

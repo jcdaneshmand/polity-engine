@@ -495,6 +495,17 @@ describe("selection model", () => {
     expect(acts[0]).toMatchObject({ label:"Return Exhaust token from Spent Forum", enabled:true, cardId:"e1" });
     expect(acts[1].enabled).toBe(false);
   });
+  it("pending Free Play choice actions expose eligible hand cards",()=> {
+    const acts=getAvailableActionsForSelection(null,{...G,pendingFreePlayChoice:{playerId:"0",sourceCardId:"free_play_source",cardIds:["c1","m1"]}},ctx);
+    expect(getPendingUiState({...G,pendingFreePlayChoice:{playerId:"0",sourceCardId:"free_play_source",cardIds:["c1","m1"]}},ctx)).toMatchObject({
+      title:"Pending Free Play",
+      detail:"Choose 2 cards"
+    });
+    expect(acts.map((a)=>a.action)).toEqual(["resolveFreePlayChoice","resolveFreePlayChoice","endTurn"]);
+    expect(acts[0]).toMatchObject({ label:"Free Play Card1", enabled:true, cardId:"c1" });
+    expect(acts[1]).toMatchObject({ label:"Free Play Market1", enabled:true, cardId:"m1" });
+    expect(acts[2].enabled).toBe(false);
+  });
   it("pending reactive Exhaust choice actions expose eligible Exhaust cards and skip",()=> {
     const withReactiveExhaust = {
       ...G,

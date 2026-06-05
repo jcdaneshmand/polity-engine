@@ -30,9 +30,22 @@ export function isRegionCard(G: GameState, cardId: string): boolean {
   return type === "region" || card?.suit === "region" || cardHasSuitIcon(card, "region");
 }
 
+function normalizedTag(tag: string): string {
+  return tag.toLowerCase().replace(/[_\s-]+/g, "_");
+}
+
+export function canBeGarrisoned(G: GameState, cardId: string): boolean {
+  const tags = G.cardDb[cardId]?.tags ?? [];
+  return !tags.some((tag) => {
+    const normalized = normalizedTag(tag);
+    return normalized === "cannot_be_garrisoned" || normalized === "not_garrisonable";
+  });
+}
+
 export function garrisonCardOnRegion(G: GameState, playerId: string, hostCardId: string, cardId: string): boolean {
   const player = G.players[playerId];
   if (!isRegionCard(G, hostCardId) || !player.playArea.includes(hostCardId)) return false;
+  if (!canBeGarrisoned(G, cardId)) return false;
   if (!removeOne(player.hand, cardId)) return false;
 
   G.cardStates ??= {};

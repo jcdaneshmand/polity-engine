@@ -15,6 +15,13 @@ export function buildCommonsSetup(args: CommonsSetupArgs): CommonsSetupResult {
   const selectedCards: NormalizedCardRecord[] = [];
 
   for (const card of selection.selectedCards) {
+    const directReplacement = findEligibleReplacementCard({ removedCard: card, allCards, selectedCards: [...selectedCards, ...selection.selectedCards], options: args.options });
+    if (directReplacement?.replacementForCardId === card.id) {
+      selectedCards.push(directReplacement);
+      replacementCardsUsed.push(directReplacement.id);
+      continue;
+    }
+
     if (!hasNationConflict(card, args.options.selectedNationIds)) {
       selectedCards.push(card);
       continue;

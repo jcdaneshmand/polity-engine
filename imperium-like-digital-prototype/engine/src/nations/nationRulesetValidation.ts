@@ -40,6 +40,7 @@ const EFFECT_OPS = [
   "draw", "draw_if_able", "gain_resource", "spend_resource", "remove_resource", "return_resource", "steal_resource",
   "discard_random", "discard_cards", "return_unrest", "return_fame", "place_card_on_deck", "give_card", "swap_card", "take_unrest",
   "gain_fame", "gain_action", "spend_action", "return_exhaust_token", "trigger_scoring", "trade", "treat_suit_as",
+  "free_play_card",
   "commerce", "profit", "garrison_card", "recall_region", "abandon_region", "develop", "move_self_to_history",
   "exile_card", "acquire_card", "gain_card", "take_card", "break_through", "find_card", "look_cards",
   "conditional_resource_at_least", "conditional_state_is", "optional", "choose_one",
@@ -69,6 +70,7 @@ const SUIT_ICONS: Suit[] = ["military", "civic", "economic", "unrest", "wild", "
 const BREAK_THROUGH_SUITS: Suit[] = ["region", "uncivilized", "civilized", "tributary"];
 const REACTIVE_TRIGGERS = ["after_gain_resource", "after_take_unrest", "after_acquire_card", "after_play_card", "after_break_through_card"];
 const REACTIVE_TARGETS = ["self", "opponent", "any"];
+const TARGET_PLAYER_SCOPES = ["self", "all", "others"];
 const REACTIVE_FIELDS = ["trigger", "target", "sourceSuit", "resource"];
 const DRAW_SOURCES = ["deck", "discard", "exile", "fameDeck"];
 const EXILE_SOURCES = ["market", "hand", "discard", "deck", "playArea", "history", "garrison"];
@@ -84,17 +86,21 @@ const SWAP_SOURCES = ["hand", "discard", "deck"];
 const FIND_DESTINATIONS = ["deck", "hand", "discard", "playArea", "history", "exile"];
 const GAIN_DESTINATIONS = ["hand", "discard"];
 const PROFIT_DESTINATIONS = ["discard", "history"];
-const CARD_ID_EFFECT_OPS = ["return_unrest", "return_fame", "place_card_on_deck", "give_card", "swap_card", "return_exhaust_token", "garrison_card", "recall_region", "abandon_region", "exile_card", "acquire_card", "gain_card", "take_card", "break_through", "find_card"];
+const CARD_ID_EFFECT_OPS = ["return_unrest", "return_fame", "place_card_on_deck", "give_card", "swap_card", "return_exhaust_token", "free_play_card", "garrison_card", "recall_region", "abandon_region", "exile_card", "acquire_card", "gain_card", "take_card", "break_through", "find_card"];
 const HOST_CARD_ID_EFFECT_OPS = ["garrison_card"];
 const MARKET_CARD_ID_EFFECT_OPS = ["swap_card"];
 const TARGET_PLAYER_ID_EFFECT_OPS = ["give_card"];
-const TARGET_PLAYER_IDS_EFFECT_OPS = ["give_card", "take_unrest"];
+const TARGET_PLAYER_IDS_EFFECT_OPS = ["draw", "give_card", "recall_region", "abandon_region", "take_unrest"];
+const TARGET_PLAYER_SCOPE_EFFECT_OPS = ["draw", "gain_resource", "steal_resource", "recall_region", "abandon_region", "take_unrest"];
 const FROM_PLAYER_ID_EFFECT_OPS = ["steal_resource"];
+const FROM_PLAYER_IDS_EFFECT_OPS = ["steal_resource"];
 const REASON_EFFECT_OPS = ["trigger_scoring"];
 const STATE_EFFECT_OPS = ["conditional_state_is"];
 const FROM_EFFECT_OPS = ["treat_suit_as"];
 const TO_EFFECT_OPS = ["treat_suit_as"];
 const EFFECTS_EFFECT_OPS = ["optional", "commerce", "profit"];
+const IF_UNABLE_EFFECT_OPS = ["steal_resource"];
+const ATTACK_TARGETED_EFFECT_OPS = ["take_unrest", "steal_resource"];
 const CHOICES_EFFECT_OPS = ["choose_one"];
 const THEN_EFFECT_OPS = ["conditional_resource_at_least", "conditional_state_is"];
 const ELSE_EFFECT_OPS = ["conditional_resource_at_least", "conditional_state_is"];
@@ -102,8 +108,8 @@ const SOURCE_EFFECT_OPS = ["draw", "draw_if_able", "exile_card", "acquire_card",
 const SOURCE_ZONES_EFFECT_OPS = ["return_unrest", "return_fame", "find_card"];
 const SOURCE_ZONE_EFFECT_OPS = ["place_card_on_deck", "swap_card"];
 const DESTINATION_EFFECT_OPS = ["find_card", "acquire_card", "gain_card", "take_card", "profit"];
-const SUIT_EFFECT_OPS = ["acquire_card", "gain_card", "take_card", "find_card", "exile_card", "break_through"];
-const CARD_TYPE_EFFECT_OPS = ["acquire_card", "gain_card", "take_card", "find_card", "exile_card", "break_through"];
+const SUIT_EFFECT_OPS = ["free_play_card", "acquire_card", "gain_card", "take_card", "find_card", "exile_card", "break_through"];
+const CARD_TYPE_EFFECT_OPS = ["free_play_card", "acquire_card", "gain_card", "take_card", "find_card", "exile_card", "break_through"];
 const RESOURCE_EFFECT_OPS = ["gain_resource", "spend_resource", "remove_resource", "return_resource", "steal_resource", "conditional_resource_at_least"];
 const COUNT_EFFECT_OPS = ["draw", "draw_if_able", "discard_random", "discard_cards", "take_unrest", "gain_fame", "recall_region", "abandon_region", "exile_card", "acquire_card", "gain_card", "take_card", "break_through", "look_cards"];
 const AMOUNT_EFFECT_OPS = ["gain_resource", "spend_resource", "remove_resource", "return_resource", "steal_resource", "gain_action", "spend_action"];
@@ -116,16 +122,19 @@ const EFFECT_FIELDS = [
   "resource",
   "amount",
   "fromPlayerId",
+  "fromPlayerIds",
   "cardId",
   "sourceZones",
   "sourceZone",
   "targetPlayerId",
   "targetPlayerIds",
+  "targetPlayerScope",
   "marketCardId",
   "reason",
   "from",
   "to",
   "effects",
+  "ifUnable",
   "destination",
   "hostCardId",
   "suit",
@@ -136,6 +145,10 @@ const EFFECT_FIELDS = [
   "state",
   "choices",
   "free",
+  "optionalForTargets",
+  "upTo",
+  "attackTargeted",
+  "ignoreStateRequirement",
   "reactive",
 ];
 const CONDITION_OP_REQUIREMENTS: Record<EffectCondition["op"], string[]> = {
@@ -335,7 +348,7 @@ function validateHumanEffectShape(nationId: string, path: string, record: Record
       issues.push({ nationId, field: `${path}.${fieldName}`, reason: `invalid ${fieldName} '${String(value)}'` });
     }
   };
-  const optionalStringArray = (fieldName: "targetPlayerIds") => {
+  const optionalStringArray = (fieldName: "targetPlayerIds" | "fromPlayerIds") => {
     const value = record[fieldName];
     if (value !== undefined && (!Array.isArray(value) || value.length === 0 || value.some((entry) => typeof entry !== "string" || entry.trim().length === 0))) {
       issues.push({ nationId, field: `${path}.${fieldName}`, reason: `invalid ${fieldName}` });
@@ -367,7 +380,7 @@ function validateHumanEffectShape(nationId: string, path: string, record: Record
   }
   if (op === "acquire_card" || op === "gain_card" || op === "take_card") optionalEnum("destination", GAIN_DESTINATIONS);
   if (op === "profit") optionalEnum("destination", PROFIT_DESTINATIONS);
-  if (["acquire_card", "gain_card", "take_card", "find_card", "exile_card"].includes(op)) optionalEnum("suit", SUITS);
+  if (["free_play_card", "acquire_card", "gain_card", "take_card", "find_card", "exile_card"].includes(op)) optionalEnum("suit", SUITS);
   if (op === "break_through" && record.cardType !== undefined) {
     issues.push({ nationId, field: `${path}.cardType`, reason: `invalid cardType '${String(record.cardType)}'` });
   }
@@ -383,9 +396,18 @@ function validateHumanEffectShape(nationId: string, path: string, record: Record
   if (record.targetPlayerId !== undefined && !TARGET_PLAYER_ID_EFFECT_OPS.includes(op)) {
     issues.push({ nationId, field: `${path}.targetPlayerId`, reason: `invalid targetPlayerId '${String(record.targetPlayerId)}'` });
   }
-  if (record.targetPlayerIds !== undefined && !TARGET_PLAYER_IDS_EFFECT_OPS.includes(op)) {
-    issues.push({ nationId, field: `${path}.targetPlayerIds`, reason: "invalid targetPlayerIds" });
-  }
+    if (record.targetPlayerIds !== undefined && !TARGET_PLAYER_IDS_EFFECT_OPS.includes(op)) {
+      issues.push({ nationId, field: `${path}.targetPlayerIds`, reason: "invalid targetPlayerIds" });
+    }
+    if (record.fromPlayerIds !== undefined && !FROM_PLAYER_IDS_EFFECT_OPS.includes(op)) {
+      issues.push({ nationId, field: `${path}.fromPlayerIds`, reason: "invalid fromPlayerIds" });
+    }
+    if (record.targetPlayerScope !== undefined && !TARGET_PLAYER_SCOPE_EFFECT_OPS.includes(op)) {
+      issues.push({ nationId, field: `${path}.targetPlayerScope`, reason: `invalid targetPlayerScope '${String(record.targetPlayerScope)}'` });
+    }
+    if (record.targetPlayerScope !== undefined && (typeof record.targetPlayerScope !== "string" || !TARGET_PLAYER_SCOPES.includes(record.targetPlayerScope))) {
+      issues.push({ nationId, field: `${path}.targetPlayerScope`, reason: `invalid targetPlayerScope '${String(record.targetPlayerScope)}'` });
+    }
   if (record.fromPlayerId !== undefined && !FROM_PLAYER_ID_EFFECT_OPS.includes(op)) {
     issues.push({ nationId, field: `${path}.fromPlayerId`, reason: `invalid fromPlayerId '${String(record.fromPlayerId)}'` });
   }
@@ -403,6 +425,9 @@ function validateHumanEffectShape(nationId: string, path: string, record: Record
   }
   if (record.effects !== undefined && !EFFECTS_EFFECT_OPS.includes(op)) {
     issues.push({ nationId, field: `${path}.effects`, reason: "invalid effects" });
+  }
+  if (record.ifUnable !== undefined && !IF_UNABLE_EFFECT_OPS.includes(op)) {
+    issues.push({ nationId, field: `${path}.ifUnable`, reason: "invalid ifUnable" });
   }
   if (record.choices !== undefined && !CHOICES_EFFECT_OPS.includes(op)) {
     issues.push({ nationId, field: `${path}.choices`, reason: "invalid choices" });
@@ -446,10 +471,34 @@ function validateHumanEffectShape(nationId: string, path: string, record: Record
   if (record.free !== undefined && op !== "develop") {
     issues.push({ nationId, field: `${path}.free`, reason: `invalid free '${String(record.free)}'` });
   }
+  if (record.optionalForTargets !== undefined && op !== "draw") {
+    issues.push({ nationId, field: `${path}.optionalForTargets`, reason: `invalid optionalForTargets '${String(record.optionalForTargets)}'` });
+  }
+  if (record.upTo !== undefined && op !== "draw" && op !== "draw_if_able") {
+    issues.push({ nationId, field: `${path}.upTo`, reason: `invalid upTo '${String(record.upTo)}'` });
+  }
+  if (record.ignoreStateRequirement !== undefined && op !== "free_play_card") {
+    issues.push({ nationId, field: `${path}.ignoreStateRequirement`, reason: `invalid ignoreStateRequirement '${String(record.ignoreStateRequirement)}'` });
+  }
+  if (record.attackTargeted !== undefined && !ATTACK_TARGETED_EFFECT_OPS.includes(op)) {
+    issues.push({ nationId, field: `${path}.attackTargeted`, reason: `invalid attackTargeted '${String(record.attackTargeted)}'` });
+  }
   if (op === "develop" && record.free !== undefined && typeof record.free !== "boolean") {
     issues.push({ nationId, field: `${path}.free`, reason: `invalid free '${String(record.free)}'` });
   }
-  if (["acquire_card", "gain_card", "take_card", "find_card", "exile_card"].includes(op)) optionalEnum("cardType", CARD_TYPES);
+  if (op === "draw" && record.optionalForTargets !== undefined && typeof record.optionalForTargets !== "boolean") {
+    issues.push({ nationId, field: `${path}.optionalForTargets`, reason: `invalid optionalForTargets '${String(record.optionalForTargets)}'` });
+  }
+  if ((op === "draw" || op === "draw_if_able") && record.upTo !== undefined && typeof record.upTo !== "boolean") {
+    issues.push({ nationId, field: `${path}.upTo`, reason: `invalid upTo '${String(record.upTo)}'` });
+  }
+  if (op === "free_play_card" && record.ignoreStateRequirement !== undefined && typeof record.ignoreStateRequirement !== "boolean") {
+    issues.push({ nationId, field: `${path}.ignoreStateRequirement`, reason: `invalid ignoreStateRequirement '${String(record.ignoreStateRequirement)}'` });
+  }
+  if ((op === "take_unrest" || op === "steal_resource") && record.attackTargeted !== undefined && typeof record.attackTargeted !== "boolean") {
+    issues.push({ nationId, field: `${path}.attackTargeted`, reason: `invalid attackTargeted '${String(record.attackTargeted)}'` });
+  }
+  if (["free_play_card", "acquire_card", "gain_card", "take_card", "find_card", "exile_card"].includes(op)) optionalEnum("cardType", CARD_TYPES);
   if (op === "treat_suit_as") {
     requiredEnum("from", SUIT_ICONS);
     const to = record.to;
@@ -457,7 +506,7 @@ function validateHumanEffectShape(nationId: string, path: string, record: Record
       issues.push({ nationId, field: `${path}.to`, reason: "invalid to" });
     }
   }
-  if (FROM_PLAYER_ID_EFFECT_OPS.includes(op) && (typeof record.fromPlayerId !== "string" || record.fromPlayerId.trim().length === 0)) issues.push({ nationId, field: `${path}.fromPlayerId`, reason: "missing required fromPlayerId" });
+  if (FROM_PLAYER_ID_EFFECT_OPS.includes(op) && record.fromPlayerIds === undefined && record.targetPlayerScope === undefined && (typeof record.fromPlayerId !== "string" || record.fromPlayerId.trim().length === 0)) issues.push({ nationId, field: `${path}.fromPlayerId`, reason: "missing required fromPlayerId" });
   if (op === "trigger_scoring" && (typeof record.reason !== "string" || record.reason.trim().length === 0)) issues.push({ nationId, field: `${path}.reason`, reason: "missing required reason" });
   if (op === "conditional_state_is" && (typeof record.state !== "string" || record.state.trim().length === 0)) issues.push({ nationId, field: `${path}.state`, reason: "missing required state" });
   if (CARD_ID_EFFECT_OPS.includes(op)) optionalString("cardId");
@@ -467,7 +516,16 @@ function validateHumanEffectShape(nationId: string, path: string, record: Record
     optionalString("targetPlayerId");
     optionalStringArray("targetPlayerIds");
   }
+  if (op === "draw") optionalStringArray("targetPlayerIds");
+  if (op === "recall_region" || op === "abandon_region") optionalStringArray("targetPlayerIds");
   if (op === "take_unrest") optionalStringArray("targetPlayerIds");
+  if (op === "steal_resource") optionalStringArray("fromPlayerIds");
+  if (op === "steal_resource" && record.ifUnable !== undefined) {
+    if (Array.isArray(record.ifUnable) && record.ifUnable.length === 0) {
+      issues.push({ nationId, field: `${path}.ifUnable`, reason: "ifUnable must contain at least one effect" });
+    }
+    issues.push(...validateHumanEffectPayloads(nationId, `${path}.ifUnable`, record.ifUnable));
+  }
   issues.push(...validateReactiveMetadata(nationId, path, record));
   return issues;
 }

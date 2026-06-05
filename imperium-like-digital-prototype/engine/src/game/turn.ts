@@ -134,6 +134,7 @@ function pendingInterruption(G: GameState): string | undefined {
   if (G.pendingReturnFameChoice) return "pending_return_fame_choice";
   if (G.pendingPlaceOnDeckChoice) return "pending_place_on_deck_choice";
   if (G.pendingReturnExhaustTokenChoice) return "pending_return_exhaust_token_choice";
+  if (G.pendingFreePlayChoice) return "pending_free_play_choice";
   if (G.pendingGiveCardChoice) return "pending_give_card_choice";
   if (G.pendingSwapChoice) return "pending_swap_choice";
   if (G.pendingLookOrderChoice) return "pending_look_order_choice";

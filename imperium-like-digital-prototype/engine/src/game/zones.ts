@@ -85,6 +85,7 @@ function hasPendingInterruption(G: GameState, options: { allowAfterReshuffleNati
     ?? G.pendingReturnFameChoice
     ?? G.pendingPlaceOnDeckChoice
     ?? G.pendingReturnExhaustTokenChoice
+    ?? G.pendingFreePlayChoice
     ?? G.pendingGiveCardChoice
     ?? G.pendingSwapChoice
     ?? G.pendingLookOrderChoice

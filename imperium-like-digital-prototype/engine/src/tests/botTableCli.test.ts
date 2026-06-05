@@ -32,6 +32,51 @@ function runTool(scriptName: string, args: string[] = []) {
   }).toString("utf8");
 }
 
+function allRuntimeBotStateEffects() {
+  const fallback = [{ op: "log", message: "fallback" }];
+  return [
+    { op: "bot_return_revealed_card_to_unrest" },
+    { op: "bot_discard_revealed_card" },
+    { op: "bot_put_revealed_card_into_history" },
+    { op: "bot_play_revealed_card" },
+    { op: "bot_put_revealed_card_on_bottom_of_deck" },
+    { op: "bot_gain_resource", resource: "materials", count: 1 },
+    { op: "bot_gain_resource_per_in_play", resource: "materials", filter: { suits: ["region"], cardTypes: ["region"], tags: ["target"], minVp: 0, maxVp: 5, hasMarketResource: "goods", slotNumbers: [1] }, countPerCard: 1 },
+    { op: "bot_spend_resource", resource: "materials", count: 1 },
+    { op: "bot_pay_resource_then", resource: "materials", count: 1, effects: [{ op: "bot_gain_fame", count: 1 }] },
+    { op: "bot_move_resource_to_state_card", resource: "materials", count: 1, ifUnable: fallback },
+    { op: "bot_spend_resource_to_state_card", spendResource: "materials", spendCount: 1, placeResource: "goods", placeCount: 1, ifUnable: fallback },
+    { op: "bot_take_unrest", count: 1 },
+    { op: "human_take_chaos", count: 1, zoneId: "chaos_pile" },
+    { op: "bot_resolve_cultists_state_cleanup" },
+    { op: "bot_gain_fame", count: 1 },
+    { op: "bot_acquire", filter: { suits: ["civilized"] }, fromExile: true, ifUnable: fallback },
+    { op: "bot_break_through", filter: { suits: ["uncivilized"] }, resolveGained: true, discardGained: false, ifUnable: fallback },
+    { op: "bot_exile_market", ifUnable: fallback },
+    { op: "bot_resolve_top_bot_deck" },
+    { op: "bot_resolve_top_dynasty_deck" },
+    { op: "bot_resolve_top_main_deck", ifVp: { value: 3, effects: [{ op: "bot_gain_resource", resource: "knowledge", count: 1 }] } },
+    { op: "bot_discard_top_bot_deck", count: 1, ifUnable: fallback },
+    { op: "bot_discard_top_dynasty_deck", count: 1, ifUnable: fallback },
+    { op: "bot_return_from_discard", filter: { suits: ["unrest"] }, ifUnable: fallback },
+    { op: "bot_abandon_in_play", filter: { suits: ["region"] }, ifUnable: fallback },
+    { op: "bot_recall_in_play", filter: { suits: ["region"] }, ifUnable: fallback },
+    { op: "bot_swap_market", filter: { suits: ["region"] }, marketFilter: { suits: ["civilized"] }, ifUnable: fallback },
+    { op: "bot_move_top_discard_to_deck" },
+    { op: "bot_add_resource_to_market_slot", resource: "goods", slot: "rolled", count: 1 },
+    { op: "bot_flip_state_table", nextSide: "F", nextTableId: "flipped_table" },
+    { op: "bot_flip_merchant_state", nextState: "merchant_empire" },
+    { op: "bot_trade" },
+    { op: "bot_trigger_trade_route", cardId: "route_card" },
+    { op: "bot_resolve_profits_where_able" },
+    { op: "human_take_unrest", count: 1 },
+    { op: "human_abandon", filter: { suits: ["region"] }, count: 1 },
+    { op: "human_recall", filter: { suits: ["region"] }, count: 1 },
+    { op: "human_gain_resource", resource: "knowledge", count: 1 },
+    { op: "log", message: "ok" }
+  ];
+}
+
 describe("bot table CLI tools", () => {
   it("normalizes rulebook resource names in Bot state table effects", () => {
     const imported = normalizeBotStateTables([{
@@ -166,10 +211,7 @@ describe("bot table CLI tools", () => {
       public_placeholder_label: "Runtime ops row",
       private_trigger_label: "",
       private_effect_text: "",
-      effects_json: JSON.stringify([
-        { op: "bot_exile_market" },
-        { op: "bot_put_revealed_card_on_bottom_of_deck" }
-      ]),
+      effects_json: JSON.stringify(allRuntimeBotStateEffects()),
       implemented: "true",
       tested: "true",
       notes: ""
@@ -190,10 +232,7 @@ describe("bot table CLI tools", () => {
       public_placeholder_label: "Runtime ops row",
       private_trigger_label: "",
       private_effect_text: "",
-      effects_json: JSON.stringify([
-        { op: "bot_exile_market" },
-        { op: "bot_put_revealed_card_on_bottom_of_deck" }
-      ]),
+      effects_json: JSON.stringify(allRuntimeBotStateEffects()),
       implemented: "true",
       tested: "true",
       notes: ""

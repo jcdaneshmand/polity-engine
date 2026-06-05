@@ -4,7 +4,7 @@ import { createInitialState } from "../game/initialState";
 import { tuckUnrestUnderMarketCard } from "../game/marketResources";
 import { payResourceCosts } from "../game/payments";
 import * as moves from "../game/moves";
-import { resolveAcquireChoice, resolveChoice, resolveExileChoice, resolveFindChoice, resolveLookOrderChoice } from "../game/moves";
+import { resolveAcquireChoice, resolveChoice, resolveExileChoice, resolveFindChoice, resolveLookOrderChoice, resolveRegionChoice } from "../game/moves";
 import { cardHasSuitIconForPlayer } from "../game/suitIcons";
 import type { GameState } from "../game/state";
 import { resolvePendingUnrestAllocationChoice } from "../game/unrest";
@@ -72,6 +72,192 @@ describe("effectRunner", () => {
     const G = createInitialState();
     runEffects({ G, playerId: "0" }, [{ trigger: "on_play", op: "draw", count: 1 }]);
     expect(G.players["0"].hand.length).toBe(1);
+  });
+
+  it("opens an up-to-count Draw choice that can resolve zero, partial, or full counts", () => {
+    const zero = createInitialState();
+    zero.players["0"].deck = ["draw_a", "draw_b"];
+    zero.players["0"].hand = [];
+    zero.cardDb.draw_a = { ...zero.cardDb.test_action_foundry_shift, id: "draw_a" };
+    zero.cardDb.draw_b = { ...zero.cardDb.test_action_foundry_shift, id: "draw_b" };
+
+    runEffects({ G: zero, playerId: "0", selfCardId: "up_to_draw" }, [
+      { trigger: "on_play", op: "draw", count: 2, upTo: true } as any,
+      { trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 } as any
+    ]);
+
+    expect(zero.pendingChoice?.choices).toEqual([
+      [],
+      [{ trigger: "on_play", op: "draw", count: 1, source: undefined, targetPlayerIds: undefined, targetPlayerScope: undefined, optionalForTargets: undefined, upTo: undefined }],
+      [{ trigger: "on_play", op: "draw", count: 2, source: undefined, targetPlayerIds: undefined, targetPlayerScope: undefined, optionalForTargets: undefined, upTo: undefined }]
+    ]);
+
+    resolveChoice({ G: zero, ctx: { currentPlayer: "0" } as any }, 0);
+
+    expect(zero.players["0"].hand).toEqual([]);
+    expect(zero.players["0"].resources.materials).toBe(1);
+
+    const partial = createInitialState();
+    partial.players["0"].deck = ["draw_a", "draw_b"];
+    partial.players["0"].hand = [];
+    partial.cardDb.draw_a = { ...partial.cardDb.test_action_foundry_shift, id: "draw_a" };
+    partial.cardDb.draw_b = { ...partial.cardDb.test_action_foundry_shift, id: "draw_b" };
+
+    runEffects({ G: partial, playerId: "0", selfCardId: "up_to_draw" }, [
+      { trigger: "on_play", op: "draw", count: 2, upTo: true } as any
+    ]);
+    resolveChoice({ G: partial, ctx: { currentPlayer: "0" } as any }, 1);
+
+    expect(partial.players["0"].hand).toEqual(["draw_a"]);
+    expect(partial.players["0"].deck).toEqual(["draw_b"]);
+  });
+
+  it("opens an up-to-count Draw-if-able choice without reshuffling", () => {
+    const G = createInitialState();
+    G.players["0"].deck = ["draw_a", "draw_b"];
+    G.players["0"].discard = ["discard_a"];
+    G.players["0"].hand = [];
+    G.cardDb.draw_a = { ...G.cardDb.test_action_foundry_shift, id: "draw_a" };
+    G.cardDb.draw_b = { ...G.cardDb.test_action_foundry_shift, id: "draw_b" };
+    G.cardDb.discard_a = { ...G.cardDb.test_action_foundry_shift, id: "discard_a" };
+
+    runEffects({ G, playerId: "0", selfCardId: "up_to_draw_if_able" }, [
+      { trigger: "on_play", op: "draw_if_able", count: 3, upTo: true } as any,
+      { trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 } as any
+    ]);
+
+    expect(G.pendingChoice?.choices).toEqual([
+      [],
+      [{ trigger: "on_play", op: "draw_if_able", count: 1, upTo: undefined }],
+      [{ trigger: "on_play", op: "draw_if_able", count: 2, upTo: undefined }]
+    ]);
+
+    resolveChoice({ G, ctx: { currentPlayer: "0" } as any }, 2);
+
+    expect(G.players["0"].hand).toEqual(["draw_a", "draw_b"]);
+    expect(G.players["0"].deck).toEqual([]);
+    expect(G.players["0"].discard).toEqual(["discard_a"]);
+    expect(G.players["0"].resources.materials).toBe(1);
+  });
+
+  it("opens per-target optional Draw choices for dynamic player scopes", () => {
+    const G = createInitialState();
+    G.players["0"].deck = [];
+    G.players["1"].deck = ["target_draw_card"];
+    G.players["1"].hand = [];
+    G.cardDb.target_draw_card = {
+      ...G.cardDb.test_action_foundry_shift,
+      id: "target_draw_card",
+      displayName: "Target Draw Card"
+    };
+
+    runEffects({ G, playerId: "0", selfCardId: "scope_draw" }, [
+      { trigger: "on_play", op: "draw", count: 1, targetPlayerScope: "others", optionalForTargets: true } as any,
+      { trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 } as any
+    ]);
+
+    expect(G.pendingChoice).toMatchObject({ playerId: "1", sourceCardId: "scope_draw" });
+    expect(G.pendingChoice?.choices[0]).toEqual(expect.arrayContaining([
+      expect.objectContaining({ trigger: "on_play", op: "draw", count: 1, optionalForTargets: false })
+    ]));
+    expect(G.pendingChoice?.choices[1]).toEqual([]);
+    expect(G.players["1"].hand).toEqual([]);
+
+    resolveChoice({ G, ctx: { currentPlayer: "1" } as any }, 0);
+
+    expect(G.pendingChoice).toBeUndefined();
+    expect(G.players["1"].hand).toEqual(["target_draw_card"]);
+    expect(G.players["0"].resources.materials).toBe(1);
+  });
+
+  it("lets protected players ignore targeted Attack effects", () => {
+    const G = createInitialState();
+    G.unrestPile = ["attack_unrest"];
+    G.cardDb.attack_unrest = {
+      id: "attack_unrest",
+      displayName: "Attack Unrest",
+      type: "unrest",
+      cardType: "unrest",
+      suit: "unrest",
+      cost: 0,
+      tags: ["unrest"],
+      effects: []
+    };
+    G.cardDb.attack_protection_marker = {
+      id: "attack_protection_marker",
+      displayName: "Attack Protection Marker",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: ["attack_protection"],
+      effects: []
+    };
+    G.players["1"].playArea = ["attack_protection_marker"];
+
+    const result = runEffects({ G, playerId: "0", selfCardId: "targeted_attack_source" }, [
+      { trigger: "on_play", op: "take_unrest", targetPlayerIds: ["1"], count: 1, attackTargeted: true } as any,
+      { trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 } as any
+    ]);
+
+    expect(result).toBe(true);
+    expect(G.players["1"].hand).toEqual([]);
+    expect(G.unrestPile).toEqual(["attack_unrest"]);
+    expect(G.players["0"].resources.materials).toBe(1);
+    expect(G.log.some((entry) => entry.message === "AttackEffectIgnored(targeted_attack_source/player=1/take_unrest)")).toBe(true);
+  });
+
+  it("lets protected players ignore targeted resource-steal Attack effects", () => {
+    const G = createInitialState();
+    G.cardDb.attack_protection_marker = {
+      id: "attack_protection_marker",
+      displayName: "Attack Protection Marker",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: ["attack_protection"],
+      effects: []
+    };
+    G.players["1"].playArea = ["attack_protection_marker"];
+    G.players["1"].resources.materials = 2;
+    G.players["2"] = JSON.parse(JSON.stringify(G.players["1"]));
+    G.players["2"].playArea = [];
+    G.players["2"].resources.materials = 2;
+
+    const result = runEffects({ G, playerId: "0", selfCardId: "targeted_attack_source" }, [
+      { trigger: "on_play", op: "steal_resource", fromPlayerIds: ["1", "2"], resource: "materials", amount: 1, attackTargeted: true } as any
+    ]);
+
+    expect(result).toBe(true);
+    expect(G.players["1"].resources.materials).toBe(2);
+    expect(G.players["2"].resources.materials).toBe(1);
+    expect(G.players["0"].resources.materials).toBe(1);
+    expect(G.log.some((entry) => entry.message === "AttackEffectIgnored(targeted_attack_source/player=1/steal_resource)")).toBe(true);
+  });
+
+  it("does not let attack protection cancel non-card nation effects", () => {
+    const G = createInitialState();
+    G.unrestPile = ["nation_unrest"];
+    G.cardDb.nation_unrest = {
+      id: "nation_unrest",
+      displayName: "Nation Unrest",
+      type: "unrest",
+      cardType: "unrest",
+      suit: "unrest",
+      cost: 0,
+      tags: ["unrest"],
+      effects: []
+    };
+    G.players["1"].attackProtected = true;
+
+    const result = runEffects({ G, playerId: "0" }, [
+      { trigger: "on_play", op: "take_unrest", targetPlayerIds: ["1"], count: 1, attackTargeted: true } as any
+    ]);
+
+    expect(result).toBe(true);
+    expect(G.players["1"].hand).toEqual(["nation_unrest"]);
+    expect(G.log.some((entry) => entry.message.includes("AttackEffectIgnored"))).toBe(false);
   });
 
   it("accepts rulebook resource aliases at runtime", () => {
@@ -786,6 +972,22 @@ describe("effectRunner", () => {
     expect(G.players["0"].resources.materials).toBe(1);
   });
 
+  it("gains resources for dynamic player scopes", () => {
+    const G = createInitialState();
+    G.players["0"].resources.materials = 0;
+    G.players["1"].resources.materials = 0;
+    G.players["2"] = { ...G.players["1"], id: "2", resources: { materials: 0, knowledge: 0, influence: 0, unrest: 0, goods: 0 } } as any;
+
+    runEffects({ G, playerId: "0" }, [
+      { trigger: "on_play", op: "gain_resource", resource: "materials", amount: 2, targetPlayerScope: "all" } as any,
+      { trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1, targetPlayerScope: "others" } as any
+    ]);
+
+    expect(G.players["0"].resources.materials).toBe(2);
+    expect(G.players["1"].resources.materials).toBe(3);
+    expect(G.players["2"].resources.materials).toBe(3);
+  });
+
   it("caps gained resources by the available component supply", () => {
     const G = createInitialState();
     G.resourceSupply = { materials: 1 };
@@ -1244,6 +1446,25 @@ describe("effectRunner", () => {
     expect(G.unrestPile).toEqual(["unrest_c"]);
     expect(G.gameover).toBeUndefined();
     expect(G.log.at(-1)?.message).toBe("UnrestTaken(players=1,0/count=1/taken=2)");
+  });
+
+  it("takes Unrest for dynamic all-other player scopes", () => {
+    const G = createInitialState();
+    G.players["2"] = { ...G.players["1"], id: "2", hand: [] } as any;
+    G.unrestPile = ["unrest_a", "unrest_b", "unrest_c"];
+
+    const result = runEffects({ G, playerId: "0" }, [{
+      trigger: "on_play",
+      op: "take_unrest",
+      targetPlayerScope: "others",
+      count: 1
+    } as any]);
+
+    expect(result).toBe(true);
+    expect(G.players["0"].hand).toEqual([]);
+    expect(G.players["1"].hand).toContain("unrest_a");
+    expect(G.players["2"].hand).toContain("unrest_b");
+    expect(G.unrestPile).toEqual(["unrest_c"]);
   });
 
   it("runs imported nation passive rules when that nation gains Unrest", () => {
@@ -2016,6 +2237,44 @@ describe("effectRunner", () => {
     expect(G.players["1"].resources.materials).toBe(0);
     expect(G.players["1"].resources.goods).toBe(2);
     expect(G.log.at(-1)?.message).toBe("Stole 1/3 materials from player 1.");
+  });
+
+  it("steals from dynamic player scopes and resolves fallback per target", () => {
+    const G = createInitialState();
+    G.playOrder = ["0", "1", "2"];
+    G.players["2"] = {
+      ...structuredClone(G.players["1"]),
+      deck: [],
+      hand: [],
+      discard: [],
+      playArea: [],
+      history: [],
+      exile: [],
+      powerArea: [],
+      stateArea: [],
+      developmentArea: [],
+      nationDeck: [],
+      resources: { materials: 0, knowledge: 0, influence: 0, unrest: 0, goods: 0 }
+    };
+    G.players["0"].resources.materials = 0;
+    G.players["1"].resources.materials = 1;
+    G.players["2"].resources.materials = 0;
+
+    const result = runEffects({ G, playerId: "0" }, [{
+      trigger: "on_play",
+      op: "steal_resource",
+      targetPlayerScope: "others",
+      resource: "materials",
+      amount: 1,
+      ifUnable: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }]
+    } as any]);
+
+    expect(result).toBe(true);
+    expect(G.players["0"].resources.materials).toBe(1);
+    expect(G.players["1"].resources.materials).toBe(0);
+    expect(G.players["1"].resources.knowledge).toBe(0);
+    expect(G.players["2"].resources.materials).toBe(0);
+    expect(G.players["2"].resources.knowledge).toBe(1);
   });
 
   it("opens a resource-gain reactive Exhaust window after stealing resources", () => {
@@ -6921,6 +7180,50 @@ describe("effectRunner", () => {
     expect(G.log.at(-1)?.message).toBe("GarrisonChoicePending(garrison_source/hosts=1/cards=2)");
   });
 
+  it("excludes cards tagged as not garrisonable from Garrison choices and direct resolution", () => {
+    const G = createInitialState();
+    G.cardDb.test_region = {
+      id: "test_region",
+      displayName: "Test Region",
+      type: "region",
+      cardType: "region",
+      suit: "region",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb.garrison_excluded = {
+      id: "garrison_excluded",
+      displayName: "Garrison Excluded",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: ["cannot_be_garrisoned"],
+      effects: []
+    };
+    G.players["0"].playArea = ["test_region"];
+    G.players["0"].hand = ["test_action_archive_survey", "test_action_scholars_circle", "garrison_excluded"];
+
+    expect(runEffects({ G, playerId: "0", selfCardId: "garrison_source" }, [
+      { trigger: "on_play", op: "garrison_card" }
+    ] as any)).toBe(true);
+
+    expect(G.pendingGarrisonChoice?.cardIds).toEqual(["test_action_archive_survey", "test_action_scholars_circle"]);
+
+    const direct = createInitialState();
+    direct.cardDb.test_region = G.cardDb.test_region;
+    direct.cardDb.garrison_excluded = G.cardDb.garrison_excluded;
+    direct.players["0"].playArea = ["test_region"];
+    direct.players["0"].hand = ["garrison_excluded"];
+
+    expect(runEffects({ G: direct, playerId: "0", selfCardId: "garrison_source" }, [
+      { trigger: "on_play", op: "garrison_card", hostCardId: "test_region", cardId: "garrison_excluded" }
+    ] as any)).toBe(false);
+    expect(direct.players["0"].hand).toEqual(["garrison_excluded"]);
+    expect(direct.cardStates?.test_region?.garrisonedCardIds).toBeUndefined();
+  });
+
   it("auto-resolves one unspecified Garrison host and hand card before resuming effects", () => {
     const G = createInitialState();
     G.players["0"].resources.materials = 0;
@@ -7058,6 +7361,44 @@ describe("effectRunner", () => {
     ] as any)).toBe(true);
 
     expect((G.pendingRegionChoice as unknown as NonNullable<GameState["pendingRegionChoice"]>).cardIds).toEqual(["host_region", "garrisoned_region"]);
+  });
+
+  it("opens opponent-owned Region choices for dynamic player scopes", () => {
+    const G = createInitialState();
+    for (const id of ["opponent_region_one", "opponent_region_two"]) {
+      G.cardDb[id] = {
+        id,
+        displayName: id,
+        type: "region",
+        cardType: "region",
+        suit: "region",
+        cost: 0,
+        tags: [],
+        effects: []
+      };
+    }
+    G.players["0"].resources.materials = 0;
+    G.players["1"].playArea = ["opponent_region_one", "opponent_region_two"];
+
+    expect(runEffects({ G, playerId: "0", selfCardId: "scoped_region_source" }, [
+      { trigger: "on_play", op: "recall_region", targetPlayerScope: "others" } as any,
+      { trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 } as any
+    ])).toBe(true);
+
+    expect(G.pendingRegionChoice).toMatchObject({
+      playerId: "1",
+      resolvingPlayerId: "0",
+      sourceCardId: "scoped_region_source",
+      op: "recall_region",
+      cardIds: ["opponent_region_one", "opponent_region_two"]
+    });
+
+    resolveRegionChoice({ G, ctx: { currentPlayer: "1" } as any }, "opponent_region_one");
+
+    expect(G.pendingRegionChoice).toBeUndefined();
+    expect(G.players["1"].hand).toEqual(["opponent_region_one"]);
+    expect(G.players["1"].playArea).toEqual(["opponent_region_two"]);
+    expect(G.players["0"].resources.materials).toBe(1);
   });
 
   it("preserves counted unspecified Recall or Abandon choices from card text", () => {

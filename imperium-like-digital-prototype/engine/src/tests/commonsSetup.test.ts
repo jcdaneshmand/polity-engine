@@ -27,6 +27,20 @@ describe("commons setup", () => {
     expect(result.replacementCardsUsed).toEqual(["replacement_a"]);
   });
 
+  it("replacement policy uses direct replacement metadata for ordinary Commons cards", () => {
+    const result = buildCommonsSetup({
+      cardDb: cardDb([
+        card({ id: "original_common" }),
+        card({ id: "direct_replacement", ownership: "replacement", commonsGroup: "replacement", replacementForCardId: "original_common" })
+      ]),
+      nationDb,
+      options: options({ replacementPolicy: "use_replacements" })
+    });
+
+    expect(result.selectedCommonsCards).toEqual(["direct_replacement"]);
+    expect(result.replacementCardsUsed).toEqual(["direct_replacement"]);
+  });
+
   it("setup report records removed/delayed/replaced cards", () => {
     const result = buildCommonsSetup({
       cardDb: cardDb([

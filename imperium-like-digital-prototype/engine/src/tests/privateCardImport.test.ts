@@ -100,6 +100,25 @@ describe("private card import", () => {
   });
   it("current engine effect ops validate, including nested choices and Exile/Unrest effects",()=> {
     const effect_ops_json=JSON.stringify([
+      {trigger:"on_play",op:"draw",count:1},
+      {trigger:"on_play",op:"draw",count:2,upTo:true},
+      {trigger:"on_play",op:"draw",source:"discard",count:1},
+      {trigger:"on_play",op:"draw_if_able",count:1},
+      {trigger:"on_play",op:"draw_if_able",count:2,upTo:true},
+      {trigger:"on_play",op:"draw",count:1,targetPlayerScope:"others",optionalForTargets:true},
+      {trigger:"on_play",op:"gain_resource",resource:"materials",amount:1,targetPlayerScope:"all"},
+      {trigger:"on_play",op:"spend_resource",resource:"materials",amount:1},
+      {trigger:"on_play",op:"remove_resource",resource:"materials",amount:1},
+      {trigger:"on_play",op:"return_resource",resource:"materials",amount:1},
+      {trigger:"on_play",op:"steal_resource",fromPlayerId:"1",resource:"materials",amount:1},
+      {trigger:"on_play",op:"steal_resource",fromPlayerIds:["1","2"],resource:"materials",amount:1,ifUnable:[
+        {trigger:"on_play",op:"gain_resource",resource:"knowledge",amount:1}
+      ],attackTargeted:true},
+      {trigger:"on_play",op:"steal_resource",targetPlayerScope:"others",resource:"materials",amount:1,ifUnable:[
+        {trigger:"on_play",op:"gain_resource",resource:"knowledge",amount:1}
+      ]},
+      {trigger:"on_play",op:"discard_random",count:1},
+      {trigger:"on_play",op:"discard_cards",count:1},
       {trigger:"on_play",op:"acquire_card",source:"exile",suit:"civilized",count:1},
       {trigger:"on_play",op:"acquire_card",source:"market",suit:"civilized",count:1},
       {trigger:"on_play",op:"acquire_card",source:"market",cardType:"action",count:1},
@@ -108,6 +127,8 @@ describe("private card import", () => {
       {trigger:"on_play",op:"break_through",source:"exile",suit:"civilized",count:1},
       {trigger:"on_play",op:"break_through",source:"market",suit:"civilized",count:1},
       {trigger:"on_play",op:"take_unrest",targetPlayerIds:["1","0"],count:1},
+      {trigger:"on_play",op:"take_unrest",targetPlayerIds:["1"],count:1,attackTargeted:true},
+      {trigger:"on_play",op:"take_unrest",targetPlayerScope:"others",count:1},
       {trigger:"on_play",op:"return_unrest"},
       {trigger:"on_play",op:"return_fame",sourceZones:["discard"],cardId:"fame_card"},
       {trigger:"on_play",op:"place_card_on_deck"},
@@ -117,6 +138,7 @@ describe("private card import", () => {
       {trigger:"on_play",op:"gain_action",amount:1},
       {trigger:"on_play",op:"spend_action",amount:1},
       {trigger:"on_play",op:"return_exhaust_token"},
+      {trigger:"on_play",op:"free_play_card",cardId:"hand_action",suit:"civilized",cardType:"action",ignoreStateRequirement:true},
       {trigger:"on_exhaust",op:"gain_resource",resource:"materials",amount:1,reactive:{trigger:"after_gain_resource",resource:"knowledge",sourceSuit:"civilized"}},
       {trigger:"on_play",op:"trigger_scoring",reason:"card_effect"},
       {trigger:"on_play",op:"treat_suit_as",from:"uncivilized",to:["civilized"]},
@@ -126,10 +148,22 @@ describe("private card import", () => {
       {trigger:"on_play",op:"abandon_region",cardId:"region_b"},
       {trigger:"on_play",op:"recall_region",count:2},
       {trigger:"on_play",op:"abandon_region",count:2},
+      {trigger:"on_play",op:"recall_region",targetPlayerScope:"others"},
+      {trigger:"on_play",op:"abandon_region",targetPlayerIds:["1","2"]},
       {trigger:"on_play",op:"develop"},
       {trigger:"on_play",op:"develop",free:true},
       {trigger:"on_play",op:"exile_card",source:"market",cardId:"market_card"},
       {trigger:"on_play",op:"look_cards",source:"deck",count:2},
+      {trigger:"on_play",op:"conditional_resource_at_least",resource:"materials",atLeast:1,then:[
+        {trigger:"on_play",op:"draw_if_able",count:1}
+      ],else:[
+        {trigger:"on_play",op:"gain_resource",resource:"materials",amount:1}
+      ]},
+      {trigger:"on_play",op:"conditional_state_is",state:"barbarian",then:[
+        {trigger:"on_play",op:"draw_if_able",count:1}
+      ],else:[
+        {trigger:"on_play",op:"gain_resource",resource:"materials",amount:1}
+      ]},
       {trigger:"on_play",op:"choose_one",choices:[
         [{trigger:"on_play",op:"gain_resource",resource:"materials",amount:1}],
         [{trigger:"on_play",op:"optional",effects:[{trigger:"on_play",op:"draw_if_able",count:1}]}]
@@ -147,6 +181,18 @@ describe("private card import", () => {
     expect(report.counts.fatal).toBe(0);
     expect(normalizeCard({...base,effect_ops_json} as any).effects).toEqual([
       {trigger:"on_play",op:"develop",free:true}
+    ]);
+  });
+  it("preserves free-play card metadata from private card imports",()=> {
+    const effect_ops_json = JSON.stringify([
+      {trigger:"on_play",op:"free_play_card",cardId:"hand_action",suit:"civilized",cardType:"action",ignoreStateRequirement:true}
+    ]);
+
+    const report = validatePrivateCardsRows([{...base,effect_ops_json}]);
+
+    expect(report.counts.fatal).toBe(0);
+    expect(normalizeCard({...base,effect_ops_json} as any).effects).toEqual([
+      {trigger:"on_play",op:"free_play_card",cardId:"hand_action",suit:"civilized",cardType:"action",ignoreStateRequirement:true}
     ]);
   });
   it("rejects empty nested effect branches before runtime",()=> {
@@ -502,6 +548,18 @@ describe("private card import", () => {
     const effect_ops_json = JSON.stringify([
       {trigger:"on_play",op:"give_card",cardId:1,targetPlayerId:["1"]},
       {trigger:"on_play",op:"take_unrest",count:1,targetPlayerIds:"1"},
+      {trigger:"on_play",op:"gain_fame",count:1,targetPlayerScope:"all"},
+      {trigger:"on_play",op:"gain_resource",resource:"materials",amount:1,targetPlayerScope:"neighbor"},
+      {trigger:"on_play",op:"gain_resource",resource:"materials",amount:1,optionalForTargets:true},
+      {trigger:"on_play",op:"gain_resource",resource:"materials",amount:1,fromPlayerIds:["1"]},
+      {trigger:"on_play",op:"gain_resource",resource:"materials",amount:1,ifUnable:[
+        {trigger:"on_play",op:"draw_if_able",count:1}
+      ]},
+      {trigger:"on_play",op:"gain_resource",resource:"materials",amount:1,attackTargeted:true},
+      {trigger:"on_play",op:"take_unrest",targetPlayerIds:["1"],count:1,attackTargeted:"yes"},
+      {trigger:"on_play",op:"steal_resource",resource:"materials",amount:1,targetPlayerScope:"others",fromPlayerIds:"1"},
+      {trigger:"on_play",op:"steal_resource",resource:"materials",amount:1,targetPlayerScope:"others",ifUnable:[]},
+      {trigger:"on_play",op:"recall_region",targetPlayerIds:"1"},
       {trigger:"on_play",op:"garrison_card",hostCardId:1,cardId:false},
       {trigger:"on_play",op:"swap_card",sourceZone:"hand",marketCardId:false},
       {trigger:"on_play",op:"find_card",sourceZones:[],destination:"discard",suit:"region"},
@@ -510,16 +568,26 @@ describe("private card import", () => {
 
     const report = validatePrivateCardsRows([{...base,effect_ops_json}]);
 
-    expect(report.counts.fatal).toBe(8);
+    expect(report.counts.fatal).toBe(18);
     expect(report.errors.map((e)=>e.message)).toEqual(expect.arrayContaining([
       "Invalid cardId for give_card at effect_ops_json[0]: 1",
       "Invalid targetPlayerId for give_card at effect_ops_json[0]: 1",
       "Invalid targetPlayerIds for take_unrest at effect_ops_json[1]",
-      "Invalid hostCardId for garrison_card at effect_ops_json[2]: 1",
-      "Invalid cardId for garrison_card at effect_ops_json[2]: false",
-      "Invalid marketCardId for swap_card at effect_ops_json[3]: false",
-      "Invalid sourceZones for find_card at effect_ops_json[4]",
-      "Invalid sourceZone for place_card_on_deck at effect_ops_json[5]"
+      "Invalid targetPlayerScope for gain_fame at effect_ops_json[2]: all",
+      "Invalid targetPlayerScope for gain_resource at effect_ops_json[3]: neighbor",
+      "Invalid optionalForTargets for gain_resource at effect_ops_json[4]: true",
+      "Invalid fromPlayerIds for gain_resource at effect_ops_json[5]",
+      "Invalid ifUnable for gain_resource at effect_ops_json[6]",
+      "Invalid attackTargeted for gain_resource at effect_ops_json[7]: true",
+      "Invalid attackTargeted for take_unrest at effect_ops_json[8]: yes",
+      "Invalid fromPlayerIds for steal_resource at effect_ops_json[9]",
+      "effect_ops_json[10].ifUnable must contain at least one effect",
+      "Invalid targetPlayerIds for recall_region at effect_ops_json[11]",
+      "Invalid hostCardId for garrison_card at effect_ops_json[12]: 1",
+      "Invalid cardId for garrison_card at effect_ops_json[12]: false",
+      "Invalid marketCardId for swap_card at effect_ops_json[13]: false",
+      "Invalid sourceZones for find_card at effect_ops_json[14]",
+      "Invalid sourceZone for place_card_on_deck at effect_ops_json[15]"
     ]));
   });
   it("rejects malformed reactive Exhaust metadata before runtime",()=> {

@@ -76,6 +76,97 @@ describe("nation ruleset validation", () => {
     expect(issues).toEqual([]);
   });
 
+  it("accepts every current ruleset override and hook condition shape", () => {
+    const issues = validateNationRuleset(ruleset({
+      setupOverrides: [
+        { op: "set_initial_resources", resources: { materials: 1, knowledge: 0 } },
+        { op: "gain_resource", resource: "materials", count: 1 },
+        { op: "set_action_tokens_base", count: 3 },
+        { op: "move_cards_to_unrest_supply", cardIds: ["placeholder_unrest"] },
+        { op: "create_side_area", areaId: "public_track", displayName: "Public Track", public: true }
+      ],
+      zoneOverrides: [
+        { op: "disable_history", replacementBehavior: "alternate_zone" },
+        { op: "replace_history_with_zone", zoneId: "archive", displayName: "Archive", cardsScore: true },
+        { op: "create_zone", zoneId: "quest_area", displayName: "Quest Area", visibility: "public" }
+      ],
+      stateOverrides: [
+        { op: "start_as_state", state: "empire" },
+        { op: "never_flip_to_empire" },
+        { op: "flip_state_on_solstice", sequence: ["barbarian", "empire"], loop: true },
+        { op: "take_unrest_when_spending_resource", resource: "knowledge", state: "barbarian" },
+        { op: "suppress_king_of_kings_reward", state: "empire" }
+      ],
+      reshuffleOverrides: [
+        { op: "skip_default_nation_card_addition" },
+        { op: "development_available_from_start" },
+        { op: "trigger_game_end_when_card_added", cardId: "terminal_card" },
+        { op: "place_nation_card_in_play_when_added", cardId: "nadir_card", suppressStateFlip: true },
+        { op: "custom_reshuffle_effect", effect: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }] }
+      ],
+      cleanupOverrides: [
+        { op: "prevent_voluntary_discard" },
+        { op: "market_resource_added", resource: "goods", count: 1 },
+        { op: "custom_cleanup_effect", effect: [{ trigger: "on_play", op: "draw_if_able", count: 1 }] }
+      ],
+      solsticeOverrides: [
+        { op: "flip_state" },
+        { op: "remove_play_card_and_nation_deck_if_resource_empty", cardId: "reactor_card", resource: "knowledge", state: "alien", activateState: "native" },
+        { op: "custom_solstice_effect", effect: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }] }
+      ],
+      scoringOverrides: [
+        { op: "exclude_zone_from_scoring", zoneId: "history" },
+        { op: "score_resource_ratio", resource: "knowledge", denominator: 3, numerator: 1, state: "alien" },
+        { op: "custom_scoring_effect", effect: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }] }
+      ],
+      collapseOverrides: [
+        { op: "auto_win_if_zone_empty", zoneId: "chaos_pile" },
+        { op: "custom_collapse_resolution", effect: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }] }
+      ],
+      botOverrides: [
+        { op: "skip_default_dynasty_setup" },
+        { op: "skip_bot_accession_state_flip" },
+        { op: "bot_cleanup_market_resource", resource: "goods", count: 1 },
+        { op: "custom_dynasty_setup", config: { cardIds: ["dynasty_card"] } },
+        { op: "custom_bot_state_stack", cardIds: ["bot_state_card"] },
+        { op: "initial_bot_state_table", tableId: "state_table", side: "S" },
+        { op: "bot_custom_cleanup", effect: [{ op: "bot_gain_resource", resource: "materials", count: 1 }] }
+      ],
+      shortGameOverrides: [
+        { op: "excluded_from_short_game" },
+        { op: "custom_short_game_setup", effect: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }] },
+        { op: "add_nation_cards_to_discard", count: 2 },
+        { op: "skip_accession_development_exile" },
+        { op: "remove_starting_resource", resource: "materials", count: 1 },
+        { op: "remove_starting_resources", resources: ["materials", "knowledge"] },
+        { op: "develop_one_remove_one_development", developCardId: "develop_card", removeCardId: "remove_card" },
+        { op: "move_development_cards_to_discard", cardIds: ["winter_card", "summer_card"] },
+        { op: "move_one_advanced_nation_card_to_side_area", areaId: "mana_track", selection: "random" },
+        { op: "garrison_development_and_add_nation_to_starting_deck", developmentCardId: "quest_card", hostCardId: "host_region" }
+      ],
+      hookRules: [
+        { trigger: "before_setup_player", condition: { op: "always" }, effects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }] },
+        { trigger: "after_setup_player", condition: { op: "state_is", state: "barbarian" }, effects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }] },
+        { trigger: "before_play_card", condition: { op: "zone_empty", zoneId: "nationDeck" }, effects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }] },
+        { trigger: "after_play_card", condition: { op: "zone_has_at_least", zoneId: "discard", count: 1 }, effects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }] },
+        { trigger: "before_acquire", condition: { op: "card_in_zone", cardId: "watched_card", zoneId: "playArea" }, effects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }] },
+        { trigger: "after_acquire", condition: { op: "expansion_enabled", expansion: "trade_routes" }, effects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }] },
+        { trigger: "after_break_through", condition: { op: "variant_enabled", variant: "short_game" }, effects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }] },
+        { trigger: "after_revolt", condition: { op: "mode_is", mode: "solo" }, effects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }] },
+        { trigger: "before_reshuffle", condition: { op: "payload_card_is", payloadKey: "cardId", cardId: "payload_card" }, effects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }] },
+        { trigger: "after_reshuffle", condition: { op: "payload_card_suit_is", payloadKey: "cardId", suit: "civilized" }, effects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }] },
+        { trigger: "after_develop", condition: { op: "payload_card_type_is", payloadKey: "cardId", cardType: "development" }, effects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }] },
+        { trigger: "after_gain_unrest", condition: { op: "payload_card_has_tag", payloadKey: "cardId", tag: "unrest" }, effects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }] },
+        { trigger: "before_solstice", effects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }] },
+        { trigger: "after_solstice", effects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }] },
+        { trigger: "before_scoring", effects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }] },
+        { trigger: "after_scoring", effects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }] }
+      ]
+    }));
+
+    expect(issues).toEqual([]);
+  });
+
   it("rejects payload card hook suit conditions outside real suit icons", () => {
     const issues = validateNationRuleset(ruleset({
       hookRules: [
@@ -766,6 +857,46 @@ describe("nation ruleset validation", () => {
     }));
   });
 
+  it("accepts free-play card effects with card, suit, type, and state-bypass filters in rulesets", () => {
+    const issues = validateNationRuleset(ruleset({
+      hookRules: [{
+        trigger: "after_reshuffle",
+        effects: [
+          { trigger: "on_play", op: "free_play_card", cardId: "hand_action", suit: "civilized", cardType: "action", ignoreStateRequirement: true } as any,
+        ],
+      }],
+    }));
+
+    expect(issues).not.toContainEqual(expect.objectContaining({
+      field: "hookRules[0].effects[0].op",
+    }));
+    expect(issues).not.toContainEqual(expect.objectContaining({
+      field: "hookRules[0].effects[0].cardId",
+    }));
+    expect(issues).not.toContainEqual(expect.objectContaining({
+      field: "hookRules[0].effects[0].ignoreStateRequirement",
+    }));
+  });
+
+  it("accepts up-to Draw metadata in rulesets", () => {
+    const issues = validateNationRuleset(ruleset({
+      hookRules: [{
+        trigger: "after_reshuffle",
+        effects: [
+          { trigger: "on_play", op: "draw", count: 2, upTo: true } as any,
+          { trigger: "on_play", op: "draw_if_able", count: 2, upTo: true } as any,
+        ],
+      }],
+    }));
+
+    expect(issues).not.toContainEqual(expect.objectContaining({
+      field: "hookRules[0].effects[0].upTo",
+    }));
+    expect(issues).not.toContainEqual(expect.objectContaining({
+      field: "hookRules[0].effects[1].upTo",
+    }));
+  });
+
   it("accepts counted Recall and Abandon Region effects in rulesets", () => {
     const issues = validateNationRuleset(ruleset({
       hookRules: [{
@@ -782,6 +913,38 @@ describe("nation ruleset validation", () => {
     }));
     expect(issues).not.toContainEqual(expect.objectContaining({
       field: "hookRules[0].effects[1].count",
+    }));
+  });
+
+  it("accepts dynamic player scopes for supported effects in rulesets", () => {
+    const issues = validateNationRuleset(ruleset({
+      hookRules: [{
+        trigger: "after_reshuffle",
+        effects: [
+          { trigger: "on_play", op: "draw", count: 1, targetPlayerScope: "others", optionalForTargets: true } as any,
+          { trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1, targetPlayerScope: "all" } as any,
+          { trigger: "on_play", op: "take_unrest", count: 1, targetPlayerScope: "others" } as any,
+          { trigger: "on_play", op: "steal_resource", resource: "materials", amount: 1, targetPlayerScope: "others", ifUnable: [
+            { trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 },
+          ] } as any,
+          { trigger: "on_play", op: "steal_resource", resource: "materials", amount: 1, fromPlayerIds: ["1", "2"], ifUnable: [
+            { trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 },
+          ], attackTargeted: true } as any,
+          { trigger: "on_play", op: "recall_region", targetPlayerScope: "others" } as any,
+          { trigger: "on_play", op: "abandon_region", targetPlayerIds: ["1", "2"] } as any,
+          { trigger: "on_play", op: "take_unrest", count: 1, targetPlayerIds: ["1"], attackTargeted: true } as any,
+        ],
+      }],
+    }));
+
+    expect(issues).not.toContainEqual(expect.objectContaining({
+      field: "hookRules[0].effects[0].targetPlayerScope",
+    }));
+    expect(issues).not.toContainEqual(expect.objectContaining({
+      field: "hookRules[0].effects[1].targetPlayerScope",
+    }));
+    expect(issues).not.toContainEqual(expect.objectContaining({
+      field: "hookRules[0].effects[4].attackTargeted",
     }));
   });
 
@@ -1150,6 +1313,16 @@ describe("nation ruleset validation", () => {
         effects: [
           { trigger: "on_play", op: "give_card", cardId: 1, targetPlayerId: ["1"] } as any,
           { trigger: "on_play", op: "take_unrest", count: 1, targetPlayerIds: "1" } as any,
+          { trigger: "on_play", op: "gain_fame", count: 1, targetPlayerScope: "all" } as any,
+          { trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1, targetPlayerScope: "neighbor" } as any,
+          { trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1, optionalForTargets: true } as any,
+          { trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1, fromPlayerIds: ["1"] } as any,
+          { trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1, ifUnable: [{ trigger: "on_play", op: "draw_if_able", count: 1 }] } as any,
+          { trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1, attackTargeted: true } as any,
+          { trigger: "on_play", op: "take_unrest", count: 1, targetPlayerIds: ["1"], attackTargeted: "yes" } as any,
+          { trigger: "on_play", op: "steal_resource", resource: "materials", amount: 1, targetPlayerScope: "others", fromPlayerIds: "1" } as any,
+          { trigger: "on_play", op: "steal_resource", resource: "materials", amount: 1, targetPlayerScope: "others", ifUnable: [] } as any,
+          { trigger: "on_play", op: "recall_region", targetPlayerIds: "1" } as any,
           { trigger: "on_play", op: "garrison_card", hostCardId: 1, cardId: false } as any,
           { trigger: "on_play", op: "swap_card", sourceZone: "hand", marketCardId: false } as any,
         ],
@@ -1174,17 +1347,67 @@ describe("nation ruleset validation", () => {
       },
       {
         nationId: "test_nation",
-        field: "hookRules[0].effects[2].hostCardId",
+        field: "hookRules[0].effects[2].targetPlayerScope",
+        reason: "invalid targetPlayerScope 'all'",
+      },
+      {
+        nationId: "test_nation",
+        field: "hookRules[0].effects[3].targetPlayerScope",
+        reason: "invalid targetPlayerScope 'neighbor'",
+      },
+      {
+        nationId: "test_nation",
+        field: "hookRules[0].effects[4].optionalForTargets",
+        reason: "invalid optionalForTargets 'true'",
+      },
+      {
+        nationId: "test_nation",
+        field: "hookRules[0].effects[5].fromPlayerIds",
+        reason: "invalid fromPlayerIds",
+      },
+      {
+        nationId: "test_nation",
+        field: "hookRules[0].effects[6].ifUnable",
+        reason: "invalid ifUnable",
+      },
+      {
+        nationId: "test_nation",
+        field: "hookRules[0].effects[7].attackTargeted",
+        reason: "invalid attackTargeted 'true'",
+      },
+      {
+        nationId: "test_nation",
+        field: "hookRules[0].effects[8].attackTargeted",
+        reason: "invalid attackTargeted 'yes'",
+      },
+      {
+        nationId: "test_nation",
+        field: "hookRules[0].effects[9].fromPlayerIds",
+        reason: "invalid fromPlayerIds",
+      },
+      {
+        nationId: "test_nation",
+        field: "hookRules[0].effects[10].ifUnable",
+        reason: "ifUnable must contain at least one effect",
+      },
+      {
+        nationId: "test_nation",
+        field: "hookRules[0].effects[11].targetPlayerIds",
+        reason: "invalid targetPlayerIds",
+      },
+      {
+        nationId: "test_nation",
+        field: "hookRules[0].effects[12].hostCardId",
         reason: "invalid hostCardId '1'",
       },
       {
         nationId: "test_nation",
-        field: "hookRules[0].effects[2].cardId",
+        field: "hookRules[0].effects[12].cardId",
         reason: "invalid cardId 'false'",
       },
       {
         nationId: "test_nation",
-        field: "hookRules[0].effects[3].marketCardId",
+        field: "hookRules[0].effects[13].marketCardId",
         reason: "invalid marketCardId 'false'",
       },
     ]));

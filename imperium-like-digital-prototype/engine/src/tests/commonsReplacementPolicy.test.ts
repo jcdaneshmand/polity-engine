@@ -33,6 +33,31 @@ describe("commons replacement policy", () => {
     expect(found?.id).toBe("replacement_direct");
   });
 
+  it("prefer_latest chooses the freshest eligible direct replacement", () => {
+    const removed = card({ id: "original_common", commonsSetId: "classics" });
+    const olderReplacement = card({
+      id: "older_replacement",
+      ownership: "replacement",
+      commonsGroup: "replacement",
+      commonsSetId: "legends",
+      replacementForCardId: "original_common"
+    });
+    const latestReplacement = card({
+      id: "latest_replacement",
+      ownership: "replacement",
+      commonsGroup: "replacement",
+      commonsSetId: "horizons",
+      replacementForCardId: "original_common"
+    });
+    const found = findEligibleReplacementCard({
+      removedCard: removed,
+      allCards: [removed, olderReplacement, latestReplacement],
+      selectedCards: [],
+      options: options({ replacementPolicy: "prefer_latest" })
+    });
+    expect(found?.id).toBe("latest_replacement");
+  });
+
   it("does not substitute non-replacement cards even when replacement metadata matches", () => {
     const removed = card({ id: "conflicting", replacementGroupId: "group_a" });
     const nationCandidate = card({ id: "nation_candidate", ownership: "nation", replacementGroupId: "group_a" });

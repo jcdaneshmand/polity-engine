@@ -3685,6 +3685,63 @@ describe("turn loop", () => {
     expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): no_resolvable_on_play_effects(${card})`);
   });
 
+  it("free-play effects choose a hand card, resolve its text, and resume source effects", () => {
+    const G = createInitialState();
+    G.players["0"].hand = ["source_free_play", "free_target"];
+    G.players["0"].actionsRemaining = 0;
+    G.players["0"].actionTokensAvailable = 0;
+    G.players["0"].resources.materials = 1;
+    G.players["0"].resources.knowledge = 0;
+    G.players["0"].resources.influence = 0;
+    G.cardDb.source_free_play = {
+      id: "source_free_play",
+      displayName: "Source Free Play",
+      type: "action",
+      cardType: "action",
+      suit: "none",
+      cost: 0,
+      tags: ["free_play"],
+      effects: [
+        { trigger: "on_play", op: "free_play_card", suit: "civilized" } as any,
+        { trigger: "on_play", op: "gain_resource", resource: "influence", amount: 1 } as any
+      ]
+    };
+    G.cardDb.free_target = {
+      id: "free_target",
+      displayName: "Free Target",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 0,
+      tags: [],
+      effects: [
+        { trigger: "on_play", op: "spend_resource", resource: "materials", amount: 1 } as any,
+        { trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 } as any
+      ]
+    };
+
+    playCard({ G, ctx }, "source_free_play");
+
+    expect(G.pendingFreePlayChoice).toMatchObject({
+      playerId: "0",
+      sourceCardId: "source_free_play",
+      cardIds: ["free_target"]
+    });
+    expect(G.players["0"].playArea).toContain("source_free_play");
+    expect(G.players["0"].discard).not.toContain("source_free_play");
+
+    (PrototypeGame.moves as any).resolveFreePlayChoice({ G, ctx }, "free_target");
+
+    expect(G.pendingFreePlayChoice).toBeUndefined();
+    expect(G.players["0"].discard).toEqual(expect.arrayContaining(["source_free_play", "free_target"]));
+    expect(G.players["0"].actionsRemaining).toBe(0);
+    expect(G.players["0"].actionTokensAvailable).toBe(0);
+    expect(G.players["0"].resources.materials).toBe(0);
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["0"].resources.influence).toBe(1);
+    expect(G.freePlayedThisTurn?.["0"]).toEqual(expect.arrayContaining(["source_free_play", "free_target"]));
+  });
+
   it("blocks playing cards whose state requirement does not match the visible State card", () => {
     const G = createInitialState();
     G.players["0"].stateArea = ["barbarian_state"];
@@ -7388,6 +7445,70 @@ describe("turn loop", () => {
     expect(G.players["0"].resources.knowledge).toBe(0);
   });
 
+  it("resumes the remaining chosen Solstice cards after a Return Exhaust token choice", () => {
+    const G = createInitialState();
+    G.players["0"].playArea = ["spent_exhaust_card_a", "spent_exhaust_card_b", "return_exhaust_solstice_card", "gain_solstice_card"];
+    G.players["0"].hand = [];
+    G.players["1"].hand = [];
+    G.players["0"].exhaustTokensAvailable = 0;
+    G.cardStates = {
+      spent_exhaust_card_a: { exhaustTokens: 1 },
+      spent_exhaust_card_b: { exhaustTokens: 1 }
+    };
+    G.cardDb.spent_exhaust_card_a = {
+      id: "spent_exhaust_card_a",
+      displayName: "Spent Exhaust A",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb.spent_exhaust_card_b = {
+      id: "spent_exhaust_card_b",
+      displayName: "Spent Exhaust B",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: []
+    };
+    G.cardDb.return_exhaust_solstice_card = {
+      id: "return_exhaust_solstice_card",
+      displayName: "Return Exhaust Solstice",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_solstice", op: "return_exhaust_token" } as any]
+    };
+    G.cardDb.gain_solstice_card = {
+      id: "gain_solstice_card",
+      displayName: "Gain Solstice",
+      type: "in_play",
+      cardType: "in_play",
+      suit: "none",
+      cost: 0,
+      tags: [],
+      effects: [{ trigger: "on_solstice", op: "gain_resource", resource: "knowledge", amount: 1 } as any]
+    };
+
+    onTurnEnd(G, { currentPlayer: "1", playOrder: ["0", "1"] } as any);
+    resolveSolsticeOrderChoice({ G, ctx }, ["return_exhaust_solstice_card", "gain_solstice_card"]);
+    resolveReturnExhaustTokenChoice({ G, ctx }, "spent_exhaust_card_b");
+
+    expect(G.pendingReturnExhaustTokenChoice).toBeUndefined();
+    expect(G.pendingSolsticeContinuation).toBeUndefined();
+    expect(G.players["0"].exhaustTokensAvailable).toBe(1);
+    expect(G.cardStates?.spent_exhaust_card_a?.exhaustTokens).toBe(1);
+    expect(G.cardStates?.spent_exhaust_card_b?.exhaustTokens).toBe(0);
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.round).toBe(2);
+  });
+
   it("resumes the remaining chosen Solstice order after a card in that order creates a pending choice", () => {
     const G = createInitialState();
     G.players["0"].playArea = ["choice_solstice_card", "gain_solstice_card"];
@@ -10057,6 +10178,35 @@ describe("turn loop", () => {
     expect(G.players["0"].resources.goods).toBe(1);
     expect(G.players["0"].hand).toContain("progress_paid_market_card");
     expect(G.market).toEqual([]);
+  });
+
+  it("does not acquire from the market when selected payment overpays the cost", () => {
+    const G = createInitialState();
+    G.cardDb.progress_paid_market_card = {
+      id: "progress_paid_market_card",
+      displayName: "Progress Paid Market Card",
+      type: "action",
+      cardType: "action",
+      suit: "civilized",
+      cost: 2,
+      tags: [],
+      effects: []
+    };
+    G.market = ["progress_paid_market_card"];
+    G.marketRefillPool = [];
+    G.marketDecks = undefined;
+    G.players["0"].resources.materials = 0;
+    G.players["0"].resources.knowledge = 1;
+    G.players["0"].resources.goods = 1;
+
+    acquireCard({ G, ctx }, "progress_paid_market_card", { knowledge: 1, goods: 1 });
+
+    expect(G.players["0"].resources.materials).toBe(0);
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["0"].resources.goods).toBe(1);
+    expect(G.players["0"].hand).not.toContain("progress_paid_market_card");
+    expect(G.market).toEqual(["progress_paid_market_card"]);
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(acquireCard): insufficient_materials(required=2, available=4)");
   });
 
   it("requires direct Progress and Goods for structured market acquire costs", () => {

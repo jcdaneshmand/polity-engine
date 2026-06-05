@@ -39,7 +39,6 @@ describe("OnlineGames", () => {
   it("renders the action-first hub sections", () => {
     const html = renderToStaticMarkup(
       <OnlineGames
-        serverURL="http://localhost:8000"
         setupConfig={config}
         privateDataFingerprint="placeholder"
         savedSessions={[]}
@@ -75,7 +74,6 @@ describe("OnlineGames", () => {
     };
     const html = renderToStaticMarkup(
       <OnlineGames
-        serverURL="http://localhost:8000"
         setupConfig={config}
         privateDataFingerprint="placeholder"
         savedSessions={[]}
@@ -110,7 +108,6 @@ describe("OnlineGames", () => {
 
     const html = renderToStaticMarkup(
       <OnlineGames
-        serverURL="http://localhost:8000"
         setupConfig={config}
         privateDataFingerprint="placeholder"
         savedSessions={[saved]}

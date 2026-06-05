@@ -3,7 +3,6 @@ import type { ListedMatch, OnlineSessionRecord } from "../../onlineSession";
 import type { NewGameSessionConfig } from "../setup/NewGameSetup";
 
 type OnlineGamesProps = {
-  serverURL: string;
   setupConfig: NewGameSessionConfig;
   privateDataFingerprint: string;
   savedSessions: OnlineSessionRecord[];
@@ -41,7 +40,6 @@ function formatSeatList(match: ListedMatch): string {
 }
 
 export default function OnlineGames({
-  serverURL,
   setupConfig,
   privateDataFingerprint,
   savedSessions,
@@ -97,7 +95,6 @@ export default function OnlineGames({
             <button type="button" onClick={onBackToSetup}>Setup</button>
           </div>
         </div>
-        <p className="setup-help">Server: {serverURL}</p>
         {statusMessage ? <p className="online-games-status">{statusMessage}</p> : null}
 
         <section className="setup-stage" aria-labelledby="online-resume">

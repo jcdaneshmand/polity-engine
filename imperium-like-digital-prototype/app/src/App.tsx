@@ -280,7 +280,6 @@ export default function App() {
       return (
         <div className="app-home" data-theme="default">
           <OnlineGames
-            serverURL={multiplayerServerURL}
             setupConfig={currentOnlineConfig}
             privateDataFingerprint={currentPrivateDataFingerprint}
             savedSessions={savedOnlineSession ? [savedOnlineSession] : []}

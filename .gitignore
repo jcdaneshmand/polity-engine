@@ -1,6 +1,7 @@
 imperium-like-digital-prototype/private-card-data/private_nations_README.md
 .codex-tools/
 .npm-cache/
+.superpowers/
 /data/private/*.csv
 /data/private/*.json
 /private-data/

@@ -125,7 +125,7 @@ async function postLobbyJSON<T>(url: string, body: unknown, fetcher: Fetcher): P
   if (!response.ok) {
     throw new Error(`Lobby request failed (${response.status})`);
   }
-  return await response.json() as T;
+  return await parseLobbyJSON<T>(response);
 }
 
 async function getLobbyJSON<T>(url: string, fetcher: Fetcher): Promise<T> {
@@ -133,7 +133,19 @@ async function getLobbyJSON<T>(url: string, fetcher: Fetcher): Promise<T> {
   if (!response.ok) {
     throw new Error(`Lobby request failed (${response.status})`);
   }
-  return await response.json() as T;
+  return await parseLobbyJSON<T>(response);
+}
+
+async function parseLobbyJSON<T>(response: Response): Promise<T> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.toLowerCase().includes("application/json")) {
+    throw new Error("Online lobby is not available from this app server.");
+  }
+  try {
+    return await response.json() as T;
+  } catch {
+    throw new Error("Online lobby returned an invalid response.");
+  }
 }
 
 export async function createOnlineMatch(args: { serverURL: string; numPlayers: number; setupData: unknown; fetcher?: Fetcher }): Promise<{ matchID: string }> {

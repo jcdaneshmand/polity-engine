@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { buildJoinURL, computePrivateDataFingerprint, createOnlineMatch, createPolityOnlineMatch, joinOnlineMatch, joinPolityOnlineMatch, listOnlineMatches, ONLINE_SESSION_STORAGE_KEY, parseJoinURL, parseOnlineSessionRecord, resolveMultiplayerServerURL, serializeOnlineSessionRecord, sortListedMatches, spectateOnlineMatch } from "./onlineSession";
 
+function jsonResponse(body: unknown): Response {
+  return {
+    ok: true,
+    headers: new Headers({ "content-type": "application/json" }),
+    json: async () => body
+  } as Response;
+}
+
 describe("online session utilities", () => {
   it("round-trips a saved online session record", () => {
     const record = {
@@ -39,12 +47,9 @@ describe("online session utilities", () => {
     const calls: Array<{ url: string; body: unknown }> = [];
     const fetcher = async (url: string, init?: RequestInit) => {
       calls.push({ url, body: JSON.parse(String(init?.body)) });
-      return {
-        ok: true,
-        json: async () => url.endsWith("/create")
-          ? { matchID: "match-123" }
-          : { playerCredentials: "joined-token" }
-      } as Response;
+      return jsonResponse(url.endsWith("/create")
+        ? { matchID: "match-123" }
+        : { playerCredentials: "joined-token" });
     };
 
     await expect(createOnlineMatch({ serverURL: "http://localhost:8000", numPlayers: 2, setupData: { mode: "multiplayer" }, fetcher })).resolves.toEqual({ matchID: "match-123" });
@@ -73,15 +78,10 @@ describe("online session utilities", () => {
     const calls: Array<{ url: string; body?: unknown }> = [];
     const fetcher = async (url: string, init?: RequestInit) => {
       calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
-      return {
-        ok: true,
-        json: async () => {
-          if (url.endsWith("/matches") && init?.method !== "POST") return { matches: [{ matchID: "m1", roomName: "Open", status: "setup", playerCount: 2, occupiedSeats: [], availableSeats: ["0", "1"], isLocked: false, spectatingAllowed: true, privateDataLabel: "placeholder", createdAt: "a", updatedAt: "b", setupSummary: { commonsSetId: "classics", enabledExpansions: [], enabledVariants: [], nationLabels: [] } }] };
-          if (url.endsWith("/join")) return { playerCredentials: "player-token", playerID: "0" };
-          if (url.endsWith("/spectate")) return { spectatorCredentials: "watch-token" };
-          return { matchID: "m1" };
-        }
-      } as Response;
+      if (url.endsWith("/matches") && init?.method !== "POST") return jsonResponse({ matches: [{ matchID: "m1", roomName: "Open", status: "setup", playerCount: 2, occupiedSeats: [], availableSeats: ["0", "1"], isLocked: false, spectatingAllowed: true, privateDataLabel: "placeholder", createdAt: "a", updatedAt: "b", setupSummary: { commonsSetId: "classics", enabledExpansions: [], enabledVariants: [], nationLabels: [] } }] });
+      if (url.endsWith("/join")) return jsonResponse({ playerCredentials: "player-token", playerID: "0" });
+      if (url.endsWith("/spectate")) return jsonResponse({ spectatorCredentials: "watch-token" });
+      return jsonResponse({ matchID: "m1" });
     };
 
     await expect(listOnlineMatches({ serverURL: "http://localhost:8000", fetcher })).resolves.toHaveLength(1);
@@ -102,10 +102,7 @@ describe("online session utilities", () => {
     const calls: Array<{ url: string; body?: unknown }> = [];
     const fetcher = async (url: string, init?: RequestInit) => {
       calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
-      return {
-        ok: true,
-        json: async () => ({ playerCredentials: "player-token", playerID: "1" })
-      } as Response;
+      return jsonResponse({ playerCredentials: "player-token", playerID: "1" });
     };
 
     await expect(joinPolityOnlineMatch({
@@ -117,6 +114,17 @@ describe("online session utilities", () => {
     })).resolves.toEqual({ playerCredentials: "player-token", playerID: "1" });
 
     expect(calls[0].body).toEqual({ playerName: "A", privateDataFingerprint: "placeholder" });
+  });
+
+  it("reports non-JSON lobby responses without leaking HTML parse errors", async () => {
+    const fetcher = async () => ({
+      ok: true,
+      headers: new Headers({ "content-type": "text/html" }),
+      json: async () => JSON.parse("<!doctype html>")
+    }) as Response;
+
+    await expect(listOnlineMatches({ serverURL: "http://localhost:5173", fetcher }))
+      .rejects.toThrow("Online lobby is not available from this app server.");
   });
 
   it("sorts listed matches by joinability before spectation and full games", () => {

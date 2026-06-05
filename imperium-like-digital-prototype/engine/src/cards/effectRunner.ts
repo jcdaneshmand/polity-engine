@@ -18,6 +18,7 @@ import { currentStateMatches } from "../game/stateMatching";
 import { isEffectiveAccessionCard, lookableNationDeckCards } from "../game/nationDeck";
 import { actualHistorySourceZoneIds, moveCardsToHistoryDestination } from "../game/history";
 import { deckForSuit } from "../game/marketRefill";
+import { movePlayerResourcesToMarketCards } from "../game/marketResources";
 import { runNationHooksWithEffectRunner } from "../nations/nationHookCore";
 import type { NationHookTrigger } from "../nations/nationRulesetTypes";
 
@@ -108,7 +109,9 @@ type ResumablePendingChoice =
   | NonNullable<GameState["pendingGiveCardChoice"]>
   | NonNullable<GameState["pendingSwapChoice"]>
   | NonNullable<GameState["pendingLookOrderChoice"]>
+  | NonNullable<GameState["pendingLookTakeChoice"]>
   | NonNullable<GameState["pendingUnrestAllocationChoice"]>
+  | NonNullable<GameState["pendingMarketResourcePlacementChoice"]>
   | NonNullable<GameState["pendingReactiveExhaustChoice"]>
   | NonNullable<GameState["pendingAcquireEffectResolution"]>
   | NonNullable<GameState["pendingMarketMoveEffectResolution"]>
@@ -137,7 +140,9 @@ function pendingEffectInterruption(G: GameState): ResumablePendingChoice | undef
     ?? G.pendingGiveCardChoice
     ?? G.pendingSwapChoice
     ?? G.pendingLookOrderChoice
+    ?? G.pendingLookTakeChoice
     ?? G.pendingUnrestAllocationChoice
+    ?? G.pendingMarketResourcePlacementChoice
     ?? G.pendingReactiveExhaustChoice
     ?? (G.pendingAcquireEffectResolution?.resolving ? undefined : G.pendingAcquireEffectResolution)
     ?? (G.pendingMarketMoveEffectResolution?.resolving ? undefined : G.pendingMarketMoveEffectResolution)
@@ -723,6 +728,16 @@ function runLookCards(ctx: Ctx, effect: Extract<Effect, { op: "look_cards" }>): 
   ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `LookResolved(${effect.source}/count=${cardIds.length})` });
 }
 
+function runLookTakeCard(ctx: Ctx, effect: Extract<Effect, { op: "look_take_card" }>): void {
+  const destination = effect.destination ?? "hand";
+  const cardIds = lookableCards(ctx.G, ctx.playerId, ctx.G.players[ctx.playerId], effect.source).slice(0, Math.max(0, effect.count));
+  ctx.G.lookedCards = { playerId: ctx.playerId, source: effect.source, cardIds };
+  if (cardIds.length > 0) {
+    ctx.G.pendingLookTakeChoice = { playerId: ctx.playerId, sourceCardId: ctx.selfCardId, source: effect.source, destination, cardIds };
+  }
+  ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `LookTakePending(${effect.source}/count=${cardIds.length})` });
+}
+
 function runFindCard(ctx: Ctx, effect: Extract<Effect, { op: "find_card" }>): void {
   const player = ctx.G.players[ctx.playerId];
   const zones: FindZone[] = effect.sourceZones?.length ? effect.sourceZones : ["hand", "discard", "deck", "nationDeck"];
@@ -1182,8 +1197,17 @@ function canResolveDeckBreakThroughEffect(ctx: Ctx, suit: Suit, cardId?: string)
   return canGainResourceFromSupply(ctx.G, "materials", 1);
 }
 
-function discardCostCardIds(ctx: Ctx): string[] {
-  return ctx.G.players[ctx.playerId].hand.filter((cardId) => cardId !== ctx.selfCardId);
+function discardCostCardIds(ctx: Ctx, effect?: Extract<Effect, { op: "discard_cards" }>): string[] {
+  const hasFilters = effect?.suit !== undefined || effect?.cardType !== undefined;
+  return ctx.G.players[ctx.playerId].hand.filter((cardId) => {
+    if (cardId === ctx.selfCardId) return false;
+    if (!hasFilters) return true;
+    const card = ctx.G.cardDb[cardId];
+    if (!card) return false;
+    if (effect?.suit && !cardHasSuitIconForPlayer(ctx.G, ctx.playerId, card, effect.suit)) return false;
+    if (effect?.cardType && (card.cardType ?? card.type) !== effect.cardType) return false;
+    return true;
+  });
 }
 
 function canResolveEffectText(ctx: Ctx, effect: Effect): boolean {
@@ -1202,6 +1226,8 @@ function canResolveEffectText(ctx: Ctx, effect: Effect): boolean {
       return !isTradeExpansionDisabled(ctx);
     case "gain_resource":
       return effect.amount > 0 && canGainResourceFromSupply(ctx.G, effect.resource, effect.amount);
+    case "move_resource_to_market":
+      return effect.amount > 0 && resourceAmount(p.resources, effect.resource) >= effect.amount && ctx.G.market.length >= effect.amount;
     case "gain_action":
       return effect.amount > 0;
     case "spend_action":
@@ -1218,7 +1244,7 @@ function canResolveEffectText(ctx: Ctx, effect: Effect): boolean {
     case "discard_random":
       return p.hand.length > (effect.trigger === "on_play" ? 1 : 0);
     case "discard_cards":
-      return effect.count > 0 && discardCostCardIds(ctx).length >= effect.count;
+      return effect.count > 0 && discardCostCardIds(ctx, effect).length >= effect.count;
     case "return_unrest":
       return canResolveReturnUnrestEffect(ctx, effect);
     case "return_fame":
@@ -1267,6 +1293,8 @@ function canResolveEffectText(ctx: Ctx, effect: Effect): boolean {
       return canResolveFindEffect(ctx, effect);
     case "look_cards":
       return effect.count > 0 && lookableCards(ctx.G, ctx.playerId, p, effect.source).length > 0;
+    case "look_take_card":
+      return effect.count > 0 && lookableCards(ctx.G, ctx.playerId, p, effect.source).length > 0;
     case "optional":
       return choiceOptionCanResolve(ctx, effect.effects);
     case "choose_one":
@@ -1293,6 +1321,8 @@ function canResolveChoiceEffectText(ctx: Ctx, effect: Effect): boolean {
       return effect.count > 0 && p.deck.length > 0;
     case "gain_resource":
       return effect.amount > 0 && canGainResourceFromSupply(ctx.G, effect.resource, effect.amount);
+    case "move_resource_to_market":
+      return effect.amount > 0 && resourceAmount(p.resources, effect.resource) >= effect.amount && ctx.G.market.length >= effect.amount;
     case "spend_action":
       return effect.amount > 0 && p.actionsRemaining >= effect.amount && p.actionTokensAvailable >= effect.amount;
     case "remove_resource":
@@ -1303,10 +1333,12 @@ function canResolveChoiceEffectText(ctx: Ctx, effect: Effect): boolean {
     case "spend_resource":
       return effect.amount > 0 && canPayResourceCost(ctx.G, ctx.playerId, effect.resource, effect.amount);
     case "discard_cards":
-      return effect.count > 0 && discardCostCardIds(ctx).length >= effect.count;
+      return effect.count > 0 && discardCostCardIds(ctx, effect).length >= effect.count;
     case "gain_fame":
       return effect.count > 0 && canGainFameCard(ctx.G, ctx.playerId);
     case "look_cards":
+      return effect.count > 0 && lookableCards(ctx.G, ctx.playerId, p, effect.source).length > 0;
+    case "look_take_card":
       return effect.count > 0 && lookableCards(ctx.G, ctx.playerId, p, effect.source).length > 0;
     case "optional":
       return choiceOptionCanResolve(ctx, effect.effects);
@@ -1575,6 +1607,25 @@ function runEffect(ctx: Ctx, effect: Effect): boolean {
       }
       break;
     }
+    case "move_resource_to_market": {
+      if (effect.amount <= 0 || resourceAmount(p.resources, effect.resource) < effect.amount || ctx.G.market.length < effect.amount) {
+        ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `MoveResourceToMarketFailed(${effect.resource}/required=${effect.amount})` });
+        return false;
+      }
+      if (ctx.G.market.length === effect.amount) {
+        if (!movePlayerResourcesToMarketCards(ctx.G, { playerId: ctx.playerId, cardIds: [...ctx.G.market], resource: effect.resource })) return false;
+        break;
+      }
+      ctx.G.pendingMarketResourcePlacementChoice = {
+        playerId: ctx.playerId,
+        sourceCardId: ctx.selfCardId,
+        resource: effect.resource,
+        amount: effect.amount,
+        cardIds: [...ctx.G.market]
+      };
+      ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `MarketResourcePlacementPending(${ctx.selfCardId ?? "unknown"}/options=${ctx.G.market.length}/count=${effect.amount})` });
+      break;
+    }
     case "spend_resource": return payResourceCost(ctx.G, ctx.playerId, effect.resource, effect.amount);
     case "gain_action": {
       p.actionsRemaining += effect.amount;
@@ -1658,7 +1709,7 @@ function runEffect(ctx: Ctx, effect: Effect): boolean {
       break;
     }
     case "discard_cards": {
-      const cardIds = discardCostCardIds(ctx);
+      const cardIds = discardCostCardIds(ctx, effect);
       if (effect.count <= 0 || cardIds.length < effect.count) {
         ctx.G.log.push({ round: ctx.G.round, playerId: ctx.playerId, message: `DiscardCardsFailed(required=${effect.count}/available=${cardIds.length})` });
         return false;
@@ -2498,6 +2549,10 @@ function runEffect(ctx: Ctx, effect: Effect): boolean {
     }
     case "look_cards": {
       runLookCards(ctx, effect);
+      break;
+    }
+    case "look_take_card": {
+      runLookTakeCard(ctx, effect);
       break;
     }
     case "conditional_resource_at_least": {

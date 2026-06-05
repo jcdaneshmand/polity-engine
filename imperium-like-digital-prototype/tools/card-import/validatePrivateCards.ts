@@ -29,6 +29,7 @@ const effectOps = new Set([
   "draw",
   "draw_if_able",
   "gain_resource",
+  "move_resource_to_market",
   "spend_resource",
   "remove_resource",
   "return_resource",
@@ -63,6 +64,7 @@ const effectOps = new Set([
   "break_through",
   "find_card",
   "look_cards",
+  "look_take_card",
   "conditional_resource_at_least",
   "conditional_state_is",
   "optional",
@@ -75,12 +77,14 @@ const marketMoveSources = new Set(["market"]);
 const breakThroughSources = new Set(["market","deck","exile"]);
 const findSources = new Set(["hand","discard","deck","nationDeck","playArea","history","garrison"]);
 const lookSources = new Set(["deck","nationDeck","fameDeck"]);
+const lookTakeSources = new Set(["deck","nationDeck"]);
 const returnUnrestSources = new Set(["hand","playArea","discard","deck","history","exile"]);
 const returnFameSources = new Set(["hand","playArea","discard","deck","history","exile"]);
 const placeOnDeckSources = new Set(["hand","discard"]);
 const swapSources = new Set(["hand","discard","deck"]);
 const findDestinations = new Set(["deck","hand","discard","playArea","history","exile"]);
 const gainDestinations = new Set(["hand","discard"]);
+const lookTakeDestinations = new Set(["hand","discard","history"]);
 const profitDestinations = new Set(["discard","history"]);
 const cardIdEffectOps = new Set(["return_unrest","return_fame","place_card_on_deck","give_card","swap_card","return_exhaust_token","free_play_card","garrison_card","recall_region","abandon_region","exile_card","acquire_card","gain_card","take_card","break_through","find_card"]);
 const hostCardIdEffectOps = new Set(["garrison_card"]);
@@ -100,15 +104,15 @@ const attackTargetedEffectOps = new Set(["take_unrest","steal_resource"]);
 const choicesEffectOps = new Set(["choose_one"]);
 const thenEffectOps = new Set(["conditional_resource_at_least","conditional_state_is"]);
 const elseEffectOps = new Set(["conditional_resource_at_least","conditional_state_is"]);
-const sourceEffectOps = new Set(["draw","draw_if_able","exile_card","acquire_card","gain_card","take_card","break_through","look_cards"]);
+const sourceEffectOps = new Set(["draw","draw_if_able","exile_card","acquire_card","gain_card","take_card","break_through","look_cards","look_take_card"]);
 const sourceZonesEffectOps = new Set(["return_unrest","return_fame","find_card"]);
 const sourceZoneEffectOps = new Set(["place_card_on_deck","swap_card"]);
-const destinationEffectOps = new Set(["find_card","acquire_card","gain_card","take_card","profit"]);
-const suitEffectOps = new Set(["free_play_card","acquire_card","gain_card","take_card","find_card","exile_card","break_through"]);
-const cardTypeEffectOps = new Set(["free_play_card","acquire_card","gain_card","take_card","find_card","exile_card","break_through"]);
-const resourceEffectOps = new Set(["gain_resource","spend_resource","remove_resource","return_resource","steal_resource","conditional_resource_at_least"]);
-const countEffectOps = new Set(["draw","draw_if_able","discard_random","discard_cards","take_unrest","gain_fame","recall_region","abandon_region","exile_card","acquire_card","gain_card","take_card","break_through","look_cards"]);
-const amountEffectOps = new Set(["gain_resource","spend_resource","remove_resource","return_resource","steal_resource","gain_action","spend_action"]);
+const destinationEffectOps = new Set(["find_card","acquire_card","gain_card","take_card","look_take_card","profit"]);
+const suitEffectOps = new Set(["discard_cards","free_play_card","acquire_card","gain_card","take_card","find_card","exile_card","break_through"]);
+const cardTypeEffectOps = new Set(["discard_cards","free_play_card","acquire_card","gain_card","take_card","find_card","exile_card","break_through"]);
+const resourceEffectOps = new Set(["gain_resource","move_resource_to_market","spend_resource","remove_resource","return_resource","steal_resource","conditional_resource_at_least"]);
+const countEffectOps = new Set(["draw","draw_if_able","discard_random","discard_cards","take_unrest","gain_fame","recall_region","abandon_region","exile_card","acquire_card","gain_card","take_card","break_through","look_cards","look_take_card"]);
+const amountEffectOps = new Set(["gain_resource","move_resource_to_market","spend_resource","remove_resource","return_resource","steal_resource","gain_action","spend_action"]);
 const atLeastEffectOps = new Set(["conditional_resource_at_least"]);
 const effectFields = new Set([
   "trigger",
@@ -394,10 +398,10 @@ function validateEffectOps(errors: CardImportError[], row: number, effects: unkn
         fatal = true;
       }
     };
-    if (["draw","draw_if_able","discard_random","discard_cards","take_unrest","gain_fame","acquire_card","gain_card","take_card","break_through","look_cards"].includes(op)) validatePositiveIntegerField("count");
+    if (["draw","draw_if_able","discard_random","discard_cards","take_unrest","gain_fame","acquire_card","gain_card","take_card","break_through","look_cards","look_take_card"].includes(op)) validatePositiveIntegerField("count");
     if (op === "recall_region" || op === "abandon_region") validateOptionalPositiveIntegerField("count");
     if (op === "exile_card") validateOptionalPositiveIntegerField("count");
-    if (["gain_resource","spend_resource","remove_resource","return_resource","steal_resource","gain_action","spend_action"].includes(op)) validatePositiveIntegerField("amount");
+    if (["gain_resource","move_resource_to_market","spend_resource","remove_resource","return_resource","steal_resource","gain_action","spend_action"].includes(op)) validatePositiveIntegerField("amount");
     if (op === "conditional_resource_at_least") validateNonNegativeIntegerField("atLeast");
     if (op === "draw") validateSource(drawSources, "deck");
     if (op === "draw_if_able" && record.source !== undefined) {
@@ -409,12 +413,14 @@ function validateEffectOps(errors: CardImportError[], row: number, effects: unkn
     if (op === "gain_card" || op === "take_card") validateSource(marketMoveSources, undefined, true);
     if (op === "break_through") validateSource(breakThroughSources, undefined, true);
     if (op === "look_cards") validateSource(lookSources, undefined, true);
+    if (op === "look_take_card") validateSource(lookTakeSources, undefined, true);
     if (op === "return_unrest") validateSourceZones(returnUnrestSources, "sourceZones");
     if (op === "return_fame") validateSourceZones(returnFameSources, "sourceZones");
     if (op === "place_card_on_deck") validateSourceZones(placeOnDeckSources, "sourceZone");
     if (op === "swap_card") validateSourceZones(swapSources, "sourceZone");
     if (op === "find_card") validateDestination(findDestinations, true);
     if (op === "acquire_card" || op === "gain_card" || op === "take_card") validateDestination(gainDestinations);
+    if (op === "look_take_card") validateDestination(lookTakeDestinations);
     if (op === "profit") validateDestination(profitDestinations);
     if (op === "break_through") validateRequiredBreakThroughSuitField();
     if (["free_play_card","acquire_card","gain_card","take_card","find_card","exile_card"].includes(op)) validateSuitField("suit");
@@ -568,7 +574,7 @@ function validateEffectOps(errors: CardImportError[], row: number, effects: unkn
     if (fromPlayerIdEffectOps.has(op) && record.fromPlayerIds === undefined && record.targetPlayerScope === undefined) validateRequiredString("fromPlayerId");
     if (op === "trigger_scoring") validateRequiredString("reason");
     if (op === "conditional_state_is") validateRequiredString("state");
-    if (["gain_resource","spend_resource","remove_resource","return_resource","steal_resource","conditional_resource_at_least"].includes(op)) validateRequiredResource();
+    if (["gain_resource","move_resource_to_market","spend_resource","remove_resource","return_resource","steal_resource","conditional_resource_at_least"].includes(op)) validateRequiredResource();
     if (cardIdEffectOps.has(op)) validateOptionalString("cardId");
     if (hostCardIdEffectOps.has(op)) validateOptionalString("hostCardId");
     if (marketCardIdEffectOps.has(op)) validateOptionalString("marketCardId");

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import type { CommonsSetId, ExpansionId, GameMode, GameOptions, SoloDifficulty, VariantId } from "../../../../engine/src/options/gameOptions";
+import { createCampaignProgress } from "../../../../engine/src/game/campaign";
+import type { CampaignMode, CampaignProgress, CommonsSetId, ExpansionId, GameMode, GameOptions, SoloDifficulty, VariantId } from "../../../../engine/src/options/gameOptions";
 import { loadNationDb } from "../../../../engine/src/nations/nationLoader";
 import { loadBotStateTables } from "../../../../engine/src/solo/botStateTableLoader";
 import type { PrivateDataBundle } from "../../../../engine/src/setup/privateDataBundle";
@@ -16,6 +17,7 @@ export type NewGameSessionConfig = {
 type NewGameSetupProps = {
   onStart: (config: NewGameSessionConfig) => void;
   onOpenCardEntry?: () => void;
+  initialCampaignProgress?: CampaignProgress;
 };
 
 const DEFAULT_NATION_ID = "test_nation_sun_coast";
@@ -51,6 +53,12 @@ const soloDifficulties: Array<{ id: SoloDifficulty; label: string }> = [
   { id: "supreme_ruler", label: "Supreme Ruler" }
 ];
 
+const campaignModes: Array<{ id: "none" | CampaignMode; label: string }> = [
+  { id: "none", label: "Off" },
+  { id: "standard", label: "Standard" },
+  { id: "supreme_ruler", label: "Supreme Ruler" }
+];
+
 type NationOption = { id: string; label: string };
 
 function getNationOptions(enabledExpansions: ExpansionId[], privateData?: PrivateDataBundle): NationOption[] {
@@ -80,19 +88,92 @@ function labelFor<T extends string>(items: Array<{ id: T; label: string }>, id: 
   return items.find((item) => item.id === id)?.label ?? id;
 }
 
-export default function NewGameSetup({ onStart, onOpenCardEntry }: NewGameSetupProps) {
-  const [mode, setMode] = useState<GameMode>("multiplayer");
-  const [playerCount, setPlayerCount] = useState<1 | 2 | 3 | 4>(2);
+function isCampaignMode(value: unknown): value is CampaignMode {
+  return value === "standard" || value === "supreme_ruler";
+}
+
+function isSoloDifficulty(value: unknown): value is SoloDifficulty {
+  return soloDifficulties.some((difficulty) => difficulty.id === value);
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isCampaignProgress(value: unknown): value is CampaignProgress {
+  if (!value || typeof value !== "object") return false;
+  const progress = value as CampaignProgress;
+  return isCampaignMode(progress.mode)
+    && typeof progress.playerNationId === "string"
+    && typeof progress.wins === "number"
+    && typeof progress.losses === "number"
+    && isSoloDifficulty(progress.currentDifficulty)
+    && isStringArray(progress.defeatedBotNationIds)
+    && isStringArray(progress.startingDeckAdditions)
+    && isStringArray(progress.startingDeckRemovals)
+    && isStringArray(progress.setAsideCommonsCardIds);
+}
+
+export function parseCampaignSheetText(text: string): CampaignProgress | undefined {
+  try {
+    const parsed = JSON.parse(text);
+    const candidate = parsed?.campaignSheetVersion === 1 ? parsed.progress : parsed;
+    return isCampaignProgress(candidate) ? {
+      ...candidate,
+      defeatedBotNationIds: [...candidate.defeatedBotNationIds],
+      startingDeckAdditions: [...candidate.startingDeckAdditions],
+      startingDeckRemovals: [...candidate.startingDeckRemovals],
+      setAsideCommonsCardIds: [...candidate.setAsideCommonsCardIds],
+      records: candidate.records?.map((record) => ({
+        ...record,
+        choice: record.choice ? { ...record.choice } : undefined
+      }))
+    } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function buildCampaignGameOptions(args: {
+  mode: GameMode;
+  campaignMode: "none" | CampaignMode;
+  selectedPlayerNationId: string;
+  soloDifficulty: SoloDifficulty;
+  campaignProgress?: CampaignProgress;
+}): Pick<GameOptions, "campaignMode" | "campaignProgress" | "soloDifficulty"> {
+  const soloDifficulty = args.campaignMode === "supreme_ruler" ? "supreme_ruler" : args.soloDifficulty;
+  if (args.mode !== "solo" || args.campaignMode === "none") return { soloDifficulty };
+  const campaignProgress = args.campaignProgress?.mode === args.campaignMode
+    ? args.campaignProgress
+    : createCampaignProgress({
+      mode: args.campaignMode,
+      playerNationId: args.selectedPlayerNationId,
+      startingDifficulty: soloDifficulty
+    });
+  return {
+    soloDifficulty,
+    campaignMode: campaignProgress.mode,
+    campaignProgress
+  };
+}
+
+export default function NewGameSetup({ onStart, onOpenCardEntry, initialCampaignProgress }: NewGameSetupProps) {
+  const [mode, setMode] = useState<GameMode>(initialCampaignProgress ? "solo" : "multiplayer");
+  const [playerCount, setPlayerCount] = useState<1 | 2 | 3 | 4>(initialCampaignProgress ? 1 : 2);
   const [enabledExpansions, setEnabledExpansions] = useState<ExpansionId[]>([]);
   const [enabledVariants, setEnabledVariants] = useState<VariantId[]>([]);
   const [commonsSetId, setCommonsSetId] = useState<CommonsSetId>("classics");
-  const [soloDifficulty, setSoloDifficulty] = useState<SoloDifficulty>("chieftain");
+  const [soloDifficulty, setSoloDifficulty] = useState<SoloDifficulty>(initialCampaignProgress?.currentDifficulty ?? "chieftain");
+  const [campaignMode, setCampaignMode] = useState<"none" | CampaignMode>(initialCampaignProgress?.mode ?? "none");
+  const [campaignProgress, setCampaignProgress] = useState<CampaignProgress | undefined>(initialCampaignProgress);
+  const [campaignSheetText, setCampaignSheetText] = useState("");
+  const [campaignImportMessage, setCampaignImportMessage] = useState(initialCampaignProgress ? "Campaign progress is ready for the next game." : "");
   const [soloBotNationId, setSoloBotNationId] = useState<string>("random");
   const [privateData, setPrivateData] = useState<PrivateDataBundle>({});
   const [privateDataConfirmed, setPrivateDataConfirmed] = useState(false);
   const [privateFileStatuses, setPrivateFileStatuses] = useState<PrivateDataFileStatus[]>([]);
   const [playerNationIds, setPlayerNationIds] = useState<Record<string, string>>({
-    "1": DEFAULT_NATION_ID,
+    "1": initialCampaignProgress?.playerNationId ?? DEFAULT_NATION_ID,
     "2": DEFAULT_NATION_ID,
     "3": DEFAULT_NATION_ID,
     "4": DEFAULT_NATION_ID
@@ -120,6 +201,12 @@ export default function NewGameSetup({ onStart, onOpenCardEntry }: NewGameSetupP
     ...enabledVariants.map((variant) => labelFor(variants, variant))
   ].join(", ") || "Core rules";
   const privateDataSummary = privateDataConfirmed && hasPrivateData(privateData) ? privateDataReadyMessage : "Placeholder data";
+  const effectiveCampaignMode = mode === "solo" ? campaignMode : "none";
+  const campaignSummary = effectiveCampaignMode === "none"
+    ? "Off"
+    : campaignProgress
+      ? `${labelFor(campaignModes, campaignProgress.mode)} ${campaignProgress.wins}-${campaignProgress.losses}`
+      : labelFor(campaignModes, effectiveCampaignMode);
 
   const updateMode = (nextMode: GameMode) => {
     setMode(nextMode);
@@ -145,15 +232,22 @@ export default function NewGameSetup({ onStart, onOpenCardEntry }: NewGameSetupP
   };
 
   const startGame = () => {
+    const selectedNations = Object.fromEntries(activePlayerIds.map((playerId) => [playerId, playerNationIds[playerId] ?? DEFAULT_NATION_ID]));
+    const campaignOptions = buildCampaignGameOptions({
+      mode,
+      campaignMode: effectiveCampaignMode,
+      selectedPlayerNationId: selectedNations["1"] ?? DEFAULT_NATION_ID,
+      soloDifficulty,
+      campaignProgress
+    });
     const options: GameOptions = {
       playerCount: normalizedPlayerCount,
       mode,
       enabledExpansions,
       enabledVariants,
       commonsSetId,
-      ...(mode === "solo" ? { soloDifficulty } : {})
+      ...(mode === "solo" ? campaignOptions : {})
     };
-    const selectedNations = Object.fromEntries(activePlayerIds.map((playerId) => [playerId, playerNationIds[playerId] ?? DEFAULT_NATION_ID]));
 
     onStart({
       options,
@@ -161,6 +255,40 @@ export default function NewGameSetup({ onStart, onOpenCardEntry }: NewGameSetupP
       ...(mode === "solo" ? { soloBotNationId } : {}),
       ...(privateDataConfirmed && hasPrivateData(privateData) ? { privateData } : {})
     });
+  };
+
+  const updateCampaignMode = (nextCampaignMode: "none" | CampaignMode) => {
+    setCampaignMode(nextCampaignMode);
+    if (nextCampaignMode === "none") {
+      setCampaignProgress(undefined);
+      setCampaignImportMessage("");
+      return;
+    }
+    if (nextCampaignMode === "supreme_ruler") setSoloDifficulty("supreme_ruler");
+    setCampaignProgress((current) => current?.mode === nextCampaignMode
+      ? current
+      : createCampaignProgress({
+        mode: nextCampaignMode,
+        playerNationId: playerNationIds["1"] ?? DEFAULT_NATION_ID,
+        startingDifficulty: nextCampaignMode === "supreme_ruler" ? "supreme_ruler" : soloDifficulty
+      })
+    );
+    setCampaignImportMessage("");
+  };
+
+  const importCampaignSheet = () => {
+    const imported = parseCampaignSheetText(campaignSheetText);
+    if (!imported) {
+      setCampaignImportMessage("Campaign sheet JSON could not be imported.");
+      return;
+    }
+    setMode("solo");
+    setPlayerCount(1);
+    setCampaignMode(imported.mode);
+    setCampaignProgress(imported);
+    setSoloDifficulty(imported.mode === "supreme_ruler" ? "supreme_ruler" : imported.currentDifficulty);
+    setPlayerNationIds((current) => ({ ...current, "1": imported.playerNationId }));
+    setCampaignImportMessage("Campaign progress is ready for the next game.");
   };
 
   const applyPrivateDataToSetup = (nextPrivateData: PrivateDataBundle) => {
@@ -236,6 +364,10 @@ export default function NewGameSetup({ onStart, onOpenCardEntry }: NewGameSetupP
             <span>Private Data</span>
             <strong>{privateDataSummary}</strong>
           </div>
+          <div>
+            <span>Campaign</span>
+            <strong>{campaignSummary}</strong>
+          </div>
         </section>
 
         <section className="setup-stage" aria-labelledby="setup-stage-session">
@@ -273,7 +405,7 @@ export default function NewGameSetup({ onStart, onOpenCardEntry }: NewGameSetupP
               <>
                 <label className="setup-section setup-field">
                   <span>Solo difficulty</span>
-                  <select value={soloDifficulty} onChange={(event: { target: HTMLSelectElement }) => setSoloDifficulty(event.target.value as SoloDifficulty)}>
+                  <select value={soloDifficulty} onChange={(event: { target: HTMLSelectElement }) => setSoloDifficulty(event.target.value as SoloDifficulty)} disabled={campaignMode === "supreme_ruler"}>
                     {soloDifficulties.map((difficulty) => (
                       <option key={difficulty.id} value={difficulty.id}>
                         {difficulty.label}
@@ -295,6 +427,30 @@ export default function NewGameSetup({ onStart, onOpenCardEntry }: NewGameSetupP
                 </label>
               </>
             ) : null}
+
+            <fieldset className="setup-section setup-section--wide">
+              <legend>Campaign</legend>
+              <div className="segmented-control">
+                {campaignModes.map((item) => (
+                  <button
+                    key={item.id}
+                    className={effectiveCampaignMode === item.id ? "is-active" : ""}
+                    type="button"
+                    disabled={mode !== "solo" && item.id !== "none"}
+                    onClick={() => updateCampaignMode(item.id)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              {campaignProgress ? (
+                <div className="campaign-setup-status">
+                  <span>{labelFor(campaignModes, campaignProgress.mode)}</span>
+                  <strong>{campaignProgress.wins} wins / {campaignProgress.losses} losses</strong>
+                  <small>Next difficulty: {labelFor(soloDifficulties, campaignProgress.currentDifficulty)}</small>
+                </div>
+              ) : null}
+            </fieldset>
           </div>
         </section>
 
@@ -398,6 +554,23 @@ export default function NewGameSetup({ onStart, onOpenCardEntry }: NewGameSetupP
                 ))}
               </div>
             ) : null}
+          </fieldset>
+        </section>
+
+        <section className="setup-stage" aria-labelledby="setup-stage-campaign-data">
+          <h2 id="setup-stage-campaign-data">Campaign Data</h2>
+          <fieldset className="setup-section setup-section--wide">
+            <legend>Campaign Sheet</legend>
+            <label className="setup-field">
+              <span>Import Campaign Sheet JSON</span>
+              <textarea value={campaignSheetText} onChange={(event: { target: HTMLTextAreaElement }) => setCampaignSheetText(event.target.value)} />
+            </label>
+            <div className="private-data-actions">
+              <button type="button" disabled={!campaignSheetText.trim()} onClick={importCampaignSheet}>
+                Use Campaign Sheet
+              </button>
+            </div>
+            {campaignImportMessage ? <p className="setup-help">{campaignImportMessage}</p> : null}
           </fieldset>
         </section>
         <p className="setup-attribution">

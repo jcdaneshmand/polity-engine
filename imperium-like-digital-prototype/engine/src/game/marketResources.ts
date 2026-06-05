@@ -1,5 +1,5 @@
 import type { GameState, ResourceName } from "./state";
-import { addResourceAmount, normalizeResourceMap } from "./resources";
+import { addResourceAmount, canonicalResourceName, normalizeResourceMap, resourceAmount } from "./resources";
 import { gainMarketResource } from "./resources";
 import { triggerCollapse } from "./scoring";
 import { runNationHooks } from "../nations/nationRulesetHooks";
@@ -49,6 +49,26 @@ export function placeMarketResource(G: GameState, args: { playerId: string; card
   if (placed <= 0) return false;
   if (args.markCleanup) G.cleanupMarketResourcePlaced = { playerId: args.playerId, round: G.round };
   G.log.push({ round: G.round, playerId: args.playerId, message: `MarketResourceAdded(${args.cardId}/${resource}/${placed === requestedAmount ? requestedAmount : `${placed}/${requestedAmount}`})` });
+  return true;
+}
+
+export function movePlayerResourcesToMarketCards(G: GameState, args: { playerId: string; cardIds: string[]; resource: ResourceName }): boolean {
+  const player = G.players[args.playerId];
+  if (!player) return false;
+  const cardIds = args.cardIds;
+  if (cardIds.length === 0 || new Set(cardIds).size !== cardIds.length) return false;
+  if (cardIds.some((cardId) => !G.market.includes(cardId))) return false;
+  const resource = canonicalResourceName(args.resource);
+  if (resourceAmount(player.resources, resource) < cardIds.length) return false;
+  addResourceAmount(player.resources, resource, -cardIds.length);
+  G.marketResources ??= {};
+  for (const cardId of cardIds) {
+    G.marketResources[cardId] ??= {};
+    G.marketResources[cardId][resource] = (G.marketResources[cardId][resource] ?? 0) + 1;
+    const slot = G.marketSlots?.find((candidate) => candidate.cardId === cardId);
+    if (slot) slot.resourceMarkers[resource] = (slot.resourceMarkers[resource] ?? 0) + 1;
+  }
+  G.log.push({ round: G.round, playerId: args.playerId, message: `MarketResourceMoved(${resource}/count=${cardIds.length})` });
   return true;
 }
 
@@ -115,6 +135,7 @@ function hasMarketUnrestInterruption(G: GameState): boolean {
     ?? G.pendingFindChoice
     ?? G.pendingAcquireChoice
     ?? G.pendingMarketCardChoice
+    ?? G.pendingMarketResourcePlacementChoice
     ?? G.pendingBreakThroughChoice
     ?? G.pendingExileChoice
     ?? G.pendingGarrisonChoice
@@ -132,6 +153,7 @@ function hasMarketUnrestInterruption(G: GameState): boolean {
     ?? G.pendingGiveCardChoice
     ?? G.pendingSwapChoice
     ?? G.pendingLookOrderChoice
+    ?? G.pendingLookTakeChoice
     ?? G.pendingUnrestAllocationChoice
     ?? G.pendingReactiveExhaustChoice
     ?? G.pendingNationHookContinuation

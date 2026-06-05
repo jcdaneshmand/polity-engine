@@ -41,7 +41,7 @@
 
 .setup-summary {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 8px;
   margin-top: 14px;
 }
@@ -205,6 +205,42 @@
   background: #25221f;
   color: #f3ead8;
   padding: 7px 8px;
+}
+
+.setup-field textarea {
+  min-height: 120px;
+  box-sizing: border-box;
+  border: 1px dashed #7a6a57;
+  border-radius: 6px;
+  background: #25221f;
+  color: #f3ead8;
+  padding: 8px;
+  font: 0.82rem/1.35 ui-monospace, SFMono-Regular, Consolas, monospace;
+  resize: vertical;
+}
+
+.campaign-setup-status {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  border: 1px solid var(--ui-info);
+  border-radius: 6px;
+  background: #332d28;
+  color: #d9c7a7;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  padding: 8px 10px;
+}
+
+.campaign-setup-status span {
+  color: #d9c7a7;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.campaign-setup-status strong {
+  color: #f3ead8;
 }
 
 .private-data-actions {
@@ -372,11 +408,6 @@
   .setup-grid {
     grid-template-columns: 1fr;
   }
-
-  .setup-summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .setup-heading,
   .game-shell-bar {
     align-items: stretch;

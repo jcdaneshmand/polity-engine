@@ -11,6 +11,7 @@ export type DrawSourceZone = "deck" | "discard" | "exile" | "fameDeck";
 export type PlayerExileSource = "hand" | "discard" | "deck" | "playArea" | "history" | "garrison";
 export type FindSourceZone = "hand" | "discard" | "deck" | "nationDeck" | "playArea" | "history" | "garrison";
 export type LookSourceZone = "deck" | "nationDeck" | "fameDeck";
+export type LookTakeSourceZone = "deck" | "nationDeck";
 export type ReturnUnrestSourceZone = "hand" | "playArea" | "discard" | "deck" | "history" | "exile";
 export type ReturnFameSourceZone = "hand" | "playArea" | "discard" | "deck" | "history" | "exile";
 export type PlaceOnDeckSourceZone = "hand" | "discard";
@@ -61,12 +62,13 @@ export type Effect =
   | { trigger: EffectTrigger; op: "draw"; count: number; source?: DrawSourceZone; targetPlayerIds?: string[]; targetPlayerScope?: TargetPlayerScope; optionalForTargets?: boolean; upTo?: boolean }
   | { trigger: EffectTrigger; op: "draw_if_able"; count: number; upTo?: boolean }
   | { trigger: EffectTrigger; op: "gain_resource"; resource: ResourceName; amount: number; targetPlayerScope?: TargetPlayerScope }
+  | { trigger: EffectTrigger; op: "move_resource_to_market"; resource: ResourceName; amount: number }
   | { trigger: EffectTrigger; op: "spend_resource"; resource: ResourceName; amount: number }
   | { trigger: EffectTrigger; op: "remove_resource"; resource: ResourceName; amount: number }
   | { trigger: EffectTrigger; op: "return_resource"; resource: ResourceName; amount: number }
   | { trigger: EffectTrigger; op: "steal_resource"; fromPlayerId?: string; fromPlayerIds?: string[]; targetPlayerScope?: TargetPlayerScope; resource: ResourceName; amount: number; ifUnable?: Effect[]; attackTargeted?: boolean }
   | { trigger: EffectTrigger; op: "discard_random"; count: number }
-  | { trigger: EffectTrigger; op: "discard_cards"; count: number }
+  | { trigger: EffectTrigger; op: "discard_cards"; count: number; suit?: Suit; cardType?: CardType }
   | { trigger: EffectTrigger; op: "return_unrest"; cardId?: string; sourceZones?: ReturnUnrestSourceZone[] }
   | { trigger: EffectTrigger; op: "return_fame"; cardId?: string; sourceZones?: ReturnFameSourceZone[] }
   | { trigger: EffectTrigger; op: "place_card_on_deck"; cardId?: string; sourceZone?: PlaceOnDeckSourceZone }
@@ -95,6 +97,7 @@ export type Effect =
   | { trigger: EffectTrigger; op: "break_through"; suit: Suit; source: "market" | "deck" | "exile"; count: number; cardId?: string }
   | { trigger: EffectTrigger; op: "find_card"; cardId?: string; suit?: Suit; cardType?: CardType; destination: ZoneName; sourceZones?: FindSourceZone[] }
   | { trigger: EffectTrigger; op: "look_cards"; source: LookSourceZone; count: number }
+  | { trigger: EffectTrigger; op: "look_take_card"; source: LookTakeSourceZone; count: number; destination?: "hand" | "discard" | "history" }
   | { trigger: EffectTrigger; op: "conditional_resource_at_least"; resource: ResourceName; atLeast: number; then: Effect[]; else?: Effect[] }
   | { trigger: EffectTrigger; op: "conditional_state_is"; state: string; then: Effect[]; else?: Effect[] }
   | { trigger: EffectTrigger; op: "optional"; effects: Effect[] }
@@ -178,6 +181,7 @@ export interface GameState {
   pendingGiveCardChoice?: { playerId: string; sourceCardId?: string; cardIds: string[]; recipientPlayerIds: string[]; resumeEffects?: Effect[] };
   pendingSwapChoice?: { playerId: string; sourceCardId?: string; sourceZone: SwapSourceZone; choices: { cardId: string; marketCardId: string }[]; resumeEffects?: Effect[] };
   pendingLookOrderChoice?: { playerId: string; sourceCardId?: string; source: LookSourceZone; cardIds: string[]; resumeEffects?: Effect[] };
+  pendingLookTakeChoice?: { playerId: string; sourceCardId?: string; source: LookTakeSourceZone; destination: "hand" | "discard" | "history"; cardIds: string[]; resumeEffects?: Effect[] };
   pendingUnrestAllocationChoice?: { playerId: string; recipientPlayerIds: string[]; countPerPlayer: number; availableUnrestCardIds: string[]; resumeEffects?: Effect[] };
   pendingReactiveExhaustChoice?: { playerId: string; cardIds: string[]; resolvingPlayerId: string; sourceCardId?: string; resumeEffects?: Effect[]; trigger: ReactiveExhaustCondition["trigger"]; resource?: ResourceName; targetPlayerId?: string; eventSourceCardId?: string; eventSourceWasInPlay?: boolean };
   pendingPlayCardResolution?: { playerId: string; cardId: string; freePlay: boolean; payment?: Partial<Record<ResourceName, number>>; sourceCardId?: string; resumeEffects?: Effect[]; resumePlayedCardResolution?: PendingPlayedCardResolution };
@@ -202,6 +206,7 @@ export interface GameState {
   pendingSolsticeContinuation?: { playerId: string; phase: Extract<EffectTrigger, "on_solstice" | "end_of_solstice">; cardIds: string[]; cursor: PausedSolsticeState };
   pendingSolsticeRoundEnd?: { playerId: string };
   pendingCleanupMarketResourceChoice?: { playerId: string; resource: ResourceName; amount: number; cardIds: string[] };
+  pendingMarketResourcePlacementChoice?: { playerId: string; sourceCardId?: string; resource: ResourceName; amount: number; cardIds: string[]; resumeEffects?: Effect[] };
   pendingCleanupDiscardChoice?: { playerId: string; cardIds: string[] };
   lookedCards?: { playerId: string; source: LookSourceZone; cardIds: string[] };
   pausedSolstice?: PausedSolsticeState;

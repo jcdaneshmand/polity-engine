@@ -312,6 +312,7 @@ function hasPendingInterruption(G: GameState): boolean {
     ?? G.pendingFindChoice
     ?? G.pendingAcquireChoice
     ?? G.pendingMarketCardChoice
+    ?? G.pendingMarketResourcePlacementChoice
     ?? G.pendingBreakThroughChoice
     ?? G.pendingExileChoice
     ?? G.pendingGarrisonChoice
@@ -329,6 +330,7 @@ function hasPendingInterruption(G: GameState): boolean {
     ?? G.pendingGiveCardChoice
     ?? G.pendingSwapChoice
     ?? G.pendingLookOrderChoice
+    ?? G.pendingLookTakeChoice
     ?? G.pendingUnrestAllocationChoice
     ?? G.pendingSolsticeOrderChoice
     ?? G.pendingCleanupMarketResourceChoice

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { runEffects } from "../cards/effectRunner";
 import { PrototypeGame } from "../game/game";
 import { createInitialState } from "../game/initialState";
-import { acquireCard, endTurnMove, exhaustCard, innovateTurn, playCard, resolveAcquireChoice, resolveBreakThroughChoice, resolveChoice, resolveCleanupDiscard, resolveCleanupMarketResource, resolveDiscardChoice, resolveDrawChoice, resolveExileChoice, resolveFindChoice, resolveGarrisonChoice, resolveGiveCardChoice, resolveLookOrderChoice, resolveMarketCardChoice, resolvePlaceOnDeckChoice, resolveReactiveExhaustChoice, resolveRegionChoice, resolveReturnExhaustTokenChoice, resolveReturnUnrestChoice, resolveSolsticeOrderChoice, resolveSwapChoice, resolveUnrestAllocationChoice, revoltTurn, skipReactiveExhaustChoice } from "../game/moves";
+import { acquireCard, endTurnMove, exhaustCard, innovateTurn, playCard, resolveAcquireChoice, resolveBreakThroughChoice, resolveChoice, resolveCleanupDiscard, resolveCleanupMarketResource, resolveDiscardChoice, resolveDrawChoice, resolveExileChoice, resolveFindChoice, resolveGarrisonChoice, resolveGiveCardChoice, resolveLookOrderChoice, resolveMarketCardChoice, resolveMarketResourcePlacement, resolvePlaceOnDeckChoice, resolveReactiveExhaustChoice, resolveRegionChoice, resolveReturnExhaustTokenChoice, resolveReturnUnrestChoice, resolveSolsticeOrderChoice, resolveSwapChoice, resolveUnrestAllocationChoice, revoltTurn, skipReactiveExhaustChoice } from "../game/moves";
 import type { GameState } from "../game/state";
 import { currentStateMatches } from "../game/stateMatching";
 import { continuePausedSolstice, onTurnBegin, onTurnEnd } from "../game/turn";
@@ -11310,6 +11310,54 @@ describe("turn loop", () => {
     expect(G.players["0"].hand).toEqual([]);
     expect(G.players["0"].discard).toEqual(["test_action_archive_survey", "test_action_foundry_shift"]);
     expect(G.log.at(-1)?.message).toBe("FindChoiceResolved(finder/test_action_foundry_shift->discard)");
+  });
+
+  it("resolves selected market resource placements and resumes later effects", () => {
+    const G = createInitialState();
+    G.market = ["market_a", "market_b", "market_c"];
+    G.marketSlots = [
+      { cardId: "market_a", sourceDeck: "mainDeck", resourceMarkers: {}, tuckedUnrest: [] },
+      { cardId: "market_b", sourceDeck: "mainDeck", resourceMarkers: {}, tuckedUnrest: [] },
+      { cardId: "market_c", sourceDeck: "mainDeck", resourceMarkers: {}, tuckedUnrest: [] }
+    ];
+    G.players["0"].resources.materials = 2;
+    G.pendingMarketResourcePlacementChoice = {
+      playerId: "0",
+      sourceCardId: "market_resource_source",
+      resource: "materials",
+      amount: 2,
+      cardIds: ["market_a", "market_b", "market_c"],
+      resumeEffects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }]
+    };
+
+    resolveMarketResourcePlacement({ G, ctx, random: { Number: () => 0 } as any }, ["market_b", "market_c"]);
+
+    expect(G.pendingMarketResourcePlacementChoice).toBeUndefined();
+    expect(G.players["0"].resources.materials).toBe(0);
+    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.marketResources).toEqual({
+      market_b: { materials: 1 },
+      market_c: { materials: 1 }
+    });
+    expect(G.marketSlots?.find((slot) => slot.cardId === "market_b")?.resourceMarkers).toEqual({ materials: 1 });
+    expect(G.marketSlots?.find((slot) => slot.cardId === "market_c")?.resourceMarkers).toEqual({ materials: 1 });
+  });
+
+  it("blocks turn cleanup while market resource placement is pending", () => {
+    const G = createInitialState();
+    G.players["0"].resources.materials = 1;
+    G.pendingMarketResourcePlacementChoice = {
+      playerId: "0",
+      sourceCardId: "market_resource_source",
+      resource: "materials",
+      amount: 1,
+      cardIds: ["market_a"]
+    };
+
+    endTurnMove({ G, ctx, random: { Number: () => 0 } as any });
+
+    expect(G.log.at(-1)?.message).toBe("InvalidMove(endTurn): pending_market_resource_placement_choice");
+    expect(G.pendingMarketResourcePlacementChoice).toBeDefined();
   });
 
   it("restores a pending Draw choice if its resume effects fail", () => {

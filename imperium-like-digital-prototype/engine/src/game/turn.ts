@@ -121,6 +121,7 @@ function pendingInterruption(G: GameState): string | undefined {
   if (G.pendingFindChoice) return "pending_find_choice";
   if (G.pendingAcquireChoice) return "pending_acquire_choice";
   if (G.pendingMarketCardChoice) return "pending_market_card_choice";
+  if (G.pendingMarketResourcePlacementChoice) return "pending_market_resource_placement_choice";
   if (G.pendingBreakThroughChoice) return "pending_break_through_choice";
   if (G.pendingExileChoice) return "pending_exile_choice";
   if (G.pendingGarrisonChoice) return "pending_garrison_choice";
@@ -138,6 +139,7 @@ function pendingInterruption(G: GameState): string | undefined {
   if (G.pendingGiveCardChoice) return "pending_give_card_choice";
   if (G.pendingSwapChoice) return "pending_swap_choice";
   if (G.pendingLookOrderChoice) return "pending_look_order_choice";
+  if (G.pendingLookTakeChoice) return "pending_look_take_choice";
   if (G.pendingUnrestAllocationChoice) return "pending_unrest_allocation_choice";
   if (G.pendingReactiveExhaustChoice) return "pending_reactive_exhaust_choice";
   if (G.pendingSolsticeOrderChoice) return "pending_solstice_order_choice";

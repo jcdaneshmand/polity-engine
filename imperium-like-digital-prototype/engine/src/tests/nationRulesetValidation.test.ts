@@ -897,6 +897,69 @@ describe("nation ruleset validation", () => {
     }));
   });
 
+  it("accepts discard-card suit and card-type filters in rulesets", () => {
+    const issues = validateNationRuleset(ruleset({
+      hookRules: [{
+        trigger: "after_reshuffle",
+        effects: [
+          { trigger: "on_play", op: "discard_cards", count: 1, suit: "region", cardType: "action" } as any,
+        ],
+      }],
+    }));
+
+    expect(issues).not.toContainEqual(expect.objectContaining({
+      field: "hookRules[0].effects[0].suit",
+    }));
+    expect(issues).not.toContainEqual(expect.objectContaining({
+      field: "hookRules[0].effects[0].cardType",
+    }));
+  });
+
+  it("accepts player-resource to market-card movement in rulesets", () => {
+    const issues = validateNationRuleset(ruleset({
+      hookRules: [{
+        trigger: "after_reshuffle",
+        effects: [
+          { trigger: "on_play", op: "move_resource_to_market", resource: "materials", amount: 2 } as any,
+        ],
+      }],
+    }));
+
+    expect(issues).not.toContainEqual(expect.objectContaining({
+      field: "hookRules[0].effects[0].op",
+    }));
+    expect(issues).not.toContainEqual(expect.objectContaining({
+      field: "hookRules[0].effects[0].resource",
+    }));
+    expect(issues).not.toContainEqual(expect.objectContaining({
+      field: "hookRules[0].effects[0].amount",
+    }));
+  });
+
+  it("accepts look-then-take hidden-deck effects in rulesets", () => {
+    const issues = validateNationRuleset(ruleset({
+      hookRules: [{
+        trigger: "after_reshuffle",
+        effects: [
+          { trigger: "on_play", op: "look_take_card", source: "deck", count: 2, destination: "history" } as any,
+        ],
+      }],
+    }));
+
+    expect(issues).not.toContainEqual(expect.objectContaining({
+      field: "hookRules[0].effects[0].op",
+    }));
+    expect(issues).not.toContainEqual(expect.objectContaining({
+      field: "hookRules[0].effects[0].source",
+    }));
+    expect(issues).not.toContainEqual(expect.objectContaining({
+      field: "hookRules[0].effects[0].count",
+    }));
+    expect(issues).not.toContainEqual(expect.objectContaining({
+      field: "hookRules[0].effects[0].destination",
+    }));
+  });
+
   it("accepts counted Recall and Abandon Region effects in rulesets", () => {
     const issues = validateNationRuleset(ruleset({
       hookRules: [{

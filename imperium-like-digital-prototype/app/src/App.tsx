@@ -14,6 +14,7 @@ type GameSession = NewGameSessionConfig & {
 export default function App() {
   const [session, setSession] = useState<GameSession | null>(null);
   const [homeView, setHomeView] = useState<"setup" | "private-data" | "about">("setup");
+  const [pendingCampaignProgress, setPendingCampaignProgress] = useState<CampaignProgress | undefined>(undefined);
 
   const GameClient = useMemo(() => {
     if (!session) return null;
@@ -31,10 +32,11 @@ export default function App() {
 
     const SessionBoard = (props: Parameters<typeof Board>[0]) => <Board
       {...props}
-      onCampaignProgress={(campaignProgress: CampaignProgress) => setSession((current) => current
-        ? { ...current, options: { ...current.options, campaignProgress, campaignMode: campaignProgress.mode } }
-        : current
-      )}
+      onCampaignProgress={(campaignProgress: CampaignProgress) => {
+        setPendingCampaignProgress(campaignProgress);
+        setSession(null);
+        setHomeView("setup");
+      }}
     />;
 
     return Client({
@@ -73,7 +75,11 @@ export default function App() {
           </button>
         </div>
         <NewGameSetup
-          onStart={(config) => setSession({ ...config, id: Date.now() })}
+          initialCampaignProgress={pendingCampaignProgress}
+          onStart={(config) => {
+            setPendingCampaignProgress(undefined);
+            setSession({ ...config, id: Date.now() });
+          }}
           onOpenCardEntry={() => setHomeView("private-data")}
         />
       </div>

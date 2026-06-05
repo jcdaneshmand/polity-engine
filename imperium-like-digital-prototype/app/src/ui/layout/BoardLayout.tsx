@@ -121,6 +121,8 @@ export default function BoardLayout({ G, ctx, moves, onCampaignProgress }: any &
     if (a.action === "resolveUnrestAllocationChoice" && a.recipientPlayerIds) moves.resolveUnrestAllocationChoice?.(a.recipientPlayerIds);
     if (a.action === "resolveSolsticeOrderChoice" && a.cardIds) moves.resolveSolsticeOrderChoice?.(a.cardIds);
     if (a.action === "resolveLookOrderChoice" && a.cardIds) moves.resolveLookOrderChoice?.(a.cardIds);
+    if (a.action === "resolveLookTakeChoice" && a.cardId) moves.resolveLookTakeChoice?.(a.cardId, a.returnOrder);
+    if (a.action === "resolveMarketResourcePlacement" && a.cardIds) moves.resolveMarketResourcePlacement?.(a.cardIds);
     if (a.action === "resolveCleanupMarketResource" && a.cardId) moves.resolveCleanupMarketResource?.(a.cardId);
     if (a.action === "resolveCleanupDiscard") moves.resolveCleanupDiscard?.(a.cardIds ?? (a.cardId ? [a.cardId] : []));
     if (a.action === "resolveReactiveExhaustChoice" && a.cardId) moves.resolveReactiveExhaustChoice?.(a.cardId);

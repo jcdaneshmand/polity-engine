@@ -4,7 +4,7 @@ import { createInitialState } from "../game/initialState";
 import { tuckUnrestUnderMarketCard } from "../game/marketResources";
 import { payResourceCosts } from "../game/payments";
 import * as moves from "../game/moves";
-import { resolveAcquireChoice, resolveChoice, resolveExileChoice, resolveFindChoice, resolveLookOrderChoice, resolveRegionChoice } from "../game/moves";
+import { resolveAcquireChoice, resolveChoice, resolveExileChoice, resolveFindChoice, resolveLookOrderChoice, resolveLookTakeChoice, resolveRegionChoice } from "../game/moves";
 import { cardHasSuitIconForPlayer } from "../game/suitIcons";
 import type { GameState } from "../game/state";
 import { resolvePendingUnrestAllocationChoice } from "../game/unrest";
@@ -717,6 +717,24 @@ describe("effectRunner", () => {
     expect(G.players["0"].hand).toEqual(["keep_card"]);
     expect(G.players["0"].discard).toEqual(["discard_b", "discard_a"]);
     expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.players["0"].resources.materials).toBe(1);
+  });
+
+  it("selected discard costs can filter eligible hand cards by suit and card type", () => {
+    const G = createInitialState();
+    G.players["0"].hand = ["eligible_region", "ineligible_action", "ineligible_region"];
+    G.cardDb.eligible_region = { ...G.cardDb.test_action_foundry_shift, id: "eligible_region", suit: "region", cardType: "action" };
+    G.cardDb.ineligible_action = { ...G.cardDb.test_action_foundry_shift, id: "ineligible_action", suit: "civilized", cardType: "action" };
+    G.cardDb.ineligible_region = { ...G.cardDb.test_action_foundry_shift, id: "ineligible_region", suit: "region", cardType: "in_play" };
+
+    runEffects({ G, playerId: "0", selfCardId: "discard_filter_source" }, [
+      { trigger: "on_play", op: "discard_cards", count: 1, suit: "region", cardType: "action" } as any,
+      { trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 } as any
+    ]);
+
+    expect(G.pendingDiscardChoice).toBeUndefined();
+    expect(G.players["0"].hand).toEqual(["ineligible_action", "ineligible_region"]);
+    expect(G.players["0"].discard).toEqual(["eligible_region"]);
     expect(G.players["0"].resources.materials).toBe(1);
   });
 
@@ -2435,6 +2453,34 @@ describe("effectRunner", () => {
     expect(G.players["0"].resources.goods).toBe(2);
     expect(G.players["0"].resources.knowledge).toBe(1);
     expect(G.log.at(-2)?.message).toBe("Returned 1/3 influence.");
+  });
+
+  it("moves player resources onto distinct market cards before later effects resolve", () => {
+    const G = createInitialState();
+    G.market = ["market_a", "market_b", "market_c"];
+    G.marketSlots = [
+      { cardId: "market_a", sourceDeck: "mainDeck", resourceMarkers: {}, tuckedUnrest: [] },
+      { cardId: "market_b", sourceDeck: "mainDeck", resourceMarkers: {}, tuckedUnrest: [] },
+      { cardId: "market_c", sourceDeck: "mainDeck", resourceMarkers: {}, tuckedUnrest: [] }
+    ];
+    G.players["0"].resources.materials = 2;
+
+    const result = runEffects({ G, playerId: "0", selfCardId: "market_resource_source" }, [
+      { trigger: "on_play", op: "move_resource_to_market", resource: "materials", amount: 2 } as any,
+      { trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 } as any
+    ]);
+
+    expect(result).toBe(true);
+    expect(G.players["0"].resources.materials).toBe(2);
+    expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.pendingMarketResourcePlacementChoice).toEqual({
+      playerId: "0",
+      sourceCardId: "market_resource_source",
+      resource: "materials",
+      amount: 2,
+      cardIds: ["market_a", "market_b", "market_c"],
+      resumeEffects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }]
+    });
   });
 
   it("gain_action adds usable Action tokens for the current turn", () => {
@@ -6285,6 +6331,33 @@ describe("effectRunner", () => {
 
     expect(G.pendingLookOrderChoice).toBeUndefined();
     expect(G.players["0"].deck).toEqual(["test_action_foundry_shift", "test_action_archive_survey", "test_action_scholars_circle"]);
+    expect(G.players["0"].resources.knowledge).toBe(1);
+  });
+
+  it("look_take_card chooses one looked Draw deck card and returns the rest before later effects resolve", () => {
+    const G = createInitialState();
+    G.players["0"].deck = ["test_action_archive_survey", "test_action_foundry_shift", "test_action_scholars_circle"];
+
+    runEffects({ G, playerId: "0" }, [
+      { trigger: "on_play", op: "look_take_card", source: "deck", count: 2 } as any,
+      { trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }
+    ]);
+
+    expect(G.pendingLookTakeChoice).toEqual({
+      playerId: "0",
+      source: "deck",
+      destination: "hand",
+      cardIds: ["test_action_archive_survey", "test_action_foundry_shift"],
+      resumeEffects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }]
+    });
+    expect(G.players["0"].hand).not.toContain("test_action_foundry_shift");
+    expect(G.players["0"].resources.knowledge).toBe(0);
+
+    resolveLookTakeChoice({ G, ctx: { currentPlayer: "0" } as any }, "test_action_foundry_shift", ["test_action_archive_survey"]);
+
+    expect(G.pendingLookTakeChoice).toBeUndefined();
+    expect(G.players["0"].hand).toContain("test_action_foundry_shift");
+    expect(G.players["0"].deck).toEqual(["test_action_archive_survey", "test_action_scholars_circle"]);
     expect(G.players["0"].resources.knowledge).toBe(1);
   });
 

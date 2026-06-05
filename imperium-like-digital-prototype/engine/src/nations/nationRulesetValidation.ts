@@ -37,12 +37,12 @@ const EXPANSIONS: ExpansionId[] = ["trade_routes"];
 const HOOK_TRIGGERS: NationHookTrigger[] = ["before_setup_player", "after_setup_player", "before_play_card", "after_play_card", "before_acquire", "after_acquire", "after_break_through", "after_revolt", "before_reshuffle", "after_reshuffle", "after_develop", "after_gain_unrest", "before_solstice", "after_solstice", "before_scoring", "after_scoring"];
 const EFFECT_TRIGGERS = ["on_play", "on_exhaust", "on_acquire", "on_solstice", "end_of_solstice"];
 const EFFECT_OPS = [
-  "draw", "draw_if_able", "gain_resource", "spend_resource", "remove_resource", "return_resource", "steal_resource",
+  "draw", "draw_if_able", "gain_resource", "move_resource_to_market", "spend_resource", "remove_resource", "return_resource", "steal_resource",
   "discard_random", "discard_cards", "return_unrest", "return_fame", "place_card_on_deck", "give_card", "swap_card", "take_unrest",
   "gain_fame", "gain_action", "spend_action", "return_exhaust_token", "trigger_scoring", "trade", "treat_suit_as",
   "free_play_card",
   "commerce", "profit", "garrison_card", "recall_region", "abandon_region", "develop", "move_self_to_history",
-  "exile_card", "acquire_card", "gain_card", "take_card", "break_through", "find_card", "look_cards",
+  "exile_card", "acquire_card", "gain_card", "take_card", "break_through", "find_card", "look_cards", "look_take_card",
   "conditional_resource_at_least", "conditional_state_is", "optional", "choose_one",
 ];
 const BOT_EFFECT_OPS = [
@@ -79,12 +79,14 @@ const MARKET_MOVE_SOURCES = ["market"];
 const BREAK_THROUGH_SOURCES = ["market", "deck", "exile"];
 const FIND_SOURCES = ["hand", "discard", "deck", "nationDeck", "playArea", "history", "garrison"];
 const LOOK_SOURCES = ["deck", "nationDeck", "fameDeck"];
+const LOOK_TAKE_SOURCES = ["deck", "nationDeck"];
 const RETURN_UNREST_SOURCES = ["hand", "playArea", "discard", "deck", "history", "exile"];
 const RETURN_FAME_SOURCES = ["hand", "playArea", "discard", "deck", "history", "exile"];
 const PLACE_ON_DECK_SOURCES = ["hand", "discard"];
 const SWAP_SOURCES = ["hand", "discard", "deck"];
 const FIND_DESTINATIONS = ["deck", "hand", "discard", "playArea", "history", "exile"];
 const GAIN_DESTINATIONS = ["hand", "discard"];
+const LOOK_TAKE_DESTINATIONS = ["hand", "discard", "history"];
 const PROFIT_DESTINATIONS = ["discard", "history"];
 const CARD_ID_EFFECT_OPS = ["return_unrest", "return_fame", "place_card_on_deck", "give_card", "swap_card", "return_exhaust_token", "free_play_card", "garrison_card", "recall_region", "abandon_region", "exile_card", "acquire_card", "gain_card", "take_card", "break_through", "find_card"];
 const HOST_CARD_ID_EFFECT_OPS = ["garrison_card"];
@@ -104,15 +106,15 @@ const ATTACK_TARGETED_EFFECT_OPS = ["take_unrest", "steal_resource"];
 const CHOICES_EFFECT_OPS = ["choose_one"];
 const THEN_EFFECT_OPS = ["conditional_resource_at_least", "conditional_state_is"];
 const ELSE_EFFECT_OPS = ["conditional_resource_at_least", "conditional_state_is"];
-const SOURCE_EFFECT_OPS = ["draw", "draw_if_able", "exile_card", "acquire_card", "gain_card", "take_card", "break_through", "look_cards"];
+const SOURCE_EFFECT_OPS = ["draw", "draw_if_able", "exile_card", "acquire_card", "gain_card", "take_card", "break_through", "look_cards", "look_take_card"];
 const SOURCE_ZONES_EFFECT_OPS = ["return_unrest", "return_fame", "find_card"];
 const SOURCE_ZONE_EFFECT_OPS = ["place_card_on_deck", "swap_card"];
-const DESTINATION_EFFECT_OPS = ["find_card", "acquire_card", "gain_card", "take_card", "profit"];
-const SUIT_EFFECT_OPS = ["free_play_card", "acquire_card", "gain_card", "take_card", "find_card", "exile_card", "break_through"];
-const CARD_TYPE_EFFECT_OPS = ["free_play_card", "acquire_card", "gain_card", "take_card", "find_card", "exile_card", "break_through"];
-const RESOURCE_EFFECT_OPS = ["gain_resource", "spend_resource", "remove_resource", "return_resource", "steal_resource", "conditional_resource_at_least"];
-const COUNT_EFFECT_OPS = ["draw", "draw_if_able", "discard_random", "discard_cards", "take_unrest", "gain_fame", "recall_region", "abandon_region", "exile_card", "acquire_card", "gain_card", "take_card", "break_through", "look_cards"];
-const AMOUNT_EFFECT_OPS = ["gain_resource", "spend_resource", "remove_resource", "return_resource", "steal_resource", "gain_action", "spend_action"];
+const DESTINATION_EFFECT_OPS = ["find_card", "acquire_card", "gain_card", "take_card", "look_take_card", "profit"];
+const SUIT_EFFECT_OPS = ["discard_cards", "free_play_card", "acquire_card", "gain_card", "take_card", "find_card", "exile_card", "break_through"];
+const CARD_TYPE_EFFECT_OPS = ["discard_cards", "free_play_card", "acquire_card", "gain_card", "take_card", "find_card", "exile_card", "break_through"];
+const RESOURCE_EFFECT_OPS = ["gain_resource", "move_resource_to_market", "spend_resource", "remove_resource", "return_resource", "steal_resource", "conditional_resource_at_least"];
+const COUNT_EFFECT_OPS = ["draw", "draw_if_able", "discard_random", "discard_cards", "take_unrest", "gain_fame", "recall_region", "abandon_region", "exile_card", "acquire_card", "gain_card", "take_card", "break_through", "look_cards", "look_take_card"];
+const AMOUNT_EFFECT_OPS = ["gain_resource", "move_resource_to_market", "spend_resource", "remove_resource", "return_resource", "steal_resource", "gain_action", "spend_action"];
 const AT_LEAST_EFFECT_OPS = ["conditional_resource_at_least"];
 const EFFECT_FIELDS = [
   "trigger",
@@ -355,11 +357,11 @@ function validateHumanEffectShape(nationId: string, path: string, record: Record
     }
   };
 
-  if (["draw", "draw_if_able", "discard_random", "discard_cards", "take_unrest", "gain_fame", "acquire_card", "gain_card", "take_card", "break_through", "look_cards"].includes(op)) requiredPositiveInteger("count");
+  if (["draw", "draw_if_able", "discard_random", "discard_cards", "take_unrest", "gain_fame", "acquire_card", "gain_card", "take_card", "break_through", "look_cards", "look_take_card"].includes(op)) requiredPositiveInteger("count");
   if (op === "exile_card") optionalPositiveInteger("count");
-  if (["gain_resource", "spend_resource", "remove_resource", "return_resource", "steal_resource", "gain_action", "spend_action"].includes(op)) requiredPositiveInteger("amount");
+  if (["gain_resource", "move_resource_to_market", "spend_resource", "remove_resource", "return_resource", "steal_resource", "gain_action", "spend_action"].includes(op)) requiredPositiveInteger("amount");
   if (op === "conditional_resource_at_least" && !isNonNegativeInteger(record.atLeast)) issues.push({ nationId, field: `${path}.atLeast`, reason: `invalid atLeast '${String(record.atLeast)}'` });
-  if (["gain_resource", "spend_resource", "remove_resource", "return_resource", "steal_resource", "conditional_resource_at_least"].includes(op)) requiredResource();
+  if (["gain_resource", "move_resource_to_market", "spend_resource", "remove_resource", "return_resource", "steal_resource", "conditional_resource_at_least"].includes(op)) requiredResource();
   if (op === "draw") optionalEnum("source", DRAW_SOURCES);
   if (op === "draw_if_able" && record.source !== undefined) issues.push({ nationId, field: `${path}.source`, reason: `invalid source '${String(record.source)}'` });
   if (op === "exile_card") requiredEnum("source", EXILE_SOURCES);
@@ -370,6 +372,7 @@ function validateHumanEffectShape(nationId: string, path: string, record: Record
     requiredEnum("suit", BREAK_THROUGH_SUITS);
   }
   if (op === "look_cards") requiredEnum("source", LOOK_SOURCES);
+  if (op === "look_take_card") requiredEnum("source", LOOK_TAKE_SOURCES);
   if (op === "return_unrest") sourceZones("sourceZones", RETURN_UNREST_SOURCES);
   if (op === "return_fame") sourceZones("sourceZones", RETURN_FAME_SOURCES);
   if (op === "place_card_on_deck") sourceZones("sourceZone", PLACE_ON_DECK_SOURCES);
@@ -379,8 +382,9 @@ function validateHumanEffectShape(nationId: string, path: string, record: Record
     sourceZones("sourceZones", FIND_SOURCES);
   }
   if (op === "acquire_card" || op === "gain_card" || op === "take_card") optionalEnum("destination", GAIN_DESTINATIONS);
+  if (op === "look_take_card") optionalEnum("destination", LOOK_TAKE_DESTINATIONS);
   if (op === "profit") optionalEnum("destination", PROFIT_DESTINATIONS);
-  if (["free_play_card", "acquire_card", "gain_card", "take_card", "find_card", "exile_card"].includes(op)) optionalEnum("suit", SUITS);
+  if (["discard_cards", "free_play_card", "acquire_card", "gain_card", "take_card", "find_card", "exile_card"].includes(op)) optionalEnum("suit", SUITS);
   if (op === "break_through" && record.cardType !== undefined) {
     issues.push({ nationId, field: `${path}.cardType`, reason: `invalid cardType '${String(record.cardType)}'` });
   }
@@ -498,7 +502,7 @@ function validateHumanEffectShape(nationId: string, path: string, record: Record
   if ((op === "take_unrest" || op === "steal_resource") && record.attackTargeted !== undefined && typeof record.attackTargeted !== "boolean") {
     issues.push({ nationId, field: `${path}.attackTargeted`, reason: `invalid attackTargeted '${String(record.attackTargeted)}'` });
   }
-  if (["free_play_card", "acquire_card", "gain_card", "take_card", "find_card", "exile_card"].includes(op)) optionalEnum("cardType", CARD_TYPES);
+  if (["discard_cards", "free_play_card", "acquire_card", "gain_card", "take_card", "find_card", "exile_card"].includes(op)) optionalEnum("cardType", CARD_TYPES);
   if (op === "treat_suit_as") {
     requiredEnum("from", SUIT_ICONS);
     const to = record.to;

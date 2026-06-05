@@ -61,6 +61,7 @@ export function hasNationHookInterruption(G: GameState): boolean {
     ?? G.pendingFindChoice
     ?? G.pendingAcquireChoice
     ?? G.pendingMarketCardChoice
+    ?? G.pendingMarketResourcePlacementChoice
     ?? G.pendingExileChoice
     ?? G.pendingBreakThroughChoice
     ?? G.pendingGarrisonChoice
@@ -79,6 +80,7 @@ export function hasNationHookInterruption(G: GameState): boolean {
     ?? G.pendingGiveCardChoice
     ?? G.pendingSwapChoice
     ?? G.pendingLookOrderChoice
+    ?? G.pendingLookTakeChoice
     ?? G.pendingReactiveExhaustChoice
   );
 }

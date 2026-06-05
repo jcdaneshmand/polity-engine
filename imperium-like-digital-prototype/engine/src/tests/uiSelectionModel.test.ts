@@ -106,6 +106,18 @@ describe("selection model", () => {
       detail:"Choose a market card for 1 cleanup resource"
     });
   });
+  it("describes pending market resource placement for card effects",()=> {
+    expect(getPendingUiState({...G,pendingMarketResourcePlacementChoice:{playerId:"0",resource:"materials",amount:2,cardIds:["m1","m2","m3"]}},ctx)).toMatchObject({
+      title:"Pending Market Resource",
+      detail:"Choose 2 market cards for 2 resources"
+    });
+  });
+  it("describes pending look-take choices",()=> {
+    expect(getPendingUiState({...G,pendingLookTakeChoice:{playerId:"0",source:"deck",destination:"hand",cardIds:["c1","m1"]}},ctx)).toMatchObject({
+      title:"Pending Look Take",
+      detail:"Choose 1 card from 2 looked cards"
+    });
+  });
   it("builds card action hints and highlights from available actions",()=> {
     const withPending={...G,pendingAcquireChoice:{playerId:"0",sourceCardId:"picker",source:"market",cardIds:["m1"],destination:"hand"}};
     const hints=getActionHintsByCardId(getAvailableActionsForSelection(null,withPending,ctx));
@@ -138,6 +150,12 @@ describe("selection model", () => {
     const clickAction=getMarketCardClickAction({...G,pendingCleanupMarketResourceChoice:{playerId:"0",resource:"knowledge",amount:1,cardIds:["m1"]}},ctx,"m1");
     expect(clickAction).toEqual({ action:"resolveCleanupMarketResource", cardId:"m1", enabled:true });
     expect(getMarketCardClickAction({...G,pendingCleanupMarketResourceChoice:{playerId:"1",resource:"knowledge",amount:1,cardIds:["m1"]}},ctx,"m1")).toBeUndefined();
+  });
+  it("clicking an eligible market card resolves one-card market resource placement directly",()=> {
+    const clickAction=getMarketCardClickAction({...G,pendingMarketResourcePlacementChoice:{playerId:"0",resource:"materials",amount:1,cardIds:["m1"]}},ctx,"m1");
+    expect(clickAction).toEqual({ action:"resolveMarketResourcePlacement", cardId:"m1", cardIds:["m1"], enabled:true });
+    expect(getMarketCardClickAction({...G,pendingMarketResourcePlacementChoice:{playerId:"0",resource:"materials",amount:2,cardIds:["m1","m2"]}},ctx,"m1")).toBeUndefined();
+    expect(getMarketCardClickAction({...G,pendingMarketResourcePlacementChoice:{playerId:"1",resource:"materials",amount:1,cardIds:["m1"]}},ctx,"m1")).toBeUndefined();
   });
   it("clicking an eligible market card resolves pending market Exile directly",()=> {
     const clickAction=getMarketCardClickAction({
@@ -211,6 +229,22 @@ describe("selection model", () => {
       expect.objectContaining({ label:"Return C then B then A", cardIds:["c","b","a"] })
     ]);
   });
+  it("exposes every legal Look-take choice and return order",()=> {
+    const withLookTake = {
+      ...G,
+      cardDb: {...G.cardDb, a:{id:"a",displayName:"A"},b:{id:"b",displayName:"B"},c:{id:"c",displayName:"C"}},
+      pendingLookTakeChoice:{playerId:"0",source:"deck",destination:"hand",cardIds:["a","b","c"]}
+    };
+    const acts=getAvailableActionsForSelection(null,withLookTake,ctx);
+    expect(acts.filter((a)=>a.action==="resolveLookTakeChoice")).toEqual([
+      expect.objectContaining({ label:"Take A; return B then C", cardId:"a", returnOrder:["b","c"] }),
+      expect.objectContaining({ label:"Take A; return C then B", cardId:"a", returnOrder:["c","b"] }),
+      expect.objectContaining({ label:"Take B; return A then C", cardId:"b", returnOrder:["a","c"] }),
+      expect.objectContaining({ label:"Take B; return C then A", cardId:"b", returnOrder:["c","a"] }),
+      expect.objectContaining({ label:"Take C; return A then B", cardId:"c", returnOrder:["a","b"] }),
+      expect.objectContaining({ label:"Take C; return B then A", cardId:"c", returnOrder:["b","a"] })
+    ]);
+  });
   it("does not expose direct market Acquire as a normal player action",()=> {
     expect(getAvailableActionsForSelection({kind:"market_slot",id:"m1"},G,ctx).some(a=>a.action==="acquire")).toBe(false);
   });
@@ -241,6 +275,14 @@ describe("selection model", () => {
     const source=fs.readFileSync(path.resolve(import.meta.dirname, "../../../app/src/ui/layout/BoardLayout.tsx"), "utf8");
     expect(source).toContain("moves.resolveReactiveExhaustChoice");
     expect(source).toContain("moves.skipReactiveExhaustChoice");
+  });
+  it("routes market resource placement actions through the published move map",()=> {
+    const source=fs.readFileSync(path.resolve(import.meta.dirname, "../../../app/src/ui/layout/BoardLayout.tsx"), "utf8");
+    expect(source).toContain("moves.resolveMarketResourcePlacement?.(a.cardIds");
+  });
+  it("routes look-take pending actions through the published move map",()=> {
+    const source=fs.readFileSync(path.resolve(import.meta.dirname, "../../../app/src/ui/layout/BoardLayout.tsx"), "utf8");
+    expect(source).toContain("moves.resolveLookTakeChoice?.(a.cardId, a.returnOrder");
   });
   it("uses data-driven player zone labels for selected zone details",()=> {
     const source=fs.readFileSync(path.resolve(import.meta.dirname, "../../../app/src/ui/layout/BoardLayout.tsx"), "utf8");

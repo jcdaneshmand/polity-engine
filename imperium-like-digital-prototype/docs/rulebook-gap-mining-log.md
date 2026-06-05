@@ -50,3 +50,42 @@ Covered during this pass:
 - Bot table fallback, partial row resolution, empty Bot/Dynasty deck behavior, and Bot Trade Routes fallthrough are already covered by solo Bot tests and checklist evidence.
 - Nation-specific History replacement zones, no-History discard routing, side-area visibility, special bottom Fame timing, short-game exceptions, and campaign outcomes are already covered by setup, scoring, UI, and solo tests.
 - Exile token restrictions, garrisoned-card movement, and negative Garrison eligibility tags are covered.
+
+## 2026-06-04 Additional Cost-Filter Pass
+
+Scan method:
+
+- Revisited rulebook example-card snippets involving explicit costs and hand-card discard requirements.
+- Compared category-restricted discard costs against `discard_cards` runtime resolution, move legality, private-card import validation, and nation-ruleset validation.
+
+Findings:
+
+| Contract pattern | Rulebook orientation | Current engine status | Next action |
+| --- | --- | --- | --- |
+| Selected discard-card costs restricted by printed card category | Public example card text with discard costs keyed to card kind/icon | Covered in this pass | `effectRunner.test.ts` verifies suit and card-type filtered discard-cost eligibility and cost-before-benefit resume; `nationRulesetValidation.test.ts` and `privateCardImport.test.ts` accept the public-safe import shape. |
+
+## 2026-06-04 Player Resource To Market Pass
+
+Scan method:
+
+- Revisited rulebook example-card snippets involving resource tokens moving from a player pool to public Market cards.
+- Compared that contract against payment, ordinary resource removal/return, cleanup Market-token placement, Trade Route Goods placement, Market marker mirroring, pending-choice blockers, UI move exposure, private-card import validation, and nation-ruleset validation.
+
+Findings:
+
+| Contract pattern | Rulebook orientation | Current engine status | Next action |
+| --- | --- | --- | --- |
+| Player-owned resources moved onto distinct Market cards by card text | Public example card text with a player moving resources from their pool onto Market destinations | Covered in this pass | `effectRunner.test.ts` verifies `move_resource_to_market` pauses before later text when multiple Market destinations are available; `turnLoop.test.ts` verifies selected distinct placements, resource-pool subtraction, structured/legacy Market marker mirroring, resumed later effects, and pending-choice turn blocking; `uiSelectionModel.test.ts`, `privateCardImport.test.ts`, and `nationRulesetValidation.test.ts` cover UI exposure and import/schema acceptance. |
+
+## 2026-06-04 Look-And-Take Pass
+
+Scan method:
+
+- Reviewed high-risk hidden-deck snippets involving Look, Take, top-card order, and returned cards.
+- Compared the contract against current Look-only ordering, Find, card movement destinations, pending-choice resume, private-card import validation, nation-ruleset validation, and UI action exposure.
+
+Findings:
+
+| Contract pattern | Rulebook orientation | Current engine status | Next action |
+| --- | --- | --- | --- |
+| Look at top hidden cards, take one, and return the rest in chosen order | Public example card text that combines Look, Take, and top-deck return order | Covered in this pass | `effectRunner.test.ts` verifies `look_take_card` reveals eligible top hidden cards, pauses before later text, resolves the selected card to the destination, returns the remaining looked cards in selected order, and resumes later effects; `privateCardImport.test.ts`, `nationRulesetValidation.test.ts`, and `uiSelectionModel.test.ts` cover import/schema/UI exposure. |

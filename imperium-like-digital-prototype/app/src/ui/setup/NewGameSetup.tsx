@@ -16,11 +16,7 @@ export type NewGameSessionConfig = {
 
 type NewGameSetupProps = {
   onStart: (config: NewGameSessionConfig) => void;
-  onHostOnline?: (config: NewGameSessionConfig, serverURL: string) => void | Promise<void>;
-  onJoinOnline?: (args: { config: NewGameSessionConfig; matchID: string; playerID: string; playerName: string; serverURL: string }) => void | Promise<void>;
-  onRejoinOnline?: () => void;
-  canRejoinOnline?: boolean;
-  onlineServerURL?: string;
+  onOpenOnlineGames?: (config: NewGameSessionConfig) => void;
   onOpenCardEntry?: () => void;
   initialCampaignProgress?: CampaignProgress;
 };
@@ -173,7 +169,7 @@ export function buildCampaignGameOptions(args: {
   };
 }
 
-export default function NewGameSetup({ onStart, onHostOnline, onJoinOnline, onRejoinOnline, canRejoinOnline, onlineServerURL = "http://localhost:8000", onOpenCardEntry, initialCampaignProgress }: NewGameSetupProps) {
+export default function NewGameSetup({ onStart, onOpenOnlineGames, onOpenCardEntry, initialCampaignProgress }: NewGameSetupProps) {
   const [mode, setMode] = useState<GameMode>(initialCampaignProgress ? "solo" : "multiplayer");
   const [playerCount, setPlayerCount] = useState<1 | 2 | 3 | 4>(initialCampaignProgress ? 1 : 2);
   const [enabledExpansions, setEnabledExpansions] = useState<ExpansionId[]>([]);
@@ -188,9 +184,6 @@ export default function NewGameSetup({ onStart, onHostOnline, onJoinOnline, onRe
   const [privateData, setPrivateData] = useState<PrivateDataBundle>({});
   const [privateDataConfirmed, setPrivateDataConfirmed] = useState(false);
   const [privateFileStatuses, setPrivateFileStatuses] = useState<PrivateDataFileStatus[]>([]);
-  const [joinMatchID, setJoinMatchID] = useState("");
-  const [joinPlayerID, setJoinPlayerID] = useState("1");
-  const [joinPlayerName, setJoinPlayerName] = useState("Player");
   const [playerNationIds, setPlayerNationIds] = useState<Record<string, string>>({
     "1": initialCampaignProgress?.playerNationId ?? DEFAULT_NATION_ID,
     "2": DEFAULT_NATION_ID,
@@ -280,21 +273,6 @@ export default function NewGameSetup({ onStart, onHostOnline, onJoinOnline, onRe
 
   const startGame = () => {
     onStart(buildLaunchConfig());
-  };
-
-  const hostOnlineGame = () => {
-    void onHostOnline?.(buildLaunchConfig(), onlineServerURL);
-  };
-
-  const joinOnlineGame = () => {
-    if (!joinMatchID.trim()) return;
-    void onJoinOnline?.({
-      config: buildLaunchConfig(),
-      matchID: joinMatchID.trim(),
-      playerID: joinPlayerID,
-      playerName: joinPlayerName.trim() || `Player ${joinPlayerID}`,
-      serverURL: onlineServerURL
-    });
   };
 
   const updateCampaignMode = (nextCampaignMode: "none" | CampaignMode) => {
@@ -499,37 +477,10 @@ export default function NewGameSetup({ onStart, onHostOnline, onJoinOnline, onRe
             {mode === "multiplayer" ? (
               <fieldset className="setup-section setup-section--wide">
                 <legend>Online</legend>
+                <p className="setup-help">Browse listed games, host a public or locked table, join by code, rejoin saved seats, or spectate public state.</p>
                 <div className="private-data-actions">
-                  <button className="primary-action" type="button" onClick={hostOnlineGame} disabled={!onHostOnline}>
-                    Host Online Game
-                  </button>
-                  <button type="button" onClick={onRejoinOnline} disabled={!canRejoinOnline || !onRejoinOnline}>
-                    Rejoin Online Game
-                  </button>
-                </div>
-                <div className="nation-grid">
-                  <label className="setup-field">
-                    <span>Match ID</span>
-                    <input value={joinMatchID} onChange={(event: { target: HTMLInputElement }) => setJoinMatchID(event.target.value)} />
-                  </label>
-                  <label className="setup-field">
-                    <span>Seat</span>
-                    <select value={joinPlayerID} onChange={(event: { target: HTMLSelectElement }) => setJoinPlayerID(event.target.value)}>
-                      {Array.from({ length: normalizedPlayerCount }, (_, index) => String(index)).map((playerId) => (
-                        <option key={playerId} value={playerId}>
-                          Player {Number(playerId) + 1}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="setup-field">
-                    <span>Name</span>
-                    <input value={joinPlayerName} onChange={(event: { target: HTMLInputElement }) => setJoinPlayerName(event.target.value)} />
-                  </label>
-                </div>
-                <div className="private-data-actions">
-                  <button type="button" onClick={joinOnlineGame} disabled={!onJoinOnline || !joinMatchID.trim()}>
-                    Join Online Game
+                  <button className="primary-action" type="button" onClick={() => onOpenOnlineGames?.(buildLaunchConfig())} disabled={!onOpenOnlineGames}>
+                    Online Games
                   </button>
                 </div>
               </fieldset>

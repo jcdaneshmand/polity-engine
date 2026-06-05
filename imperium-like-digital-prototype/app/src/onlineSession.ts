@@ -1,8 +1,9 @@
 export const ONLINE_SESSION_STORAGE_KEY = "polity-engine.onlineSession.v1";
 
 export type OnlineSessionRecord = {
+  kind?: "player" | "spectator";
   matchID: string;
-  playerID: string;
+  playerID?: string;
   credentials: string;
   serverURL: string;
   numPlayers: number;
@@ -17,12 +18,35 @@ export type JoinURLDetails = {
 type Fetcher = (url: string, init?: RequestInit) => Promise<Response>;
 
 const GAME_NAME = "polity-engine";
+const PLACEHOLDER_FINGERPRINT = "placeholder";
+
+export type PrivateDataLabel = "placeholder" | "private_data_required";
+
+export type ListedMatch = {
+  matchID: string;
+  roomName: string;
+  createdAt: string;
+  updatedAt: string;
+  status: "setup" | "in_progress" | "ended";
+  playerCount: number;
+  occupiedSeats: Array<{ playerID: string; playerName: string; isConnected: boolean }>;
+  availableSeats: string[];
+  isLocked: boolean;
+  spectatingAllowed: boolean;
+  privateDataLabel: PrivateDataLabel;
+  setupSummary: {
+    commonsSetId: string;
+    enabledExpansions: string[];
+    enabledVariants: string[];
+    nationLabels: string[];
+  };
+};
 
 function isOnlineSessionRecord(value: unknown): value is OnlineSessionRecord {
   if (!value || typeof value !== "object") return false;
   const record = value as OnlineSessionRecord;
   return typeof record.matchID === "string" && record.matchID.length > 0
-    && typeof record.playerID === "string" && record.playerID.length > 0
+    && (record.kind === "spectator" || typeof record.playerID === "string" && record.playerID.length > 0)
     && typeof record.credentials === "string" && record.credentials.length > 0
     && typeof record.serverURL === "string" && record.serverURL.length > 0
     && Number.isInteger(record.numPlayers) && record.numPlayers > 0
@@ -66,12 +90,46 @@ function lobbyURL(serverURL: string, path: string): string {
   return `${serverURL.replace(/\/$/, "")}${path}`;
 }
 
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, item]) => [key, canonicalize(item)])
+    );
+  }
+  return value;
+}
+
+function fnv1a(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+export function computePrivateDataFingerprint(privateData: unknown): string {
+  if (!privateData || typeof privateData !== "object" || !Object.keys(privateData).length) return PLACEHOLDER_FINGERPRINT;
+  return `private:${fnv1a(JSON.stringify(canonicalize(privateData)))}`;
+}
+
 async function postLobbyJSON<T>(url: string, body: unknown, fetcher: Fetcher): Promise<T> {
   const response = await fetcher(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body)
   });
+  if (!response.ok) {
+    throw new Error(`Lobby request failed (${response.status})`);
+  }
+  return await response.json() as T;
+}
+
+async function getLobbyJSON<T>(url: string, fetcher: Fetcher): Promise<T> {
+  const response = await fetcher(url);
   if (!response.ok) {
     throw new Error(`Lobby request failed (${response.status})`);
   }
@@ -90,6 +148,90 @@ export async function joinOnlineMatch(args: { serverURL: string; matchID: string
   return postLobbyJSON<{ playerCredentials: string }>(
     lobbyURL(args.serverURL, `/games/${GAME_NAME}/${args.matchID}/join`),
     { playerID: args.playerID, playerName: args.playerName },
+    args.fetcher ?? fetch
+  );
+}
+
+function listedPriority(match: ListedMatch): number {
+  if (match.status === "setup" && match.availableSeats.length > 0) return 0;
+  if (match.status === "in_progress" && match.spectatingAllowed) return 1;
+  if (match.status === "setup") return 2;
+  if (match.status === "in_progress") return 3;
+  return 4;
+}
+
+export function sortListedMatches(matches: ListedMatch[]): ListedMatch[] {
+  return [...matches].sort((left, right) => {
+    const priority = listedPriority(left) - listedPriority(right);
+    if (priority !== 0) return priority;
+    return right.updatedAt.localeCompare(left.updatedAt);
+  });
+}
+
+export async function listOnlineMatches(args: { serverURL: string; fetcher?: Fetcher }): Promise<ListedMatch[]> {
+  const result = await getLobbyJSON<{ matches: ListedMatch[] }>(
+    lobbyURL(args.serverURL, "/polity/lobby/matches"),
+    args.fetcher ?? fetch
+  );
+  return sortListedMatches(result.matches);
+}
+
+export async function createPolityOnlineMatch(args: {
+  serverURL: string;
+  roomName: string;
+  numPlayers: number;
+  setupData: unknown;
+  privateDataFingerprint: string;
+  password?: string;
+  fetcher?: Fetcher;
+}): Promise<{ matchID: string }> {
+  return postLobbyJSON<{ matchID: string }>(
+    lobbyURL(args.serverURL, "/polity/lobby/matches"),
+    {
+      roomName: args.roomName,
+      numPlayers: args.numPlayers,
+      setupData: args.setupData,
+      privateDataFingerprint: args.privateDataFingerprint,
+      ...(args.password?.trim() ? { password: args.password.trim() } : {})
+    },
+    args.fetcher ?? fetch
+  );
+}
+
+export async function joinPolityOnlineMatch(args: {
+  serverURL: string;
+  matchID: string;
+  playerID: string;
+  playerName: string;
+  privateDataFingerprint: string;
+  password?: string;
+  fetcher?: Fetcher;
+}): Promise<{ playerCredentials: string; match?: ListedMatch }> {
+  return postLobbyJSON<{ playerCredentials: string; match?: ListedMatch }>(
+    lobbyURL(args.serverURL, `/polity/lobby/matches/${encodeURIComponent(args.matchID)}/join`),
+    {
+      playerID: args.playerID,
+      playerName: args.playerName,
+      privateDataFingerprint: args.privateDataFingerprint,
+      ...(args.password?.trim() ? { password: args.password.trim() } : {})
+    },
+    args.fetcher ?? fetch
+  );
+}
+
+export async function spectateOnlineMatch(args: {
+  serverURL: string;
+  matchID: string;
+  privateDataFingerprint: string;
+  password?: string;
+  fetcher?: Fetcher;
+}): Promise<{ spectatorCredentials: string; match?: ListedMatch }> {
+  return postLobbyJSON<{ spectatorCredentials: string; match?: ListedMatch }>(
+    lobbyURL(args.serverURL, `/polity/lobby/matches/${encodeURIComponent(args.matchID)}/spectate`),
+    {
+      privateDataFingerprint: args.privateDataFingerprint,
+      ...(args.password?.trim() ? { password: args.password.trim() } : {})
+    },
     args.fetcher ?? fetch
   );
 }

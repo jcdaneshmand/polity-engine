@@ -456,3 +456,110 @@
   cursor: pointer;
   padding: 7px 10px;
 }
+
+.online-games-panel {
+  max-width: 1120px;
+}
+
+.online-games-status {
+  border: 1px solid var(--ui-info);
+  border-radius: 6px;
+  background: #27231f;
+  color: #f3ead8;
+  margin: 12px 0 0;
+  padding: 8px 10px;
+}
+
+.online-card-grid,
+.online-games-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.online-card,
+.online-match-row {
+  border: 1px solid #6e5f50;
+  border-radius: 8px;
+  background: #3b342f;
+  color: #d9c7a7;
+  padding: 10px;
+}
+
+.online-card {
+  display: grid;
+  gap: 5px;
+}
+
+.online-card strong,
+.online-match-row strong {
+  color: #f3ead8;
+}
+
+.online-card small,
+.online-match-row small {
+  color: #d9c7a7;
+  font-size: 0.8rem;
+}
+
+.online-match-list {
+  display: grid;
+  gap: 10px;
+}
+
+.online-match-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.45fr);
+  gap: 12px;
+}
+
+.online-match-row > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.online-match-actions {
+  align-content: start;
+  display: grid;
+  gap: 8px;
+}
+
+.online-match-actions button,
+.online-games-actions button {
+  min-height: 38px;
+  border: 1px solid #7a6a57;
+  border-radius: 6px;
+  background: #4a4038;
+  color: #f3ead8;
+  cursor: pointer;
+  padding: 0 12px;
+}
+
+.online-match-actions button:disabled,
+.online-games-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.online-warning {
+  color: var(--ui-blocked) !important;
+  font-weight: 700;
+}
+
+.online-games-screen .setup-field input {
+  min-height: 38px;
+  box-sizing: border-box;
+  border: 1px solid #7a6a57;
+  border-radius: 6px;
+  background: #25221f;
+  color: #f3ead8;
+  padding: 6px 8px;
+  font: inherit;
+}
+
+@media (max-width: 760px) {
+  .online-match-row {
+    grid-template-columns: 1fr;
+  }
+}

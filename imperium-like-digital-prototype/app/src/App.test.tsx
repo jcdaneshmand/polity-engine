@@ -7,5 +7,6 @@ describe("App shell", () => {
     const html = renderToStaticMarkup(<App />);
 
     expect(html).toContain('data-theme="default"');
+    expect(html).toContain("Online Games");
   });
 });

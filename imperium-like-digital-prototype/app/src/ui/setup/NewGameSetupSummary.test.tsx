@@ -13,8 +13,7 @@ describe("NewGameSetup summary", () => {
     expect(html).toContain("Private Data");
     expect(html).toContain("Placeholder data");
     expect(html).toContain("Session");
-    expect(html).toContain("Host Online Game");
-    expect(html).toContain("Join Online Game");
+    expect(html).toContain("Online Games");
     expect(html).toContain("Content");
   });
 

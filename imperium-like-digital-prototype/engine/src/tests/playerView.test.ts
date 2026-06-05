@@ -49,4 +49,24 @@ describe("playerView redaction", () => {
     expect(serialized).not.toContain("p1_looked_secret");
     expect(serialized).not.toContain("global_hidden");
   });
+
+  it("hides every player's private card identities from spectator views", () => {
+    const G = createInitialState({ options: { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: [] } });
+    G.players["0"].hand = ["p0_hand_secret"];
+    G.players["0"].deck = ["p0_deck_secret"];
+    G.players["1"].hand = ["p1_hand_secret"];
+    G.players["1"].deck = ["p1_deck_secret"];
+    G.pendingDiscardChoice = { playerId: "0", sourceCardId: "discard_source", cardIds: ["p0_hand_secret"], count: 1, resumeEffects: [] };
+
+    const view = redactGameStateForPlayer(G, undefined);
+    const serialized = JSON.stringify(view);
+
+    expect(view.players["0"].hand).toEqual([]);
+    expect(view.players["1"].hand).toEqual([]);
+    expect(view.pendingDiscardChoice).toBeUndefined();
+    expect(serialized).not.toContain("p0_hand_secret");
+    expect(serialized).not.toContain("p0_deck_secret");
+    expect(serialized).not.toContain("p1_hand_secret");
+    expect(serialized).not.toContain("p1_deck_secret");
+  });
 });

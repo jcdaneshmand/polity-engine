@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "dev": "npm run dev -w app",
-    "dev:full": "node scripts/dev-full.mjs",
+    "dev:full": "node ../scripts/dev-full.mjs",
     "server:dev": "npm run dev -w server",
     "test": "npm run test -w engine",
     "typecheck": "npm run typecheck -w engine && npm run typecheck -w app && npm run typecheck -w server",

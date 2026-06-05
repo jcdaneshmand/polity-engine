@@ -22,4 +22,20 @@ describe("CardTile", () => {
     expect(html).toContain("Cost 2");
     expect(html).toContain("VP 3");
   });
+
+  it("renders a cleanup discard selector state", () => {
+    const html = renderToStaticMarkup(
+      <CardTile
+        card={{
+          displayName: "Border Fort",
+          suit: "region",
+          cardType: "region",
+          effects: []
+        }}
+        cleanupSelected
+      />
+    );
+
+    expect(html).toContain("is-cleanup-selected");
+  });
 });

@@ -355,46 +355,25 @@ export function getPrimaryBlockedReason(actions: any[]): string | undefined {
   return actions.find((action) => !action.enabled && action.reason)?.reason;
 }
 
-export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx: any) {
+export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx: any, uiState: { cleanupDiscardSelection?: string[] } = {}) {
   const actions: Array<{ label:string; action:string; enabled:boolean; reason?:string; group?: string; cardId?:string; hostCardId?: string; marketCardId?: string; choiceIndex?: number; suit?: string; source?: "market" | "deck" | "discard" | "exile"; recipientPlayerId?: string; recipientPlayerIds?: string[]; cardIds?: string[] }> = [];
   const pendingCleanupDiscard = G.pendingCleanupDiscardChoice;
   if (pendingCleanupDiscard) {
     const isCurrentPlayer = pendingCleanupDiscard.playerId === ctx.currentPlayer;
-    const card = s?.kind === "hand_card" && pendingCleanupDiscard.cardIds?.includes(s.id) ? getCardById(G, s.id) : undefined;
-    if (card) {
-      actions.push({
-        label: `Discard ${card.displayName ?? s?.id}`,
-        action: "resolveCleanupDiscard",
-        enabled: isCurrentPlayer,
-        reason: isCurrentPlayer ? undefined : `Waiting for player ${pendingCleanupDiscard.playerId}`,
-        cardId: s?.id
-      });
-    } else {
-      actions.push({
-        label: "Keep Hand",
-        action: "resolveCleanupDiscard",
-        enabled: isCurrentPlayer,
-        reason: isCurrentPlayer ? undefined : `Waiting for player ${pendingCleanupDiscard.playerId}`,
-        cardIds: []
-      });
-      for (let count = 1; count <= (pendingCleanupDiscard.cardIds?.length ?? 0); count += 1) {
-        cardCombinations(pendingCleanupDiscard.cardIds ?? [], count).forEach((cardIds) => {
-          const labels = cardIds.map((cardId) => getCardById(G, cardId)?.displayName ?? cardId);
-          actions.push({
-            label: `Discard ${labels.join(", ")}`,
-            action: "resolveCleanupDiscard",
-            enabled: isCurrentPlayer,
-            reason: isCurrentPlayer ? undefined : `Waiting for player ${pendingCleanupDiscard.playerId}`,
-            cardIds
-          });
-        });
-      }
-    }
-    if (card) actions.push({
+    const selectedCardIds = (uiState.cleanupDiscardSelection ?? []).filter((cardId) => pendingCleanupDiscard.cardIds?.includes(cardId));
+    const waitingReason = isCurrentPlayer ? undefined : `Waiting for player ${pendingCleanupDiscard.playerId}`;
+    actions.push({
+      label: "Discard selected cards",
+      action: "resolveCleanupDiscard",
+      enabled: isCurrentPlayer && selectedCardIds.length > 0,
+      reason: waitingReason ?? (selectedCardIds.length > 0 ? undefined : "Select at least one cleanup discard card"),
+      cardIds: selectedCardIds
+    });
+    actions.push({
       label: "Keep Hand",
       action: "resolveCleanupDiscard",
       enabled: isCurrentPlayer,
-      reason: isCurrentPlayer ? undefined : `Waiting for player ${pendingCleanupDiscard.playerId}`,
+      reason: waitingReason,
       cardIds: []
     });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve cleanup discard first" });

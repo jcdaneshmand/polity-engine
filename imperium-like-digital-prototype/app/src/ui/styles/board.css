@@ -18,6 +18,7 @@
 .card-tile { box-sizing:border-box; min-width:0; max-width:100%; padding:var(--tile-pad); text-align:left; overflow-wrap:anywhere; overflow:hidden; }
 .card-slot > .card-tile { width:100%; }
 .card-tile.is-selected { outline:3px solid var(--ui-selection); }
+.card-tile.is-cleanup-selected { outline:3px solid var(--ui-blocked); border-color:var(--ui-blocked); box-shadow:0 0 0 2px rgba(220,138,116,.32); }
 .card-tile.is-valid-target { border-color:var(--ui-ready); box-shadow:0 0 0 2px rgba(159,202,123,.34); }
 .card-tile-strip,.card-stat-row { display:flex; justify-content:space-between; gap:6px; font-size:.72rem; color:#d9c7a7; }
 .card-tile-strip span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

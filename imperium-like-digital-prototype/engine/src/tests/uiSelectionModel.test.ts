@@ -582,30 +582,30 @@ describe("selection model", () => {
     expect(acts[0].label).toBe("Choose 1: Steal 2 materials");
     expect(acts[1].label).toBe("Choose 2: Return 1 influence");
   });
-  it("pending cleanup discard exposes discard and keep-hand actions",()=> {
-    const acts=getAvailableActionsForSelection({kind:"hand_card",id:"c1"}, {...G,pendingCleanupDiscardChoice:{playerId:"0",cardIds:["c1"]}}, ctx);
+  it("pending cleanup discard exposes selector actions instead of card combinations",()=> {
+    const acts=getAvailableActionsForSelection(null, {...G,pendingCleanupDiscardChoice:{playerId:"0",cardIds:["c1"]}}, ctx, { cleanupDiscardSelection: [] });
     expect(acts.map((a)=>a.action)).toEqual(["resolveCleanupDiscard","resolveCleanupDiscard","endTurn"]);
-    expect(acts[0]).toMatchObject({ label:"Discard Card1", enabled:true, cardId:"c1" });
+    expect(acts[0]).toMatchObject({ label:"Discard selected cards", enabled:false, reason:"Select at least one cleanup discard card", cardIds:[] });
     expect(acts[1]).toMatchObject({ label:"Keep Hand", enabled:true });
     expect(acts[2].enabled).toBe(false);
   });
-  it("pending cleanup discard exposes multi-card voluntary discard combinations",()=> {
+  it("pending cleanup discard publishes only the selected card ids",()=> {
     const withCleanup = {
       ...G,
-      cardDb: {...G.cardDb,c2:{id:"c2",displayName:"Card2"}},
-      pendingCleanupDiscardChoice:{playerId:"0",cardIds:["c1","c2"]}
+      cardDb: {...G.cardDb,c2:{id:"c2",displayName:"Card2"},c3:{id:"c3",displayName:"Card3"}},
+      pendingCleanupDiscardChoice:{playerId:"0",cardIds:["c1","c2","c3"]}
     };
-    const acts=getAvailableActionsForSelection(null, withCleanup, ctx);
+    const acts=getAvailableActionsForSelection(null, withCleanup, ctx, { cleanupDiscardSelection: ["c2","c3"] });
     expect(acts.filter((a)=>a.action==="resolveCleanupDiscard")).toEqual([
-      expect.objectContaining({ label:"Keep Hand", cardIds:[] }),
-      expect.objectContaining({ label:"Discard Card1", cardIds:["c1"] }),
-      expect.objectContaining({ label:"Discard Card2", cardIds:["c2"] }),
-      expect.objectContaining({ label:"Discard Card1, Card2", cardIds:["c1","c2"] })
+      expect.objectContaining({ label:"Discard selected cards", enabled:true, cardIds:["c2","c3"] }),
+      expect.objectContaining({ label:"Keep Hand", cardIds:[] })
     ]);
   });
   it("routes cleanup discard choices through the published cardIds move payload",()=> {
     const source=fs.readFileSync(path.resolve(import.meta.dirname, "../../../app/src/ui/layout/BoardLayout.tsx"), "utf8");
     expect(source).toContain("moves.resolveCleanupDiscard?.(a.cardIds");
+    expect(source).toContain("cleanupDiscardSelection");
+    expect(source).toContain("toggleCleanupDiscardCard");
   });
   it("pending cleanup market resource exposes eligible market cards",()=> {
     const acts=getAvailableActionsForSelection(null, {...G,pendingCleanupMarketResourceChoice:{playerId:"0",cardIds:["m1"]}}, ctx);

@@ -35,7 +35,9 @@ export type LobbyAccessFailureReason =
   | "private_data_mismatch"
   | "match_not_joinable"
   | "match_full"
-  | "seat_unavailable";
+  | "seat_unavailable"
+  | "duplicate_client"
+  | "not_host";
 
 export type LobbyAccessResult = { ok: true } | { ok: false; reason: LobbyAccessFailureReason };
 
@@ -56,6 +58,7 @@ export type RecordPlayerJoinInput = {
   matchID: string;
   playerID: string;
   playerName: string;
+  clientID?: string;
 };
 
 export type RecordPlayerLeaveInput = {

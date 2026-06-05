@@ -19,7 +19,9 @@ type OnlineGamesProps = {
   onSpectate: (args: { matchID: string; password?: string; privateDataFingerprint: string }) => void | Promise<void>;
   onRejoin: (record: OnlineSessionRecord) => void;
   onForgetSession: (record: OnlineSessionRecord) => void;
+  onCloseSession?: (record: OnlineSessionRecord) => void;
   onSendChat?: (text: string) => void | Promise<void>;
+  onClearAllGames?: () => void | Promise<void>;
 };
 
 function playerLabel(playerID: string | undefined): string {
@@ -54,6 +56,10 @@ function savedSessionRole(record: OnlineSessionRecord): string {
   return playerLabel(record.playerID);
 }
 
+function canCloseSavedSession(record: OnlineSessionRecord): boolean {
+  return record.kind !== "lobby" && record.playerID === "0";
+}
+
 function statusLabel(status: ListedMatch["status"]): string {
   if (status === "in_progress") return "In progress";
   if (status === "ended") return "Ended";
@@ -83,7 +89,9 @@ export default function OnlineGames({
   onSpectate,
   onRejoin,
   onForgetSession,
-  onSendChat
+  onCloseSession,
+  onSendChat,
+  onClearAllGames
 }: OnlineGamesProps) {
   const [roomName, setRoomName] = useState("Polity Table");
   const [hostPassword, setHostPassword] = useState("");
@@ -131,6 +139,7 @@ export default function OnlineGames({
           </div>
           <div className="private-data-actions">
             <button type="button" onClick={onRefresh}>Refresh</button>
+            {onClearAllGames ? <button type="button" onClick={() => void onClearAllGames()}>Clear All Games</button> : null}
             <button type="button" onClick={onBackToSetup}>Setup</button>
           </div>
         </div>
@@ -174,6 +183,7 @@ export default function OnlineGames({
                 <div className="private-data-actions">
                   <button type="button" onClick={() => onRejoin(record)}>Rejoin</button>
                   <button type="button" onClick={() => onForgetSession(record)}>Forget</button>
+                  {canCloseSavedSession(record) && onCloseSession ? <button type="button" onClick={() => onCloseSession(record)}>Close Match</button> : null}
                 </div>
               </article>
             )) : <p className="setup-help">No saved online games in this browser.</p>}

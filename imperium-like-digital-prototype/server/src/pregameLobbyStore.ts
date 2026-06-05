@@ -19,6 +19,7 @@ type PrivateSeat = {
   lobbyCredentials?: string;
   connected: boolean;
   ready: boolean;
+  lastSeenAt?: string;
   selectedNationID?: string;
   playerCredentials?: string;
 };
@@ -42,6 +43,7 @@ type PrivateLobby = {
 
 const PLACEHOLDER_FINGERPRINTS = new Set(["placeholder", "placeholder:v1"]);
 const DEFAULT_CLEANUP_GRACE_MS = 10 * 60 * 1000;
+const DEFAULT_PLAYER_STALE_MS = 15_000;
 const LOUNGE_CHAT_KEY = "lounge";
 const MAX_CHAT_MESSAGES = 50;
 const MAX_CHAT_AUTHOR_LENGTH = 40;
@@ -155,6 +157,7 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
   const createCredential = options.createCredential ?? (() => randomUUID());
   const hashPassword = options.hashPassword ?? defaultHashPassword;
   const cleanupGraceMs = options.cleanupGraceMs ?? DEFAULT_CLEANUP_GRACE_MS;
+  const playerStaleMs = options.playerStaleMs ?? DEFAULT_PLAYER_STALE_MS;
   const lobbies = new Map<string, PrivateLobby>();
   const chatMessages = new Map<string, ChatMessage[]>();
   let nextChatID = 0;
@@ -174,6 +177,33 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
   function clearReady(lobby: PrivateLobby): void {
     for (const seat of lobby.seats) seat.ready = false;
     if (lobby.status === "locked") lobby.status = "waiting";
+  }
+
+  function clearSeat(seat: PrivateSeat): void {
+    delete seat.clientID;
+    delete seat.displayName;
+    delete seat.lobbyCredentials;
+    delete seat.lastSeenAt;
+    delete seat.selectedNationID;
+    delete seat.playerCredentials;
+    seat.connected = false;
+    seat.ready = false;
+  }
+
+  function cleanupStaleSeats(lobby: PrivateLobby): void {
+    if (lobby.status === "started" || lobby.status === "starting") return;
+    const current = Date.parse(timestamp());
+    let changed = false;
+    for (const seat of occupiedSeats(lobby)) {
+      const lastSeenAt = seat.lastSeenAt ?? lobby.updatedAt;
+      if (current - Date.parse(lastSeenAt) > playerStaleMs) {
+        clearSeat(seat);
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    if (occupiedSeats(lobby).length === 0) lobby.emptySince = timestamp();
+    reconcileLock(lobby, timestamp());
   }
 
   function appendChat(scope: string, author: string, text: string): { ok: true; message: ChatMessage } | { ok: false; reason: "invalid_chat" } {
@@ -223,7 +253,7 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
     createLobby(input: CreatePregameLobbyInput) {
       const ts = timestamp();
       const lobbyID = createID();
-      const hostClientID = createID();
+      const hostClientID = input.clientID?.trim() || createID();
       const lobbyCredentials = createCredential();
       const count = playerCount(input.playerCount);
       const seats = ensureSeatCount(count);
@@ -232,7 +262,8 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
         clientID: hostClientID,
         displayName: input.hostName?.trim() || "Host",
         lobbyCredentials,
-        connected: true
+        connected: true,
+        lastSeenAt: ts
       };
       const password = input.password?.trim();
       const lobby: PrivateLobby = {
@@ -254,6 +285,7 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
     },
 
     listLobbies(): ListedLobby[] {
+      for (const lobby of lobbies.values()) cleanupStaleSeats(lobby);
       this.cleanupEmptyLobbies();
       return Array.from(lobbies.values())
         .filter((lobby) => lobby.status === "waiting" || lobby.status === "locked")
@@ -265,20 +297,26 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
       const lobby = lobbies.get(input.lobbyID);
       if (!lobby) return { ok: false as const, reason: "lobby_not_found" as const };
       if (lobby.status === "started" || lobby.status === "starting") return { ok: false as const, reason: "lobby_already_started" as const };
+      cleanupStaleSeats(lobby);
       if (lobby.privateDataFingerprint !== input.privateDataFingerprint) return { ok: false as const, reason: "private_data_mismatch" as const };
       if (lobby.isLocked) {
         const password = input.password?.trim();
         if (!password) return { ok: false as const, reason: "missing_password" as const };
         if (hashPassword(password) !== lobby.passwordVerifier) return { ok: false as const, reason: "wrong_password" as const };
       }
+      const clientID = input.clientID?.trim();
+      if (clientID && occupiedSeats(lobby).some((candidate) => candidate.clientID === clientID)) {
+        return { ok: false as const, reason: "duplicate_client" as const };
+      }
       const seat = input.seatID
         ? lobby.seats.find((candidate) => candidate.seatID === input.seatID && !candidate.lobbyCredentials)
         : lobby.seats.find((candidate) => !candidate.lobbyCredentials);
       if (!seat) return { ok: false as const, reason: "seat_unavailable" as const };
-      seat.clientID = createID();
+      seat.clientID = clientID || createID();
       seat.displayName = input.displayName?.trim() || `Player ${Number(seat.seatID) + 1}`;
       seat.lobbyCredentials = createCredential();
       seat.connected = true;
+      seat.lastSeenAt = timestamp();
       seat.ready = false;
       delete lobby.emptySince;
       lobby.updatedAt = timestamp();
@@ -291,8 +329,21 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
       const seat = findSeatByCredentials(lobby, lobbyCredentials);
       if (!seat) return undefined;
       seat.connected = true;
+      seat.lastSeenAt = timestamp();
       delete lobby.emptySince;
       return lobbyView(lobby, seat);
+    },
+
+    heartbeatLobby(input: { lobbyID: string; lobbyCredentials: string }): LobbyAccessResult {
+      const lobby = lobbies.get(input.lobbyID);
+      if (!lobby) return { ok: false, reason: "lobby_not_found" };
+      const seat = findSeatByCredentials(lobby, input.lobbyCredentials);
+      if (!seat) return { ok: false, reason: "invalid_credentials" };
+      seat.connected = true;
+      seat.lastSeenAt = timestamp();
+      delete lobby.emptySince;
+      lobby.updatedAt = timestamp();
+      return { ok: true };
     },
 
     updateSetup(input: { lobbyID: string; lobbyCredentials: string; setupData: LobbySetupData; playerCount: number; roomName?: string; privateDataFingerprint?: string; password?: string; spectatingAllowed?: boolean }): LobbyAccessResult {
@@ -349,16 +400,17 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
       if (!lobby) return { ok: false, reason: "lobby_not_found" };
       const seat = findSeatByCredentials(lobby, input.lobbyCredentials);
       if (!seat) return { ok: false, reason: "invalid_credentials" };
-      delete seat.clientID;
-      delete seat.displayName;
-      delete seat.lobbyCredentials;
-      delete seat.selectedNationID;
-      delete seat.playerCredentials;
-      seat.connected = false;
-      seat.ready = false;
+      clearSeat(seat);
       if (occupiedSeats(lobby).length === 0) lobby.emptySince = timestamp();
       lobby.updatedAt = timestamp();
       return { ok: true };
+    },
+
+    clearLobbies(): number {
+      const lobbyIDs = Array.from(lobbies.keys());
+      for (const lobbyID of lobbyIDs) chatMessages.delete(lobbyChatScope(lobbyID));
+      lobbies.clear();
+      return lobbyIDs.length;
     },
 
     beginStarting(lobbyID: string, lobbyCredentials: string): { ok: true; roomName: string; setupData: LobbySetupData; privateDataFingerprint: string; passwordVerifier?: string; spectatingAllowed: boolean; seats: Array<{ seatID: string; displayName: string; selectedNationID: string }> } | { ok: false; reason: string } {

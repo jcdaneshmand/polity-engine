@@ -112,4 +112,44 @@ describe("lobby store", () => {
     expect(store.recordPlayerLeave({ matchID: "match-1", playerID: "1" })).toBeUndefined();
     expect(store.listMatches()).toEqual([]);
   });
+
+  it("clears all listed games at once", () => {
+    const store = createLobbyStore({ now: () => "2026-06-05T01:00:00.000Z" });
+    store.createMatchMetadata({ matchID: "match-1", roomName: "One", playerCount: 2, setupData: {}, privateDataFingerprint: "placeholder" });
+    store.createMatchMetadata({ matchID: "match-2", roomName: "Two", playerCount: 2, setupData: {}, privateDataFingerprint: "placeholder" });
+
+    expect(store.clearMatches()).toBe(2);
+    expect(store.listMatches()).toEqual([]);
+  });
+
+  it("finds an existing player seat for the same client in one match", () => {
+    const store = createLobbyStore({ now: () => "2026-06-05T01:00:00.000Z" });
+    store.createMatchMetadata({ matchID: "match-1", roomName: "Open", playerCount: 2, setupData: {}, privateDataFingerprint: "placeholder" });
+    store.recordPlayerJoin({ matchID: "match-1", playerID: "0", playerName: "Host", clientID: "client-a" });
+
+    expect(store.findPlayerByClientID("match-1", "client-a")).toEqual({ playerID: "0" });
+    expect(store.findPlayerByClientID("match-1", "client-b")).toBeUndefined();
+  });
+
+  it("frees seats when player heartbeats go stale", () => {
+    let nowMs = Date.parse("2026-06-05T01:00:00.000Z");
+    const store = createLobbyStore({ now: () => new Date(nowMs).toISOString(), playerStaleMs: 15_000 });
+    store.createMatchMetadata({ matchID: "match-1", roomName: "Open", playerCount: 2, setupData: {}, privateDataFingerprint: "placeholder" });
+    store.recordPlayerJoin({ matchID: "match-1", playerID: "0", playerName: "Host", clientID: "client-a" });
+
+    nowMs += 10_000;
+    expect(store.heartbeatPlayer({ matchID: "match-1", playerID: "0", clientID: "client-a" })).toEqual({ ok: true });
+
+    nowMs += 14_000;
+    expect(store.listMatches()[0]).toEqual(expect.objectContaining({
+      occupiedSeats: [expect.objectContaining({ playerID: "0" })],
+      availableSeats: ["1"]
+    }));
+
+    nowMs += 2_000;
+    expect(store.listMatches()[0]).toEqual(expect.objectContaining({
+      occupiedSeats: [],
+      availableSeats: ["0", "1"]
+    }));
+  });
 });

@@ -54,11 +54,20 @@ function Start-DevJob {
   Start-Job -Name $Name -ScriptBlock $Script -ArgumentList $ArgumentList
 }
 
+function Wait-ServerHealth {
+  param(
+    [int]$TimeoutSeconds = 30
+  )
+
+  Wait-HttpOk "$ServerUrl/polity/lobby/rooms" -TimeoutSeconds $TimeoutSeconds
+  Wait-HttpOk "$ServerUrl/polity/lobby/chat" -TimeoutSeconds $TimeoutSeconds
+}
+
 $jobs = @()
 try {
   Write-Host "Checking multiplayer server on $ServerUrl" -ForegroundColor Cyan
   try {
-    Wait-HttpOk "$ServerUrl/polity/lobby/rooms" -TimeoutSeconds 1
+    Wait-ServerHealth -TimeoutSeconds 1
     Write-Host "Using existing multiplayer server on $ServerUrl" -ForegroundColor Green
   }
   catch {
@@ -69,7 +78,7 @@ try {
       $env:POLITY_SERVER_PORT = [string]$ServerPort
       npm run server:dev
     }
-    Wait-HttpOk "$ServerUrl/polity/lobby/rooms"
+    Wait-ServerHealth
   }
 
   Write-Host "Starting app on $AppUrl" -ForegroundColor Cyan

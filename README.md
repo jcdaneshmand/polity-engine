@@ -22,6 +22,14 @@ The project is designed to reduce bookkeeping and improve personal table play. I
 
 Any official dataset, demo mode using real Imperium content, hosted public database, or public distribution of Imperium data would require permission from the rights holder.
 
+## About and Attribution
+
+The original game system was designed by Nigel Buckle and Dávid Turczi.
+
+Polity Engine is implemented by Jonah Daneshmand, Ph.D. It is open source at [github.com/jcdaneshmand/polity-engine](https://github.com/jcdaneshmand/polity-engine).
+
+Contact: [jcdaneshmand@gmail.com](mailto:jcdaneshmand@gmail.com).
+
 ## What This Project Includes
 
 - Rules-engine scaffolding and automation.

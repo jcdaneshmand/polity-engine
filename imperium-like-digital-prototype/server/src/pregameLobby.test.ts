@@ -217,4 +217,42 @@ describe("pregame lobby middleware", () => {
     await middleware(lobbyList, async () => undefined);
     expect(lobbyList.body).toEqual({ messages: [expect.objectContaining({ author: "Host" })] });
   });
+
+  it("records lobby heartbeats", async () => {
+    const store = createPregameLobbyStore({ now: () => "2026-06-05T10:00:00.000Z", createID: () => "id", createCredential: () => "cred" });
+    const middleware = createPregameLobbyMiddleware({
+      store,
+      boardgameApi: {
+        createMatch: async () => ({ matchID: "match-1" }),
+        joinMatch: async () => ({ playerCredentials: "player-token" })
+      }
+    });
+    await middleware(context("POST", "/polity/lobby/rooms", { playerCount: 2, setupData: setupData(), privateDataFingerprint: "placeholder", hostName: "Host" }), async () => undefined);
+
+    const heartbeat = context("POST", "/polity/lobby/rooms/id/heartbeat", { lobbyCredentials: "cred" });
+    await middleware(heartbeat, async () => undefined);
+    expect(heartbeat.body).toEqual({ ok: true });
+  });
+
+  it("lets admin clear pregame lobbies and listed matches", async () => {
+    const store = createPregameLobbyStore({ now: () => "2026-06-05T10:00:00.000Z", createID: () => "id", createCredential: () => "cred" });
+    const matchStore = createLobbyStore({ now: () => "2026-06-05T10:00:00.000Z" });
+    const middleware = createPregameLobbyMiddleware({
+      store,
+      matchStore,
+      boardgameApi: {
+        createMatch: async () => ({ matchID: "match-1" }),
+        joinMatch: async () => ({ playerCredentials: "player-token" })
+      }
+    });
+    await middleware(context("POST", "/polity/lobby/rooms", { playerCount: 2, setupData: setupData(), privateDataFingerprint: "placeholder", hostName: "Host" }), async () => undefined);
+    matchStore.createMatchMetadata({ matchID: "match-1", roomName: "Started", playerCount: 2, setupData: setupData(), privateDataFingerprint: "placeholder" });
+
+    const clear = context("POST", "/polity/lobby/admin/clear", {});
+    await middleware(clear, async () => undefined);
+
+    expect(clear.body).toEqual({ ok: true, lobbiesCleared: 1, matchesCleared: 1 });
+    expect(store.listLobbies()).toEqual([]);
+    expect(matchStore.listMatches()).toEqual([]);
+  });
 });

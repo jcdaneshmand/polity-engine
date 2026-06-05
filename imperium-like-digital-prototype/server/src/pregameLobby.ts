@@ -55,7 +55,7 @@ function setupData(value: unknown): LobbySetupData {
 
 function accessStatus(reason: LobbyAccessFailureReason | string): number {
   if (reason === "lobby_not_found") return 404;
-  if (reason === "private_data_mismatch" || reason === "seat_unavailable" || reason === "lobby_already_started" || reason === "not_ready" || reason === "invalid_setup" || reason === "invalid_nation" || reason === "spectation_unavailable") return 409;
+  if (reason === "private_data_mismatch" || reason === "seat_unavailable" || reason === "duplicate_client" || reason === "lobby_already_started" || reason === "not_ready" || reason === "invalid_setup" || reason === "invalid_nation" || reason === "spectation_unavailable") return 409;
   if (reason === "invalid_chat") return 400;
   if (reason === "not_host" || reason === "invalid_credentials") return 403;
   return 403;
@@ -84,8 +84,17 @@ function finalizedSetup(baseSetup: LobbySetupData, seats: Array<{ seatID: string
 
 export function createPregameLobbyMiddleware(options: PregameLobbyOptions) {
   return async (ctx: KoaLikeContext, next: KoaLikeNext): Promise<void> => {
-    if (!ctx.path.startsWith("/polity/lobby/rooms") && ctx.path !== "/polity/lobby/chat") {
+    if (!ctx.path.startsWith("/polity/lobby/rooms") && ctx.path !== "/polity/lobby/chat" && ctx.path !== "/polity/lobby/admin/clear") {
       await next();
+      return;
+    }
+
+    if (ctx.method === "POST" && ctx.path === "/polity/lobby/admin/clear") {
+      ctx.body = {
+        ok: true,
+        lobbiesCleared: options.store.clearLobbies(),
+        matchesCleared: options.matchStore?.clearMatches() ?? 0
+      };
       return;
     }
 
@@ -130,7 +139,8 @@ export function createPregameLobbyMiddleware(options: PregameLobbyOptions) {
         setupData: setupData(body.setupData),
         privateDataFingerprint: stringValue(body.privateDataFingerprint) ?? "placeholder",
         password: stringValue(body.password),
-        hostName: stringValue(body.hostName)
+        hostName: stringValue(body.hostName),
+        clientID: stringValue(body.clientID)
       });
       ctx.status = 201;
       ctx.body = created;
@@ -198,7 +208,8 @@ export function createPregameLobbyMiddleware(options: PregameLobbyOptions) {
         displayName: stringValue(body.displayName),
         password: stringValue(body.password),
         privateDataFingerprint: stringValue(body.privateDataFingerprint) ?? "placeholder",
-        seatID: stringValue(body.seatID)
+        seatID: stringValue(body.seatID),
+        clientID: stringValue(body.clientID)
       });
       if (!joined.ok) {
         setError(ctx, accessStatus(joined.reason), joined.reason);
@@ -273,6 +284,22 @@ export function createPregameLobbyMiddleware(options: PregameLobbyOptions) {
         return;
       }
       const result = options.store.leaveLobby({ lobbyID: leaveLobbyID, lobbyCredentials: credential(body) as string });
+      if (!result.ok) {
+        setError(ctx, accessStatus(result.reason), result.reason);
+        return;
+      }
+      ctx.body = { ok: true };
+      return;
+    }
+
+    const heartbeatLobbyID = lobbyRoute(ctx.path, "heartbeat");
+    if (ctx.method === "POST" && heartbeatLobbyID) {
+      const body = await readJSONBody(ctx);
+      if (!isRecord(body) || !credential(body)) {
+        setError(ctx, 400, "invalid_request");
+        return;
+      }
+      const result = options.store.heartbeatLobby({ lobbyID: heartbeatLobbyID, lobbyCredentials: credential(body) as string });
       if (!result.ok) {
         setError(ctx, accessStatus(result.reason), result.reason);
         return;

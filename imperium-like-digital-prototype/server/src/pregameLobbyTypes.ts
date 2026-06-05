@@ -67,6 +67,7 @@ export type CreatePregameLobbyInput = {
   privateDataFingerprint: string;
   password?: string;
   hostName?: string;
+  clientID?: string;
 };
 
 export type JoinPregameLobbyInput = {
@@ -75,6 +76,7 @@ export type JoinPregameLobbyInput = {
   password?: string;
   privateDataFingerprint: string;
   seatID?: string;
+  clientID?: string;
 };
 
 export type LobbyAccessFailureReason =
@@ -83,6 +85,7 @@ export type LobbyAccessFailureReason =
   | "missing_password"
   | "private_data_mismatch"
   | "seat_unavailable"
+  | "duplicate_client"
   | "lobby_already_started"
   | "invalid_credentials"
   | "not_host"
@@ -100,4 +103,5 @@ export type PregameLobbyStoreOptions = {
   createCredential?: () => string;
   hashPassword?: (value: string) => string;
   cleanupGraceMs?: number;
+  playerStaleMs?: number;
 };

@@ -80,6 +80,7 @@ test("dev-full controller stops the other process when one exits", () => {
 
 test("ensureServerReady reuses an already healthy server", async () => {
   let serverStarted = false;
+  const urls = [];
   const controller = {
     startServer() {
       serverStarted = true;
@@ -87,16 +88,22 @@ test("ensureServerReady reuses an already healthy server", async () => {
   };
 
   const result = await ensureServerReady(controller, "http://127.0.0.1:8000", {
-    waitForHTTP: async () => undefined
+    waitForHTTP: async (url) => {
+      urls.push(url);
+    }
   });
 
   assert.equal(result, "reused");
   assert.equal(serverStarted, false);
+  assert.deepEqual(urls, [
+    "http://127.0.0.1:8000/polity/lobby/rooms",
+    "http://127.0.0.1:8000/polity/lobby/chat"
+  ]);
 });
 
 test("ensureServerReady starts the server when no healthy server exists", async () => {
   let serverStarted = false;
-  let attempts = 0;
+  const urls = [];
   const controller = {
     startServer() {
       serverStarted = true;
@@ -104,14 +111,19 @@ test("ensureServerReady starts the server when no healthy server exists", async 
   };
 
   const result = await ensureServerReady(controller, "http://127.0.0.1:8000", {
-    waitForHTTP: async () => {
-      attempts += 1;
-      if (attempts === 1) throw new Error("unreachable");
+    waitForHTTP: async (url) => {
+      urls.push(url);
+      if (urls.length === 1) throw new Error("unreachable");
     }
   });
 
   assert.equal(result, "started");
   assert.equal(serverStarted, true);
+  assert.deepEqual(urls, [
+    "http://127.0.0.1:8000/polity/lobby/rooms",
+    "http://127.0.0.1:8000/polity/lobby/rooms",
+    "http://127.0.0.1:8000/polity/lobby/chat"
+  ]);
 });
 
 test("buildChildEnv removes duplicate Windows path keys", () => {

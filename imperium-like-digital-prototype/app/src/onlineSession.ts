@@ -302,6 +302,7 @@ export async function createLobbyRoom(args: {
   privateDataFingerprint: string;
   password?: string;
   hostName?: string;
+  clientID?: string;
   fetcher?: Fetcher;
 }): Promise<{ lobbyID: string; seatID: string; lobbyCredentials: string; lobby: LobbyRoomDetails }> {
   return postLobbyJSON<{ lobbyID: string; seatID: string; lobbyCredentials: string; lobby: LobbyRoomDetails }>(
@@ -312,7 +313,8 @@ export async function createLobbyRoom(args: {
       setupData: args.setupData,
       privateDataFingerprint: args.privateDataFingerprint,
       ...(args.password?.trim() ? { password: args.password.trim() } : {}),
-      ...(args.hostName?.trim() ? { hostName: args.hostName.trim() } : {})
+      ...(args.hostName?.trim() ? { hostName: args.hostName.trim() } : {}),
+      ...(args.clientID?.trim() ? { clientID: args.clientID.trim() } : {})
     },
     args.fetcher ?? fetch
   );
@@ -325,6 +327,7 @@ export async function joinLobbyRoom(args: {
   privateDataFingerprint: string;
   password?: string;
   seatID?: string;
+  clientID?: string;
   fetcher?: Fetcher;
 }): Promise<{ lobbyID: string; seatID: string; lobbyCredentials: string; lobby: LobbyRoomDetails }> {
   return postLobbyJSON<{ lobbyID: string; seatID: string; lobbyCredentials: string; lobby: LobbyRoomDetails }>(
@@ -333,7 +336,8 @@ export async function joinLobbyRoom(args: {
       displayName: args.displayName,
       privateDataFingerprint: args.privateDataFingerprint,
       ...(args.password?.trim() ? { password: args.password.trim() } : {}),
-      ...(args.seatID ? { seatID: args.seatID } : {})
+      ...(args.seatID ? { seatID: args.seatID } : {}),
+      ...(args.clientID?.trim() ? { clientID: args.clientID.trim() } : {})
     },
     args.fetcher ?? fetch
   );
@@ -343,6 +347,30 @@ export async function rejoinLobbyRoom(args: { serverURL: string; lobbyID: string
   return postLobbyJSON<{ lobby: LobbyRoomDetails }>(
     lobbyURL(args.serverURL, `/polity/lobby/rooms/${encodeURIComponent(args.lobbyID)}`),
     { lobbyCredentials: args.lobbyCredentials },
+    args.fetcher ?? fetch
+  );
+}
+
+export async function heartbeatLobbyRoom(args: { serverURL: string; lobbyID: string; lobbyCredentials: string; fetcher?: Fetcher }): Promise<{ ok: true }> {
+  return postLobbyJSON<{ ok: true }>(
+    lobbyURL(args.serverURL, `/polity/lobby/rooms/${encodeURIComponent(args.lobbyID)}/heartbeat`),
+    { lobbyCredentials: args.lobbyCredentials },
+    args.fetcher ?? fetch
+  );
+}
+
+export async function leaveLobbyRoom(args: { serverURL: string; lobbyID: string; lobbyCredentials: string; fetcher?: Fetcher }): Promise<{ ok: true }> {
+  return postLobbyJSON<{ ok: true }>(
+    lobbyURL(args.serverURL, `/polity/lobby/rooms/${encodeURIComponent(args.lobbyID)}/leave`),
+    { lobbyCredentials: args.lobbyCredentials },
+    args.fetcher ?? fetch
+  );
+}
+
+export async function clearAllOnlineGames(args: { serverURL: string; fetcher?: Fetcher }): Promise<{ ok: true; lobbiesCleared: number; matchesCleared: number }> {
+  return postLobbyJSON<{ ok: true; lobbiesCleared: number; matchesCleared: number }>(
+    lobbyURL(args.serverURL, "/polity/lobby/admin/clear"),
+    {},
     args.fetcher ?? fetch
   );
 }
@@ -427,6 +455,7 @@ export async function joinPolityOnlineMatch(args: {
   playerName: string;
   privateDataFingerprint: string;
   password?: string;
+  clientID?: string;
   fetcher?: Fetcher;
 }): Promise<{ playerCredentials: string; playerID: string; match?: ListedMatch }> {
   return postLobbyJSON<{ playerCredentials: string; playerID: string; match?: ListedMatch }>(
@@ -435,7 +464,8 @@ export async function joinPolityOnlineMatch(args: {
       playerName: args.playerName,
       privateDataFingerprint: args.privateDataFingerprint,
       ...(args.playerID ? { playerID: args.playerID } : {}),
-      ...(args.password?.trim() ? { password: args.password.trim() } : {})
+      ...(args.password?.trim() ? { password: args.password.trim() } : {}),
+      ...(args.clientID?.trim() ? { clientID: args.clientID.trim() } : {})
     },
     args.fetcher ?? fetch
   );
@@ -450,6 +480,36 @@ export async function leavePolityOnlineMatch(args: {
   return postLobbyJSON<{ ok: true; match?: ListedMatch }>(
     lobbyURL(args.serverURL, `/polity/lobby/matches/${encodeURIComponent(args.matchID)}/leave`),
     { playerID: args.playerID },
+    args.fetcher ?? fetch
+  );
+}
+
+export async function closePolityOnlineMatch(args: {
+  serverURL: string;
+  matchID: string;
+  playerID: string;
+  fetcher?: Fetcher;
+}): Promise<{ ok: true }> {
+  return postLobbyJSON<{ ok: true }>(
+    lobbyURL(args.serverURL, `/polity/lobby/matches/${encodeURIComponent(args.matchID)}/close`),
+    { playerID: args.playerID },
+    args.fetcher ?? fetch
+  );
+}
+
+export async function heartbeatPolityOnlineMatch(args: {
+  serverURL: string;
+  matchID: string;
+  playerID: string;
+  clientID?: string;
+  fetcher?: Fetcher;
+}): Promise<{ ok: true }> {
+  return postLobbyJSON<{ ok: true }>(
+    lobbyURL(args.serverURL, `/polity/lobby/matches/${encodeURIComponent(args.matchID)}/heartbeat`),
+    {
+      playerID: args.playerID,
+      ...(args.clientID?.trim() ? { clientID: args.clientID.trim() } : {})
+    },
     args.fetcher ?? fetch
   );
 }

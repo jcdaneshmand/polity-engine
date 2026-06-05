@@ -111,10 +111,12 @@ describe("OnlineGames", () => {
         onRejoin={() => undefined}
         onForgetSession={() => undefined}
         onSendChat={() => undefined}
+        onClearAllGames={() => undefined}
       />
     );
 
     expect(html).toContain("Online Games");
+    expect(html).toContain("Clear All Games");
     expect(html).toContain("value=\"Jonah\"");
     expect(html).toContain("Online Chat");
     expect(html).toContain("Anyone free?");
@@ -314,5 +316,60 @@ describe("OnlineGames", () => {
     expect(html).toContain("Player 1");
     expect(html).toContain("Rejoin");
     expect(html).toContain("Ready");
+  });
+
+  it("shows close only for host saved matches", () => {
+    const hostSaved: OnlineSessionRecord = {
+      kind: "player",
+      matchID: "match-open",
+      playerID: "0",
+      credentials: "token",
+      serverURL: "http://localhost:8000",
+      numPlayers: 2,
+      savedAt: "2026-06-05T01:00:00.000Z"
+    };
+    const guestSaved: OnlineSessionRecord = { ...hostSaved, matchID: "match-guest", playerID: "1" };
+
+    const hostHtml = renderToStaticMarkup(
+      <OnlineGames
+        setupConfig={config}
+        privateDataFingerprint="placeholder"
+        savedSessions={[hostSaved]}
+        lobbies={[]}
+        matches={[]}
+        statusMessage=""
+        onBackToSetup={() => undefined}
+        onRefresh={() => undefined}
+        onHost={() => undefined}
+        onJoinLobby={() => undefined}
+        onJoin={() => undefined}
+        onSpectate={() => undefined}
+        onRejoin={() => undefined}
+        onForgetSession={() => undefined}
+        onCloseSession={() => undefined}
+      />
+    );
+    const guestHtml = renderToStaticMarkup(
+      <OnlineGames
+        setupConfig={config}
+        privateDataFingerprint="placeholder"
+        savedSessions={[guestSaved]}
+        lobbies={[]}
+        matches={[]}
+        statusMessage=""
+        onBackToSetup={() => undefined}
+        onRefresh={() => undefined}
+        onHost={() => undefined}
+        onJoinLobby={() => undefined}
+        onJoin={() => undefined}
+        onSpectate={() => undefined}
+        onRejoin={() => undefined}
+        onForgetSession={() => undefined}
+        onCloseSession={() => undefined}
+      />
+    );
+
+    expect(hostHtml).toContain("Close Match");
+    expect(guestHtml).not.toContain("Close Match");
   });
 });

@@ -93,14 +93,22 @@ export function createDevFullController(options = {}) {
 }
 
 export async function ensureServerReady(controller, serverURL, options = {}) {
-  const healthURL = `${serverURL}/polity/lobby/rooms`;
+  const healthURLs = [
+    `${serverURL}/polity/lobby/rooms`,
+    `${serverURL}/polity/lobby/chat`
+  ];
   const wait = options.waitForHTTP ?? waitForHTTP;
+  const waitForServerHealth = async (timeoutMs) => {
+    for (const healthURL of healthURLs) {
+      await wait(healthURL, { timeoutMs });
+    }
+  };
   try {
-    await wait(healthURL, { timeoutMs: options.reuseTimeoutMs ?? 1_000 });
+    await waitForServerHealth(options.reuseTimeoutMs ?? 1_000);
     return "reused";
   } catch {
     controller.startServer();
-    await wait(healthURL, { timeoutMs: options.startTimeoutMs ?? 30_000 });
+    await waitForServerHealth(options.startTimeoutMs ?? 30_000);
     return "started";
   }
 }

@@ -4,6 +4,7 @@ import type { CreateLobbyMatchInput, ListedMatch, ListedMatchStatus, LobbyAccess
 type LobbyStoreOptions = {
   now?: () => string;
   hashPassword?: (value: string) => string;
+  playerStaleMs?: number;
 };
 
 type PrivateMatchMetadata = {
@@ -13,7 +14,7 @@ type PrivateMatchMetadata = {
   updatedAt: string;
   status: ListedMatchStatus;
   playerCount: number;
-  occupiedSeats: Map<string, { playerID: string; playerName: string; isConnected: boolean }>;
+  occupiedSeats: Map<string, { playerID: string; playerName: string; isConnected: boolean; clientID?: string; lastSeenAt: string }>;
   isLocked: boolean;
   spectatingAllowed: boolean;
   privateDataFingerprint: string;
@@ -22,6 +23,7 @@ type PrivateMatchMetadata = {
 };
 
 const PLACEHOLDER_FINGERPRINTS = new Set(["placeholder", "placeholder:v1"]);
+const DEFAULT_PLAYER_STALE_MS = 15_000;
 
 function defaultHashPassword(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -76,7 +78,9 @@ function toListedMatch(match: PrivateMatchMetadata): ListedMatch {
     updatedAt: match.updatedAt,
     status: match.status,
     playerCount: match.playerCount,
-    occupiedSeats: Array.from(match.occupiedSeats.values()).sort((a, b) => Number(a.playerID) - Number(b.playerID)),
+    occupiedSeats: Array.from(match.occupiedSeats.values())
+      .sort((a, b) => Number(a.playerID) - Number(b.playerID))
+      .map((seat) => ({ playerID: seat.playerID, playerName: seat.playerName, isConnected: seat.isConnected })),
     availableSeats: availableSeats(match),
     isLocked: match.isLocked,
     spectatingAllowed: match.spectatingAllowed,
@@ -96,7 +100,18 @@ export function sortListedMatches(matches: ListedMatch[]): ListedMatch[] {
 export function createLobbyStore(options: LobbyStoreOptions = {}) {
   const now = options.now ?? (() => new Date().toISOString());
   const hashPassword = options.hashPassword ?? defaultHashPassword;
+  const playerStaleMs = options.playerStaleMs ?? DEFAULT_PLAYER_STALE_MS;
   const matches = new Map<string, PrivateMatchMetadata>();
+
+  function cleanupStalePlayers(match: PrivateMatchMetadata): void {
+    const current = Date.parse(now());
+    for (const seat of Array.from(match.occupiedSeats.values())) {
+      if (current - Date.parse(seat.lastSeenAt) > playerStaleMs) {
+        match.occupiedSeats.delete(seat.playerID);
+        match.updatedAt = now();
+      }
+    }
+  }
 
   return {
     createMatchMetadata(input: CreateLobbyMatchInput): ListedMatch {
@@ -110,7 +125,7 @@ export function createLobbyStore(options: LobbyStoreOptions = {}) {
         updatedAt: timestamp,
         status: input.status ?? "setup",
         playerCount: input.playerCount,
-        occupiedSeats: new Map((input.occupiedSeats ?? []).map((seat) => [seat.playerID, seat])),
+        occupiedSeats: new Map((input.occupiedSeats ?? []).map((seat) => [seat.playerID, { ...seat, lastSeenAt: timestamp }])),
         isLocked: Boolean(passwordVerifier),
         spectatingAllowed: input.spectatingAllowed ?? true,
         privateDataFingerprint: input.privateDataFingerprint,
@@ -122,11 +137,13 @@ export function createLobbyStore(options: LobbyStoreOptions = {}) {
     },
 
     listMatches(): ListedMatch[] {
+      for (const match of matches.values()) cleanupStalePlayers(match);
       return sortListedMatches(Array.from(matches.values()).map(toListedMatch));
     },
 
     getMatch(matchID: string): ListedMatch | undefined {
       const match = matches.get(matchID);
+      if (match) cleanupStalePlayers(match);
       return match ? toListedMatch(match) : undefined;
     },
 
@@ -136,10 +153,31 @@ export function createLobbyStore(options: LobbyStoreOptions = {}) {
       match.occupiedSeats.set(input.playerID, {
         playerID: input.playerID,
         playerName: input.playerName,
-        isConnected: true
+        isConnected: true,
+        lastSeenAt: now(),
+        ...(input.clientID ? { clientID: input.clientID } : {})
       });
       match.updatedAt = now();
       return toListedMatch(match);
+    },
+
+    findPlayerByClientID(matchID: string, clientID: string): { playerID: string } | undefined {
+      const match = matches.get(matchID);
+      if (!match) return undefined;
+      const seat = Array.from(match.occupiedSeats.values()).find((candidate) => candidate.clientID === clientID);
+      return seat ? { playerID: seat.playerID } : undefined;
+    },
+
+    heartbeatPlayer(input: { matchID: string; playerID: string; clientID?: string }): { ok: true } | { ok: false; reason: "match_not_found" | "seat_unavailable" | "duplicate_client" } {
+      const match = matches.get(input.matchID);
+      if (!match) return { ok: false, reason: "match_not_found" };
+      const seat = match.occupiedSeats.get(input.playerID);
+      if (!seat) return { ok: false, reason: "seat_unavailable" };
+      if (input.clientID && seat.clientID && input.clientID !== seat.clientID) return { ok: false, reason: "duplicate_client" };
+      seat.lastSeenAt = now();
+      seat.isConnected = true;
+      match.updatedAt = now();
+      return { ok: true };
     },
 
     recordPlayerLeave(input: RecordPlayerLeaveInput): ListedMatch | undefined {
@@ -154,12 +192,26 @@ export function createLobbyStore(options: LobbyStoreOptions = {}) {
       return toListedMatch(match);
     },
 
+    clearMatches(): number {
+      const count = matches.size;
+      matches.clear();
+      return count;
+    },
+
     markMatchInProgress(matchID: string): ListedMatch | undefined {
       const match = matches.get(matchID);
       if (!match) return undefined;
       match.status = "in_progress";
       match.updatedAt = now();
       return toListedMatch(match);
+    },
+
+    closeMatch(input: { matchID: string; playerID: string }): { ok: true } | { ok: false; reason: "match_not_found" | "not_host" } {
+      const match = matches.get(input.matchID);
+      if (!match) return { ok: false, reason: "match_not_found" };
+      if (input.playerID !== "0") return { ok: false, reason: "not_host" };
+      matches.delete(input.matchID);
+      return { ok: true };
     },
 
     validateAccess(args: { matchID: string; password?: string; privateDataFingerprint: string }): LobbyAccessResult {

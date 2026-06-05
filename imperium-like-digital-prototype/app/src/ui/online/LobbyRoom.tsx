@@ -9,6 +9,7 @@ type LobbyRoomProps = {
   chatMessages?: ChatMessage[];
   onBack: () => void;
   onRefresh: () => void | Promise<void>;
+  onLeave: () => void | Promise<void>;
   onEditSetup: () => void;
   onSelectNation: (nationID: string) => void | Promise<void>;
   onReady: (ready: boolean) => void | Promise<void>;
@@ -49,6 +50,7 @@ export default function LobbyRoom({
   chatMessages = [],
   onBack,
   onRefresh,
+  onLeave,
   onEditSetup,
   onSelectNation,
   onReady,
@@ -82,6 +84,7 @@ export default function LobbyRoom({
           </div>
           <div className="private-data-actions">
             <button type="button" onClick={onRefresh}>Refresh</button>
+            <button type="button" onClick={() => void onLeave()}>Leave Lobby</button>
             <button type="button" onClick={onBack}>Online Games</button>
           </div>
         </div>

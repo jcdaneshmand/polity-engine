@@ -1,11 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Client } from "boardgame.io/react";
 import { SocketIO } from "boardgame.io/multiplayer";
 import { PrototypeGame } from "../../engine/src/game/game";
 import type { CampaignProgress } from "../../engine/src/options/gameOptions";
 import AboutPage from "./AboutPage";
 import Board from "./Board";
-import { computePrivateDataFingerprint, createLobbyRoom, joinLobbyRoom, joinPolityOnlineMatch, leavePolityOnlineMatch, listLobbyChat, listLobbyRooms, listOnlineChat, listOnlineMatches, ONLINE_SESSION_STORAGE_KEY, parseOnlineSessionRecord, rejoinLobbyRoom, resolveMultiplayerServerURL, selectLobbyNation, sendLobbyChat, sendOnlineChat, serializeOnlineSessionRecord, setLobbyReady, spectateOnlineMatch, startLobbyGame, updateLobbySetup, type ChatMessage, type ListedLobby, type ListedMatch, type LobbyRoomDetails, type OnlineLobbySessionRecord, type OnlineSessionRecord, type OnlineStartedSessionRecord } from "./onlineSession";
+import { clearAllOnlineGames, closePolityOnlineMatch, computePrivateDataFingerprint, createLobbyRoom, heartbeatLobbyRoom, heartbeatPolityOnlineMatch, joinLobbyRoom, joinPolityOnlineMatch, leaveLobbyRoom, leavePolityOnlineMatch, listLobbyChat, listLobbyRooms, listOnlineChat, listOnlineMatches, ONLINE_SESSION_STORAGE_KEY, parseOnlineSessionRecord, rejoinLobbyRoom, resolveMultiplayerServerURL, selectLobbyNation, sendLobbyChat, sendOnlineChat, serializeOnlineSessionRecord, setLobbyReady, spectateOnlineMatch, startLobbyGame, updateLobbySetup, type ChatMessage, type ListedLobby, type ListedMatch, type LobbyRoomDetails, type OnlineLobbySessionRecord, type OnlineSessionRecord, type OnlineStartedSessionRecord } from "./onlineSession";
 import PrivateCardEntry from "./ui/privateData/PrivateCardEntry";
 import LobbyRoom from "./ui/online/LobbyRoom";
 import OnlineGames from "./ui/online/OnlineGames";
@@ -18,6 +18,9 @@ type GameSession = NewGameSessionConfig & {
   | { kind: "online"; role: "player"; matchID: string; playerID: string; credentials: string; serverURL: string }
   | { kind: "online"; role: "spectator"; matchID: string; credentials: string; serverURL: string }
 );
+
+const ONLINE_CLIENT_STORAGE_KEY = "polity-engine.onlineClientID.v1";
+const ONLINE_HEARTBEAT_MS = 5_000;
 
 export async function loadOnlineDirectory(args: {
   listLobbies: () => Promise<ListedLobby[]>;
@@ -52,6 +55,15 @@ function saveOnlineSessionRecord(record: OnlineSessionRecord): void {
   window.localStorage.setItem(ONLINE_SESSION_STORAGE_KEY, serializeOnlineSessionRecord(record));
 }
 
+function loadOnlineClientID(): string {
+  if (typeof window === "undefined") return "server-render-client";
+  const existing = window.localStorage.getItem(ONLINE_CLIENT_STORAGE_KEY);
+  if (existing) return existing;
+  const next = globalThis.crypto?.randomUUID?.() ?? `client-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  window.localStorage.setItem(ONLINE_CLIENT_STORAGE_KEY, next);
+  return next;
+}
+
 function isLobbySessionRecord(record: OnlineSessionRecord | undefined): record is OnlineLobbySessionRecord {
   return record?.kind === "lobby";
 }
@@ -67,6 +79,7 @@ export default function App() {
   const [savedOnlineSession, setSavedOnlineSession] = useState<OnlineSessionRecord | undefined>(loadOnlineSessionRecord());
   const [onlineSetupConfig, setOnlineSetupConfig] = useState<NewGameSessionConfig | undefined>(undefined);
   const [onlinePlayerName, setOnlinePlayerName] = useState("Player");
+  const [onlineClientID] = useState<string>(loadOnlineClientID());
   const [listedLobbies, setListedLobbies] = useState<ListedLobby[]>([]);
   const [listedMatches, setListedMatches] = useState<ListedMatch[]>([]);
   const [onlineChatMessages, setOnlineChatMessages] = useState<ChatMessage[]>([]);
@@ -122,6 +135,35 @@ export default function App() {
       } : {})
     });
   }, [session]);
+
+  useEffect(() => {
+    if (homeView !== "lobby" || !currentLobbySession) return;
+    const beat = () => {
+      void heartbeatLobbyRoom({
+        serverURL: currentLobbySession.serverURL,
+        lobbyID: currentLobbySession.lobbyID,
+        lobbyCredentials: currentLobbySession.lobbyCredentials
+      }).catch(() => undefined);
+    };
+    beat();
+    const id = window.setInterval(beat, ONLINE_HEARTBEAT_MS);
+    return () => window.clearInterval(id);
+  }, [currentLobbySession, homeView]);
+
+  useEffect(() => {
+    if (!session || session.kind !== "online" || session.role !== "player") return;
+    const beat = () => {
+      void heartbeatPolityOnlineMatch({
+        serverURL: session.serverURL,
+        matchID: session.matchID,
+        playerID: session.playerID,
+        clientID: onlineClientID
+      }).catch(() => undefined);
+    };
+    beat();
+    const id = window.setInterval(beat, ONLINE_HEARTBEAT_MS);
+    return () => window.clearInterval(id);
+  }, [onlineClientID, session]);
 
   const startLocalGame = (config: NewGameSessionConfig) => {
     setPendingCampaignProgress(undefined);
@@ -263,7 +305,8 @@ export default function App() {
         setupData: args.setupConfig,
         privateDataFingerprint: args.privateDataFingerprint,
         password: args.password,
-        hostName: args.playerName
+        hostName: args.playerName,
+        clientID: onlineClientID
       });
       const record: OnlineLobbySessionRecord = {
         kind: "lobby",
@@ -291,6 +334,10 @@ export default function App() {
     : currentOnlineConfig;
 
   const joinOnlineLobby = async (args: { lobbyID: string; playerName: string; password?: string; privateDataFingerprint: string }) => {
+    if (savedOnlineSession?.kind === "lobby" && savedOnlineSession.lobbyID === args.lobbyID) {
+      await rejoinOnlineGame();
+      return;
+    }
     setOnlineStatus("Joining lobby...");
     try {
       const joined = await joinLobbyRoom({
@@ -298,7 +345,8 @@ export default function App() {
         lobbyID: args.lobbyID,
         displayName: args.playerName,
         password: args.password,
-        privateDataFingerprint: args.privateDataFingerprint
+        privateDataFingerprint: args.privateDataFingerprint,
+        clientID: onlineClientID
       });
       const record: OnlineLobbySessionRecord = {
         kind: "lobby",
@@ -321,9 +369,13 @@ export default function App() {
   };
 
   const joinOnlineGame = async (args: { matchID: string; playerID?: string; playerName: string; password?: string; privateDataFingerprint: string; setupConfig: NewGameSessionConfig }) => {
+    if (savedOnlineSession?.kind !== "lobby" && savedOnlineSession?.matchID === args.matchID) {
+      await rejoinOnlineGame();
+      return;
+    }
     setOnlineStatus("Joining online game...");
     try {
-      const joined = await joinPolityOnlineMatch({ serverURL: multiplayerServerURL, ...args });
+      const joined = await joinPolityOnlineMatch({ serverURL: multiplayerServerURL, clientID: onlineClientID, ...args });
       const playerID = joined.playerID ?? args.playerID ?? "0";
       startOnlineSession(args.setupConfig, {
         kind: "player",
@@ -483,6 +535,60 @@ export default function App() {
     setCurrentLobby(undefined);
   };
 
+  const closeSavedOnlineMatch = async (record: OnlineSessionRecord) => {
+    if (record.kind === "lobby" || record.playerID !== "0") return;
+    setOnlineStatus(`Closing online room ${record.matchID}...`);
+    try {
+      await closePolityOnlineMatch({
+        serverURL: record.serverURL,
+        matchID: record.matchID,
+        playerID: record.playerID
+      });
+      forgetOnlineSession();
+      await refreshOnlineMatches();
+      setOnlineStatus(`Closed online room ${record.matchID}.`);
+    } catch (error) {
+      setOnlineStatus(error instanceof Error ? error.message : "Could not close online room.");
+    }
+  };
+
+  const leaveCurrentLobby = async () => {
+    if (!currentLobbySession) return;
+    const leftLobbyID = currentLobbySession.lobbyID;
+    setOnlineStatus(`Leaving lobby ${leftLobbyID}...`);
+    try {
+      await leaveLobbyRoom({
+        serverURL: currentLobbySession.serverURL,
+        lobbyID: currentLobbySession.lobbyID,
+        lobbyCredentials: currentLobbySession.lobbyCredentials
+      });
+      forgetOnlineSession();
+      setLobbyChatMessages([]);
+      setHomeView("online");
+      await refreshOnlineMatches();
+      setOnlineStatus(`Left lobby ${leftLobbyID}.`);
+    } catch (error) {
+      setOnlineStatus(error instanceof Error ? error.message : "Could not leave lobby.");
+    }
+  };
+
+  const clearAllListedOnlineGames = async () => {
+    setOnlineStatus("Clearing online games...");
+    try {
+      const cleared = await clearAllOnlineGames({ serverURL: multiplayerServerURL });
+      forgetOnlineSession();
+      setLobbyChatMessages([]);
+      setOnlineChatMessages([]);
+      setListedLobbies([]);
+      setListedMatches([]);
+      setHomeView("online");
+      await refreshOnlineMatches();
+      setOnlineStatus(`Cleared ${cleared.lobbiesCleared + cleared.matchesCleared} online game${cleared.lobbiesCleared + cleared.matchesCleared === 1 ? "" : "s"}.`);
+    } catch (error) {
+      setOnlineStatus(error instanceof Error ? error.message : "Could not clear online games.");
+    }
+  };
+
   const leaveCurrentGame = () => {
     if (session?.kind === "online" && session.role === "player") {
       void leavePolityOnlineMatch({
@@ -530,6 +636,7 @@ export default function App() {
               void refreshOnlineMatches();
             }}
             onRefresh={refreshCurrentLobby}
+            onLeave={leaveCurrentLobby}
             onEditSetup={() => setHomeView("lobby-setup")}
             onSelectNation={selectCurrentLobbyNation}
             onReady={setCurrentLobbyReady}
@@ -579,7 +686,9 @@ export default function App() {
             onSpectate={spectateOnlineGame}
             onRejoin={() => void rejoinOnlineGame()}
             onForgetSession={() => forgetOnlineSession()}
+            onCloseSession={(record) => void closeSavedOnlineMatch(record)}
             onSendChat={sendOnlineLoungeMessage}
+            onClearAllGames={() => void clearAllListedOnlineGames()}
           />
         </div>
       );

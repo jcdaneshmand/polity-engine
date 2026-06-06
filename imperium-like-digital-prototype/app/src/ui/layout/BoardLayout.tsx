@@ -17,8 +17,19 @@ import { handleBoardKeyDown } from "../controller/keyboardControls";
 import { getBotPiles, getCurrentPlayer, getInspectableLookedCards, getInspectableSharedPile, getInspectableZone, getMarketCards, getOwnerVisibleZoneIds, getPlayerZoneLabels, getRecentLogEntries, getSharedPiles } from "./uiSelectors";
 import { resourceLabelsForGame } from "./resourceDisplay";
 
-function viewerPlayerId(ctx: any, viewerPlayerID?: string | null, playerID?: string | null): string {
-  return viewerPlayerID ?? ctx?.currentPlayer ?? playerID ?? ctx?.playerID ?? "0";
+function mapViewerPlayerId(G: any, candidate?: string | null): string | undefined {
+  if (candidate == null) return undefined;
+  if (G?.players?.[candidate]) return candidate;
+  const mappedPlayerId = Array.isArray(G?.playOrder) ? G.playOrder[Number(candidate)] : undefined;
+  return mappedPlayerId && G?.players?.[mappedPlayerId] ? mappedPlayerId : candidate;
+}
+
+function viewerPlayerId(G: any, ctx: any, viewerPlayerID?: string | null, playerID?: string | null): string {
+  return mapViewerPlayerId(G, viewerPlayerID)
+    ?? mapViewerPlayerId(G, ctx?.currentPlayer)
+    ?? mapViewerPlayerId(G, playerID)
+    ?? mapViewerPlayerId(G, ctx?.playerID)
+    ?? "1";
 }
 
 export function dispatchBoardAction({ action: a, moves, setDetailCardId, setSelection }: { action: any; moves: any; setDetailCardId: (cardId: string | null) => void; setSelection: (selection: Selection | null) => void }) {
@@ -84,7 +95,7 @@ export default function BoardLayout({
   const [zoomCardId, setZoomCardId] = useState<string | null>(null);
   const [summaryDismissed, setSummaryDismissed] = useState(false);
   const [cleanupDiscardSlots, setCleanupDiscardSlots] = useState<number[]>([]);
-  const viewerId = viewerPlayerId(ctx, viewerPlayerID, playerID);
+  const viewerId = viewerPlayerId(G, ctx, viewerPlayerID, playerID);
   const uiCtx = useMemo(() => ({ ...ctx, currentPlayer: viewerId }), [ctx, viewerId]);
   const player = getCurrentPlayer(G, uiCtx);
   const marketIds = getMarketCards(G);

@@ -65,14 +65,14 @@ describe("trade_routes expansion toggle", () => {
 
   it("trade_routes on includes setup modifications", () => {
     const G = createInitialGameState({ options: { playerCount: 2, mode: "multiplayer", enabledExpansions: ["trade_routes"], enabledVariants: [] } });
-    expect(G.players["0"].powerArea).toContain("test_action_civic_assembly");
-    expect(G.players["0"].exhaustTokensBase).toBeGreaterThan(1);
+    expect(G.players["1"].powerArea).toContain("test_action_civic_assembly");
+    expect(G.players["1"].exhaustTokensBase).toBeGreaterThan(1);
   });
 
   it("player tokens differ when trade_routes enabled", () => {
     const off = createInitialGameState({ options: { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: [] } });
     const on = createInitialGameState({ options: { playerCount: 2, mode: "multiplayer", enabledExpansions: ["trade_routes"], enabledVariants: [] } });
-    expect(on.players["0"].exhaustTokensBase).toBe(off.players["0"].exhaustTokensBase + 1);
+    expect(on.players["1"].exhaustTokensBase).toBe(off.players["1"].exhaustTokensBase + 1);
   });
 
   it("preserves the Trade Routes extra Exhaust token when state card stats refresh", () => {
@@ -90,7 +90,7 @@ describe("trade_routes expansion toggle", () => {
       },
       cardStates: {},
       players: {
-        "0": {
+        "1": {
           stateArea: ["state_card"],
           actionTokensBase: 3,
           actionTokensAvailable: 3,
@@ -102,15 +102,15 @@ describe("trade_routes expansion toggle", () => {
       }
     } as any;
 
-    activateState(G, "0", "civilized");
+    activateState(G, "1", "civilized");
 
-    expect(G.players["0"].exhaustTokensBase).toBe(6);
-    expect(G.players["0"].exhaustTokensAvailable).toBe(6);
+    expect(G.players["1"].exhaustTokensBase).toBe(6);
+    expect(G.players["1"].exhaustTokensAvailable).toBe(6);
   });
 
   it("trade effect option ignored when trade_routes disabled", () => {
     const G = createInitialGameState({ options: { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: [] } });
-    runEffects({ G, playerId: "0", enabledExpansions: [] }, [{ trigger: "on_play", op: "trade" } as any]);
+    runEffects({ G, playerId: "1", enabledExpansions: [] }, [{ trigger: "on_play", op: "trade" } as any]);
     expect(G.log.at(-1)?.message).toContain("Ignored trade");
   });
 
@@ -127,30 +127,30 @@ describe("trade_routes expansion toggle", () => {
       tags: [],
       effects: [{ trigger: "on_play", op: "commerce" } as any]
     };
-    G.players["0"].hand = [card];
-    G.players["0"].actionsRemaining = 1;
-    G.players["0"].actionTokensAvailable = 1;
+    G.players["1"].hand = [card];
+    G.players["1"].actionsRemaining = 1;
+    G.players["1"].actionTokensAvailable = 1;
 
-    playCard({ G, ctx: { currentPlayer: "0" } as any }, card);
+    playCard({ G, ctx: { currentPlayer: "1" } as any }, card);
 
-    expect(G.players["0"].hand).toEqual([card]);
-    expect(G.players["0"].discard).not.toContain(card);
-    expect(G.players["0"].actionsRemaining).toBe(1);
-    expect(G.players["0"].actionTokensAvailable).toBe(1);
+    expect(G.players["1"].hand).toEqual([card]);
+    expect(G.players["1"].discard).not.toContain(card);
+    expect(G.players["1"].actionsRemaining).toBe(1);
+    expect(G.players["1"].actionTokensAvailable).toBe(1);
     expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): no_resolvable_on_play_effects(${card})`);
   });
 
   it("offers only the skip path for optional Commerce when trade_routes is disabled", () => {
     const G = createInitialGameState({ options: { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: [] } });
 
-    runEffects({ G, playerId: "0", selfCardId: "test_action_optional", enabledExpansions: [] }, [{
+    runEffects({ G, playerId: "1", selfCardId: "test_action_optional", enabledExpansions: [] }, [{
       trigger: "on_play",
       op: "optional",
       effects: [{ trigger: "on_play", op: "commerce" } as any]
     } as any]);
 
     expect(G.pendingChoice).toEqual({
-      playerId: "0",
+      playerId: "1",
       sourceCardId: "test_action_optional",
       choices: [[]]
     });
@@ -169,21 +169,21 @@ describe("trade_routes expansion toggle", () => {
       tags: [],
       effects: [{ trigger: "on_play", op: "trade" } as any]
     };
-    G.players["0"].hand = ["trade_action"];
-    G.players["0"].resources.goods = 1;
-    G.players["0"].actionsRemaining = 1;
-    G.players["0"].actionTokensAvailable = 1;
+    G.players["1"].hand = ["trade_action"];
+    G.players["1"].resources.goods = 1;
+    G.players["1"].actionsRemaining = 1;
+    G.players["1"].actionTokensAvailable = 1;
     Object.values(G.players).forEach((player) => {
       player.playArea = [];
     });
 
-    playCard({ G, ctx: { currentPlayer: "0" } as any }, "trade_action");
+    playCard({ G, ctx: { currentPlayer: "1" } as any }, "trade_action");
 
     expect(G.log.some((entry) => entry.message.includes("Ignored trade"))).toBe(false);
     expect(G.log.some((entry) => entry.message === "UnsupportedEffectOp(trade)")).toBe(false);
     expect(G.log.some((entry) => entry.message === "TradeResolved(goods_to_progress)")).toBe(true);
-    expect(G.players["0"].resources.goods).toBe(0);
-    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["1"].resources.goods).toBe(0);
+    expect(G.players["1"].resources.knowledge).toBe(1);
   });
 
   it("exhausted card effects receive the enabled trade_routes expansion context", () => {
@@ -198,20 +198,20 @@ describe("trade_routes expansion toggle", () => {
       tags: [],
       effects: [{ trigger: "on_exhaust", op: "trade" } as any]
     };
-    G.players["0"].playArea = ["trade_exhaust"];
-    G.players["0"].resources.goods = 1;
-    G.players["0"].exhaustTokensAvailable = 1;
+    G.players["1"].playArea = ["trade_exhaust"];
+    G.players["1"].resources.goods = 1;
+    G.players["1"].exhaustTokensAvailable = 1;
     Object.values(G.players).forEach((player) => {
-      if (player !== G.players["0"]) player.playArea = [];
+      if (player !== G.players["1"]) player.playArea = [];
     });
 
-    exhaustCard({ G, ctx: { currentPlayer: "0" } as any }, "trade_exhaust");
+    exhaustCard({ G, ctx: { currentPlayer: "1" } as any }, "trade_exhaust");
 
     expect(G.log.some((entry) => entry.message.includes("Ignored trade"))).toBe(false);
     expect(G.log.some((entry) => entry.message === "UnsupportedEffectOp(trade)")).toBe(false);
     expect(G.log.some((entry) => entry.message === "TradeResolved(goods_to_progress)")).toBe(true);
-    expect(G.players["0"].resources.goods).toBe(0);
-    expect(G.players["0"].resources.knowledge).toBe(1);
-    expect(G.players["0"].exhaustTokensAvailable).toBe(0);
+    expect(G.players["1"].resources.goods).toBe(0);
+    expect(G.players["1"].resources.knowledge).toBe(1);
+    expect(G.players["1"].exhaustTokensAvailable).toBe(0);
   });
 });

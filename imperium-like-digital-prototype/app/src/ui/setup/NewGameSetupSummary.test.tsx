@@ -72,9 +72,9 @@ describe("NewGameSetup summary", () => {
     });
   });
 
-  it("uses boardgame.io player ids for launched games", () => {
-    expect(getLaunchPlayerIds(1)).toEqual(["0"]);
-    expect(getLaunchPlayerIds(3)).toEqual(["0", "1", "2"]);
+  it("uses one-based game player ids for launched games", () => {
+    expect(getLaunchPlayerIds(1)).toEqual(["1"]);
+    expect(getLaunchPlayerIds(3)).toEqual(["1", "2", "3"]);
   });
 
   it("requires an online player name before entering online games", () => {
@@ -83,11 +83,26 @@ describe("NewGameSetup summary", () => {
     expect(html).toContain("Sign in before entering online games");
     expect(html).toContain("Username or Email");
     expect(html).toContain("Forgot Password");
-    expect(html).toContain("Reset Token or Link");
-    expect(html).toContain("Confirm New Password");
+    expect(html).not.toContain("Reset Token or Link");
+    expect(html).not.toContain("Confirm New Password");
+    expect(html).not.toContain("Reset Password");
     expect(html).toContain("Continue as Guest");
     expect(html).toContain("disabled=\"\"");
     expect(html).toContain("Online Games");
+  });
+
+  it("shows reset password controls when opened from a reset link", () => {
+    const html = renderToStaticMarkup(
+      <NewGameSetup
+        onStart={() => undefined}
+        onOpenOnlineGames={() => undefined}
+        passwordResetToken="reset-1"
+      />
+    );
+
+    expect(html).toContain("New Password");
+    expect(html).toContain("Confirm New Password");
+    expect(html).toContain("Reset Password");
   });
 
   it("lets signed-in accounts enter online games without an online name", () => {

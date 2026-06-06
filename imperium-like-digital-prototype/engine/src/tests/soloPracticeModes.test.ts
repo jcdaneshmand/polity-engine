@@ -17,9 +17,9 @@ describe("solo/practice modes",()=>{
   it("practice cleanup spends one churn Progress token onto the market and ticks the clock",()=>{
     const G=createInitialGameState({ options:{playerCount:1,mode:"practice",enabledExpansions:[],enabledVariants:[]} });
     G.market = ["test_action_foundry_shift"];
-    G.players["0"].hand = [];
+    G.players["1"].hand = [];
 
-    onTurnEnd(G, { currentPlayer: "0", playOrder: ["0"] } as any);
+    onTurnEnd(G, { currentPlayer: "1", playOrder: ["1"] } as any);
 
     expect(G.practiceClock).toEqual({ turnsRemaining: 11, progressTokens: 11 });
     expect(G.marketResources?.test_action_foundry_shift?.knowledge).toBe(1);
@@ -44,11 +44,11 @@ describe("solo/practice modes",()=>{
   });
   it("practice cleanup uses the chosen cleanup market card as the single churn Progress placement",()=>{
     const G=createInitialGameState({ options:{playerCount:1,mode:"practice",enabledExpansions:[],enabledVariants:[]} });
-    const ctx = { currentPlayer: "0", playOrder: ["0"] } as any;
+    const ctx = { currentPlayer: "1", playOrder: ["1"] } as any;
     const endTurn = () => onTurnEnd(G, ctx);
     G.market = ["test_action_foundry_shift", "test_action_archive_survey"];
     G.marketResources = {};
-    G.players["0"].hand = [];
+    G.players["1"].hand = [];
 
     endTurnMove({ G, ctx, events: { endTurn } });
     expect(G.pendingCleanupMarketResourceChoice?.cardIds).toEqual(["test_action_foundry_shift", "test_action_archive_survey"]);
@@ -59,7 +59,7 @@ describe("solo/practice modes",()=>{
     expect(G.marketResources?.test_action_archive_survey?.knowledge).toBe(1);
     expect(G.marketResources?.test_action_foundry_shift?.knowledge).toBeUndefined();
     expect(G.pendingExileChoice).toEqual({
-      playerId: "0",
+      playerId: "1",
       sourceCardId: "practice_market_churn",
       source: "market",
       cardIds: ["test_action_foundry_shift"],
@@ -70,12 +70,12 @@ describe("solo/practice modes",()=>{
     const G=createInitialGameState({ options:{playerCount:1,mode:"practice",enabledExpansions:[],enabledVariants:[]} });
     G.market = ["test_action_foundry_shift", "test_action_archive_survey"];
     G.marketResources = {};
-    G.players["0"].hand = [];
+    G.players["1"].hand = [];
 
-    onTurnEnd(G, { currentPlayer: "0", playOrder: ["0"] } as any);
+    onTurnEnd(G, { currentPlayer: "1", playOrder: ["1"] } as any);
 
     expect(G.pendingCleanupMarketResourceChoice).toEqual({
-      playerId: "0",
+      playerId: "1",
       resource: "knowledge",
       amount: 1,
       cardIds: ["test_action_foundry_shift", "test_action_archive_survey"]
@@ -85,11 +85,11 @@ describe("solo/practice modes",()=>{
   });
   it("practice offers the optional market Exile before voluntary cleanup discard",()=>{
     const G=createInitialGameState({ options:{playerCount:1,mode:"practice",enabledExpansions:[],enabledVariants:[]} });
-    const ctx = { currentPlayer: "0", playOrder: ["0"] } as any;
+    const ctx = { currentPlayer: "1", playOrder: ["1"] } as any;
     const endTurn = () => onTurnEnd(G, ctx);
     G.market = ["test_action_foundry_shift", "test_action_archive_survey"];
     G.marketResources = {};
-    G.players["0"].hand = ["test_action_scholars_circle"];
+    G.players["1"].hand = ["test_action_scholars_circle"];
 
     endTurnMove({ G, ctx, events: { endTurn } });
     resolveCleanupMarketResource({ G, ctx, events: { endTurn } }, "test_action_archive_survey");
@@ -101,7 +101,7 @@ describe("solo/practice modes",()=>{
 
     expect(G.pendingExileChoice).toBeUndefined();
     expect(G.pendingCleanupDiscardChoice).toEqual({
-      playerId: "0",
+      playerId: "1",
       cardIds: ["test_action_scholars_circle"]
     });
     expect(G.practiceClock).toEqual({ turnsRemaining: 12, progressTokens: 11 });
@@ -110,9 +110,9 @@ describe("solo/practice modes",()=>{
     const G=createInitialGameState({ options:{playerCount:1,mode:"practice",enabledExpansions:[],enabledVariants:[]} });
     G.market = ["test_action_foundry_shift"];
     G.marketResources = {};
-    G.players["0"].hand = ["test_action_scholars_circle"];
+    G.players["1"].hand = ["test_action_scholars_circle"];
 
-    onTurnEnd(G, { currentPlayer: "0", playOrder: ["0"] } as any);
+    onTurnEnd(G, { currentPlayer: "1", playOrder: ["1"] } as any);
 
     expect(G.pendingExileChoice).toBeUndefined();
     expect(G.pendingCleanupDiscardChoice).toBeUndefined();
@@ -123,9 +123,9 @@ describe("solo/practice modes",()=>{
     G.practiceClock = { turnsRemaining: 1, progressTokens: 0 };
     G.market = ["test_action_foundry_shift", "test_action_archive_survey"];
     G.marketResources = {};
-    G.players["0"].hand = [];
+    G.players["1"].hand = [];
 
-    onTurnEnd(G, { currentPlayer: "0", playOrder: ["0"] } as any);
+    onTurnEnd(G, { currentPlayer: "1", playOrder: ["1"] } as any);
 
     expect(G.pendingCleanupMarketResourceChoice).toBeUndefined();
     expect(G.pendingExileChoice).toBeUndefined();
@@ -135,55 +135,55 @@ describe("solo/practice modes",()=>{
   });
   it("practice cleanup pauses for an optional market Exile choice after churn",()=>{
     const G=createInitialGameState({ options:{playerCount:1,mode:"practice",enabledExpansions:[],enabledVariants:[]} });
-    const ctx = { currentPlayer: "0", playOrder: ["0"] } as any;
+    const ctx = { currentPlayer: "1", playOrder: ["1"] } as any;
     const endTurn = () => onTurnEnd(G, ctx);
     G.market = ["test_action_foundry_shift", "test_action_archive_survey", "test_action_scholars_circle"];
     G.marketResources = { test_action_archive_survey: { knowledge: 1 } };
-    G.players["0"].hand = [];
+    G.players["1"].hand = [];
 
     onTurnEnd(G, ctx);
     resolveCleanupMarketResource({ G, ctx, events: { endTurn } }, "test_action_foundry_shift");
 
     expect(G.pendingExileChoice).toEqual({
-      playerId: "0",
+      playerId: "1",
       sourceCardId: "practice_market_churn",
       source: "market",
       cardIds: ["test_action_scholars_circle"],
       optional: true
     });
     expect(G.pausedSolstice).toBeUndefined();
-    expect(G.pendingPracticeMarketExileBeforeCleanup).toEqual({ playerId: "0" });
+    expect(G.pendingPracticeMarketExileBeforeCleanup).toEqual({ playerId: "1" });
   });
   it("practice optional market Exile excludes market cards with card-state tokens",()=>{
     const G=createInitialGameState({ options:{playerCount:1,mode:"practice",enabledExpansions:[],enabledVariants:[]} });
-    const ctx = { currentPlayer: "0", playOrder: ["0"] } as any;
+    const ctx = { currentPlayer: "1", playOrder: ["1"] } as any;
     const endTurn = () => onTurnEnd(G, ctx);
     G.market = ["test_action_foundry_shift", "test_action_archive_survey", "test_action_scholars_circle", "test_action_risk_audit"];
     G.marketResources = { test_action_archive_survey: { knowledge: 1 } };
     G.cardStates = { test_action_scholars_circle: { actionTokens: 1 } };
-    G.players["0"].hand = [];
+    G.players["1"].hand = [];
 
     onTurnEnd(G, ctx);
     resolveCleanupMarketResource({ G, ctx, events: { endTurn } }, "test_action_foundry_shift");
 
     expect(G.pendingExileChoice).toEqual({
-      playerId: "0",
+      playerId: "1",
       sourceCardId: "practice_market_churn",
       source: "market",
       cardIds: ["test_action_risk_audit"],
       optional: true
     });
-    expect(G.pendingPracticeMarketExileBeforeCleanup).toEqual({ playerId: "0" });
+    expect(G.pendingPracticeMarketExileBeforeCleanup).toEqual({ playerId: "1" });
   });
   it("practice market Exile choice resumes the cleanup handoff without ticking twice",()=>{
     const G=createInitialGameState({ options:{playerCount:1,mode:"practice",enabledExpansions:[],enabledVariants:[]} });
-    const ctx = { currentPlayer: "0", playOrder: ["0"] } as any;
+    const ctx = { currentPlayer: "1", playOrder: ["1"] } as any;
     const endTurn = () => onTurnEnd(G, ctx);
     G.market = ["test_action_foundry_shift", "test_action_archive_survey"];
     G.marketRefillPool = ["test_action_scholars_circle"];
     G.marketDecks = undefined;
     G.unrestPile = ["unrest_from_supply"];
-    G.players["0"].hand = [];
+    G.players["1"].hand = [];
 
     onTurnEnd(G, ctx);
     resolveCleanupMarketResource({ G, ctx, events: { endTurn } }, "test_action_foundry_shift");
@@ -191,15 +191,15 @@ describe("solo/practice modes",()=>{
 
     expect(G.pendingExileChoice).toBeUndefined();
     expect(G.practiceClock).toEqual({ turnsRemaining: 11, progressTokens: 11 });
-    expect(G.players["0"].exile).toContain("test_action_archive_survey");
+    expect(G.players["1"].exile).toContain("test_action_archive_survey");
     expect(G.pausedSolstice).toBeUndefined();
   });
   it("practice market Exile choice can be skipped and still resumes cleanup",()=>{
     const G=createInitialGameState({ options:{playerCount:1,mode:"practice",enabledExpansions:[],enabledVariants:[]} });
-    const ctx = { currentPlayer: "0", playOrder: ["0"] } as any;
+    const ctx = { currentPlayer: "1", playOrder: ["1"] } as any;
     const endTurn = () => onTurnEnd(G, ctx);
     G.market = ["test_action_foundry_shift", "test_action_archive_survey"];
-    G.players["0"].hand = [];
+    G.players["1"].hand = [];
 
     onTurnEnd(G, ctx);
     resolveCleanupMarketResource({ G, ctx, events: { endTurn } }, "test_action_foundry_shift");
@@ -207,15 +207,15 @@ describe("solo/practice modes",()=>{
 
     expect(G.pendingExileChoice).toBeUndefined();
     expect(G.practiceClock).toEqual({ turnsRemaining: 11, progressTokens: 11 });
-    expect(G.players["0"].exile).toEqual([]);
+    expect(G.players["1"].exile).toEqual([]);
   });
   it("practice resolves the twelfth turn Solstice before final scoring",()=>{
     const G=createInitialGameState({ options:{playerCount:1,mode:"practice",enabledExpansions:[],enabledVariants:[]} });
     G.practiceClock = { turnsRemaining: 1, progressTokens: 1 };
     G.market = ["test_action_foundry_shift"];
-    G.players["0"].playArea = ["practice_final_solstice"];
-    G.players["0"].hand = [];
-    G.players["0"].resources.knowledge = 0;
+    G.players["1"].playArea = ["practice_final_solstice"];
+    G.players["1"].hand = [];
+    G.players["1"].resources.knowledge = 0;
     G.cardDb.practice_final_solstice = {
       id: "practice_final_solstice",
       displayName: "Practice Final Solstice",
@@ -227,12 +227,12 @@ describe("solo/practice modes",()=>{
       effects: [{ trigger: "on_solstice", op: "gain_resource", resource: "knowledge", amount: 1 } as any]
     };
 
-    onTurnEnd(G, { currentPlayer: "0", playOrder: ["0"] } as any);
+    onTurnEnd(G, { currentPlayer: "1", playOrder: ["1"] } as any);
 
     expect(G.practiceClock).toEqual({ turnsRemaining: 0, progressTokens: 0 });
-    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["1"].resources.knowledge).toBe(1);
     expect(G.gameover?.reason).toBe("normal_scoring:practice_turn_limit");
-    expect(G.gameover?.scores?.["0"]).toBeGreaterThanOrEqual(1);
+    expect(G.gameover?.scores?.["1"]).toBeGreaterThanOrEqual(1);
     expect(G.scoring).toBeUndefined();
   });
   it("solo creates bot",()=>{ const G=createInitialGameState({ options:{playerCount:1,mode:"solo",enabledExpansions:[],enabledVariants:[],soloDifficulty:"chieftain"} }); expect(G.solo?.bot.botId).toBe("bot_0"); });

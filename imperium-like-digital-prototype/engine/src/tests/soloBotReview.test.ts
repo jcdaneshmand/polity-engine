@@ -66,7 +66,7 @@ function addHumanScoringUnrest(G: any, count: number) {
       type: "unrest",
       tags: ["unrest"]
     });
-    G.players["0"].discard.push(id);
+    G.players["1"].discard.push(id);
   }
 }
 
@@ -107,7 +107,7 @@ describe("solo bot setup from imported cards", () => {
           bot_5: card({ id: "bot_5", displayName: "Bot 5", startingLocation: "bot_deck" })
         } as any,
         nationDb: { test_nation_sun_coast: nation },
-        playerNationIds: { "0": "test_nation_sun_coast" }
+        playerNationIds: { "1": "test_nation_sun_coast" }
       });
 
       expect(Object.keys(G.solo?.bot.slots ?? {}).map(Number)).toEqual([1, 2, 3, 4]);
@@ -131,7 +131,7 @@ describe("solo bot setup from imported cards", () => {
         options: { ...options, soloDifficulty: testCase.soloDifficulty, enabledExpansions: [...testCase.enabledExpansions] },
         cardDb: { starter: card({}) } as any,
         nationDb: { test_nation_sun_coast: nation },
-        playerNationIds: { "0": "test_nation_sun_coast" }
+        playerNationIds: { "1": "test_nation_sun_coast" }
       });
 
       expect(G.solo?.bot.resources).toEqual(testCase.resources);
@@ -146,7 +146,7 @@ describe("solo bot setup from imported cards", () => {
         bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
 
     const botCardIds = [
@@ -164,7 +164,7 @@ describe("solo bot setup from imported cards", () => {
         accession_card: card({ id: "accession_card", displayName: "Accession", cardType: "accession", startingLocation: "box" })
       } as any,
       nationDb: { test_nation_sun_coast: { ...nation, accessionCardId: "accession_card" } },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.solo!.botStateTables = {
@@ -237,7 +237,7 @@ describe("solo bot setup from imported cards", () => {
         accession_card: card({ id: "accession_card", displayName: "Accession", cardType: "accession", startingLocation: "box" })
       } as any,
       nationDb: { test_nation_sun_coast: { ...nation, accessionCardId: "accession_card" } },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     G.solo!.bot = bot;
     G.solo!.botStateTables = {
@@ -264,7 +264,7 @@ describe("solo bot setup from imported cards", () => {
         bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
 
     const result = resolveBotCard({
@@ -296,7 +296,7 @@ describe("solo bot setup from imported cards", () => {
         destination_only: card({ id: "destination_only", displayName: "Destination Only", suit: "region", cardType: "action", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
 
     const result = resolveBotCard({
@@ -330,7 +330,7 @@ describe("solo bot setup from imported cards", () => {
         bot_attack: card({ id: "bot_attack", displayName: "Bot Attack", suit: "none", cardType: "attack", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     delete (G.cardDb.bot_attack as any).type;
 
@@ -363,7 +363,7 @@ describe("solo bot setup from imported cards", () => {
         untagged_bot: card({ id: "untagged_bot", displayName: "Untagged Bot", suit: "civilized", cardType: "action", tags: undefined, startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
 
     const result = resolveBotCard({
@@ -396,7 +396,7 @@ describe("solo bot setup from imported cards", () => {
         typed_unrest: card({ id: "typed_unrest", displayName: "Typed Unrest", suit: "none", cardType: "unrest", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     delete (G.cardDb.typed_unrest as any).type;
 
@@ -430,7 +430,7 @@ describe("solo bot setup from imported cards", () => {
         imported_unrest: card({ id: "imported_unrest", displayName: "Imported Unrest", suit: "civilized", cardType: "action", tags: ["suit:unrest"], startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
 
     const result = resolveBotCard({
@@ -464,7 +464,7 @@ describe("solo bot setup from imported cards", () => {
         bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
 
     const result = resolveBotCard({
@@ -497,7 +497,7 @@ describe("solo bot setup from imported cards", () => {
         fame_top: card({ id: "fame_top", displayName: "Fame", suit: "fame", cardType: "fame", startingLocation: "fame_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDeck = ["existing_top"];
@@ -534,7 +534,7 @@ describe("solo bot setup from imported cards", () => {
         bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botStateSide = "F";
@@ -573,7 +573,7 @@ describe("solo bot setup from imported cards", () => {
         bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.fameDeck = { available: [], specialBottomCardId: "king_of_kings", specialBottomSide: "face_down", resolvedSpecialByPlayer: { bot: true } };
@@ -609,7 +609,7 @@ describe("solo bot setup from imported cards", () => {
         bot_fame: card({ id: "bot_fame", displayName: "Bot Fame", suit: "fame", cardType: "fame", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDeck = ["bot_fame"];
@@ -641,7 +641,7 @@ describe("solo bot setup from imported cards", () => {
         bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDeck = [];
@@ -675,7 +675,7 @@ describe("solo bot setup from imported cards", () => {
         bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDynastyDeck = [];
@@ -711,7 +711,7 @@ describe("solo bot setup from imported cards", () => {
         bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDynastyDeck = [];
@@ -748,7 +748,7 @@ describe("solo bot setup from imported cards", () => {
         recent_unrest: card({ id: "recent_unrest", displayName: "Recent Unrest", suit: "unrest", cardType: "unrest" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDiscard = ["older_unrest", "action_discard", "recent_unrest"];
@@ -784,7 +784,7 @@ describe("solo bot setup from imported cards", () => {
         discarded_unrest: card({ id: "discarded_unrest", displayName: "Discarded Unrest", suit: "unrest", cardType: "unrest" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.resources.knowledge = 0;
@@ -823,7 +823,7 @@ describe("solo bot setup from imported cards", () => {
         recent_imported_unrest: card({ id: "recent_imported_unrest", displayName: "Recent Imported Unrest", suit: "civilized", cardType: "action", tags: ["suit:unrest"] })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.resources.knowledge = 0;
@@ -862,7 +862,7 @@ describe("solo bot setup from imported cards", () => {
         recent_region: card({ id: "recent_region", displayName: "Recent Region", suit: "region", cardType: "region" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDeck = ["existing_top"];
@@ -900,7 +900,7 @@ describe("solo bot setup from imported cards", () => {
         recent_region: card({ id: "recent_region", displayName: "Recent Region", suit: "region", cardType: "region" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botPlayArea = ["old_region", "recent_region"];
@@ -940,7 +940,7 @@ describe("solo bot setup from imported cards", () => {
         new_unrest: card({ id: "new_unrest", displayName: "New Unrest", suit: "unrest", cardType: "unrest" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.resources.knowledge = 0;
@@ -989,7 +989,7 @@ describe("solo bot setup from imported cards", () => {
         new_unrest: card({ id: "new_unrest", displayName: "New Unrest", suit: "unrest", cardType: "unrest" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botPlayArea = ["bot_gadget"];
@@ -1040,7 +1040,7 @@ describe("solo bot setup from imported cards", () => {
         new_unrest: card({ id: "new_unrest", displayName: "New Unrest", suit: "unrest", cardType: "unrest" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botPlayArea = ["bot_gadget"];
@@ -1092,7 +1092,7 @@ describe("solo bot setup from imported cards", () => {
         bot_unrest: card({ id: "bot_unrest", displayName: "Bot Unrest", suit: "unrest", cardType: "unrest", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDiscard = [];
@@ -1128,7 +1128,7 @@ describe("solo bot setup from imported cards", () => {
         bot_unrest: card({ id: "bot_unrest", displayName: "Bot Unrest", suit: "unrest", cardType: "unrest", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.resources.knowledge = 0;
@@ -1167,7 +1167,7 @@ describe("solo bot setup from imported cards", () => {
         remaining: card({ id: "remaining", displayName: "Remaining", suit: "civilized", cardType: "action" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDeck = ["top_one", "top_two", "remaining"];
@@ -1202,7 +1202,7 @@ describe("solo bot setup from imported cards", () => {
         bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDeck = [];
@@ -1237,7 +1237,7 @@ describe("solo bot setup from imported cards", () => {
         bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDiscard = [];
@@ -1272,10 +1272,10 @@ describe("solo bot setup from imported cards", () => {
         bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
-    G.players["0"].resources.knowledge = 0;
+    G.players["1"].resources.knowledge = 0;
 
     const result = resolveBotCard({
       G,
@@ -1294,7 +1294,7 @@ describe("solo bot setup from imported cards", () => {
     });
 
     expect(result.warnings).toEqual([]);
-    expect(G.players["0"].resources.knowledge).toBe(2);
+    expect(G.players["1"].resources.knowledge).toBe(2);
     expect(bot.botDiscard).toContain("bot_region");
   });
 
@@ -1308,10 +1308,10 @@ describe("solo bot setup from imported cards", () => {
         unrest_two: card({ id: "unrest_two", displayName: "Unrest", suit: "unrest", cardType: "unrest" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
-    G.players["0"].discard = [];
+    G.players["1"].discard = [];
     G.unrestPile = ["unrest_one", "unrest_two"];
 
     const result = resolveBotCard({
@@ -1331,8 +1331,8 @@ describe("solo bot setup from imported cards", () => {
     });
 
     expect(result.warnings).toEqual([]);
-    expect(G.players["0"].hand).toContain("unrest_one");
-    expect(G.players["0"].hand).toContain("unrest_two");
+    expect(G.players["1"].hand).toContain("unrest_one");
+    expect(G.players["1"].hand).toContain("unrest_two");
     expect(G.unrestPile).toEqual([]);
     expect(bot.botDiscard).toContain("bot_region");
   });
@@ -1359,14 +1359,14 @@ describe("solo bot setup from imported cards", () => {
         unrest_one: card({ id: "unrest_one", displayName: "Unrest", suit: "unrest", cardType: "unrest" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.currentTurnType = "activate";
-    G.players["0"].playArea = ["human_reactive"];
-    G.players["0"].hand = [];
-    G.players["0"].resources.knowledge = 0;
-    G.players["0"].exhaustTokensAvailable = 1;
+    G.players["1"].playArea = ["human_reactive"];
+    G.players["1"].hand = [];
+    G.players["1"].resources.knowledge = 0;
+    G.players["1"].exhaustTokensAvailable = 1;
     G.unrestPile = ["unrest_one"];
     G.solo!.botStateTables = {
       test_table: {
@@ -1393,21 +1393,21 @@ describe("solo bot setup from imported cards", () => {
 
     runBotTurn({ G, rollDie: () => 6 });
 
-    expect(G.players["0"].hand).toEqual(["unrest_one"]);
+    expect(G.players["1"].hand).toEqual(["unrest_one"]);
     expect(G.pendingReactiveExhaustChoice).toMatchObject({
-      playerId: "0",
+      playerId: "1",
       cardIds: ["human_reactive"],
       resolvingPlayerId: bot.botId,
       sourceCardId: "bot_region",
       trigger: "after_take_unrest",
-      targetPlayerId: "0"
+      targetPlayerId: "1"
     });
     expect(bot.resources.goods).toBeUndefined();
 
-    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "0" } as any }, "human_reactive");
+    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "1" } as any }, "human_reactive");
 
     expect(G.pendingReactiveExhaustChoice).toBeUndefined();
-    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["1"].resources.knowledge).toBe(1);
     expect(bot.resources.goods).toBe(2);
   });
 
@@ -1419,7 +1419,7 @@ describe("solo bot setup from imported cards", () => {
         bot_unrest: card({ id: "bot_unrest", displayName: "Bot Unrest", suit: "unrest", cardType: "unrest", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.resources.influence = 1;
@@ -1439,7 +1439,7 @@ describe("solo bot setup from imported cards", () => {
       options,
       cardDb: { starter: card({}) } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     const table = { id: "cultists_ceremonial_gathering", botNationId: "cultists", displayName: "Cultists", side: "F", rows: [] };
@@ -1483,7 +1483,7 @@ describe("solo bot setup from imported cards", () => {
         cultist_unrest: card({ id: "cultist_unrest", displayName: "Unrest", suit: "unrest", cardType: "unrest", tags: ["unrest"] })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.resources.influence = 1;
@@ -1511,7 +1511,7 @@ describe("solo bot setup from imported cards", () => {
         cultist_route: card({ id: "cultist_route", displayName: "Route", suit: "trade_route", cardType: "trade_route" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.solo!.botTradeRoutesTables = {
@@ -1546,7 +1546,7 @@ describe("solo bot setup from imported cards", () => {
         cultist_progress: card({ id: "cultist_progress", displayName: "Progress", suit: "none", cardType: "action", tags: ["progress_history"] })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.resources.knowledge = 0;
@@ -1575,7 +1575,7 @@ describe("solo bot setup from imported cards", () => {
         discarded_unrest: card({ id: "discarded_unrest", displayName: "Unrest", suit: "unrest", cardType: "unrest", tags: ["unrest"] })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDeck = ["deck_card"];
@@ -1606,7 +1606,7 @@ describe("solo bot setup from imported cards", () => {
         cultist_unrest: card({ id: "cultist_unrest", displayName: "Unrest", suit: "unrest", cardType: "unrest", tags: ["unrest"] })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.resources.influence = 0;
@@ -1633,7 +1633,7 @@ describe("solo bot setup from imported cards", () => {
         cultist_route: card({ id: "cultist_route", displayName: "Route", suit: "trade_route", cardType: "trade_route" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.solo!.botTradeRoutesTables = {
@@ -1668,7 +1668,7 @@ describe("solo bot setup from imported cards", () => {
         cultist_progress: card({ id: "cultist_progress", displayName: "Progress", suit: "none", cardType: "action", tags: ["progress_history"] })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.resources.knowledge = 0;
@@ -1698,7 +1698,7 @@ describe("solo bot setup from imported cards", () => {
         discarded_unrest: card({ id: "discarded_unrest", displayName: "Unrest", suit: "unrest", cardType: "unrest", tags: ["unrest"] })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDeck = ["deck_one", "deck_two"];
@@ -1730,21 +1730,21 @@ describe("solo bot setup from imported cards", () => {
         chaos_one: card({ id: "chaos_one", displayName: "Chaos", suit: "unrest", cardType: "unrest" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.resources.influence = 1;
-    G.players["0"].resources.goods = 0;
-    G.specialZones = { "0": { chaos_pile: { id: "chaos_pile", displayName: "Chaos Pile", cardIds: ["chaos_one"], visibility: "public", scoresAsOwned: false } } };
+    G.players["1"].resources.goods = 0;
+    G.specialZones = { "1": { chaos_pile: { id: "chaos_pile", displayName: "Chaos Pile", cardIds: ["chaos_one"], visibility: "public", scoresAsOwned: false } } };
 
     const result = resolveBotCard({ G, bot, revealedCardId: "cultist_power", source: "slot", table });
 
     expect(result).toMatchObject({ resolvedRowId: "hammer_state_token", cardDestination: "discard", resolvedAny: true, warnings: [] });
     expect(bot.resources.influence).toBe(0);
     expect(bot.stateTokens?.cultists_ceremonial_gathering_F?.influence).toBe(1);
-    expect(G.players["0"].resources.goods).toBe(2);
-    expect(G.specialZones["0"].chaos_pile.cardIds).toEqual([]);
-    expect(G.players["0"].discard).toContain("chaos_one");
+    expect(G.players["1"].resources.goods).toBe(2);
+    expect(G.specialZones["1"].chaos_pile.cardIds).toEqual([]);
+    expect(G.players["1"].discard).toContain("chaos_one");
     expect(bot.botDiscard).toContain("cultist_power");
   });
 
@@ -1762,7 +1762,7 @@ describe("solo bot setup from imported cards", () => {
         cultist_region: card({ id: "cultist_region", displayName: "Region", suit: "region", cardType: "region", tags: ["region"] })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.resources.influence = 1;
@@ -1790,7 +1790,7 @@ describe("solo bot setup from imported cards", () => {
         cultist_state_card: card({ id: "cultist_state_card", displayName: "Cultist", suit: "civilized", cardType: "state" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.resources.influence = 2;
@@ -1811,15 +1811,15 @@ describe("solo bot setup from imported cards", () => {
         chaos_one: card({ id: "chaos_one", displayName: "Chaos", suit: "unrest", cardType: "unrest" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     const table = { id: "cultists_ceremonial_gathering", botNationId: "cultists", displayName: "Cultists", side: "F", rows: [] };
-    G.specialZones = { "0": { chaos_pile: { id: "chaos_pile", displayName: "Chaos Pile", cardIds: ["chaos_one"], visibility: "public", scoresAsOwned: false } } };
+    G.specialZones = { "1": { chaos_pile: { id: "chaos_pile", displayName: "Chaos Pile", cardIds: ["chaos_one"], visibility: "public", scoresAsOwned: false } } };
 
     expect(applyBotEffect(G, bot, table, "state", { op: "human_take_chaos", count: 1 })).toEqual([]);
-    expect(G.specialZones["0"].chaos_pile.cardIds).toEqual([]);
-    expect(G.players["0"].discard).toContain("chaos_one");
+    expect(G.specialZones["1"].chaos_pile.cardIds).toEqual([]);
+    expect(G.players["1"].discard).toContain("chaos_one");
   });
 
   it("Cultists cleanup flips between the two errata state tables at token thresholds", () => {
@@ -1831,7 +1831,7 @@ describe("solo bot setup from imported cards", () => {
         market_one: card({ id: "market_one", displayName: "Market One", suit: "civilized", cardType: "action" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     const ceremonial = { id: "cultists_ceremonial_gathering", botNationId: "cultists", displayName: "Cultists", side: "F", rows: [] };
@@ -1868,7 +1868,7 @@ describe("solo bot setup from imported cards", () => {
         market_structured: card({ id: "market_structured", displayName: "Market Structured", suit: "civilized", cardType: "action" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     const ceremonial = { id: "cultists_ceremonial_gathering", botNationId: "cultists", displayName: "Cultists", side: "F", rows: [] };
@@ -1906,7 +1906,7 @@ describe("solo bot setup from imported cards", () => {
         bot_refill: card({ id: "bot_refill", displayName: "Bot Refill", suit: "none", cardType: "action", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     Object.values(bot.slots).forEach((slot) => { slot.cardId = undefined; slot.face = "down"; slot.blockedByDie = false; });
@@ -1935,7 +1935,7 @@ describe("solo bot setup from imported cards", () => {
     expect(G.gameover).toEqual({
       winner: "bot_0",
       reason: "collapse:unrest_pile_empty",
-      scores: { "0": 1 }
+      scores: { "1": 1 }
     });
     expect(bot.resources.goods).toBe(0);
     expect(bot.botDiscard).toEqual([]);
@@ -1952,7 +1952,7 @@ describe("solo bot setup from imported cards", () => {
         bot_one: card({ id: "bot_one", displayName: "Bot One", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     Object.values(bot.slots).forEach((slot) => { slot.cardId = undefined; slot.face = "down"; slot.blockedByDie = false; });
@@ -1990,7 +1990,7 @@ describe("solo bot setup from imported cards", () => {
         bot_refill: card({ id: "bot_refill", displayName: "Bot Refill", suit: "civilized", cardType: "action", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     Object.values(bot.slots).forEach((slot) => { slot.cardId = undefined; slot.face = "down"; slot.blockedByDie = false; });
@@ -2027,10 +2027,10 @@ describe("solo bot setup from imported cards", () => {
         human_region: card({ id: "human_region", displayName: "Human Region", suit: "region", cardType: "region" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
-    G.players["0"].playArea = ["human_region"];
+    G.players["1"].playArea = ["human_region"];
     G.solo!.botStateTables = {
       test_table: {
         id: "test_table",
@@ -2053,7 +2053,7 @@ describe("solo bot setup from imported cards", () => {
     runBotTurn({ G, rollDie: () => 6 });
 
     expect(G.pendingRegionChoice).toEqual({
-      playerId: "0",
+      playerId: "1",
       sourceCardId: "bot_prompt",
       op: "recall_region",
       cardIds: ["human_region"]
@@ -2062,11 +2062,11 @@ describe("solo bot setup from imported cards", () => {
     expect(bot.resources.goods).toBeUndefined();
     expect(bot.slots[2].cardId).toBe("bot_after");
 
-    resolveRegionChoice({ G, ctx: { currentPlayer: "0" } as any }, "human_region");
+    resolveRegionChoice({ G, ctx: { currentPlayer: "1" } as any }, "human_region");
 
     expect(G.pendingRegionChoice).toBeUndefined();
     expect(G.solo?.pausedBotTurn).toBeUndefined();
-    expect(G.players["0"].hand).toContain("human_region");
+    expect(G.players["1"].hand).toContain("human_region");
     expect(bot.resources.goods).toBe(2);
     expect(bot.botDiscard).toEqual([]);
     expect([bot.slots[1].cardId, bot.slots[2].cardId].sort()).toEqual(["bot_after", "bot_prompt"]);
@@ -2095,13 +2095,13 @@ describe("solo bot setup from imported cards", () => {
         })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
-    G.players["0"].playArea = ["human_region", "human_reactive"];
-    G.players["0"].exhaustTokensAvailable = 1;
-    G.players["0"].resources.materials = 0;
-    G.players["0"].resources.knowledge = 0;
+    G.players["1"].playArea = ["human_region", "human_reactive"];
+    G.players["1"].exhaustTokensAvailable = 1;
+    G.players["1"].resources.materials = 0;
+    G.players["1"].resources.knowledge = 0;
     G.cardStates = { human_region: { resources: { materials: 1 } } };
     G.solo!.botStateTables = {
       test_table: {
@@ -2123,26 +2123,26 @@ describe("solo bot setup from imported cards", () => {
     bot.slots[2].cardId = "bot_after";
 
     runBotTurn({ G, rollDie: () => 6 });
-    resolveRegionChoice({ G, ctx: { currentPlayer: "0" } as any }, "human_region");
+    resolveRegionChoice({ G, ctx: { currentPlayer: "1" } as any }, "human_region");
 
     expect(G.pendingReactiveExhaustChoice).toMatchObject({
-      playerId: "0",
+      playerId: "1",
       cardIds: ["human_reactive"],
-      resolvingPlayerId: "0",
+      resolvingPlayerId: "1",
       sourceCardId: "bot_prompt",
       trigger: "after_gain_resource",
       resource: "materials"
     });
-    expect(G.players["0"].hand).toContain("human_region");
-    expect(G.players["0"].resources.materials).toBe(1);
+    expect(G.players["1"].hand).toContain("human_region");
+    expect(G.players["1"].resources.materials).toBe(1);
     expect(bot.resources.goods).toBeUndefined();
     expect(G.solo?.pausedBotTurn).toEqual({ remainingSlotNumbers: [2], effectsRemaining: 3 });
 
-    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "0" } as any }, "human_reactive");
+    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "1" } as any }, "human_reactive");
 
     expect(G.pendingReactiveExhaustChoice).toBeUndefined();
     expect(G.solo?.pausedBotTurn).toBeUndefined();
-    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["1"].resources.knowledge).toBe(1);
     expect(bot.resources.goods).toBe(2);
     expect([bot.slots[1].cardId, bot.slots[2].cardId].sort()).toEqual(["bot_after", "bot_prompt"]);
   });
@@ -2156,10 +2156,10 @@ describe("solo bot setup from imported cards", () => {
         human_region: card({ id: "human_region", displayName: "Human Region", suit: "region", cardType: "region" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
-    G.players["0"].playArea = ["human_region"];
+    G.players["1"].playArea = ["human_region"];
     bot.botDiscard = [];
     const result = resolveBotCard({
       G,
@@ -2179,7 +2179,7 @@ describe("solo bot setup from imported cards", () => {
 
     expect(result.warnings).toEqual([]);
     expect(G.pendingRegionChoice).toEqual({
-      playerId: "0",
+      playerId: "1",
       sourceCardId: "bot_prompt",
       op: "abandon_region",
       cardIds: ["human_region"]
@@ -2198,10 +2198,10 @@ describe("solo bot setup from imported cards", () => {
         human_region_3: card({ id: "human_region_3", displayName: "Human Region 3", suit: "region", cardType: "region" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
-    G.players["0"].playArea = ["human_region_1", "human_region_2", "human_region_3"];
+    G.players["1"].playArea = ["human_region_1", "human_region_2", "human_region_3"];
     G.solo!.botStateTables = {
       test_table: {
         id: "test_table",
@@ -2224,30 +2224,30 @@ describe("solo bot setup from imported cards", () => {
     runBotTurn({ G, rollDie: () => 6 });
 
     expect(G.pendingRegionChoice).toMatchObject({
-      playerId: "0",
+      playerId: "1",
       sourceCardId: "bot_prompt",
       op: "abandon_region",
       cardIds: ["human_region_1", "human_region_2", "human_region_3"],
       count: 2
     });
 
-    resolveRegionChoice({ G, ctx: { currentPlayer: "0" } as any }, "human_region_1");
+    resolveRegionChoice({ G, ctx: { currentPlayer: "1" } as any }, "human_region_1");
 
     expect(G.pendingRegionChoice).toMatchObject({
-      playerId: "0",
+      playerId: "1",
       sourceCardId: "bot_prompt",
       op: "abandon_region",
       cardIds: ["human_region_2", "human_region_3"],
       count: 1
     });
-    expect(G.players["0"].discard).toEqual(["human_region_1"]);
+    expect(G.players["1"].discard).toEqual(["human_region_1"]);
     expect(bot.resources.goods).toBeUndefined();
 
-    resolveRegionChoice({ G, ctx: { currentPlayer: "0" } as any }, "human_region_2");
+    resolveRegionChoice({ G, ctx: { currentPlayer: "1" } as any }, "human_region_2");
 
     expect(G.pendingRegionChoice).toBeUndefined();
-    expect(G.players["0"].discard).toEqual(["human_region_1", "human_region_2"]);
-    expect(G.players["0"].playArea).toEqual(["human_region_3"]);
+    expect(G.players["1"].discard).toEqual(["human_region_1", "human_region_2"]);
+    expect(G.players["1"].playArea).toEqual(["human_region_3"]);
     expect(bot.resources.goods).toBe(2);
   });
 
@@ -2259,7 +2259,7 @@ describe("solo bot setup from imported cards", () => {
         trade_route: card({ id: "trade_route", displayName: "Route", suit: "trade_route", cardType: "trade_route" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.solo!.botTradeRoutesTables = {
@@ -2286,10 +2286,10 @@ describe("solo bot setup from imported cards", () => {
         human_route: card({ id: "human_route", displayName: "Human Route", suit: "trade_route", cardType: "trade_route" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
-    G.players["0"].playArea = ["human_route"];
+    G.players["1"].playArea = ["human_route"];
     G.cardStates = { human_route: { resources: { goods: 1 } } };
     G.solo!.botTradeRoutesTables = {
       test_routes: {
@@ -2305,7 +2305,7 @@ describe("solo bot setup from imported cards", () => {
 
     expect(G.cardStates.human_route.resources?.goods).toBe(2);
     expect(bot.resources.knowledge).toBe(1);
-    expect(G.players["0"].resources.goods).toBe(2);
+    expect(G.players["1"].resources.goods).toBe(2);
   });
 
   it("Bot Trade treats imported human cards with a Trade Route suit icon as Trade Routes", () => {
@@ -2322,11 +2322,11 @@ describe("solo bot setup from imported cards", () => {
         })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.resources.goods = 0;
-    G.players["0"].playArea = ["imported_human_route"];
+    G.players["1"].playArea = ["imported_human_route"];
     G.cardStates = { imported_human_route: { resources: { goods: 1 } } };
     G.solo!.botTradeRoutesTables = {
       test_routes: {
@@ -2343,7 +2343,7 @@ describe("solo bot setup from imported cards", () => {
     expect(resolved).toBe(true);
     expect(G.cardStates.imported_human_route.resources?.goods).toBe(2);
     expect(bot.resources.knowledge).toBe(1);
-    expect(G.players["0"].resources.goods).toBe(2);
+    expect(G.players["1"].resources.goods).toBe(2);
   });
 
   it("Bot Trade does not trigger a human Trade Route when supply cannot place the Goods token", () => {
@@ -2354,11 +2354,11 @@ describe("solo bot setup from imported cards", () => {
         human_route: card({ id: "human_route", displayName: "Human Route", suit: "trade_route", cardType: "trade_route" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
-    G.players["0"].playArea = ["human_route"];
-    G.players["0"].resources.goods = 0;
+    G.players["1"].playArea = ["human_route"];
+    G.players["1"].resources.goods = 0;
     bot.resources.knowledge = 0;
     G.resourceSupply = { goods: 0, knowledge: 1 };
     G.cardStates = { human_route: { resources: { goods: 1 } } };
@@ -2377,7 +2377,7 @@ describe("solo bot setup from imported cards", () => {
     expect(resolved).toBe(false);
     expect(G.cardStates.human_route.resources?.goods).toBe(1);
     expect(bot.resources.knowledge).toBe(0);
-    expect(G.players["0"].resources.goods).toBe(0);
+    expect(G.players["1"].resources.goods).toBe(0);
   });
 
   it("Bot Trade adds supply Goods to its own route without spending Bot Goods", () => {
@@ -2388,7 +2388,7 @@ describe("solo bot setup from imported cards", () => {
         bot_route: card({ id: "bot_route", displayName: "Bot Route", suit: "trade_route", cardType: "trade_route" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botPlayArea = ["bot_route"];
@@ -2421,10 +2421,10 @@ describe("solo bot setup from imported cards", () => {
         human_route: card({ id: "human_route", displayName: "Human Route", suit: "trade_route", cardType: "trade_route" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
-    G.players["0"].playArea = ["human_route"];
+    G.players["1"].playArea = ["human_route"];
     addHumanScoringUnrest(G, 1);
     G.unrestPile = [];
     G.cardStates = { human_route: { resources: { goods: 1 } } };
@@ -2451,7 +2451,7 @@ describe("solo bot setup from imported cards", () => {
     expect(G.gameover).toEqual({
       winner: "bot_0",
       reason: "collapse:unrest_pile_empty",
-      scores: { "0": 1 }
+      scores: { "1": 1 }
     });
     expect(bot.resources.knowledge).toBe(1);
     expect(bot.resources.goods).toBeUndefined();
@@ -2463,7 +2463,7 @@ describe("solo bot setup from imported cards", () => {
       options: { ...options, enabledExpansions: ["trade_routes"] },
       cardDb: { starter: card({}) } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.merchantState = "merchants";
@@ -2495,7 +2495,7 @@ describe("solo bot setup from imported cards", () => {
         spent_card: card({ id: "spent_card", displayName: "Spent Card", suit: "region", cardType: "region" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.solo!.botStateTables = {
@@ -2513,7 +2513,7 @@ describe("solo bot setup from imported cards", () => {
     Object.values(bot.slots).forEach((slot) => { slot.cardId = undefined; });
     bot.slots[2].cardId = "bot_after";
     G.solo!.pausedBotTurn = { remainingSlotNumbers: [2], effectsRemaining: 3 };
-    G.pendingReturnExhaustTokenChoice = { playerId: "0", sourceCardId: "human_prompt", cardIds: ["spent_card"] };
+    G.pendingReturnExhaustTokenChoice = { playerId: "1", sourceCardId: "human_prompt", cardIds: ["spent_card"] };
 
     continuePausedBotTurn(G);
 
@@ -2532,7 +2532,7 @@ describe("solo bot setup from imported cards", () => {
         looked_b: card({ id: "looked_b", displayName: "Looked B", suit: "civilized", cardType: "action" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.solo!.botStateTables = {
@@ -2550,7 +2550,7 @@ describe("solo bot setup from imported cards", () => {
     Object.values(bot.slots).forEach((slot) => { slot.cardId = undefined; });
     bot.slots[2].cardId = "bot_after";
     G.solo!.pausedBotTurn = { remainingSlotNumbers: [2], effectsRemaining: 3 };
-    G.pendingLookOrderChoice = { playerId: "0", sourceCardId: "human_prompt", source: "deck", cardIds: ["looked_a", "looked_b"] };
+    G.pendingLookOrderChoice = { playerId: "1", sourceCardId: "human_prompt", source: "deck", cardIds: ["looked_a", "looked_b"] };
 
     continuePausedBotTurn(G);
 
@@ -2568,11 +2568,11 @@ describe("solo bot setup from imported cards", () => {
         spent_card: card({ id: "spent_card", displayName: "Spent Card", suit: "region", cardType: "region" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
-    G.players["0"].playArea = ["spent_card"];
-    G.players["0"].exhaustTokensAvailable = 0;
+    G.players["1"].playArea = ["spent_card"];
+    G.players["1"].exhaustTokensAvailable = 0;
     G.cardStates = { spent_card: { exhausted: true, exhaustTokens: 1 } };
     G.solo!.botStateTables = {
       test_table: {
@@ -2589,9 +2589,9 @@ describe("solo bot setup from imported cards", () => {
     Object.values(bot.slots).forEach((slot) => { slot.cardId = undefined; });
     bot.slots[2].cardId = "bot_after";
     G.solo!.pausedBotTurn = { remainingSlotNumbers: [2], effectsRemaining: 3 };
-    G.pendingReturnExhaustTokenChoice = { playerId: "0", sourceCardId: "human_prompt", cardIds: ["spent_card"] };
+    G.pendingReturnExhaustTokenChoice = { playerId: "1", sourceCardId: "human_prompt", cardIds: ["spent_card"] };
 
-    resolveReturnExhaustTokenChoice({ G, ctx: { currentPlayer: "0" } as any }, "spent_card");
+    resolveReturnExhaustTokenChoice({ G, ctx: { currentPlayer: "1" } as any }, "spent_card");
 
     expect(G.pendingReturnExhaustTokenChoice).toBeUndefined();
     expect(G.solo?.pausedBotTurn).toBeUndefined();
@@ -2609,10 +2609,10 @@ describe("solo bot setup from imported cards", () => {
         looked_b: card({ id: "looked_b", displayName: "Looked B", suit: "civilized", cardType: "action" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
-    G.players["0"].deck = ["looked_a", "looked_b"];
+    G.players["1"].deck = ["looked_a", "looked_b"];
     G.solo!.botStateTables = {
       test_table: {
         id: "test_table",
@@ -2628,14 +2628,14 @@ describe("solo bot setup from imported cards", () => {
     Object.values(bot.slots).forEach((slot) => { slot.cardId = undefined; });
     bot.slots[2].cardId = "bot_after";
     G.solo!.pausedBotTurn = { remainingSlotNumbers: [2], effectsRemaining: 3 };
-    G.pendingLookOrderChoice = { playerId: "0", sourceCardId: "human_prompt", source: "deck", cardIds: ["looked_a", "looked_b"] };
+    G.pendingLookOrderChoice = { playerId: "1", sourceCardId: "human_prompt", source: "deck", cardIds: ["looked_a", "looked_b"] };
 
-    resolveLookOrderChoice({ G, ctx: { currentPlayer: "0" } as any }, ["looked_b", "looked_a"]);
+    resolveLookOrderChoice({ G, ctx: { currentPlayer: "1" } as any }, ["looked_b", "looked_a"]);
 
     expect(G.pendingLookOrderChoice).toBeUndefined();
     expect(G.solo?.pausedBotTurn).toBeUndefined();
     expect(bot.resources.goods).toBe(2);
-    expect(G.players["0"].deck).toEqual(["looked_b", "looked_a"]);
+    expect(G.players["1"].deck).toEqual(["looked_b", "looked_a"]);
     expect(bot.slots[2].cardId).toBeUndefined();
   });
 
@@ -2649,11 +2649,11 @@ describe("solo bot setup from imported cards", () => {
         bot_after: card({ id: "bot_after", displayName: "Bot After", suit: "civilized", cardType: "action", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.activeNationRulesets = {
-      "0": {
+      "1": {
         nationId: "test_nation_sun_coast",
         displayName: "Unrest Choice Nation",
         rulesetTags: [],
@@ -2693,14 +2693,14 @@ describe("solo bot setup from imported cards", () => {
     };
     bot.botStateTableId = "test_table";
     G.unrestPile = ["unrest_b"];
-    G.players["0"].hand = ["unrest_a"];
+    G.players["1"].hand = ["unrest_a"];
     G.pendingChoice = {
-      playerId: "0",
+      playerId: "1",
       choices: [[{ trigger: "on_play", op: "gain_resource", resource: "goods", amount: 1 } as any]]
     };
     G.pendingUnrestTakeContinuation = {
       playerId: bot.botId,
-      recipientPlayerIds: ["0"],
+      recipientPlayerIds: ["1"],
       countPerPlayer: 2,
       recipientIndex: 0,
       cardIndex: 1,
@@ -2710,16 +2710,16 @@ describe("solo bot setup from imported cards", () => {
     bot.slots[2].cardId = "bot_after";
     G.solo!.pausedBotTurn = { remainingSlotNumbers: [2], effectsRemaining: 3 };
 
-    resolveChoice({ G, ctx: { currentPlayer: "0" } as any }, 0);
+    resolveChoice({ G, ctx: { currentPlayer: "1" } as any }, 0);
 
-    expect(G.players["0"].resources.goods).toBe(1);
-    expect(G.players["0"].hand).toEqual(["unrest_a", "unrest_b"]);
+    expect(G.players["1"].resources.goods).toBe(1);
+    expect(G.players["1"].hand).toEqual(["unrest_a", "unrest_b"]);
     expect(G.pendingChoice).toBeDefined();
     expect(G.solo?.pausedBotTurn).toEqual({ remainingSlotNumbers: [2], effectsRemaining: 3 });
     expect(bot.resources.goods).toBeUndefined();
     expect(bot.slots[2].cardId).toBe("bot_after");
 
-    resolveChoice({ G, ctx: { currentPlayer: "0" } as any }, 0);
+    resolveChoice({ G, ctx: { currentPlayer: "1" } as any }, 0);
 
     expect(G.pendingChoice).toBeUndefined();
     expect(G.pendingUnrestTakeContinuation).toBeUndefined();
@@ -2750,13 +2750,13 @@ describe("solo bot setup from imported cards", () => {
         })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
-    G.players["0"].playArea = ["human_reactive"];
-    G.players["0"].resources.knowledge = 0;
-    G.players["0"].resources.goods = 0;
-    G.players["0"].exhaustTokensAvailable = 1;
+    G.players["1"].playArea = ["human_reactive"];
+    G.players["1"].resources.knowledge = 0;
+    G.players["1"].resources.goods = 0;
+    G.players["1"].exhaustTokensAvailable = 1;
     G.currentTurnType = "activate";
     G.solo!.botStateTables = {
       test_table: {
@@ -2777,9 +2777,9 @@ describe("solo bot setup from imported cards", () => {
 
     runBotTurn({ G, rollDie: () => 6 });
 
-    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["1"].resources.knowledge).toBe(1);
     expect(G.pendingReactiveExhaustChoice).toMatchObject({
-      playerId: "0",
+      playerId: "1",
       cardIds: ["human_reactive"],
       resolvingPlayerId: bot.botId,
       sourceCardId: "bot_prompt",
@@ -2790,11 +2790,11 @@ describe("solo bot setup from imported cards", () => {
     expect(bot.resources.goods).toBeUndefined();
     expect(bot.slots[2].cardId).toBe("bot_after");
 
-    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "0" } as any }, "human_reactive");
+    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "1" } as any }, "human_reactive");
 
     expect(G.pendingReactiveExhaustChoice).toBeUndefined();
     expect(G.solo?.pausedBotTurn).toBeUndefined();
-    expect(G.players["0"].resources.goods).toBe(1);
+    expect(G.players["1"].resources.goods).toBe(1);
     expect(bot.resources.goods).toBe(2);
   });
 
@@ -2819,13 +2819,13 @@ describe("solo bot setup from imported cards", () => {
         })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
-    G.players["0"].playArea = ["human_reactive"];
-    G.players["0"].resources.knowledge = 0;
-    G.players["0"].resources.goods = 0;
-    G.players["0"].exhaustTokensAvailable = 1;
+    G.players["1"].playArea = ["human_reactive"];
+    G.players["1"].resources.knowledge = 0;
+    G.players["1"].resources.goods = 0;
+    G.players["1"].exhaustTokensAvailable = 1;
     G.currentTurnType = "activate";
     G.solo!.botStateTables = {
       test_table: {
@@ -2852,9 +2852,9 @@ describe("solo bot setup from imported cards", () => {
 
     runBotTurn({ G, rollDie: () => 6 });
 
-    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["1"].resources.knowledge).toBe(1);
     expect(G.pendingReactiveExhaustChoice).toMatchObject({
-      playerId: "0",
+      playerId: "1",
       cardIds: ["human_reactive"],
       resolvingPlayerId: bot.botId,
       sourceCardId: "bot_prompt",
@@ -2863,12 +2863,12 @@ describe("solo bot setup from imported cards", () => {
     });
     expect(bot.resources.goods).toBeUndefined();
 
-    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "0" } as any }, "human_reactive");
+    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "1" } as any }, "human_reactive");
 
     expect(G.pendingReactiveExhaustChoice).toBeUndefined();
     expect(G.solo?.pendingBotRowContinuation).toBeUndefined();
     expect(G.solo?.pausedBotTurn).toBeUndefined();
-    expect(G.players["0"].resources.goods).toBe(1);
+    expect(G.players["1"].resources.goods).toBe(1);
     expect(bot.resources.goods).toBe(2);
   });
 
@@ -2877,7 +2877,7 @@ describe("solo bot setup from imported cards", () => {
       options: { ...options, enabledExpansions: ["trade_routes"] },
       cardDb: { starter: card({}) } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.merchantState = "merchants";
@@ -2907,7 +2907,7 @@ describe("solo bot setup from imported cards", () => {
         fame_top: card({ id: "fame_top", displayName: "Fame Top", suit: "fame", cardType: "fame" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.merchantState = "merchants";
@@ -2954,10 +2954,10 @@ describe("solo bot setup from imported cards", () => {
         fame_top: card({ id: "fame_top", displayName: "Fame Top", suit: "fame", cardType: "fame" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
-    G.players["0"].playArea = ["human_region"];
+    G.players["1"].playArea = ["human_region"];
     G.fameDeck = { available: ["fame_top"], resolvedSpecialByPlayer: {} };
     G.solo!.botStateTables = {
       smoke_S: {
@@ -3012,7 +3012,7 @@ describe("solo bot setup from imported cards", () => {
     expect(G.pendingRegionChoice?.cardIds).toEqual(["human_region"]);
     expect(G.solo?.pausedBotTurn?.remainingSlotNumbers).toEqual([2, 3]);
 
-    resolveRegionChoice({ G, ctx: { currentPlayer: "0" } as any }, "human_region");
+    resolveRegionChoice({ G, ctx: { currentPlayer: "1" } as any }, "human_region");
 
     expect(G.pendingRegionChoice).toBeUndefined();
     expect(bot.botStateTableId).toBe("smoke_F");
@@ -3034,7 +3034,7 @@ describe("solo bot setup from imported cards", () => {
         civilized: card({ id: "civilized", displayName: "Civilized", suit: "civilized", cardType: "action" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.merchantState = "merchant_empire";
@@ -3078,7 +3078,7 @@ describe("solo bot setup from imported cards", () => {
         civilized: card({ id: "civilized", displayName: "Civilized", suit: "civilized", cardType: "action" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.merchantState = "merchant_empire";
@@ -3120,7 +3120,7 @@ describe("solo bot setup from imported cards", () => {
         civilized: card({ id: "civilized", displayName: "Civilized", suit: "civilized", cardType: "action" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.merchantState = "merchant_empire";
@@ -3169,10 +3169,10 @@ describe("solo bot setup from imported cards", () => {
         human_route: card({ id: "human_route", displayName: "Human Route", suit: "trade_route", cardType: "trade_route" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
-    G.players["0"].playArea = ["human_route"];
+    G.players["1"].playArea = ["human_route"];
     G.cardStates = { human_route: { resources: { goods: 1 } } };
     G.solo!.botTradeRoutesTables = {
       test_routes: {
@@ -3203,7 +3203,7 @@ describe("solo bot setup from imported cards", () => {
     expect(result.warnings).toEqual([]);
     expect(G.cardStates.human_route.resources?.goods).toBe(2);
     expect(bot.resources.knowledge).toBe(1);
-    expect(G.players["0"].resources.goods).toBe(2);
+    expect(G.players["1"].resources.goods).toBe(2);
     expect(bot.botDiscard).toContain("bot_prompt");
   });
 
@@ -3229,14 +3229,14 @@ describe("solo bot setup from imported cards", () => {
         })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.currentTurnType = "activate";
-    G.players["0"].playArea = ["human_route", "human_reactive"];
-    G.players["0"].resources.knowledge = 0;
-    G.players["0"].resources.goods = 0;
-    G.players["0"].exhaustTokensAvailable = 1;
+    G.players["1"].playArea = ["human_route", "human_reactive"];
+    G.players["1"].resources.knowledge = 0;
+    G.players["1"].resources.goods = 0;
+    G.players["1"].exhaustTokensAvailable = 1;
     G.cardStates = { human_route: { resources: { goods: 1 } } };
     G.solo!.botTradeRoutesTables = {
       test_routes: {
@@ -3276,9 +3276,9 @@ describe("solo bot setup from imported cards", () => {
 
     expect(G.cardStates.human_route.resources?.goods).toBe(2);
     expect(bot.resources.knowledge).toBe(1);
-    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["1"].resources.knowledge).toBe(1);
     expect(G.pendingReactiveExhaustChoice).toMatchObject({
-      playerId: "0",
+      playerId: "1",
       cardIds: ["human_reactive"],
       resolvingPlayerId: bot.botId,
       sourceCardId: "human_route",
@@ -3289,13 +3289,13 @@ describe("solo bot setup from imported cards", () => {
     });
     expect(bot.resources.goods).toBeUndefined();
 
-    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "0" } as any }, "human_reactive");
+    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "1" } as any }, "human_reactive");
 
     expect(G.pendingReactiveExhaustChoice).toBeUndefined();
     expect(G.solo?.pendingBotTradeRouteContinuation).toBeUndefined();
     expect(G.solo?.pendingBotRowContinuation).toBeUndefined();
     expect(G.solo?.pausedBotTurn).toBeUndefined();
-    expect(G.players["0"].resources.goods).toBe(1);
+    expect(G.players["1"].resources.goods).toBe(1);
     expect(bot.resources.goods).toBe(2);
   });
 
@@ -3321,14 +3321,14 @@ describe("solo bot setup from imported cards", () => {
         })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.currentTurnType = "activate";
-    G.players["0"].playArea = ["human_route", "human_reactive"];
-    G.players["0"].resources.knowledge = 0;
-    G.players["0"].resources.goods = 0;
-    G.players["0"].exhaustTokensAvailable = 1;
+    G.players["1"].playArea = ["human_route", "human_reactive"];
+    G.players["1"].resources.knowledge = 0;
+    G.players["1"].resources.goods = 0;
+    G.players["1"].exhaustTokensAvailable = 1;
     G.cardStates = { human_route: { resources: { goods: 1 } } };
     G.solo!.botTradeRoutesTables = {
       test_routes: {
@@ -3350,9 +3350,9 @@ describe("solo bot setup from imported cards", () => {
 
     resolveBotTriggerTradeRoute(G, bot, "human_route");
 
-    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["1"].resources.knowledge).toBe(1);
     expect(G.pendingReactiveExhaustChoice).toMatchObject({
-      playerId: "0",
+      playerId: "1",
       cardIds: ["human_reactive"],
       resolvingPlayerId: bot.botId,
       sourceCardId: "human_route",
@@ -3383,14 +3383,14 @@ describe("solo bot setup from imported cards", () => {
         })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.currentTurnType = "activate";
-    G.players["0"].playArea = ["human_reactive"];
-    G.players["0"].resources.knowledge = 0;
-    G.players["0"].resources.goods = 0;
-    G.players["0"].exhaustTokensAvailable = 1;
+    G.players["1"].playArea = ["human_reactive"];
+    G.players["1"].resources.knowledge = 0;
+    G.players["1"].resources.goods = 0;
+    G.players["1"].exhaustTokensAvailable = 1;
     G.solo!.botTradeRoutesTables = {
       test_routes: {
         id: "test_routes",
@@ -3412,9 +3412,9 @@ describe("solo bot setup from imported cards", () => {
 
     runBotTurn({ G, rollDie: () => 6 });
 
-    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["1"].resources.knowledge).toBe(1);
     expect(G.pendingReactiveExhaustChoice).toMatchObject({
-      playerId: "0",
+      playerId: "1",
       cardIds: ["human_reactive"],
       resolvingPlayerId: bot.botId,
       sourceCardId: "trade_routes_eot:merchants",
@@ -3424,12 +3424,12 @@ describe("solo bot setup from imported cards", () => {
     expect(bot.resources.goods).toBeUndefined();
     expect(bot.slots[1].cardId).toBeUndefined();
 
-    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "0" } as any }, "human_reactive");
+    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "1" } as any }, "human_reactive");
 
     expect(G.pendingReactiveExhaustChoice).toBeUndefined();
     expect(G.solo?.pendingBotTradeRouteContinuation).toBeUndefined();
     expect(G.solo?.pausedBotTurn).toBeUndefined();
-    expect(G.players["0"].resources.goods).toBe(1);
+    expect(G.players["1"].resources.goods).toBe(1);
     expect(bot.resources.goods).toBe(2);
     expect(bot.slots[1].cardId).toBe("bot_cleanup_fill");
   });
@@ -3442,7 +3442,7 @@ describe("solo bot setup from imported cards", () => {
         bot_resume: card({ id: "bot_resume", displayName: "Bot Resume", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     Object.values(bot.slots).forEach((slot) => {
@@ -3451,7 +3451,7 @@ describe("solo bot setup from imported cards", () => {
     });
     bot.slots[2].cardId = "bot_resume";
     G.solo!.pausedBotTurn = { remainingSlotNumbers: [2], effectsRemaining: 1 };
-    G.pendingMarketUnrestHookContinuation = { playerId: "0", cardIds: ["unrest_a"], nextIndex: 0 };
+    G.pendingMarketUnrestHookContinuation = { playerId: "1", cardIds: ["unrest_a"], nextIndex: 0 };
 
     continuePausedBotTurn(G);
 
@@ -3467,7 +3467,7 @@ describe("solo bot setup from imported cards", () => {
         bot_prompt: card({ id: "bot_prompt", displayName: "Bot Prompt", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.resources.goods = 0;
@@ -3503,7 +3503,7 @@ describe("solo bot setup from imported cards", () => {
         bot_prompt: card({ id: "bot_prompt", displayName: "Bot Prompt", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.resources.goods = 1;
@@ -3543,11 +3543,11 @@ describe("solo bot setup from imported cards", () => {
         human_route: card({ id: "human_route", displayName: "Human Route", suit: "trade_route", cardType: "trade_route" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.resources.goods = 1;
-    G.players["0"].playArea = ["human_route"];
+    G.players["1"].playArea = ["human_route"];
     G.cardStates = { human_route: { resources: { goods: 1 } } };
     G.solo!.botTradeRoutesTables = {
       test_routes: {
@@ -3580,7 +3580,7 @@ describe("solo bot setup from imported cards", () => {
     expect(G.cardStates.human_route.resources?.goods).toBe(1);
     expect(bot.resources.goods).toBe(1);
     expect(bot.resources.knowledge ?? 0).toBe(0);
-    expect(G.players["0"].resources.goods ?? 0).toBe(0);
+    expect(G.players["1"].resources.goods ?? 0).toBe(0);
     expect(bot.resources.materials).toBe(1);
   });
 
@@ -3592,7 +3592,7 @@ describe("solo bot setup from imported cards", () => {
         bot_prompt: card({ id: "bot_prompt", displayName: "Bot Prompt", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.solo!.botTradeRoutesTables = { test_routes: { id: "test_routes", rows: [], endOfTurnRows: [] } };
@@ -3628,7 +3628,7 @@ describe("solo bot setup from imported cards", () => {
         existing: card({ id: "existing", displayName: "Existing", suit: "region", cardType: "action", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDeck = ["existing"];
@@ -3664,7 +3664,7 @@ describe("solo bot setup from imported cards", () => {
         bot_route: card({ id: "bot_route", displayName: "Bot Route", suit: "trade_route", cardType: "trade_route" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botPlayArea = ["bot_route"];
@@ -3712,7 +3712,7 @@ describe("solo bot setup from imported cards", () => {
         bot_route: card({ id: "bot_route", displayName: "Bot Route", suit: "trade_route", cardType: "trade_route" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botPlayArea = ["bot_route"];
@@ -3763,7 +3763,7 @@ describe("solo bot setup from imported cards", () => {
         existing_top: card({ id: "existing_top", displayName: "Existing Top", suit: "region", cardType: "action" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botPlayArea = ["bot_route"];
@@ -3796,7 +3796,7 @@ describe("solo bot setup from imported cards", () => {
         main_top: card({ id: "main_top", displayName: "Main Top", suit: "region", cardType: "action" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botPlayArea = ["bot_route"];
@@ -3842,7 +3842,7 @@ describe("solo bot setup from imported cards", () => {
         one_vp: card({ id: "one_vp", displayName: "One VP", suit: "region", cardType: "action", vp: { mode: "fixed", value: 1 } })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botPlayArea = ["zero_route", "one_route"];
@@ -3896,7 +3896,7 @@ describe("solo bot setup from imported cards", () => {
         conditional_vp: card({ id: "conditional_vp", displayName: "Conditional VP", suit: "region", cardType: "action", vp: { mode: "conditional", value: 2, trueValue: 9, falseValue: 1 } })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botPlayArea = ["bot_route"];
@@ -3943,7 +3943,7 @@ describe("solo bot setup from imported cards", () => {
         bot_route: card({ id: "bot_route", displayName: "Bot Route", suit: "trade_route", cardType: "trade_route" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botStateTableId = "test_table";
@@ -3993,16 +3993,16 @@ describe("solo bot setup from imported cards", () => {
         })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botStateTableId = "test_table";
     bot.botDiscard = [];
     G.currentTurnType = "activate";
-    G.players["0"].playArea = ["human_reactive"];
-    G.players["0"].resources.knowledge = 0;
-    G.players["0"].resources.goods = 0;
-    G.players["0"].exhaustTokensAvailable = 1;
+    G.players["1"].playArea = ["human_reactive"];
+    G.players["1"].resources.knowledge = 0;
+    G.players["1"].resources.goods = 0;
+    G.players["1"].exhaustTokensAvailable = 1;
     G.solo!.botStateTables = {
       test_table: { id: "test_table", botNationId: "test_nation_sun_coast", displayName: "Test Table", side: "S", rows: [] }
     };
@@ -4033,9 +4033,9 @@ describe("solo bot setup from imported cards", () => {
 
     resolveBotTriggerTradeRoute(G, bot, "bot_route");
 
-    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["1"].resources.knowledge).toBe(1);
     expect(G.pendingReactiveExhaustChoice).toMatchObject({
-      playerId: "0",
+      playerId: "1",
       cardIds: ["human_reactive"],
       resolvingPlayerId: bot.botId,
       sourceCardId: "bot_route",
@@ -4045,11 +4045,11 @@ describe("solo bot setup from imported cards", () => {
     expect(bot.resources.goods).toBeUndefined();
     expect(bot.resources.materials).toBeUndefined();
 
-    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "0" } as any }, "human_reactive");
+    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "1" } as any }, "human_reactive");
 
     expect(G.pendingReactiveExhaustChoice).toBeUndefined();
     expect(G.solo?.pendingBotTradeRouteContinuation).toBeUndefined();
-    expect(G.players["0"].resources.goods).toBe(1);
+    expect(G.players["1"].resources.goods).toBe(1);
     expect(bot.resources.goods).toBe(2);
     expect(bot.resources.materials).toBe(1);
   });
@@ -4064,7 +4064,7 @@ describe("solo bot setup from imported cards", () => {
         bot_next: card({ id: "bot_next", displayName: "Bot Next", suit: "region", cardType: "action" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botStateTableId = "test_table";
@@ -4105,7 +4105,7 @@ describe("solo bot setup from imported cards", () => {
         civilized: card({ id: "civilized", displayName: "Civilized", suit: "civilized", cardType: "action" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botPlayArea = ["region_one", "bot_route", "civilized", "region_two"];
@@ -4144,7 +4144,7 @@ describe("solo bot setup from imported cards", () => {
         imported_tagged_route: card({ id: "imported_tagged_route", displayName: "Imported Tagged Route", suit: "civilized", cardType: "action", tags: ["region", "suit:trade_route"] })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botPlayArea = ["untagged_region", "region_one", "bot_route", "tagged_route", "imported_tagged_route"];
@@ -4193,14 +4193,14 @@ describe("solo bot setup from imported cards", () => {
         })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.currentTurnType = "activate";
-    G.players["0"].playArea = ["human_reactive"];
-    G.players["0"].resources.knowledge = 0;
-    G.players["0"].resources.goods = 0;
-    G.players["0"].exhaustTokensAvailable = 1;
+    G.players["1"].playArea = ["human_reactive"];
+    G.players["1"].resources.knowledge = 0;
+    G.players["1"].resources.goods = 0;
+    G.players["1"].exhaustTokensAvailable = 1;
     bot.botPlayArea = ["route_later", "route_pause"];
     G.cardStates = {
       route_later: { resources: { goods: 3 } },
@@ -4232,9 +4232,9 @@ describe("solo bot setup from imported cards", () => {
 
     resolveBotProfitsWhereAble(G, bot);
 
-    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["1"].resources.knowledge).toBe(1);
     expect(G.pendingReactiveExhaustChoice).toMatchObject({
-      playerId: "0",
+      playerId: "1",
       cardIds: ["human_reactive"],
       resolvingPlayerId: bot.botId,
       sourceCardId: "route_pause",
@@ -4246,11 +4246,11 @@ describe("solo bot setup from imported cards", () => {
     expect(bot.botHistory).toEqual(["route_pause"]);
     expect(bot.botPlayArea).toEqual(["route_later"]);
 
-    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "0" } as any }, "human_reactive");
+    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "1" } as any }, "human_reactive");
 
     expect(G.pendingReactiveExhaustChoice).toBeUndefined();
     expect(G.solo?.pendingBotTradeRouteContinuation).toBeUndefined();
-    expect(G.players["0"].resources.goods).toBe(1);
+    expect(G.players["1"].resources.goods).toBe(1);
     expect(bot.resources.goods).toBe(8);
     expect(bot.resources.materials).toBe(1);
     expect(bot.botHistory).toEqual(["route_pause", "route_later"]);
@@ -4267,7 +4267,7 @@ describe("solo bot setup from imported cards", () => {
         market_two: card({ id: "market_two", displayName: "Market Two", suit: "uncivilized", cardType: "action" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.market = ["market_one", "market_two"];
@@ -4303,7 +4303,7 @@ describe("solo bot setup from imported cards", () => {
         market_two: card({ id: "market_two", displayName: "Market Two", suit: "uncivilized", cardType: "action" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.unresolvedSlot = 2;
@@ -4340,7 +4340,7 @@ describe("solo bot setup from imported cards", () => {
         refill: card({ id: "refill", displayName: "Refill", suit: "civilized", cardType: "action" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDeck = ["existing_top"];
@@ -4380,7 +4380,7 @@ describe("solo bot setup from imported cards", () => {
         fame_market: card({ id: "fame_market", displayName: "Fame Market", suit: "fame", cardType: "fame", vp: { mode: "fixed", value: 5 } })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDeck = ["existing_top"];
@@ -4418,7 +4418,7 @@ describe("solo bot setup from imported cards", () => {
         tagged_low: card({ id: "tagged_low", displayName: "Tagged Low", suit: "civilized", cardType: "action", tags: ["target"], vp: { mode: "fixed", value: 1 } })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.market = ["untagged_import", "wrong_high", "tagged_low"];
@@ -4454,7 +4454,7 @@ describe("solo bot setup from imported cards", () => {
         unrest_taken: card({ id: "unrest_taken", displayName: "Unrest", suit: "unrest", cardType: "unrest", vp: { mode: "fixed", value: -2 } })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDeck = ["existing_top"];
@@ -4496,7 +4496,7 @@ describe("solo bot setup from imported cards", () => {
         structured_token: card({ id: "structured_token", displayName: "Structured Token", suit: "civilized", cardType: "action", vp: { mode: "fixed", value: 3 } })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDeck = ["existing_top"];
@@ -4540,7 +4540,7 @@ describe("solo bot setup from imported cards", () => {
         structured_unrest: card({ id: "structured_unrest", displayName: "Structured Unrest", suit: "unrest", cardType: "unrest", vp: { mode: "fixed", value: -2 } })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDeck = ["existing_top"];
@@ -4581,7 +4581,7 @@ describe("solo bot setup from imported cards", () => {
         market_card: card({ id: "market_card", displayName: "Market", suit: "civilized", cardType: "action", vp: { mode: "fixed", value: 2 } })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDeck = ["existing_top"];
@@ -4623,12 +4623,12 @@ describe("solo bot setup from imported cards", () => {
         unrest_from_pile: card({ id: "unrest_from_pile", displayName: "Unrest", suit: "unrest", cardType: "unrest", vp: { mode: "fixed", value: -2 } })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDeck = ["existing_top"];
     G.market = ["market_card"];
-    G.players["0"].exile = ["exile_card"];
+    G.players["1"].exile = ["exile_card"];
     G.unrestPile = ["unrest_from_pile"];
 
     const result = resolveBotCard({
@@ -4649,7 +4649,7 @@ describe("solo bot setup from imported cards", () => {
 
     expect(result.warnings).toEqual([]);
     expect(bot.botDeck).toEqual(["market_card", "existing_top"]);
-    expect(G.players["0"].exile).toEqual(["exile_card"]);
+    expect(G.players["1"].exile).toEqual(["exile_card"]);
     expect(G.unrestPile).toEqual(["unrest_from_pile"]);
     expect(G.market).toEqual([]);
     expect(G.log.some((entry) => entry.message === "BotAcquiredFromExile(exile_card)")).toBe(false);
@@ -4666,7 +4666,7 @@ describe("solo bot setup from imported cards", () => {
         unrest_from_pile: card({ id: "unrest_from_pile", displayName: "Unrest", suit: "unrest", cardType: "unrest", vp: { mode: "fixed", value: -2 } })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDeck = ["existing_top"];
@@ -4716,7 +4716,7 @@ describe("solo bot setup from imported cards", () => {
         unrest_from_pile: card({ id: "unrest_from_pile", displayName: "Unrest", suit: "unrest", cardType: "unrest", vp: { mode: "fixed", value: -2 } })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDeck = ["existing_top"];
@@ -4766,7 +4766,7 @@ describe("solo bot setup from imported cards", () => {
         unrest_from_pile: card({ id: "unrest_from_pile", displayName: "Unrest", suit: "unrest", cardType: "unrest", vp: { mode: "fixed", value: -2 } })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDeck = ["existing_top"];
@@ -4819,7 +4819,7 @@ describe("solo bot setup from imported cards", () => {
         new_unrest: card({ id: "new_unrest", displayName: "New Unrest", suit: "unrest", cardType: "unrest" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.market = ["tokened", "target", "later"];
@@ -4861,7 +4861,7 @@ describe("solo bot setup from imported cards", () => {
         market_b: card({ id: "market_b", displayName: "B", suit: "civilized", cardType: "action" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.market = ["market_a", "market_b"];
@@ -4900,7 +4900,7 @@ describe("solo bot setup from imported cards", () => {
         refill: card({ id: "refill", displayName: "Refill", suit: "civilized", cardType: "action" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.market = ["action_tokened", "resource_tokened", "target"];
@@ -4941,7 +4941,7 @@ describe("solo bot setup from imported cards", () => {
         exile_card: card({ id: "exile_card", displayName: "Exile", suit: "civilized", cardType: "action", vp: { mode: "fixed", value: 4 } })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDeck = ["existing_top"];
@@ -4978,7 +4978,7 @@ describe("solo bot setup from imported cards", () => {
     expect(G.gameover).toEqual({
       winner: "bot_0",
       reason: "collapse:unrest_pile_empty",
-      scores: { "0": 1 }
+      scores: { "1": 1 }
     });
     expect(bot.botDeck).toEqual(["existing_top"]);
     expect(G.globalSpecialZones.exile.cardIds).toEqual(["exile_card"]);
@@ -4997,7 +4997,7 @@ describe("solo bot setup from imported cards", () => {
         market_c: card({ id: "market_c", displayName: "C", suit: "civilized", cardType: "action", vp: { mode: "fixed", value: 2 } })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.market = ["market_a", "market_b", "market_c"];
@@ -5035,7 +5035,7 @@ describe("solo bot setup from imported cards", () => {
         market_b: card({ id: "market_b", displayName: "B", suit: "civilized", cardType: "action", vp: { mode: "fixed", value: 2 } })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.market = ["market_a", "market_b"];
@@ -5073,7 +5073,7 @@ describe("solo bot setup from imported cards", () => {
         token_high: card({ id: "token_high", displayName: "Token High", suit: "civilized", cardType: "action", vp: { mode: "fixed", value: 3 } })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.market = ["base_high", "token_high"];
@@ -5110,7 +5110,7 @@ describe("solo bot setup from imported cards", () => {
         capped_plus_token: card({ id: "capped_plus_token", displayName: "Capped Plus Token", suit: "civilized", cardType: "action", vp: { mode: "fixed", value: 10 } })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.market = ["raw_twelve", "capped_plus_token"];
@@ -5147,7 +5147,7 @@ describe("solo bot setup from imported cards", () => {
         conditional_vp: card({ id: "conditional_vp", displayName: "Conditional VP", suit: "civilized", cardType: "action", vp: { mode: "conditional", value: 2, trueValue: 9, falseValue: 1 } })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.market = ["fixed_vp", "conditional_vp"];
@@ -5183,7 +5183,7 @@ describe("solo bot setup from imported cards", () => {
         market_b: card({ id: "market_b", displayName: "B", suit: "uncivilized", cardType: "action", vp: { mode: "fixed", value: 2 } })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.market = ["market_b", "market_a"];
@@ -5218,7 +5218,7 @@ describe("solo bot setup from imported cards", () => {
         market_card: card({ id: "market_card", displayName: "Market", suit: "uncivilized", cardType: "action", vp: { mode: "fixed", value: 4 } })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDeck = ["existing_top"];
@@ -5256,7 +5256,7 @@ describe("solo bot setup from imported cards", () => {
         market_card: card({ id: "market_card", displayName: "Market", suit: "uncivilized", cardType: "action", vp: { mode: "fixed", value: 4 } })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDeck = ["existing_top"];
@@ -5292,7 +5292,7 @@ describe("solo bot setup from imported cards", () => {
         unrest_returned: card({ id: "unrest_returned", displayName: "Unrest", suit: "unrest", cardType: "unrest", vp: { mode: "fixed", value: -2 } })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDeck = ["existing_top"];
@@ -5334,7 +5334,7 @@ describe("solo bot setup from imported cards", () => {
         refill: card({ id: "refill", displayName: "Refill", suit: "uncivilized", cardType: "action" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDeck = ["existing_top"];
@@ -5375,7 +5375,7 @@ describe("solo bot setup from imported cards", () => {
     expect(G.gameover).toEqual({
       winner: "bot_0",
       reason: "collapse:unrest_pile_empty",
-      scores: { "0": 1 }
+      scores: { "1": 1 }
     });
     expect(bot.resources.goods).toBe(0);
     expect(bot.botDeck).toEqual(["market_card", "existing_top"]);
@@ -5394,7 +5394,7 @@ describe("solo bot setup from imported cards", () => {
         small_unc: card({ id: "small_unc", displayName: "Small Unc", suit: "uncivilized", cardType: "action" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.market = ["market_wrong"];
@@ -5433,7 +5433,7 @@ describe("solo bot setup from imported cards", () => {
         hit: card({ id: "hit", displayName: "Hit", suit: "uncivilized", cardType: "action" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.market = [];
@@ -5470,7 +5470,7 @@ describe("solo bot setup from imported cards", () => {
         miss: card({ id: "miss", displayName: "Miss", suit: "civilized", cardType: "action" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.market = [];
@@ -5506,7 +5506,7 @@ describe("solo bot setup from imported cards", () => {
         bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDeck = [];
@@ -5528,7 +5528,7 @@ describe("solo bot setup from imported cards", () => {
         dynasty_top: card({ id: "dynasty_top", displayName: "Dynasty Top", tags: ["bot_dynasty"] })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDeck = [];
@@ -5553,7 +5553,7 @@ describe("solo bot setup from imported cards", () => {
         dynasty_top: card({ id: "dynasty_top", displayName: "Dynasty Top", tags: ["bot_dynasty"] })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDeck = [];
@@ -5578,7 +5578,7 @@ describe("solo bot setup from imported cards", () => {
         tail_b: card({ id: "tail_b", displayName: "Tail B", suit: "region", cardType: "action" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.market = [];
@@ -5615,7 +5615,7 @@ describe("solo bot setup from imported cards", () => {
         bot_6: card({ id: "bot_6", displayName: "Bot 6", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.slots[2].cardId = undefined;
@@ -5661,7 +5661,7 @@ describe("solo bot setup from imported cards", () => {
           bot_4: card({ id: "bot_4", displayName: "Bot 4", startingLocation: "bot_deck" })
         } as any,
         nationDb: { test_nation_sun_coast: nation },
-        playerNationIds: { "0": "test_nation_sun_coast" },
+        playerNationIds: { "1": "test_nation_sun_coast" },
         usePrivateRules: true,
         privateRulesetPath: rulesetPath,
         privateBotStateTablePath: privateBotTables.botStateTablePath,
@@ -5707,14 +5707,14 @@ describe("solo bot setup from imported cards", () => {
         })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.currentTurnType = "activate";
-    G.players["0"].playArea = ["human_reactive"];
-    G.players["0"].resources.knowledge = 0;
-    G.players["0"].resources.goods = 0;
-    G.players["0"].exhaustTokensAvailable = 1;
+    G.players["1"].playArea = ["human_reactive"];
+    G.players["1"].resources.knowledge = 0;
+    G.players["1"].resources.goods = 0;
+    G.players["1"].exhaustTokensAvailable = 1;
     G.solo!.botStateTables = {
       placeholder: {
         id: "placeholder",
@@ -5736,9 +5736,9 @@ describe("solo bot setup from imported cards", () => {
 
     runBotTurn({ G, rollDie: () => 6 });
 
-    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["1"].resources.knowledge).toBe(1);
     expect(G.pendingReactiveExhaustChoice).toMatchObject({
-      playerId: "0",
+      playerId: "1",
       cardIds: ["human_reactive"],
       resolvingPlayerId: bot.botId,
       sourceCardId: "bot_cleanup",
@@ -5747,12 +5747,12 @@ describe("solo bot setup from imported cards", () => {
     });
     expect(bot.resources.goods).toBeUndefined();
 
-    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "0" } as any }, "human_reactive");
+    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "1" } as any }, "human_reactive");
 
     expect(G.pendingReactiveExhaustChoice).toBeUndefined();
     expect(G.solo?.pendingBotCustomCleanupContinuation).toBeUndefined();
     expect(G.solo?.pausedBotTurn).toBeUndefined();
-    expect(G.players["0"].resources.goods).toBe(1);
+    expect(G.players["1"].resources.goods).toBe(1);
     expect(bot.resources.goods).toBe(2);
   });
 
@@ -5776,7 +5776,7 @@ describe("solo bot setup from imported cards", () => {
           bot_5: card({ id: "bot_5", displayName: "Bot 5", startingLocation: "bot_deck" })
         } as any,
         nationDb: { test_nation_sun_coast: nation },
-        playerNationIds: { "0": "test_nation_sun_coast" }
+        playerNationIds: { "1": "test_nation_sun_coast" }
       });
       G.solo!.botStateTables = {
         placeholder: {
@@ -5808,7 +5808,7 @@ describe("solo bot setup from imported cards", () => {
         market_2: card({ id: "market_2", displayName: "Market 2" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     G.market = ["market_1", "market_2"];
     G.solo!.botStateTables = {
@@ -5847,7 +5847,7 @@ describe("solo bot setup from imported cards", () => {
         market_5: card({ id: "market_5", displayName: "Market 5" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     G.market = ["market_1", "market_2", "market_3", "market_4", "market_5"];
     G.solo!.botStateTables = {
@@ -5891,7 +5891,7 @@ describe("solo bot setup from imported cards", () => {
         market_5: card({ id: "market_5", displayName: "Market 5" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     G.market = ["market_1", "market_2", "market_3", "market_4", "market_5"];
     G.resourceSupply = { knowledge: 0 };
@@ -5952,7 +5952,7 @@ describe("solo bot setup from imported cards", () => {
         market_1: card({ id: "market_1", displayName: "Market 1" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     G.solo!.bot = bot;
     G.market = ["market_1"];
@@ -5984,7 +5984,7 @@ describe("solo bot setup from imported cards", () => {
         bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDeck = [];
@@ -6010,7 +6010,7 @@ describe("solo bot setup from imported cards", () => {
       options,
       cardDb: { starter: card({}), ...botCards } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     G.solo!.botStateTables[G.solo!.bot.botStateTableId] = {
       id: "test_table",
@@ -6066,7 +6066,7 @@ describe("solo bot setup from imported cards", () => {
           bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
         } as any,
         nationDb: { test_nation_sun_coast: nation },
-        playerNationIds: { "0": "test_nation_sun_coast" },
+        playerNationIds: { "1": "test_nation_sun_coast" },
         privateBotStateTablePath: botTablePath
       });
 
@@ -6126,7 +6126,7 @@ describe("solo bot setup from imported cards", () => {
           bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
         } as any,
         nationDb: { test_nation_sun_coast: nation },
-        playerNationIds: { "0": "test_nation_sun_coast" },
+        playerNationIds: { "1": "test_nation_sun_coast" },
         usePrivateRules: true,
         privateRulesetPath: rulesetPath,
         privateBotStateTablePath: botTablePath,
@@ -6169,7 +6169,7 @@ describe("solo bot setup from imported cards", () => {
           route_1: card({ id: "route_1", displayName: "Route One", suit: "trade_route", cardType: "trade_route", startingLocation: "market", isTradeRouteExpansion: true })
         } as any,
         nationDb: { test_nation_sun_coast: nation },
-        playerNationIds: { "0": "test_nation_sun_coast" },
+        playerNationIds: { "1": "test_nation_sun_coast" },
         privateBotTradeRoutesTablePath: botTradeRoutesPath
       });
 
@@ -6188,7 +6188,7 @@ describe("solo bot setup from imported cards", () => {
         bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     G.solo!.botStateTables[G.solo!.bot.botStateTableId] = {
       id: "test_table",
@@ -6200,7 +6200,7 @@ describe("solo bot setup from imported cards", () => {
       ]
     };
 
-    onTurnEnd(G, { currentPlayer: "0" } as any, () => 0.99);
+    onTurnEnd(G, { currentPlayer: "1" } as any, () => 0.99);
 
     expect(G.solo?.bot.botHistory).toContain("bot_region");
   });
@@ -6236,7 +6236,7 @@ describe("solo bot setup from imported cards", () => {
           bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
         } as any,
         nationDb: { test_nation_sun_coast: nation },
-        playerNationIds: { "0": "test_nation_sun_coast" },
+        playerNationIds: { "1": "test_nation_sun_coast" },
         usePrivateRules: true,
         privateRulesetPath: rulesetPath,
         privateBotStateTablePath: privateBotTables.botStateTablePath,
@@ -6268,7 +6268,7 @@ describe("solo bot setup from imported cards", () => {
         dynasty_low: card({ id: "dynasty_low", displayName: "Dynasty Low", tags: ["bot_dynasty"], vp: { mode: "fixed", value: 1 } })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
 
     expect(G.solo?.bot.botDiscard).toEqual(["dynasty_high"]);
@@ -6365,7 +6365,7 @@ describe("solo bot setup from imported cards", () => {
         dynasty_mid: card({ id: "dynasty_mid", displayName: "Dynasty Mid", tags: ["bot_dynasty"], vp: { mode: "fixed", value: 3 } })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
 
     expect(G.solo?.bot.botDynastyDeck).toEqual(["dynasty_high", "dynasty_variable", "dynasty_mid", "dynasty_low"]);
@@ -6380,7 +6380,7 @@ describe("solo bot setup from imported cards", () => {
         dynasty_conditional: card({ id: "dynasty_conditional", displayName: "Dynasty Conditional", tags: ["bot_dynasty"], vp: { mode: "conditional", value: 2, trueValue: 9, falseValue: 1 } })
       } as any,
       nationDb: { test_nation_sun_coast: { ...nation, nationDeckCardIds: [], developmentCardIds: [], startingDeckCardIds: ["starter"] } },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
 
     expect(G.solo?.bot.botDynastyDeck).toEqual(["dynasty_conditional", "dynasty_fixed"]);
@@ -6447,7 +6447,7 @@ describe("solo bot setup from imported cards", () => {
         development_high: card({ id: "development_high", displayName: "Development High", cardType: "development", startingLocation: "development_area", vp: { mode: "fixed", value: 8 } })
       } as any,
       nationDb: { test_nation_sun_coast: botNation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
 
     expect(G.solo?.bot.botDynastyDeck).toEqual(["nation_top", "nation_next", "accession", "development_high", "development_low"]);
@@ -6462,7 +6462,7 @@ describe("solo bot setup from imported cards", () => {
         dynasty_last: card({ id: "dynasty_last", displayName: "Dynasty Last", tags: ["bot_dynasty"] })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     bot.botDynastyDeck = ["dynasty_last"];
@@ -6530,7 +6530,7 @@ describe("solo bot setup from imported cards", () => {
           dynasty_custom_2: card({ id: "dynasty_custom_2", displayName: "Dynasty Custom 2" })
         } as any,
         nationDb: { test_nation_sun_coast: nation },
-        playerNationIds: { "0": "test_nation_sun_coast" },
+        playerNationIds: { "1": "test_nation_sun_coast" },
         usePrivateRules: true,
         privateRulesetPath: rulesetPath,
         privateBotStateTablePath: privateBotTables.botStateTablePath,
@@ -6556,7 +6556,7 @@ describe("solo bot setup from imported cards", () => {
         bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     G.solo!.botStateTables = {
       placeholder_S: {
@@ -6595,7 +6595,7 @@ describe("solo bot setup from imported cards", () => {
         bot_front: card({ id: "bot_front", displayName: "Bot Front", suit: "region", cardType: "attack", startingLocation: "bot_deck" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
-      playerNationIds: { "0": "test_nation_sun_coast" }
+      playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.solo!.botStateTables = {

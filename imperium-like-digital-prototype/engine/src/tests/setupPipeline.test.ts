@@ -60,14 +60,16 @@ describe("setup pipeline",()=>{
     expect(snapshot.campaignProgress?.defeatedBotNationIds).toEqual([]);
     expect(snapshot.campaignProgress?.startingDeckAdditions).toEqual([]);
   });
-  it("normalizes legacy one-based player ids to boardgame player ids",()=> {
+  it("keeps game player ids one-based while exposing zero-based boardgame seats",()=> {
     const G=createInitialGameState({
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[]},
       playerNationIds:{"1":"test_nation_sun_coast","2":"test_nation_sun_coast"}
     });
-    expect(Object.keys(G.players)).toEqual(["0","1"]);
-    expect(G.playOrder).toEqual(["0","1"]);
-    expect(G.players["2"]).toBeUndefined();
+    expect(Object.keys(G.players)).toEqual(["1","2"]);
+    expect(G.playOrder).toEqual(["1","2"]);
+    expect((G as any).seatOrder).toEqual(["0","1"]);
+    expect(G.players["0"]).toBeUndefined();
+    expect(G.players["1"].hand.length).toBeGreaterThan(0);
   });
   it("can create a game from uploaded in-memory private card and nation data",()=> {
     const G=createInitialGameState({
@@ -100,8 +102,8 @@ describe("setup pipeline",()=>{
         }]
       }
     } as any);
-    expect(Object.keys(G.players)).toEqual(["0"]);
-    expect(G.players["0"].hand).toContain("uploaded_starter");
+    expect(Object.keys(G.players)).toEqual(["1"]);
+    expect(G.players["1"].hand).toContain("uploaded_starter");
     expect(G.market).toEqual(["uploaded_market_1","uploaded_market_2","uploaded_market_3","uploaded_market_4","uploaded_market_5"]);
   });
   it("defaults missing imported nation and ruleset compatibility arrays during setup",()=> {
@@ -157,12 +159,12 @@ describe("setup pipeline",()=>{
       }
     } as any);
 
-    expect(G.players["0"].hand).toContain("minimal_starter");
+    expect(G.players["1"].hand).toContain("minimal_starter");
   });
   it("rejects a selected nation when its imported ruleset requires disabled Trade Routes",()=> {
     expect(() => createInitialGameState({
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[],commonsSetId:"custom"},
-      playerNationIds:{"0":"trade_rules_nation","1":"trade_rules_nation"},
+      playerNationIds:{"1":"trade_rules_nation","2":"trade_rules_nation"},
       privateData:{
         cards:[
           card({id:"trade_rules_starter",ownership:"nation",startingLocation:"draw_deck"})
@@ -212,7 +214,7 @@ describe("setup pipeline",()=>{
 
     expect(() => createInitialGameState({
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[],commonsSetId:"custom"},
-      playerNationIds:{"0":"solo_only_nation","1":"solo_only_nation"},
+      playerNationIds:{"1":"solo_only_nation","2":"solo_only_nation"},
       privateData:{
         cards:[
           card({id:"solo_starter",ownership:"nation",startingLocation:"draw_deck"}),
@@ -244,7 +246,7 @@ describe("setup pipeline",()=>{
     );
     const G=createInitialGameState({
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[],commonsSetId:"custom"},
-      playerNationIds:{"0":"uploaded_nation","1":"uploaded_nation"},
+      playerNationIds:{"1":"uploaded_nation","2":"uploaded_nation"},
       privateData:{
         cards:[
           card({id:"uploaded_starter",ownership:"nation",startingLocation:"draw_deck"}),
@@ -293,8 +295,8 @@ describe("setup pipeline",()=>{
 
     expect(G.solo).toBeUndefined();
     expect(G.log.some((entry) => entry.message.includes("/bot/"))).toBe(false);
-    expect(G.activeNationRulesets?.["0"].botOverrides).toEqual([]);
     expect(G.activeNationRulesets?.["1"].botOverrides).toEqual([]);
+    expect(G.activeNationRulesets?.["2"].botOverrides).toEqual([]);
   });
   it("records setup-created side area metadata on game state",()=> {
     const commons = Array.from({ length: 5 }, (_, index) =>
@@ -302,7 +304,7 @@ describe("setup pipeline",()=>{
     );
     const G=createInitialGameState({
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[],commonsSetId:"custom"},
-      playerNationIds:{"0":"side_area_nation","1":"side_area_nation"},
+      playerNationIds:{"1":"side_area_nation","2":"side_area_nation"},
       privateData:{
         cards:[
           card({id:"side_starter",ownership:"nation",startingLocation:"draw_deck"}),
@@ -349,14 +351,14 @@ describe("setup pipeline",()=>{
       }
     } as any);
 
-    expect(G.players["0"].sideAreas?.public_track).toEqual([]);
-    expect(G.sideAreas?.["0"]?.public_track).toMatchObject({
+    expect(G.players["1"].sideAreas?.public_track).toEqual([]);
+    expect(G.sideAreas?.["1"]?.public_track).toMatchObject({
       id:"public_track",
       displayName:"Public Track",
       visibility:"public",
       cardIds:[]
     });
-    expect(G.sideAreas?.["0"]?.private_track).toMatchObject({
+    expect(G.sideAreas?.["1"]?.private_track).toMatchObject({
       id:"private_track",
       displayName:"Private Track",
       visibility:"private",
@@ -369,7 +371,7 @@ describe("setup pipeline",()=>{
     );
     const G=createInitialGameState({
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[],commonsSetId:"custom"},
-      playerNationIds:{"0":"no_dev_nation","1":"no_dev_nation"},
+      playerNationIds:{"1":"no_dev_nation","2":"no_dev_nation"},
       privateData:{
         cards:[
           card({id:"no_dev_starter",ownership:"nation",startingLocation:"draw_deck"}),
@@ -415,10 +417,10 @@ describe("setup pipeline",()=>{
       }
     } as any);
 
-    expect(G.players["0"].developmentArea).toEqual([]);
     expect(G.players["1"].developmentArea).toEqual([]);
-    expect(G.players["0"].deck).toEqual([]);
-    expect(G.players["0"].hand).toEqual(["no_dev_starter"]);
+    expect(G.players["2"].developmentArea).toEqual([]);
+    expect(G.players["1"].deck).toEqual([]);
+    expect(G.players["1"].hand).toEqual(["no_dev_starter"]);
   });
   it("folds no-Accession cards into the hidden Nation deck during setup",()=> {
     const commons = Array.from({ length: 5 }, (_, index) =>
@@ -426,7 +428,7 @@ describe("setup pipeline",()=>{
     );
     const G=createInitialGameState({
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[],commonsSetId:"custom"},
-      playerNationIds:{"0":"no_accession_nation","1":"no_accession_nation"},
+      playerNationIds:{"1":"no_accession_nation","2":"no_accession_nation"},
       privateData:{
         cards:[
           card({id:"no_accession_starter",ownership:"nation",startingLocation:"draw_deck"}),
@@ -473,12 +475,12 @@ describe("setup pipeline",()=>{
       }
     } as any);
 
-    expect(G.players["0"].accessionCardId).toBeUndefined();
-    expect(G.players["0"].nationDeck).toEqual(expect.arrayContaining(["regular_nation_card","suppressed_accession"]));
-    expect(G.players["0"].nationDeck).toHaveLength(2);
     expect(G.players["1"].accessionCardId).toBeUndefined();
     expect(G.players["1"].nationDeck).toEqual(expect.arrayContaining(["regular_nation_card","suppressed_accession"]));
     expect(G.players["1"].nationDeck).toHaveLength(2);
+    expect(G.players["2"].accessionCardId).toBeUndefined();
+    expect(G.players["2"].nationDeck).toEqual(expect.arrayContaining(["regular_nation_card","suppressed_accession"]));
+    expect(G.players["2"].nationDeck).toHaveLength(2);
   });
   it("folds setup-rule Accession placements for no-Accession rulesets",()=> {
     const commons = Array.from({ length: 5 }, (_, index) =>
@@ -486,7 +488,7 @@ describe("setup pipeline",()=>{
     );
     const G=createInitialGameState({
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[],commonsSetId:"custom"},
-      playerNationIds:{"0":"setup_no_accession_nation","1":"setup_no_accession_nation"},
+      playerNationIds:{"1":"setup_no_accession_nation","2":"setup_no_accession_nation"},
       privateData:{
         cards:[
           card({id:"setup_no_accession_starter",ownership:"nation",startingLocation:"draw_deck"}),
@@ -531,10 +533,10 @@ describe("setup pipeline",()=>{
       }
     } as any);
 
-    expect(G.players["0"].accessionCardId).toBeUndefined();
-    expect(G.players["0"].nationDeck).toEqual(["setup_rule_accession"]);
     expect(G.players["1"].accessionCardId).toBeUndefined();
     expect(G.players["1"].nationDeck).toEqual(["setup_rule_accession"]);
+    expect(G.players["2"].accessionCardId).toBeUndefined();
+    expect(G.players["2"].nationDeck).toEqual(["setup_rule_accession"]);
   });
   it("short game setup exiles the top ten remaining Main deck cards into a public Exile zone",()=> {
     const cards = Array.from({ length: 15 }, (_, index) =>
@@ -544,7 +546,7 @@ describe("setup pipeline",()=>{
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:["short_game"]},
       cardDb:cardDb(cards),
       nationDb,
-      playerNationIds:{"0":"test_nation_alpha","1":"test_nation_alpha"}
+      playerNationIds:{"1":"test_nation_alpha","2":"test_nation_alpha"}
     });
 
     expect(G.setupReport?.shortGameExiled).toBe(10);
@@ -565,7 +567,7 @@ describe("setup pipeline",()=>{
       options:{playerCount:1,mode:"practice",enabledExpansions:[],enabledVariants:[]},
       cardDb:cardDb(cards),
       nationDb,
-      playerNationIds:{"0":"test_nation_alpha"}
+      playerNationIds:{"1":"test_nation_alpha"}
     });
 
     expect(G.setupReport?.practiceModeExiled).toBe(15);
@@ -578,33 +580,33 @@ describe("setup pipeline",()=>{
   });
   it("sets default State token capacity to 3 Actions and 5 Exhausts",()=>{
     const G=createInitialGameState();
-    expect(G.players["0"].actionTokensBase).toBe(3);
-    expect(G.players["0"].actionsRemaining).toBe(3);
-    expect(G.players["0"].actionTokensAvailable).toBe(3);
-    expect(G.players["0"].exhaustTokensBase).toBe(5);
-    expect(G.players["0"].exhaustTokensAvailable).toBe(5);
+    expect(G.players["1"].actionTokensBase).toBe(3);
+    expect(G.players["1"].actionsRemaining).toBe(3);
+    expect(G.players["1"].actionTokensAvailable).toBe(3);
+    expect(G.players["1"].exhaustTokensBase).toBe(5);
+    expect(G.players["1"].exhaustTokensAvailable).toBe(5);
   });
   it("adds the Trade Routes Exhaust token on top of the default State capacity",()=>{
     const G=createInitialGameState({
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:["trade_routes"],enabledVariants:[]},
-      playerNationIds:{"0":"test_nation_river_court","1":"test_nation_sun_coast"}
+      playerNationIds:{"1":"test_nation_river_court","2":"test_nation_sun_coast"}
     });
-    expect(G.players["0"].actionTokensBase).toBe(3);
-    expect(G.players["0"].exhaustTokensBase).toBe(6);
-    expect(G.players["0"].exhaustTokensAvailable).toBe(6);
+    expect(G.players["1"].actionTokensBase).toBe(3);
+    expect(G.players["1"].exhaustTokensBase).toBe(6);
+    expect(G.players["1"].exhaustTokensAvailable).toBe(6);
   });
   it("uses the rulebook starting resource pool, with Goods replacing Progress for Trade Routes",()=>{
     const base=createInitialGameState({
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[]},
-      playerNationIds:{"0":"test_nation_sun_coast","1":"test_nation_sun_coast"}
+      playerNationIds:{"1":"test_nation_sun_coast","2":"test_nation_sun_coast"}
     });
-    expect(base.players["0"].resources).toMatchObject({ materials:3, influence:2, knowledge:1, goods:0 });
+    expect(base.players["1"].resources).toMatchObject({ materials:3, influence:2, knowledge:1, goods:0 });
 
     const tradeRoutes=createInitialGameState({
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:["trade_routes"],enabledVariants:[]},
-      playerNationIds:{"0":"test_nation_river_court","1":"test_nation_sun_coast"}
+      playerNationIds:{"1":"test_nation_river_court","2":"test_nation_sun_coast"}
     });
-    expect(tradeRoutes.players["0"].resources).toMatchObject({ materials:3, influence:2, knowledge:0, goods:1 });
+    expect(tradeRoutes.players["1"].resources).toMatchObject({ materials:3, influence:2, knowledge:0, goods:1 });
   });
   it("applies the campaign loss carryover resource bonus to the next solo setup",()=>{
     const baseOptions: GameOptions = {
@@ -639,11 +641,11 @@ describe("setup pipeline",()=>{
         human_nation:{ ...nationDb.test_nation_alpha, id:"human_nation", displayName:"Human Nation" },
         requested_bot:{ ...nationDb.test_nation_alpha, id:"requested_bot", displayName:"Requested Bot" }
       },
-      playerNationIds:{"0":"human_nation"},
+      playerNationIds:{"1":"human_nation"},
       soloBotNationId:"requested_bot"
     });
 
-    expect(G.players["0"].resources).toMatchObject({ materials:6, influence:4, knowledge:2, goods:0 });
+    expect(G.players["1"].resources).toMatchObject({ materials:6, influence:4, knowledge:2, goods:0 });
     expect(G.log.some((entry) => entry.message === "CampaignStartingResourceBonusApplied")).toBe(true);
   });
   it("applies campaign starting-deck additions and removals before the opening hand is drawn",()=>{
@@ -687,16 +689,16 @@ describe("setup pipeline",()=>{
         human_nation:{ ...nationDb.test_nation_alpha, id:"human_nation", displayName:"Human Nation", startingDeckCardIds:["starter_keep_1","starter_keep_2","starter_removed"] },
         requested_bot:{ ...nationDb.test_nation_alpha, id:"requested_bot", displayName:"Requested Bot" }
       },
-      playerNationIds:{"0":"human_nation"},
+      playerNationIds:{"1":"human_nation"},
       soloBotNationId:"requested_bot"
     });
     const playerZones = [
-      ...G.players["0"].hand,
-      ...G.players["0"].deck,
-      ...G.players["0"].discard,
-      ...G.players["0"].playArea,
-      ...G.players["0"].history,
-      ...G.players["0"].exile
+      ...G.players["1"].hand,
+      ...G.players["1"].deck,
+      ...G.players["1"].discard,
+      ...G.players["1"].playArea,
+      ...G.players["1"].history,
+      ...G.players["1"].exile
     ];
 
     expect(playerZones).toContain("campaign_commons");
@@ -706,7 +708,7 @@ describe("setup pipeline",()=>{
   it("applies setup and short-game resource overrides using rulebook resource names",()=>{
     const G=createInitialGameStateFromPipeline({
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:["short_game"]},
-      playerNationIds:{"0":"alias_setup_nation","1":"alias_setup_nation"},
+      playerNationIds:{"1":"alias_setup_nation","2":"alias_setup_nation"},
       cardDb:cardDb([
         card({id:"market_1"}),
         card({id:"market_2"}),
@@ -761,15 +763,15 @@ describe("setup pipeline",()=>{
       }
     } as any);
 
-    expect(G.players["0"].resources.knowledge).toBe(0);
-    expect(G.players["0"].resources.influence).toBe(0);
-    expect((G.players["0"].resources as any).progress).toBeUndefined();
-    expect((G.players["0"].resources as any).population).toBeUndefined();
+    expect(G.players["1"].resources.knowledge).toBe(0);
+    expect(G.players["1"].resources.influence).toBe(0);
+    expect((G.players["1"].resources as any).progress).toBeUndefined();
+    expect((G.players["1"].resources as any).population).toBeUndefined();
   });
   it("sets a two-sided State card to its Barbarian side during default setup",()=>{
     const G=createInitialGameStateFromPipeline({
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[]},
-      playerNationIds:{"0":"two_sided_nation","1":"two_sided_nation"},
+      playerNationIds:{"1":"two_sided_nation","2":"two_sided_nation"},
       cardDb:cardDb([
         card({id:"two_sided_state",ownership:"nation",startingLocation:"box",cardType:"state",tags:["barbarian","empire"]}),
         card({id:"market_1"}),
@@ -799,13 +801,13 @@ describe("setup pipeline",()=>{
     });
 
     expect(G.cardStates?.two_sided_state?.activeState).toBe("uncivilized");
-    expect(currentStateMatches(G,"0","barbarian")).toBe(true);
-    expect(currentStateMatches(G,"0","empire")).toBe(false);
+    expect(currentStateMatches(G,"1","barbarian")).toBe(true);
+    expect(currentStateMatches(G,"1","empire")).toBe(false);
   });
   it("preserves explicit setup Action-token overrides when starting as a non-default State",()=>{
     const G=createInitialGameStateFromPipeline({
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[]},
-      playerNationIds:{"0":"state_token_override_nation","1":"state_token_override_nation"},
+      playerNationIds:{"1":"state_token_override_nation","2":"state_token_override_nation"},
       cardDb:cardDb([
         card({id:"native_state",ownership:"nation",startingLocation:"box",cardType:"state",tags:["native"],stateActionTokens:3}),
         card({id:"alien_state",ownership:"nation",startingLocation:"box",cardType:"state",tags:["alien"],stateActionTokens:4}),
@@ -856,15 +858,15 @@ describe("setup pipeline",()=>{
       }
     } as any);
 
-    expect(G.players["0"].stateArea[0]).toBe("alien_state");
-    expect(G.players["0"].actionTokensBase).toBe(2);
-    expect(G.players["0"].actionsRemaining).toBe(2);
-    expect(G.players["0"].actionTokensAvailable).toBe(2);
+    expect(G.players["1"].stateArea[0]).toBe("alien_state");
+    expect(G.players["1"].actionTokensBase).toBe(2);
+    expect(G.players["1"].actionsRemaining).toBe(2);
+    expect(G.players["1"].actionTokensAvailable).toBe(2);
   });
   it("starts as empire when the ruleset tag requests it",()=>{
     const G=createInitialGameStateFromPipeline({
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[]},
-      playerNationIds:{"0":"empire_start_nation","1":"empire_start_nation"},
+      playerNationIds:{"1":"empire_start_nation","2":"empire_start_nation"},
       cardDb:cardDb([
         card({id:"barbarian_state",ownership:"nation",startingLocation:"box",cardType:"state",tags:["barbarian"],stateActionTokens:3}),
         card({id:"empire_state",ownership:"nation",startingLocation:"box",cardType:"state",tags:["empire"],stateActionTokens:2}),
@@ -915,14 +917,14 @@ describe("setup pipeline",()=>{
       }
     } as any);
 
-    expect(G.players["0"].stateArea[0]).toBe("empire_state");
-    expect(G.players["0"].actionTokensBase).toBe(2);
-    expect(currentStateMatches(G,"0","empire")).toBe(true);
+    expect(G.players["1"].stateArea[0]).toBe("empire_state");
+    expect(G.players["1"].actionTokensBase).toBe(2);
+    expect(currentStateMatches(G,"1","empire")).toBe(true);
   });
   it("routes setup History placements through a nation History replacement zone",()=>{
     const G=createInitialGameStateFromPipeline({
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[]},
-      playerNationIds:{"0":"history_setup_nation","1":"history_setup_nation"},
+      playerNationIds:{"1":"history_setup_nation","2":"history_setup_nation"},
       cardDb:cardDb([
         card({id:"setup_history_card",ownership:"nation",startingLocation:"box"}),
         card({id:"market_1"}),
@@ -972,9 +974,9 @@ describe("setup pipeline",()=>{
       }
     } as any);
 
-    expect(G.players["0"].history).toEqual([]);
-    expect(G.players["0"].sideAreas?.sunken).toEqual(["setup_history_card"]);
-    expect(G.specialZones?.["0"]?.sunken).toMatchObject({
+    expect(G.players["1"].history).toEqual([]);
+    expect(G.players["1"].sideAreas?.sunken).toEqual(["setup_history_card"]);
+    expect(G.specialZones?.["1"]?.sunken).toMatchObject({
       id:"sunken",
       displayName:"Sunken",
       visibility:"private",
@@ -985,7 +987,7 @@ describe("setup pipeline",()=>{
   it("records metadata for alternate History zones created by disabled History",()=>{
     const G=createInitialGameStateFromPipeline({
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[]},
-      playerNationIds:{"0":"alternate_history_nation","1":"alternate_history_nation"},
+      playerNationIds:{"1":"alternate_history_nation","2":"alternate_history_nation"},
       cardDb:cardDb([
         card({id:"alternate_history_card",ownership:"nation",startingLocation:"box"}),
         card({id:"market_1"}),
@@ -1035,9 +1037,9 @@ describe("setup pipeline",()=>{
       }
     } as any);
 
-    expect(G.players["0"].history).toEqual([]);
-    expect(G.players["0"].sideAreas?.alternate_history).toEqual(["alternate_history_card"]);
-    expect(G.specialZones?.["0"]?.alternate_history).toMatchObject({
+    expect(G.players["1"].history).toEqual([]);
+    expect(G.players["1"].sideAreas?.alternate_history).toEqual(["alternate_history_card"]);
+    expect(G.specialZones?.["1"]?.alternate_history).toMatchObject({
       id:"alternate_history",
       displayName:"Alternate History",
       visibility:"private",
@@ -1048,7 +1050,7 @@ describe("setup pipeline",()=>{
   it("preserves imported suit icon metadata in the runtime card database",()=>{
     const G=createInitialGameStateFromPipeline({
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[]},
-      playerNationIds:{"0":"test_nation_alpha","1":"test_nation_alpha"},
+      playerNationIds:{"1":"test_nation_alpha","2":"test_nation_alpha"},
       cardDb:cardDb([
         card({id:"multi_suit_card",suit:"multi",suitIcons:["civilized","uncivilized"],startingLocation:"market"}),
         card({id:"market_1"}),
@@ -1064,7 +1066,7 @@ describe("setup pipeline",()=>{
   it("preserves imported state requirements in the runtime card database",()=>{
     const G=createInitialGameStateFromPipeline({
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[]},
-      playerNationIds:{"0":"test_nation_alpha","1":"test_nation_alpha"},
+      playerNationIds:{"1":"test_nation_alpha","2":"test_nation_alpha"},
       cardDb:cardDb([
         card({id:"empire_locked_card",stateRequirement:"empire",startingLocation:"market"}),
         card({id:"market_1"}),
@@ -1081,7 +1083,7 @@ describe("setup pipeline",()=>{
     const startingCards = Array.from({ length: 6 }, (_, index) => `starter_${index + 1}`);
     const G=createInitialGameStateFromPipeline({
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[]},
-      playerNationIds:{"0":"opening_hand_nation","1":"opening_hand_nation"},
+      playerNationIds:{"1":"opening_hand_nation","2":"opening_hand_nation"},
       cardDb:cardDb([
         ...startingCards.map((id) => card({ id, ownership:"nation", startingLocation:"draw_deck" })),
         card({id:"market_1"}),
@@ -1110,9 +1112,9 @@ describe("setup pipeline",()=>{
       }
     });
 
-    expect(G.players["0"].hand).toEqual(["starter_1","starter_2","starter_3","starter_4","starter_5"]);
-    expect(G.players["0"].deck).toEqual(["starter_6"]);
-    expect(G.players["1"].hand).toHaveLength(5);
+    expect(G.players["1"].hand).toEqual(["starter_1","starter_2","starter_3","starter_4","starter_5"]);
+    expect(G.players["1"].deck).toEqual(["starter_6"]);
+    expect(G.players["2"].hand).toHaveLength(5);
   });
   it("builds source deck state for market refill",()=>{
     const G=createInitialGameState();
@@ -1128,7 +1130,7 @@ describe("setup pipeline",()=>{
   it("preserves visible Tributary bottom-card metadata through full setup",()=>{
     const G=createInitialGameStateFromPipeline({
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[],commonsSetId:"classics",replacementPolicy:"none"},
-      playerNationIds:{"0":"test_nation_alpha","1":"test_nation_alpha"},
+      playerNationIds:{"1":"test_nation_alpha","2":"test_nation_alpha"},
       cardDb:cardDb([
         card({id:"region_0",setupBannerSuit:"region"}),
         card({id:"region_1",setupBannerSuit:"region"}),
@@ -1163,7 +1165,7 @@ describe("setup pipeline",()=>{
   });
   it("trims ordinary Fame cards to the player-count deck size above King of Kings",()=>{
     const setupArgs = {
-      playerNationIds:{"0":"test_nation_alpha","1":"test_nation_alpha","2":"test_nation_alpha"},
+      playerNationIds:{"1":"test_nation_alpha","2":"test_nation_alpha","3":"test_nation_alpha"},
       cardDb: cardDb([
         ...Array.from({ length: 5 }, (_, index) => card({
           id: `market_${index + 1}`,
@@ -1207,8 +1209,8 @@ describe("setup pipeline",()=>{
     expect(tradeRoutes.fameDeck?.available).toHaveLength(8);
     expect(tradeRoutes.fameDeck?.specialBottomCardId).toBe("king_of_kings");
   });
-  it("creates default players for 3p multiplayer",()=>{ const G=createInitialGameState({ options:{playerCount:3,mode:"multiplayer",enabledExpansions:[],enabledVariants:[]} }); expect(Object.keys(G.players).sort()).toEqual(["0","1","2"]); });
-  it("invalid option-nation combo fails",()=>{ expect(()=>createInitialGameState({ options:{playerCount:1,mode:"solo",enabledExpansions:[],enabledVariants:[],soloDifficulty:"chieftain"}, playerNationIds:{"0":"test_nation_river_court"} })).toThrow(); });
+  it("creates default players for 3p multiplayer",()=>{ const G=createInitialGameState({ options:{playerCount:3,mode:"multiplayer",enabledExpansions:[],enabledVariants:[]} }); expect(Object.keys(G.players).sort()).toEqual(["1","2","3"]); });
+  it("invalid option-nation combo fails",()=>{ expect(()=>createInitialGameState({ options:{playerCount:1,mode:"solo",enabledExpansions:[],enabledVariants:[],soloDifficulty:"chieftain"}, playerNationIds:{"1":"test_nation_river_court"} })).toThrow(); });
   it("uses the requested solo bot nation instead of the first nation in the database",()=>{
     const G=createInitialGameStateFromPipeline({
       options:{playerCount:1,mode:"solo",enabledExpansions:[],enabledVariants:[],soloDifficulty:"chieftain",commonsSetId:"classics",replacementPolicy:"none"},
@@ -1220,7 +1222,7 @@ describe("setup pipeline",()=>{
         first_nation:{ ...nationDb.test_nation_alpha, id:"first_nation", displayName:"First Nation" },
         requested_bot:{ ...nationDb.test_nation_alpha, id:"requested_bot", displayName:"Requested Bot" }
       },
-      playerNationIds:{"0":"first_nation"},
+      playerNationIds:{"1":"first_nation"},
       soloBotNationId:"requested_bot"
     });
 
@@ -1237,7 +1239,7 @@ describe("setup pipeline",()=>{
         human_nation:{ ...nationDb.test_nation_alpha, id:"human_nation", displayName:"Human Nation" },
         requested_bot:{ ...nationDb.test_nation_alpha, id:"requested_bot", displayName:"Requested Bot" }
       },
-      playerNationIds:{"0":"human_nation"},
+      playerNationIds:{"1":"human_nation"},
       soloBotNationId:"requested_bot"
     });
 
@@ -1256,7 +1258,7 @@ describe("setup pipeline",()=>{
         excluded_bot:{ ...nationDb.test_nation_alpha, id:"excluded_bot", displayName:"Excluded Bot" },
         human_nation:{ ...nationDb.test_nation_alpha, id:"human_nation", displayName:"Human Nation" }
       },
-      playerNationIds:{"0":"human_nation"},
+      playerNationIds:{"1":"human_nation"},
       soloBotNationId:"random",
       privateData:{
         nationRulesets:[
@@ -1321,7 +1323,7 @@ describe("setup pipeline",()=>{
         human_nation:{ ...nationDb.test_nation_alpha, id:"human_nation", displayName:"Human Nation" },
         requested_bot:{ ...nationDb.test_nation_alpha, id:"requested_bot", displayName:"Requested Bot" }
       },
-      playerNationIds:{"0":"human_nation"},
+      playerNationIds:{"1":"human_nation"},
       soloBotNationId:"requested_bot"
     });
 
@@ -1330,7 +1332,7 @@ describe("setup pipeline",()=>{
   it("uses randomSeed to deterministically shuffle commons setup",()=>{
     const setupArgs = {
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[],commonsSetId:"classics",replacementPolicy:"none"} as GameOptions,
-      playerNationIds:{"0":"test_nation_alpha","1":"test_nation_alpha"},
+      playerNationIds:{"1":"test_nation_alpha","2":"test_nation_alpha"},
       cardDb: cardDb(Array.from({ length: 12 }, (_, index) => card({
         id: `market_${index + 1}`,
         suit: "none",
@@ -1349,7 +1351,7 @@ describe("setup pipeline",()=>{
   it("shuffles regular Nation deck cards while leaving Accession separate and Development visible",()=>{
     const setupArgs = {
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:[],commonsSetId:"classics",replacementPolicy:"none"} as GameOptions,
-      playerNationIds:{"0":"setup_nation","1":"setup_nation"},
+      playerNationIds:{"1":"setup_nation","2":"setup_nation"},
       randomSeed:"parity-seed",
       cardDb: cardDb([
         ...Array.from({ length: 5 }, (_, index) => card({
@@ -1388,15 +1390,15 @@ describe("setup pipeline",()=>{
 
     const G = createInitialGameStateFromPipeline(setupArgs);
 
-    expect(G.players["0"].nationDeck).toEqual(["n3","n4","n2","n1"]);
-    expect(G.players["0"].nationDeck).not.toContain("accession");
-    expect(G.players["0"].accessionCardId).toBe("accession");
-    expect(G.players["0"].developmentArea).toEqual(["dev1","dev2"]);
+    expect(G.players["1"].nationDeck).toEqual(["n3","n4","n2","n1"]);
+    expect(G.players["1"].nationDeck).not.toContain("accession");
+    expect(G.players["1"].accessionCardId).toBe("accession");
+    expect(G.players["1"].developmentArea).toEqual(["dev1","dev2"]);
   });
   it("uses randomSeed to deterministically shuffle solo Bot setup",()=>{
     const setupArgs = {
       options:{playerCount:1,mode:"solo",enabledExpansions:[],enabledVariants:[],soloDifficulty:"chieftain",commonsSetId:"classics",replacementPolicy:"none"} as GameOptions,
-      playerNationIds:{"0":"test_nation_alpha"},
+      playerNationIds:{"1":"test_nation_alpha"},
       soloBotNationId:"bot_nation",
       cardDb: cardDb([
         ...Array.from({ length: 8 }, (_, index) => card({
@@ -1506,23 +1508,23 @@ describe("setup pipeline",()=>{
       ]));
 
       const G = createInitialGameState({
-        playerNationIds: { "0":"private_nation", "1":"private_nation" },
+        playerNationIds: { "1":"private_nation", "2":"private_nation" },
         privateCardPath,
         privateNationPath,
         privateRulesetPath,
         privateStrategyPath
       });
 
-      expect(G.players["0"].powerArea).toEqual(["private_power"]);
-      expect(G.players["0"].stateArea).toEqual(["private_empire_state", "private_barbarian_state"]);
+      expect(G.players["1"].powerArea).toEqual(["private_power"]);
+      expect(G.players["1"].stateArea).toEqual(["private_empire_state", "private_barbarian_state"]);
       expect(G.cardDb.private_start.vp).toEqual({ mode: "fixed", value: 7 });
       expect(G.cardDb.private_start.developmentCost).toEqual({ materials: 1, influence: 2, knowledge: 3, goods: 4 });
-      expect(G.players["0"].resources.materials).toBe(2);
-      expect(G.players["0"].sideAreas?.quest_area).toEqual([]);
-      expect(G.players["0"].sideAreas?.sunken).toEqual([]);
+      expect(G.players["1"].resources.materials).toBe(2);
+      expect(G.players["1"].sideAreas?.quest_area).toEqual([]);
+      expect(G.players["1"].sideAreas?.sunken).toEqual([]);
       expect(G.unrestPile).toContain("private_extra_unrest");
-      expect(G.activeNationRulesets?.["0"].nationId).toBe("private_nation");
-      expect(G.activeNationStrategyProfiles?.["0"].displayName).toBe("Private Strategy");
+      expect(G.activeNationRulesets?.["1"].nationId).toBe("private_nation");
+      expect(G.activeNationStrategyProfiles?.["1"].displayName).toBe("Private Strategy");
     } finally {
       fs.rmSync(tmp, { recursive:true, force:true });
     }

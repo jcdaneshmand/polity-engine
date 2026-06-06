@@ -95,7 +95,8 @@ export function createDevFullController(options = {}) {
 export async function ensureServerReady(controller, serverURL, options = {}) {
   const healthURLs = [
     `${serverURL}/polity/lobby/rooms`,
-    `${serverURL}/polity/lobby/chat`
+    `${serverURL}/polity/lobby/chat`,
+    `${serverURL}/polity/accounts/health`
   ];
   const wait = options.waitForHTTP ?? waitForHTTP;
   const waitForServerHealth = async (timeoutMs) => {

@@ -61,7 +61,7 @@ describe("commons setup", () => {
   it("solo mode uses effective count 2", () => {
     const G = createInitialGameStateFromPipeline({
       options: { playerCount: 1, mode: "solo", enabledExpansions: [], enabledVariants: [], soloDifficulty: "chieftain", commonsSetId: "classics", replacementPolicy: "none" },
-      playerNationIds: { "0": "test_nation_alpha" },
+      playerNationIds: { "1": "test_nation_alpha" },
       cardDb: cardDb([
         card({ id: "two_plus", playerCountRequirement: "2+" }),
         card({ id: "three_plus", playerCountRequirement: "3+" }),
@@ -75,7 +75,7 @@ describe("commons setup", () => {
     expect(G.cardDb.multiplayer_only).toBeUndefined();
   });
 
-  it("normalizes one-based setup player ids to boardgame player ids", () => {
+  it("keeps one-based game player ids while exposing boardgame seats", () => {
     const G = createInitialGameStateFromPipeline({
       options: { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: [], commonsSetId: "classics", replacementPolicy: "none" },
       playerNationIds: { "1": "test_nation_alpha", "2": "test_nation_alpha" },
@@ -83,8 +83,9 @@ describe("commons setup", () => {
       nationDb
     });
 
-    expect(G.playOrder).toEqual(["0", "1"]);
-    expect(Object.keys(G.players)).toEqual(["0", "1"]);
+    expect(G.playOrder).toEqual(["1", "2"]);
+    expect(G.seatOrder).toEqual(["0", "1"]);
+    expect(Object.keys(G.players)).toEqual(["1", "2"]);
   });
 
   it("Supreme Ruler campaign setup includes campaign-extra solo Commons cards", () => {
@@ -95,7 +96,7 @@ describe("commons setup", () => {
       card({ id: "bot_region", suit: "region", cardType: "attack", ownership: "bot", startingLocation: "bot_deck" })
     ]);
     const commonArgs = {
-      playerNationIds: { "0": "test_nation_alpha" },
+      playerNationIds: { "1": "test_nation_alpha" },
       soloBotNationId: "test_nation_alpha",
       cardDb: cards,
       nationDb
@@ -118,7 +119,7 @@ describe("commons setup", () => {
   it("practice mode uses effective count 2", () => {
     const G = createInitialGameStateFromPipeline({
       options: { playerCount: 1, mode: "practice", enabledExpansions: [], enabledVariants: [], commonsSetId: "classics", replacementPolicy: "none" },
-      playerNationIds: { "0": "test_nation_alpha" },
+      playerNationIds: { "1": "test_nation_alpha" },
       cardDb: cardDb([card({ id: "two_plus", playerCountRequirement: "2+" }), card({ id: "three_plus", playerCountRequirement: "3+" })]),
       nationDb
     });
@@ -130,7 +131,7 @@ describe("commons setup", () => {
   it("stores initial market slot metadata on game state", () => {
     const G = createInitialGameStateFromPipeline({
       options: { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: [], commonsSetId: "classics", replacementPolicy: "none" },
-      playerNationIds: { "0": "test_nation_alpha", "1": "test_nation_alpha" },
+      playerNationIds: { "1": "test_nation_alpha", "2": "test_nation_alpha" },
       cardDb: cardDb([
         card({ id: "market_a" }),
         card({ id: "unrest_a", cardType: "unrest", suit: "unrest", unrestPileEligible: true })
@@ -146,7 +147,7 @@ describe("commons setup", () => {
   it("keeps setup report market slots immutable from live market mutations", () => {
     const G = createInitialGameStateFromPipeline({
       options: { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: [], commonsSetId: "classics", replacementPolicy: "none" },
-      playerNationIds: { "0": "test_nation_alpha", "1": "test_nation_alpha" },
+      playerNationIds: { "1": "test_nation_alpha", "2": "test_nation_alpha" },
       cardDb: cardDb([
         card({ id: "market_a" }),
         card({ id: "unrest_a", cardType: "unrest", suit: "unrest", unrestPileEligible: true })
@@ -161,7 +162,7 @@ describe("commons setup", () => {
   it("removes rejected Commons cards from the runtime card database", () => {
     const G = createInitialGameStateFromPipeline({
       options: { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: [], commonsSetId: "classics", replacementPolicy: "none" },
-      playerNationIds: { "0": "test_nation_alpha", "1": "test_nation_alpha" },
+      playerNationIds: { "1": "test_nation_alpha", "2": "test_nation_alpha" },
       cardDb: cardDb([
         card({ id: "selected_commons" }),
         card({ id: "conflicting_commons", conflictsWithNationIds: ["test_nation_alpha"] }),
@@ -179,7 +180,7 @@ describe("commons setup", () => {
   it("preserves selected nation cards when using a different Commons set", () => {
     const G = createInitialGameStateFromPipeline({
       options: { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: [], commonsSetId: "legends", replacementPolicy: "none" },
-      playerNationIds: { "0": "test_nation_alpha", "1": "test_nation_alpha" },
+      playerNationIds: { "1": "test_nation_alpha", "2": "test_nation_alpha" },
       cardDb: cardDb([
         card({ id: "legacy_starting_card", commonsSetId: "classics" }),
         card({ id: "legends_commons", commonsSetId: "legends" })
@@ -191,7 +192,7 @@ describe("commons setup", () => {
         }
       }
     });
-    expect(G.players["0"].hand).toContain("legacy_starting_card");
+    expect(G.players["1"].hand).toContain("legacy_starting_card");
     expect(G.cardDb.legacy_starting_card).toBeDefined();
     expect(G.cardDb.legends_commons).toBeDefined();
   });
@@ -199,14 +200,14 @@ describe("commons setup", () => {
   it("preserves cards added by player setup hooks after Commons pruning", () => {
     const G = createInitialGameStateFromPipeline({
       options: { playerCount: 2, mode: "multiplayer", enabledExpansions: ["trade_routes"], enabledVariants: [], commonsSetId: "legends", replacementPolicy: "none" },
-      playerNationIds: { "0": "test_nation_alpha", "1": "test_nation_alpha" },
+      playerNationIds: { "1": "test_nation_alpha", "2": "test_nation_alpha" },
       cardDb: cardDb([
         card({ id: "legends_commons", commonsSetId: "legends" }),
         card({ id: "test_action_civic_assembly", commonsSetId: "classics" })
       ]),
       nationDb
     });
-    expect(G.players["0"].powerArea).toContain("test_action_civic_assembly");
+    expect(G.players["1"].powerArea).toContain("test_action_civic_assembly");
     expect(G.cardDb.test_action_civic_assembly).toBeDefined();
     expect(G.cardDb.legends_commons).toBeDefined();
   });

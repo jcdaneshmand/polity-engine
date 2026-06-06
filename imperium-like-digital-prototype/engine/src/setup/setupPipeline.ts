@@ -506,9 +506,9 @@ function normalizePlayerNationIds(options: GameOptions, playerNationIds?: Record
   const selected = playerNationIds ?? {};
   return Object.fromEntries(
     Array.from({ length: options.playerCount }, (_, index) => {
-      const playerId = String(index);
-      const legacyPlayerId = String(index + 1);
-      return [playerId, selected[playerId] ?? selected[legacyPlayerId] ?? "test_nation_sun_coast"];
+      const playerId = String(index + 1);
+      const boardgameSeatId = String(index);
+      return [playerId, selected[playerId] ?? selected[boardgameSeatId] ?? "test_nation_sun_coast"];
     })
   );
 }
@@ -540,6 +540,7 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   const game: GameState = {
     players,
     playOrder: Object.keys(selected),
+    seatOrder: Array.from({ length: options.playerCount }, (_, index) => String(index)),
     cardDb: buildGameCardDb(filteredCards),
     market: [],
     marketRefillPool: [],

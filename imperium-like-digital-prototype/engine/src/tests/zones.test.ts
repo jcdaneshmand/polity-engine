@@ -6,12 +6,12 @@ describe("zones/history", () => {
   it("move self to history removes from play and discard", () => {
     const G = createInitialState();
     const id = "test_action_lineage_record";
-    G.players["0"].playArea = [id];
-    G.players["0"].discard = [id];
-    runEffects({ G, playerId: "0", selfCardId: id }, [{ trigger: "on_play", op: "move_self_to_history" }]);
-    expect(G.players["0"].playArea).not.toContain(id);
-    expect(G.players["0"].discard).not.toContain(id);
-    expect(G.players["0"].history).toContain(id);
+    G.players["1"].playArea = [id];
+    G.players["1"].discard = [id];
+    runEffects({ G, playerId: "1", selfCardId: id }, [{ trigger: "on_play", op: "move_self_to_history" }]);
+    expect(G.players["1"].playArea).not.toContain(id);
+    expect(G.players["1"].discard).not.toContain(id);
+    expect(G.players["1"].history).toContain(id);
   });
 
   it("moves garrisoned cards with their host when the host moves to history", () => {
@@ -28,17 +28,17 @@ describe("zones/history", () => {
       tags: [],
       effects: []
     };
-    G.players["0"].playArea = [hostId];
+    G.players["1"].playArea = [hostId];
     G.cardStates = {
       [hostId]: {
         garrisonedCardIds: [garrisonedId]
       }
     };
 
-    runEffects({ G, playerId: "0", selfCardId: hostId }, [{ trigger: "on_play", op: "move_self_to_history" }]);
+    runEffects({ G, playerId: "1", selfCardId: hostId }, [{ trigger: "on_play", op: "move_self_to_history" }]);
 
-    expect(G.players["0"].playArea).toEqual([]);
-    expect(G.players["0"].history).toEqual([hostId, garrisonedId]);
+    expect(G.players["1"].playArea).toEqual([]);
+    expect(G.players["1"].history).toEqual([hostId, garrisonedId]);
     expect(G.cardStates?.[hostId]).toBeUndefined();
   });
 
@@ -55,29 +55,29 @@ describe("zones/history", () => {
       tags: [],
       effects: []
     };
-    G.players["0"].playArea = [hostId];
-    G.players["0"].resources.materials = 0;
+    G.players["1"].playArea = [hostId];
+    G.players["1"].resources.materials = 0;
     G.cardStates = {
       [hostId]: {
         resources: { materials: 2 }
       }
     };
 
-    runEffects({ G, playerId: "0", selfCardId: hostId }, [{ trigger: "on_play", op: "move_self_to_history" }]);
+    runEffects({ G, playerId: "1", selfCardId: hostId }, [{ trigger: "on_play", op: "move_self_to_history" }]);
 
-    expect(G.players["0"].history).toEqual([hostId]);
-    expect(G.players["0"].resources.materials).toBe(2);
+    expect(G.players["1"].history).toEqual([hostId]);
+    expect(G.players["1"].resources.materials).toBe(2);
     expect(G.cardStates?.[hostId]).toBeUndefined();
   });
 
   it("move self to history removes a Power-area source instead of duplicating it", () => {
     const G = createInitialState();
     const id = "test_power_archive";
-    G.players["0"].powerArea = [id];
+    G.players["1"].powerArea = [id];
 
-    runEffects({ G, playerId: "0", selfCardId: id }, [{ trigger: "on_exhaust", op: "move_self_to_history" }]);
+    runEffects({ G, playerId: "1", selfCardId: id }, [{ trigger: "on_exhaust", op: "move_self_to_history" }]);
 
-    expect(G.players["0"].powerArea).toEqual([]);
-    expect(G.players["0"].history).toEqual([id]);
+    expect(G.players["1"].powerArea).toEqual([]);
+    expect(G.players["1"].history).toEqual([id]);
   });
 });

@@ -43,6 +43,28 @@ describe("AccountPanel", () => {
     expect(html).toContain("Create Account");
     expect(html).toContain("Sign In");
     expect(html).toContain("Forgot Password");
+    expect(html).not.toContain("Reset Token or Link");
+    expect(html).not.toContain("Confirm New Password");
+    expect(html).not.toContain("Reset Password");
+  });
+
+  it("renders reset password controls only when a reset token is available", () => {
+    const html = renderToStaticMarkup(
+      <AccountPanel
+        account={undefined}
+        passwordResetToken="reset-1"
+        statusMessage=""
+        onRegister={() => undefined}
+        onSignIn={() => undefined}
+        onRequestPasswordReset={() => undefined}
+        onCompletePasswordReset={() => undefined}
+        onChangePassword={() => undefined}
+        onSignOut={() => undefined}
+      />
+    );
+
+    expect(html).toContain("New Password");
+    expect(html).toContain("Confirm New Password");
     expect(html).toContain("Reset Password");
   });
 

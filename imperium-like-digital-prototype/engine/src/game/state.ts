@@ -146,6 +146,7 @@ export interface PlayerState {
 export interface GameState {
   players: Record<string, PlayerState>; cardDb: Record<string, Card>; market: string[]; marketRefillPool: string[]; sharedDiscard: string[]; log: GameLogEntry[]; round: number;
   playOrder?: string[];
+  seatOrder?: string[];
   resourceSupply?: Partial<Record<ResourceName, number>>;
   marketSlots?: MarketSlot[];
   marketResources?: Record<string, Partial<Record<ResourceName, number>>>;

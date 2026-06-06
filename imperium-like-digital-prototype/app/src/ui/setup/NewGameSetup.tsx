@@ -19,6 +19,7 @@ type NewGameSetupProps = {
   onStart: (config: NewGameSessionConfig) => void;
   onOpenOnlineGames?: (config: NewGameSessionConfig, playerName: string) => void;
   account?: AccountPublicView;
+  passwordResetToken?: string;
   accountStatusMessage?: string;
   onSignInForOnline?: (config: NewGameSessionConfig, input: { login: string; password: string }) => void | Promise<void>;
   onRequestPasswordReset?: (input: { email: string }) => void | Promise<void>;
@@ -177,15 +178,17 @@ function isFreshCampaignProgress(progress: CampaignProgress | undefined): boolea
 }
 
 function initialNationId(config: NewGameSessionConfig | undefined, playerId: string): string | undefined {
-  return config?.playerNationIds[playerId] ?? config?.playerNationIds[String(Number(playerId) + 1)];
+  return config?.playerNationIds[playerId]
+    ?? config?.playerNationIds[String(Number(playerId) - 1)]
+    ?? config?.playerNationIds[String(Number(playerId) + 1)];
 }
 
 export function getLaunchPlayerIds(playerCount: 1 | 2 | 3 | 4): string[] {
-  return Array.from({ length: playerCount }, (_, index) => String(index));
+  return Array.from({ length: playerCount }, (_, index) => String(index + 1));
 }
 
 function displayPlayerLabel(playerId: string): string {
-  return `Player ${Number(playerId) + 1}`;
+  return `Player ${Number(playerId)}`;
 }
 
 export function buildCampaignGameOptions(args: {
@@ -215,6 +218,7 @@ export default function NewGameSetup({
   onStart,
   onOpenOnlineGames,
   account,
+  passwordResetToken,
   accountStatusMessage = "",
   onSignInForOnline,
   onRequestPasswordReset,
@@ -250,14 +254,13 @@ export default function NewGameSetup({
   const [onlineLogin, setOnlineLogin] = useState("");
   const [onlinePassword, setOnlinePassword] = useState("");
   const [resetEmail, setResetEmail] = useState("");
-  const [resetToken, setResetToken] = useState("");
   const [resetPassword, setResetPassword] = useState("");
   const [resetPasswordConfirmation, setResetPasswordConfirmation] = useState("");
   const [playerNationIds, setPlayerNationIds] = useState<Record<string, string>>({
-    "0": initialNationId(initialConfig, "0") ?? initialCampaignProgress?.playerNationId ?? DEFAULT_NATION_ID,
-    "1": initialNationId(initialConfig, "1") ?? DEFAULT_NATION_ID,
+    "1": initialNationId(initialConfig, "1") ?? initialCampaignProgress?.playerNationId ?? DEFAULT_NATION_ID,
     "2": initialNationId(initialConfig, "2") ?? DEFAULT_NATION_ID,
-    "3": initialNationId(initialConfig, "3") ?? DEFAULT_NATION_ID
+    "3": initialNationId(initialConfig, "3") ?? DEFAULT_NATION_ID,
+    "4": initialNationId(initialConfig, "4") ?? DEFAULT_NATION_ID
   });
 
   const normalizedPlayerCount = playerCountForMode(mode, playerCount);
@@ -283,7 +286,7 @@ export default function NewGameSetup({
   ].join(", ") || "Core rules";
   const privateDataSummary = privateDataConfirmed && hasPrivateData(privateData) ? privateDataReadyMessage : "Placeholder data";
   const effectiveCampaignMode = mode === "solo" ? campaignMode : "none";
-  const selectedPlayerOneNationId = playerNationIds["0"] ?? DEFAULT_NATION_ID;
+  const selectedPlayerOneNationId = playerNationIds["1"] ?? DEFAULT_NATION_ID;
   const launchCampaignOptions = buildCampaignGameOptions({
     mode,
     campaignMode: effectiveCampaignMode,
@@ -369,7 +372,7 @@ export default function NewGameSetup({
       ? current
       : createCampaignProgress({
         mode: nextCampaignMode,
-        playerNationId: playerNationIds["0"] ?? DEFAULT_NATION_ID,
+        playerNationId: playerNationIds["1"] ?? DEFAULT_NATION_ID,
         startingDifficulty: nextCampaignMode === "supreme_ruler" ? "supreme_ruler" : soloDifficulty
       })
     );
@@ -594,11 +597,7 @@ export default function NewGameSetup({
                       </label>
                       <button type="button" disabled={!onRequestPasswordReset || !resetEmail.trim()} onClick={() => void onRequestPasswordReset?.({ email: resetEmail })}>Forgot Password</button>
                     </div>
-                    <div className="online-games-actions">
-                      <label className="setup-field">
-                        <span>Reset Token or Link</span>
-                        <input value={resetToken} onChange={(event: { target: HTMLInputElement }) => setResetToken(event.target.value)} />
-                      </label>
+                    {passwordResetToken ? <div className="online-games-actions">
                       <label className="setup-field">
                         <span>New Password</span>
                         <input type="password" value={resetPassword} onChange={(event: { target: HTMLInputElement }) => setResetPassword(event.target.value)} />
@@ -607,8 +606,8 @@ export default function NewGameSetup({
                         <span>Confirm New Password</span>
                         <input type="password" value={resetPasswordConfirmation} onChange={(event: { target: HTMLInputElement }) => setResetPasswordConfirmation(event.target.value)} />
                       </label>
-                      <button type="button" disabled={!onCompletePasswordReset || !resetToken.trim() || resetPassword.length < 4 || resetPassword !== resetPasswordConfirmation} onClick={() => void onCompletePasswordReset?.({ token: resetToken, password: resetPassword, passwordConfirmation: resetPasswordConfirmation })}>Reset Password</button>
-                    </div>
+                      <button type="button" disabled={!onCompletePasswordReset || resetPassword.length < 4 || resetPassword !== resetPasswordConfirmation} onClick={() => void onCompletePasswordReset?.({ token: passwordResetToken, password: resetPassword, passwordConfirmation: resetPasswordConfirmation })}>Reset Password</button>
+                    </div> : null}
                   </>
                 )}
                 {accountStatusMessage ? <p className="setup-help">{accountStatusMessage}</p> : null}

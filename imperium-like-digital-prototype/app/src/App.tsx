@@ -78,6 +78,19 @@ function clearAccountSessionRecord(): void {
   window.localStorage.removeItem(ACCOUNT_SESSION_STORAGE_KEY);
 }
 
+function loadPasswordResetToken(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const token = new URL(window.location.href).searchParams.get("token")?.trim();
+  return token || undefined;
+}
+
+function clearPasswordResetTokenFromURL(): void {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  url.searchParams.delete("token");
+  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
 function loadOnlineClientID(): string {
   if (typeof window === "undefined") return "server-render-client";
   const existing = window.localStorage.getItem(ONLINE_CLIENT_STORAGE_KEY);
@@ -105,6 +118,10 @@ function localAccountVariant(config: NewGameSessionConfig): "standard" | "campai
   return undefined;
 }
 
+function gamePlayerIDForSeatID(playerID: string | undefined): string {
+  return String(Number(playerID ?? "0") + 1);
+}
+
 function startAccountHistoryEntry(args: {
   serverURL: string;
   accountToken: string;
@@ -120,15 +137,6 @@ function startAccountHistoryEntry(args: {
   });
 }
 
-function resetTokenFromInput(input: string): string {
-  const trimmed = input.trim();
-  try {
-    return new URL(trimmed).searchParams.get("token") || trimmed;
-  } catch {
-    return trimmed;
-  }
-}
-
 export default function App() {
   const [session, setSession] = useState<GameSession | null>(null);
   const [homeView, setHomeView] = useState<"setup" | "private-data" | "about" | "online" | "lobby" | "lobby-setup">("setup");
@@ -138,6 +146,7 @@ export default function App() {
   const [onlinePlayerName, setOnlinePlayerName] = useState("Player");
   const [accountSession, setAccountSession] = useState<AccountSessionRecord | undefined>(loadAccountSessionRecord());
   const [accountStatus, setAccountStatus] = useState("");
+  const [passwordResetToken, setPasswordResetToken] = useState<string | undefined>(loadPasswordResetToken());
   const [onlineClientID] = useState<string>(loadOnlineClientID());
   const [listedLobbies, setListedLobbies] = useState<ListedLobby[]>([]);
   const [listedMatches, setListedMatches] = useState<ListedMatch[]>([]);
@@ -267,7 +276,7 @@ export default function App() {
         accountHistoryEntryID: createAccountHistoryID("solo"),
         accountScope: "solo" as const,
         accountVariant: variant,
-        accountPlayerID: "0"
+        accountPlayerID: "1"
       }
       : {};
     if (accountSession && tracking.accountHistoryEntryID && tracking.accountVariant) {
@@ -281,7 +290,7 @@ export default function App() {
           status: "started",
           outcome: "unknown",
           playerCount: config.options.playerCount,
-          nationID: config.playerNationIds["0"]
+          nationID: config.playerNationIds["1"]
         },
         onError: setOnlineStatus
       });
@@ -311,11 +320,12 @@ export default function App() {
         accountHistoryEntryID: createAccountHistoryID("online"),
         accountScope: "online" as const,
         accountVariant: "multiplayer" as const,
-        accountPlayerID: record.playerID ?? "0"
+        accountPlayerID: gamePlayerIDForSeatID(record.playerID)
       }
       : {};
     if (accountSession && tracking.accountHistoryEntryID) {
       const playerID = record.playerID ?? "0";
+      const gamePlayerID = gamePlayerIDForSeatID(playerID);
       startAccountHistoryEntry({
         serverURL: multiplayerServerURL,
         accountToken: accountSession.token,
@@ -326,9 +336,9 @@ export default function App() {
           status: "started",
           outcome: "unknown",
           matchID: record.matchID,
-          playerID,
+          playerID: gamePlayerID,
           playerCount: record.numPlayers,
-          nationID: config.playerNationIds[playerID]
+          nationID: config.playerNationIds[gamePlayerID]
         },
         onError: setOnlineStatus
       });
@@ -807,10 +817,12 @@ export default function App() {
     try {
       await completePasswordReset({
         serverURL: multiplayerServerURL,
-        token: resetTokenFromInput(input.token),
+        token: input.token,
         password: input.password,
         passwordConfirmation: input.passwordConfirmation
       });
+      setPasswordResetToken(undefined);
+      clearPasswordResetTokenFromURL();
       setAccountStatus("Password reset. Sign in with the new password.");
     } catch (error) {
       setAccountStatus(error instanceof Error ? error.message : "Could not reset password.");
@@ -932,6 +944,7 @@ export default function App() {
             matches={listedMatches}
             chatMessages={onlineChatMessages}
             account={accountSession?.account}
+            passwordResetToken={passwordResetToken}
             accountStatusMessage={accountStatus}
             statusMessage={onlineStatus}
             onBackToSetup={() => setHomeView("setup")}
@@ -969,6 +982,7 @@ export default function App() {
           onStart={startLocalGame}
           onOpenOnlineGames={openOnlineGames}
           account={accountSession?.account}
+          passwordResetToken={passwordResetToken}
           accountStatusMessage={accountStatus}
           onSignInForOnline={(config, input) => void signInForOnlineGames(config, input)}
           onRequestPasswordReset={(input) => void requestCurrentPasswordReset(input)}

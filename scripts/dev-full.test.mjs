@@ -97,7 +97,8 @@ test("ensureServerReady reuses an already healthy server", async () => {
   assert.equal(serverStarted, false);
   assert.deepEqual(urls, [
     "http://127.0.0.1:8000/polity/lobby/rooms",
-    "http://127.0.0.1:8000/polity/lobby/chat"
+    "http://127.0.0.1:8000/polity/lobby/chat",
+    "http://127.0.0.1:8000/polity/accounts/health"
   ]);
 });
 
@@ -122,7 +123,8 @@ test("ensureServerReady starts the server when no healthy server exists", async 
   assert.deepEqual(urls, [
     "http://127.0.0.1:8000/polity/lobby/rooms",
     "http://127.0.0.1:8000/polity/lobby/rooms",
-    "http://127.0.0.1:8000/polity/lobby/chat"
+    "http://127.0.0.1:8000/polity/lobby/chat",
+    "http://127.0.0.1:8000/polity/accounts/health"
   ]);
 });
 

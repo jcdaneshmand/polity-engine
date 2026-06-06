@@ -7,11 +7,11 @@ describe("nation hook conditions", () => {
     const G = createInitialState({ usePrivateData: false });
     G.options = { playerCount: 2, mode: "multiplayer" } as any;
 
-    expect(evaluateNationHookCondition(G, "0", {
+    expect(evaluateNationHookCondition(G, "1", {
       op: "expansion_enabled",
       expansion: "trade_routes"
     } as any)).toBe(false);
-    expect(evaluateNationHookCondition(G, "0", {
+    expect(evaluateNationHookCondition(G, "1", {
       op: "variant_enabled",
       variant: "short_game"
     } as any)).toBe(false);
@@ -28,7 +28,7 @@ describe("nation hook conditions", () => {
       effects: []
     } as any;
 
-    expect(evaluateNationHookCondition(G, "0", {
+    expect(evaluateNationHookCondition(G, "1", {
       op: "payload_card_has_tag",
       payloadKey: "cardId",
       tag: "aggressive"

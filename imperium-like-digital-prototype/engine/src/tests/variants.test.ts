@@ -47,8 +47,8 @@ const startingDeckCard = (id: string): any => ({
 });
 
 describe("variants",()=>{
-  it("lowered aggression delays count",()=>{ const G=createInitialGameStateFromPipeline({ options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:["lowered_aggression"]}, cardDb:cards, nationDb:{test_nation_sun_coast:nation}, playerNationIds:{"0":"test_nation_sun_coast","1":"test_nation_sun_coast"} }); expect(G.setupReport?.delayedAggressiveCount).toBeGreaterThanOrEqual(1); });
-  it("quick_setup path used",()=>{ const G=createInitialGameStateFromPipeline({ options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:["quick_setup"]}, cardDb:cards, nationDb:{test_nation_sun_coast:nation}, playerNationIds:{"0":"test_nation_sun_coast","1":"test_nation_sun_coast"} }); expect(G.setupReport?.usedQuickSetup).toBe(true); });
+  it("lowered aggression delays count",()=>{ const G=createInitialGameStateFromPipeline({ options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:["lowered_aggression"]}, cardDb:cards, nationDb:{test_nation_sun_coast:nation}, playerNationIds:{"1":"test_nation_sun_coast","2":"test_nation_sun_coast"} }); expect(G.setupReport?.delayedAggressiveCount).toBeGreaterThanOrEqual(1); });
+  it("quick_setup path used",()=>{ const G=createInitialGameStateFromPipeline({ options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:["quick_setup"]}, cardDb:cards, nationDb:{test_nation_sun_coast:nation}, playerNationIds:{"1":"test_nation_sun_coast","2":"test_nation_sun_coast"} }); expect(G.setupReport?.usedQuickSetup).toBe(true); });
   it("short game setup exiles the top ten Main deck cards and advances two Nation cards per player",()=>{
     const marketCards = Object.fromEntries(Array.from({ length: 15 }, (_, index) => {
       const id = `main_${index + 1}`;
@@ -64,15 +64,15 @@ describe("variants",()=>{
       options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:["short_game"]},
       cardDb:{...marketCards, ...nationCards},
       nationDb:{test_nation_sun_coast:shortNation},
-      playerNationIds:{"0":"test_nation_sun_coast","1":"test_nation_sun_coast"}
+      playerNationIds:{"1":"test_nation_sun_coast","2":"test_nation_sun_coast"}
     });
 
     expect(G.market).toEqual(["main_1", "main_2", "main_3", "main_4", "main_5"]);
     expect(G.marketDecks?.mainDeck).toEqual([]);
     expect(G.setupReport?.shortGameExiled).toBe(10);
-    expect(G.players["0"].discard).toEqual(["n1", "n2"]);
-    expect(G.players["0"].nationDeck).toEqual(["n3", "n4"]);
     expect(G.players["1"].discard).toEqual(["n1", "n2"]);
+    expect(G.players["1"].nationDeck).toEqual(["n3", "n4"]);
+    expect(G.players["2"].discard).toEqual(["n1", "n2"]);
     expect(G.setupReport?.shortGameNationAdvanced).toBe(4);
   });
   it("short game setup treats separated Accession as the bottom Nation card when advancing two cards",()=>{
@@ -97,50 +97,50 @@ describe("variants",()=>{
         dev_b: nationProgressionCard("dev_b")
       },
       nationDb:{test_nation_sun_coast:shortNation},
-      playerNationIds:{"0":"test_nation_sun_coast","1":"test_nation_sun_coast"}
+      playerNationIds:{"1":"test_nation_sun_coast","2":"test_nation_sun_coast"}
     });
 
-    expect(G.players["0"].discard).toEqual(["n1", "accession"]);
-    expect(G.players["0"].developmentArea).toEqual(["dev_a", "dev_b"]);
-    expect(G.players["0"].exile).toEqual([]);
-    expect(G.players["0"].nationDeck).toEqual([]);
-    expect(G.players["0"].accessionCardId).toBeUndefined();
     expect(G.players["1"].discard).toEqual(["n1", "accession"]);
     expect(G.players["1"].developmentArea).toEqual(["dev_a", "dev_b"]);
     expect(G.players["1"].exile).toEqual([]);
     expect(G.players["1"].nationDeck).toEqual([]);
     expect(G.players["1"].accessionCardId).toBeUndefined();
+    expect(G.players["2"].discard).toEqual(["n1", "accession"]);
+    expect(G.players["2"].developmentArea).toEqual(["dev_a", "dev_b"]);
+    expect(G.players["2"].exile).toEqual([]);
+    expect(G.players["2"].nationDeck).toEqual([]);
+    expect(G.players["2"].accessionCardId).toBeUndefined();
     expect(G.pendingShortGameDevelopmentExileChoice).toEqual({
-      playerId: "0",
+      playerId: "1",
       cardIds: ["dev_a", "dev_b"],
       resumeDrawCount: 0,
       resumeBehavior: "none"
     });
     expect(G.pendingShortGameDevelopmentExileQueue).toEqual([{
-      playerId: "1",
+      playerId: "2",
       cardIds: ["dev_a", "dev_b"],
       resumeDrawCount: 0,
       resumeBehavior: "none"
     }]);
 
-    resolveShortGameDevelopmentExileChoice({ G, ctx: { currentPlayer: "0" } as any }, "dev_b");
-    expect(G.players["0"].developmentArea).toEqual(["dev_a"]);
-    expect(G.players["0"].exile).toEqual(["dev_b"]);
-    expect(G.players["0"].discard).toEqual(["n1", "accession"]);
-    expect(G.players["0"].deck).toEqual([]);
+    resolveShortGameDevelopmentExileChoice({ G, ctx: { currentPlayer: "1" } as any }, "dev_b");
+    expect(G.players["1"].developmentArea).toEqual(["dev_a"]);
+    expect(G.players["1"].exile).toEqual(["dev_b"]);
+    expect(G.players["1"].discard).toEqual(["n1", "accession"]);
+    expect(G.players["1"].deck).toEqual([]);
     expect(G.pendingShortGameDevelopmentExileChoice).toEqual({
-      playerId: "1",
+      playerId: "2",
       cardIds: ["dev_a", "dev_b"],
       resumeDrawCount: 0,
       resumeBehavior: "none"
     });
     expect(G.pendingShortGameDevelopmentExileQueue).toBeUndefined();
 
-    resolveShortGameDevelopmentExileChoice({ G, ctx: { currentPlayer: "1" } as any }, "dev_a");
-    expect(G.players["1"].developmentArea).toEqual(["dev_b"]);
-    expect(G.players["1"].exile).toEqual(["dev_a"]);
-    expect(G.players["1"].discard).toEqual(["n1", "accession"]);
-    expect(G.players["1"].deck).toEqual([]);
+    resolveShortGameDevelopmentExileChoice({ G, ctx: { currentPlayer: "2" } as any }, "dev_a");
+    expect(G.players["2"].developmentArea).toEqual(["dev_b"]);
+    expect(G.players["2"].exile).toEqual(["dev_a"]);
+    expect(G.players["2"].discard).toEqual(["n1", "accession"]);
+    expect(G.players["2"].deck).toEqual([]);
     expect(G.pendingShortGameDevelopmentExileChoice).toBeUndefined();
     expect(G.setupReport?.shortGameNationAdvanced).toBe(4);
   });
@@ -166,10 +166,10 @@ describe("variants",()=>{
         dev_b: nationProgressionCard("dev_b")
       },
       nationDb:{test_nation_sun_coast:shortNation},
-      playerNationIds:{"0":"test_nation_sun_coast","1":"test_nation_sun_coast"}
+      playerNationIds:{"1":"test_nation_sun_coast","2":"test_nation_sun_coast"}
     });
     G.pendingShortGameDevelopmentExileChoice = {
-      playerId: "0",
+      playerId: "1",
       cardIds: ["dev_a", "dev_b"],
       resumeDrawCount: 0,
       resumeBehavior: "none",
@@ -180,26 +180,26 @@ describe("variants",()=>{
       } as any]
     };
     G.pendingShortGameDevelopmentExileQueue = [{
-      playerId: "1",
+      playerId: "2",
       cardIds: ["dev_a", "dev_b"],
       resumeDrawCount: 0,
       resumeBehavior: "none"
     }];
-    const startingMaterials = G.players["0"].resources.materials ?? 0;
+    const startingMaterials = G.players["1"].resources.materials ?? 0;
 
-    resolveShortGameDevelopmentExileChoice({ G, ctx: { currentPlayer: "0" } as any }, "dev_b");
+    resolveShortGameDevelopmentExileChoice({ G, ctx: { currentPlayer: "1" } as any }, "dev_b");
     expect(G.pendingChoice).toEqual({
-      playerId: "0",
+      playerId: "1",
       choices: [[{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }]]
     });
     expect(G.pendingShortGameDevelopmentExileChoice).toBeUndefined();
 
-    resolveChoice({ G, ctx: { currentPlayer: "0" } as any }, 0);
+    resolveChoice({ G, ctx: { currentPlayer: "1" } as any }, 0);
 
     expect(G.pendingChoice).toBeUndefined();
-    expect(G.players["0"].resources.materials).toBe(startingMaterials + 1);
+    expect(G.players["1"].resources.materials).toBe(startingMaterials + 1);
     expect(G.pendingShortGameDevelopmentExileChoice).toEqual({
-      playerId: "1",
+      playerId: "2",
       cardIds: ["dev_a", "dev_b"],
       resumeDrawCount: 0,
       resumeBehavior: "none"
@@ -227,15 +227,15 @@ describe("variants",()=>{
         dev_a: nationProgressionCard("dev_a")
       },
       nationDb:{test_nation_sun_coast:shortNation},
-      playerNationIds:{"0":"test_nation_sun_coast","1":"test_nation_sun_coast"}
+      playerNationIds:{"1":"test_nation_sun_coast","2":"test_nation_sun_coast"}
     });
 
-    expect(G.players["0"].discard).toEqual(["n1", "accession"]);
-    expect(G.players["0"].developmentArea).toEqual([]);
-    expect(G.players["0"].exile).toEqual(["dev_a"]);
     expect(G.players["1"].discard).toEqual(["n1", "accession"]);
     expect(G.players["1"].developmentArea).toEqual([]);
     expect(G.players["1"].exile).toEqual(["dev_a"]);
+    expect(G.players["2"].discard).toEqual(["n1", "accession"]);
+    expect(G.players["2"].developmentArea).toEqual([]);
+    expect(G.players["2"].exile).toEqual(["dev_a"]);
     expect(G.pendingShortGameDevelopmentExileChoice).toBeUndefined();
     expect(G.pendingShortGameDevelopmentExileQueue).toBeUndefined();
     expect(G.setupReport?.shortGameNationAdvanced).toBe(4);
@@ -278,17 +278,17 @@ describe("variants",()=>{
           dev_a: nationProgressionCard("dev_a")
         },
         nationDb:{test_nation_sun_coast:shortNation},
-        playerNationIds:{"0":"test_nation_sun_coast","1":"test_nation_sun_coast"},
+        playerNationIds:{"1":"test_nation_sun_coast","2":"test_nation_sun_coast"},
         usePrivateRules:true,
         privateRulesetPath:rulesetPath
       });
 
-      expect(G.players["0"].discard).toEqual(["n1", "accession"]);
-      expect(G.players["0"].developmentArea).toEqual(["dev_a"]);
-      expect(G.players["0"].exile).toEqual([]);
       expect(G.players["1"].discard).toEqual(["n1", "accession"]);
       expect(G.players["1"].developmentArea).toEqual(["dev_a"]);
       expect(G.players["1"].exile).toEqual([]);
+      expect(G.players["2"].discard).toEqual(["n1", "accession"]);
+      expect(G.players["2"].developmentArea).toEqual(["dev_a"]);
+      expect(G.players["2"].exile).toEqual([]);
       expect(G.pendingShortGameDevelopmentExileChoice).toBeUndefined();
       expect(G.pendingShortGameDevelopmentExileQueue).toBeUndefined();
     } finally {
@@ -304,7 +304,7 @@ describe("variants",()=>{
       options:{playerCount:1,mode:"practice",enabledExpansions:[],enabledVariants:[]},
       cardDb:marketCards,
       nationDb:{test_nation_sun_coast:{...nation, startingDeckCardIds:[]}},
-      playerNationIds:{"0":"test_nation_sun_coast"}
+      playerNationIds:{"1":"test_nation_sun_coast"}
     });
 
     expect(G.market).toEqual(["main_1", "main_2", "main_3", "main_4", "main_5"]);
@@ -344,13 +344,13 @@ describe("variants",()=>{
         options:{playerCount:2,mode:"multiplayer",enabledExpansions:[],enabledVariants:["short_game"]},
         cardDb:{},
         nationDb:{test_nation_sun_coast:shortNation},
-        playerNationIds:{"0":"test_nation_sun_coast","1":"test_nation_sun_coast"},
+        playerNationIds:{"1":"test_nation_sun_coast","2":"test_nation_sun_coast"},
         usePrivateRules:true,
         privateRulesetPath:rulesetPath
       });
 
-      expect(G.players["0"].resources.knowledge).toBe(3);
       expect(G.players["1"].resources.knowledge).toBe(3);
+      expect(G.players["2"].resources.knowledge).toBe(3);
     } finally {
       fs.rmSync(rulesetPath, { force:true });
     }
@@ -394,13 +394,13 @@ describe("variants",()=>{
         options:{playerCount:2,mode:"multiplayer",enabledExpansions:["trade_routes"],enabledVariants:["short_game"]},
         cardDb:{},
         nationDb:{test_nation_sun_coast:shortNation},
-        playerNationIds:{"0":"test_nation_sun_coast","1":"test_nation_sun_coast"},
+        playerNationIds:{"1":"test_nation_sun_coast","2":"test_nation_sun_coast"},
         usePrivateRules:true,
         privateRulesetPath:rulesetPath
       });
 
-      expect(G.players["0"].resources).toMatchObject({ materials:0, influence:0, knowledge:0, goods:0, unrest:1 });
       expect(G.players["1"].resources).toMatchObject({ materials:0, influence:0, knowledge:0, goods:0, unrest:1 });
+      expect(G.players["2"].resources).toMatchObject({ materials:0, influence:0, knowledge:0, goods:0, unrest:1 });
     } finally {
       fs.rmSync(rulesetPath, { force:true });
     }
@@ -441,17 +441,17 @@ describe("variants",()=>{
           dev_remove: nationProgressionCard("dev_remove")
         },
         nationDb:{test_nation_sun_coast:shortNation},
-        playerNationIds:{"0":"test_nation_sun_coast","1":"test_nation_sun_coast"},
+        playerNationIds:{"1":"test_nation_sun_coast","2":"test_nation_sun_coast"},
         usePrivateRules:true,
         privateRulesetPath:rulesetPath
       });
 
-      expect(G.players["0"].discard).toEqual(["dev_keep"]);
-      expect(G.players["0"].exile).toEqual(["dev_remove"]);
-      expect(G.players["0"].developmentArea).toEqual([]);
       expect(G.players["1"].discard).toEqual(["dev_keep"]);
       expect(G.players["1"].exile).toEqual(["dev_remove"]);
       expect(G.players["1"].developmentArea).toEqual([]);
+      expect(G.players["2"].discard).toEqual(["dev_keep"]);
+      expect(G.players["2"].exile).toEqual(["dev_remove"]);
+      expect(G.players["2"].developmentArea).toEqual([]);
     } finally {
       fs.rmSync(rulesetPath, { force:true });
     }
@@ -493,15 +493,15 @@ describe("variants",()=>{
           other_card: nationProgressionCard("other_card")
         },
         nationDb:{test_nation_sun_coast:shortNation},
-        playerNationIds:{"0":"test_nation_sun_coast","1":"test_nation_sun_coast"},
+        playerNationIds:{"1":"test_nation_sun_coast","2":"test_nation_sun_coast"},
         usePrivateRules:true,
         privateRulesetPath:rulesetPath
       });
 
-      expect(G.players["0"].discard).toEqual(["winter_card", "summer_card"]);
-      expect(G.players["0"].developmentArea).toEqual(["other_card"]);
       expect(G.players["1"].discard).toEqual(["winter_card", "summer_card"]);
       expect(G.players["1"].developmentArea).toEqual(["other_card"]);
+      expect(G.players["2"].discard).toEqual(["winter_card", "summer_card"]);
+      expect(G.players["2"].developmentArea).toEqual(["other_card"]);
     } finally {
       fs.rmSync(rulesetPath, { force:true });
     }
@@ -542,16 +542,16 @@ describe("variants",()=>{
           n3: nationProgressionCard("n3")
         },
         nationDb:{test_nation_sun_coast:shortNation},
-        playerNationIds:{"0":"test_nation_sun_coast","1":"test_nation_sun_coast"},
+        playerNationIds:{"1":"test_nation_sun_coast","2":"test_nation_sun_coast"},
         usePrivateRules:true,
         privateRulesetPath:rulesetPath
       });
 
-      expect(G.players["0"].discard).toEqual(["n2"]);
-      expect(G.players["0"].sideAreas?.mana_track).toEqual(["n1"]);
-      expect(G.players["0"].nationDeck).toEqual(["n3"]);
       expect(G.players["1"].discard).toEqual(["n2"]);
       expect(G.players["1"].sideAreas?.mana_track).toEqual(["n1"]);
+      expect(G.players["1"].nationDeck).toEqual(["n3"]);
+      expect(G.players["2"].discard).toEqual(["n2"]);
+      expect(G.players["2"].sideAreas?.mana_track).toEqual(["n1"]);
       expect(G.setupReport?.shortGameNationAdvanced).toBe(4);
     } finally {
       fs.rmSync(rulesetPath, { force:true });
@@ -593,13 +593,13 @@ describe("variants",()=>{
           n3: nationProgressionCard("n3")
         },
         nationDb:{test_nation_sun_coast:shortNation},
-        playerNationIds:{"0":"test_nation_sun_coast","1":"test_nation_sun_coast"},
+        playerNationIds:{"1":"test_nation_sun_coast","2":"test_nation_sun_coast"},
         usePrivateRules:true,
         privateRulesetPath:rulesetPath,
         randomSeed:"a"
       });
 
-      for (const playerId of ["0","1"]) {
+      for (const playerId of ["1","2"]) {
         const p = G.players[playerId];
         const sideCards = p.sideAreas?.mana_track ?? [];
         const advancedCards = [...p.discard, ...sideCards];
@@ -660,21 +660,21 @@ describe("variants",()=>{
           n4: nationProgressionCard("n4")
         },
         nationDb:{test_nation_sun_coast:shortNation},
-        playerNationIds:{"0":"test_nation_sun_coast","1":"test_nation_sun_coast"},
+        playerNationIds:{"1":"test_nation_sun_coast","2":"test_nation_sun_coast"},
         usePrivateRules:true,
         privateRulesetPath:rulesetPath
       });
 
-      expect(G.players["0"].discard).toEqual(["n1", "n2"]);
-      expect(G.players["0"].hand).toEqual([]);
-      expect(G.players["0"].deck).toEqual(["n3"]);
-      expect(G.players["0"].nationDeck).toEqual(["n4"]);
-      expect(G.players["0"].developmentArea).toEqual(["graal_card"]);
-      expect(G.cardStates?.court_card?.garrisonedCardIds).toEqual(["quest_card"]);
       expect(G.players["1"].discard).toEqual(["n1", "n2"]);
       expect(G.players["1"].hand).toEqual([]);
       expect(G.players["1"].deck).toEqual(["n3"]);
+      expect(G.players["1"].nationDeck).toEqual(["n4"]);
       expect(G.players["1"].developmentArea).toEqual(["graal_card"]);
+      expect(G.cardStates?.court_card?.garrisonedCardIds).toEqual(["quest_card"]);
+      expect(G.players["2"].discard).toEqual(["n1", "n2"]);
+      expect(G.players["2"].hand).toEqual([]);
+      expect(G.players["2"].deck).toEqual(["n3"]);
+      expect(G.players["2"].developmentArea).toEqual(["graal_card"]);
       expect(G.setupReport?.shortGameNationAdvanced).toBe(4);
     } finally {
       fs.rmSync(rulesetPath, { force:true });
@@ -726,17 +726,17 @@ describe("variants",()=>{
           n3: nationProgressionCard("n3")
         },
         nationDb:{test_nation_sun_coast:shortNation},
-        playerNationIds:{"0":"test_nation_sun_coast","1":"test_nation_sun_coast"},
+        playerNationIds:{"1":"test_nation_sun_coast","2":"test_nation_sun_coast"},
         usePrivateRules:true,
         privateRulesetPath:rulesetPath
       });
 
-      expect(G.players["0"].hand).toEqual(starterIds);
-      expect(G.players["0"].deck).toEqual(["n3"]);
-      expect(G.players["0"].discard).toEqual(["n1", "n2"]);
       expect(G.players["1"].hand).toEqual(starterIds);
       expect(G.players["1"].deck).toEqual(["n3"]);
       expect(G.players["1"].discard).toEqual(["n1", "n2"]);
+      expect(G.players["2"].hand).toEqual(starterIds);
+      expect(G.players["2"].deck).toEqual(["n3"]);
+      expect(G.players["2"].discard).toEqual(["n1", "n2"]);
     } finally {
       fs.rmSync(rulesetPath, { force:true });
     }
@@ -786,21 +786,21 @@ describe("variants",()=>{
           accession: { ...nationProgressionCard("accession"), cardType: "accession", tags: ["accession"] }
         },
         nationDb:{test_nation_sun_coast:shortNation},
-        playerNationIds:{"0":"test_nation_sun_coast","1":"test_nation_sun_coast"},
+        playerNationIds:{"1":"test_nation_sun_coast","2":"test_nation_sun_coast"},
         usePrivateRules:true,
         privateRulesetPath:rulesetPath
       });
 
-      expect(G.players["0"].discard).toEqual(["n1", "n2"]);
-      expect(G.players["0"].hand).toEqual([]);
-      expect(G.players["0"].deck).toEqual(["accession"]);
-      expect(G.players["0"].nationDeck).toEqual([]);
-      expect(G.players["0"].accessionCardId).toBeUndefined();
       expect(G.players["1"].discard).toEqual(["n1", "n2"]);
       expect(G.players["1"].hand).toEqual([]);
       expect(G.players["1"].deck).toEqual(["accession"]);
       expect(G.players["1"].nationDeck).toEqual([]);
       expect(G.players["1"].accessionCardId).toBeUndefined();
+      expect(G.players["2"].discard).toEqual(["n1", "n2"]);
+      expect(G.players["2"].hand).toEqual([]);
+      expect(G.players["2"].deck).toEqual(["accession"]);
+      expect(G.players["2"].nationDeck).toEqual([]);
+      expect(G.players["2"].accessionCardId).toBeUndefined();
     } finally {
       fs.rmSync(rulesetPath, { force:true });
     }
@@ -850,18 +850,18 @@ describe("variants",()=>{
           accession: { ...nationProgressionCard("accession"), cardType: "accession", tags: ["accession"] }
         },
         nationDb:{test_nation_sun_coast:shortNation},
-        playerNationIds:{"0":"test_nation_sun_coast","1":"test_nation_sun_coast"},
+        playerNationIds:{"1":"test_nation_sun_coast","2":"test_nation_sun_coast"},
         usePrivateRules:true,
         privateRulesetPath:rulesetPath
       });
 
       expect(G.pendingShortGameDevelopmentExileChoice).toBeUndefined();
       expect(G.pendingShortGameDevelopmentExileQueue).toBeUndefined();
-      expect(G.players["0"].discard).toEqual(["n1", "accession"]);
-      expect(G.players["0"].developmentArea).toEqual(["graal_card"]);
-      expect(G.cardStates?.court_card?.garrisonedCardIds).toEqual(["quest_card"]);
       expect(G.players["1"].discard).toEqual(["n1", "accession"]);
       expect(G.players["1"].developmentArea).toEqual(["graal_card"]);
+      expect(G.cardStates?.court_card?.garrisonedCardIds).toEqual(["quest_card"]);
+      expect(G.players["2"].discard).toEqual(["n1", "accession"]);
+      expect(G.players["2"].developmentArea).toEqual(["graal_card"]);
     } finally {
       fs.rmSync(rulesetPath, { force:true });
     }

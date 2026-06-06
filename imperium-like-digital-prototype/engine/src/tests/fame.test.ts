@@ -36,9 +36,9 @@ describe("Fame deck", () => {
     };
 
     expect(peekFameCards(G, 3)).toEqual(["fame_top", "fame_second"]);
-    expect(takeFameCard(G, "0")).toBe("fame_top");
+    expect(takeFameCard(G, "1")).toBe("fame_top");
     expect(G.fameDeck.available).toEqual(["fame_second"]);
-    expect(G.players["0"].discard).toContain("fame_top");
+    expect(G.players["1"].discard).toContain("fame_top");
     expect(G.scoring).toBeUndefined();
   });
 
@@ -66,14 +66,14 @@ describe("Fame deck", () => {
     };
 
     expect(peekFameCards(G, 1)).toEqual(["fame_bottom"]);
-    expect(takeFameCard(G, "0")).toBe("fame_bottom");
+    expect(takeFameCard(G, "1")).toBe("fame_bottom");
     expect(G.fameDeck).toEqual({
       available: [],
       specialBottomCardId: "fame_bottom",
       specialBottomSide: "B",
-      resolvedSpecialByPlayer: { "0": true }
+      resolvedSpecialByPlayer: { "1": true }
     });
-    expect(G.players["0"].discard).not.toContain("fame_bottom");
+    expect(G.players["1"].discard).not.toContain("fame_bottom");
     expect(G.scoring).toBeUndefined();
   });
 
@@ -89,8 +89,8 @@ describe("Fame deck", () => {
       tags: ["barbarian"],
       effects: []
     };
-    G.players["0"].hand = [];
-    G.players["0"].stateArea = ["uncivilized_state"];
+    G.players["1"].hand = [];
+    G.players["1"].stateArea = ["uncivilized_state"];
     G.fameDeck = {
       available: [],
       specialBottomCardId: "king_of_kings",
@@ -98,16 +98,16 @@ describe("Fame deck", () => {
       resolvedSpecialByPlayer: {}
     };
 
-    expect(drawFameCard(G, "0")).toBe("king_of_kings");
+    expect(drawFameCard(G, "1")).toBe("king_of_kings");
 
-    expect(G.players["0"].resources.knowledge).toBe(6);
-    expect(G.players["0"].hand).toEqual([]);
-    expect(G.players["0"].discard).not.toContain("king_of_kings");
+    expect(G.players["1"].resources.knowledge).toBe(6);
+    expect(G.players["1"].hand).toEqual([]);
+    expect(G.players["1"].discard).not.toContain("king_of_kings");
     expect(G.fameDeck).toEqual({
       available: [],
       specialBottomCardId: "king_of_kings",
       specialBottomSide: "B",
-      resolvedSpecialByPlayer: { "0": true }
+      resolvedSpecialByPlayer: { "1": true }
     });
     expect(G.scoring).toBeUndefined();
   });
@@ -136,7 +136,7 @@ describe("Fame deck", () => {
       tags: ["barbarian"],
       effects: []
     };
-    G.players["0"].stateArea = ["uncivilized_state"];
+    G.players["1"].stateArea = ["uncivilized_state"];
     G.fameDeck = {
       available: [],
       specialBottomCardId: "king_of_kings",
@@ -144,9 +144,9 @@ describe("Fame deck", () => {
       resolvedSpecialByPlayer: {}
     };
 
-    expect(takeFameCard(G, "0")).toBe("king_of_kings");
+    expect(takeFameCard(G, "1")).toBe("king_of_kings");
 
-    expect(G.players["0"].resources.knowledge).toBe(6);
+    expect(G.players["1"].resources.knowledge).toBe(6);
     expect(G.pendingDevelopmentChoice).toBeUndefined();
     expect(G.fameDeck.specialBottomSide).toBe("B");
     expect(G.scoring).toBeUndefined();
@@ -164,25 +164,25 @@ describe("Fame deck", () => {
       tags: ["empire"],
       effects: []
     };
-    G.players["1"].stateArea = ["civilized_state"];
-    G.players["1"].developmentArea = ["test_action_scholars_circle"];
+    G.players["2"].stateArea = ["civilized_state"];
+    G.players["2"].developmentArea = ["test_action_scholars_circle"];
     G.cardDb.test_action_scholars_circle.developmentCost = { materials: 99 };
     G.fameDeck = {
       available: [],
       specialBottomCardId: "king_of_kings",
       specialBottomSide: "B",
-      resolvedSpecialByPlayer: { "0": true }
+      resolvedSpecialByPlayer: { "1": true }
     };
 
-    expect(takeFameCard(G, "1")).toBe("king_of_kings");
+    expect(takeFameCard(G, "2")).toBe("king_of_kings");
 
-    expect(G.players["1"].resources.knowledge).toBe(3);
+    expect(G.players["2"].resources.knowledge).toBe(3);
     expect(G.pendingDevelopmentChoice).toBeUndefined();
-    expect(G.players["1"].developmentArea).toEqual([]);
-    expect(G.players["1"].discard).toContain("test_action_scholars_circle");
+    expect(G.players["2"].developmentArea).toEqual([]);
+    expect(G.players["2"].discard).toContain("test_action_scholars_circle");
     expect(G.scoring).toEqual({
       reason: "development_area_empty",
-      triggeredBy: "1",
+      triggeredBy: "2",
       phase: "finish_current_round"
     });
   });
@@ -199,37 +199,37 @@ describe("Fame deck", () => {
       tags: ["empire"],
       effects: []
     };
-    G.players["1"].stateArea = ["civilized_state"];
-    G.players["1"].developmentArea = ["test_action_scholars_circle", "test_action_foundry_shift"];
-    G.players["1"].deck = [];
-    G.players["1"].discard = ["existing_discard"];
-    G.players["1"].hand = [];
-    G.players["1"].progressionTokens = { nationDeck: 0, developmentArea: 0 };
+    G.players["2"].stateArea = ["civilized_state"];
+    G.players["2"].developmentArea = ["test_action_scholars_circle", "test_action_foundry_shift"];
+    G.players["2"].deck = [];
+    G.players["2"].discard = ["existing_discard"];
+    G.players["2"].hand = [];
+    G.players["2"].progressionTokens = { nationDeck: 0, developmentArea: 0 };
     G.cardDb.test_action_scholars_circle.developmentCost = { materials: 99 };
     G.cardDb.test_action_foundry_shift.developmentCost = { materials: 99 };
     G.fameDeck = {
       available: [],
       specialBottomCardId: "king_of_kings",
       specialBottomSide: "B",
-      resolvedSpecialByPlayer: { "0": true }
+      resolvedSpecialByPlayer: { "1": true }
     };
 
-    expect(takeFameCard(G, "1")).toBe("king_of_kings");
+    expect(takeFameCard(G, "2")).toBe("king_of_kings");
 
     resolveDevelopmentChoice(
-      { G, ctx: { currentPlayer: "1" } as any, random: { Number: () => 0 } as any },
+      { G, ctx: { currentPlayer: "2" } as any, random: { Number: () => 0 } as any },
       "test_action_scholars_circle"
     );
 
     expect(G.pendingDevelopmentChoice).toBeUndefined();
-    expect(G.players["1"].developmentArea).toEqual(["test_action_foundry_shift"]);
-    expect(G.players["1"].discard).toEqual(["existing_discard", "test_action_scholars_circle"]);
-    expect(G.players["1"].deck).toEqual([]);
-    expect(G.players["1"].hand).toEqual([]);
-    expect(G.players["1"].progressionTokens).toEqual({ nationDeck: 0, developmentArea: 0 });
+    expect(G.players["2"].developmentArea).toEqual(["test_action_foundry_shift"]);
+    expect(G.players["2"].discard).toEqual(["existing_discard", "test_action_scholars_circle"]);
+    expect(G.players["2"].deck).toEqual([]);
+    expect(G.players["2"].hand).toEqual([]);
+    expect(G.players["2"].progressionTokens).toEqual({ nationDeck: 0, developmentArea: 0 });
     expect(G.scoring).toEqual({
       reason: "fame_deck_terminal_condition",
-      triggeredBy: "1",
+      triggeredBy: "2",
       phase: "finish_current_round"
     });
   });
@@ -246,8 +246,8 @@ describe("Fame deck", () => {
       tags: ["barbarian", "empire"],
       effects: []
     };
-    G.players["0"].stateArea = ["two_sided_state"];
-    G.players["0"].developmentArea = ["test_action_scholars_circle"];
+    G.players["1"].stateArea = ["two_sided_state"];
+    G.players["1"].developmentArea = ["test_action_scholars_circle"];
     G.cardStates = { two_sided_state: { activeState: "civilized" } };
     G.fameDeck = {
       available: [],
@@ -256,12 +256,12 @@ describe("Fame deck", () => {
       resolvedSpecialByPlayer: {}
     };
 
-    expect(takeFameCard(G, "0")).toBe("king_of_kings");
+    expect(takeFameCard(G, "1")).toBe("king_of_kings");
 
-    expect(G.players["0"].resources.knowledge).toBe(3);
+    expect(G.players["1"].resources.knowledge).toBe(3);
     expect(G.pendingDevelopmentChoice).toBeUndefined();
-    expect(G.players["0"].developmentArea).toEqual([]);
-    expect(G.players["0"].discard).toContain("test_action_scholars_circle");
+    expect(G.players["1"].developmentArea).toEqual([]);
+    expect(G.players["1"].discard).toContain("test_action_scholars_circle");
   });
 
   it("can suppress King of Kings rewards for a ruleset-specific state exception", () => {
@@ -276,12 +276,12 @@ describe("Fame deck", () => {
       tags: ["empire"],
       effects: []
     };
-    G.players["0"].stateArea = ["exception_state"];
-    G.players["0"].resources.knowledge = 0;
-    G.players["0"].developmentArea = ["test_action_scholars_circle"];
+    G.players["1"].stateArea = ["exception_state"];
+    G.players["1"].resources.knowledge = 0;
+    G.players["1"].developmentArea = ["test_action_scholars_circle"];
     G.cardStates = { exception_state: { activeState: "civilized" } };
     G.activeNationRulesets = {
-      "0": {
+      "1": {
         nationId: "reward_exception",
         displayName: "Reward Exception",
         rulesetTags: [],
@@ -308,12 +308,12 @@ describe("Fame deck", () => {
       resolvedSpecialByPlayer: {}
     };
 
-    expect(takeFameCard(G, "0")).toBe("king_of_kings");
+    expect(takeFameCard(G, "1")).toBe("king_of_kings");
 
-    expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.players["1"].resources.knowledge).toBe(0);
     expect(G.pendingDevelopmentChoice).toBeUndefined();
     expect(G.fameDeck.specialBottomSide).toBe("B");
-    expect(G.fameDeck.resolvedSpecialByPlayer).toEqual({ "0": true });
+    expect(G.fameDeck.resolvedSpecialByPlayer).toEqual({ "1": true });
     expect(G.log.map((entry) => entry.message)).toContain("KingOfKingsRewardSuppressed(king_of_kings/civilized)");
   });
 
@@ -323,10 +323,10 @@ describe("Fame deck", () => {
       available: [],
       specialBottomCardId: "fame_bottom",
       specialBottomSide: "B",
-      resolvedSpecialByPlayer: { "0": true }
+      resolvedSpecialByPlayer: { "1": true }
     };
 
-    expect(takeFameCard(G, "0")).toBeUndefined();
+    expect(takeFameCard(G, "1")).toBeUndefined();
     expect(G.fameDeck.specialBottomCardId).toBe("fame_bottom");
     expect(G.fameDeck.specialBottomSide).toBe("B");
     expect(G.scoring).toBeUndefined();
@@ -342,7 +342,7 @@ describe("Fame deck", () => {
       resolvedSpecialByPlayer: {}
     };
 
-    expect(takeFameCard(G, "0")).toBeUndefined();
+    expect(takeFameCard(G, "1")).toBeUndefined();
     expect(G.fameDeck.specialBottomCardId).toBe("fame_bottom");
     expect(G.scoring).toBeUndefined();
   });
@@ -353,19 +353,19 @@ describe("Fame deck", () => {
       available: [],
       specialBottomCardId: "fame_bottom",
       specialBottomSide: "B",
-      resolvedSpecialByPlayer: { "0": true }
+      resolvedSpecialByPlayer: { "1": true }
     };
 
-    expect(takeFameCard(G, "1")).toBe("fame_bottom");
+    expect(takeFameCard(G, "2")).toBe("fame_bottom");
     expect(G.fameDeck).toEqual({
       available: [],
       specialBottomSide: "face_down",
-      resolvedSpecialByPlayer: { "0": true, "1": true }
+      resolvedSpecialByPlayer: { "1": true, "2": true }
     });
-    expect(G.players["1"].discard).not.toContain("fame_bottom");
+    expect(G.players["2"].discard).not.toContain("fame_bottom");
     expect(G.scoring).toEqual({
       reason: "fame_deck_terminal_condition",
-      triggeredBy: "1",
+      triggeredBy: "2",
       phase: "finish_current_round"
     });
   });

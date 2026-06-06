@@ -3,6 +3,7 @@ import type { AccountPublicView } from "../../accountSession";
 
 type AccountPanelProps = {
   account?: AccountPublicView;
+  passwordResetToken?: string;
   statusMessage: string;
   onRegister: (input: { email: string; username: string; password: string }) => void | Promise<void>;
   onSignIn: (input: { login: string; password: string }) => void | Promise<void>;
@@ -30,14 +31,13 @@ function statRecord(label: string, stats: { gamesPlayed: number; wins: number; l
   );
 }
 
-export default function AccountPanel({ account, statusMessage, onRegister, onSignIn, onRequestPasswordReset, onCompletePasswordReset, onChangePassword, onSignOut }: AccountPanelProps) {
+export default function AccountPanel({ account, passwordResetToken, statusMessage, onRegister, onSignIn, onRequestPasswordReset, onCompletePasswordReset, onChangePassword, onSignOut }: AccountPanelProps) {
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [login, setLogin] = useState("");
   const [signInPassword, setSignInPassword] = useState("");
   const [resetEmail, setResetEmail] = useState("");
-  const [resetToken, setResetToken] = useState("");
   const [resetPassword, setResetPassword] = useState("");
   const [resetPasswordConfirmation, setResetPasswordConfirmation] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -114,11 +114,7 @@ export default function AccountPanel({ account, statusMessage, onRegister, onSig
         </label>
         <button type="button" disabled={!resetEmail.trim()} onClick={() => void onRequestPasswordReset({ email: resetEmail })}>Forgot Password</button>
       </div>
-      <div className="online-games-actions">
-        <label className="setup-field">
-          <span>Reset Token or Link</span>
-          <input value={resetToken} onChange={(event: { target: HTMLInputElement }) => setResetToken(event.target.value)} />
-        </label>
+      {passwordResetToken ? <div className="online-games-actions">
         <label className="setup-field">
           <span>New Password</span>
           <input type="password" value={resetPassword} onChange={(event: { target: HTMLInputElement }) => setResetPassword(event.target.value)} />
@@ -127,8 +123,8 @@ export default function AccountPanel({ account, statusMessage, onRegister, onSig
           <span>Confirm New Password</span>
           <input type="password" value={resetPasswordConfirmation} onChange={(event: { target: HTMLInputElement }) => setResetPasswordConfirmation(event.target.value)} />
         </label>
-        <button type="button" disabled={!resetToken.trim() || resetPassword.length < 4 || resetPassword !== resetPasswordConfirmation} onClick={() => void onCompletePasswordReset({ token: resetToken, password: resetPassword, passwordConfirmation: resetPasswordConfirmation })}>Reset Password</button>
-      </div>
+        <button type="button" disabled={resetPassword.length < 4 || resetPassword !== resetPasswordConfirmation} onClick={() => void onCompletePasswordReset({ token: passwordResetToken, password: resetPassword, passwordConfirmation: resetPasswordConfirmation })}>Reset Password</button>
+      </div> : null}
       {statusMessage ? <p className="setup-help">{statusMessage}</p> : null}
     </section>
   );

@@ -137,6 +137,11 @@ export function createAccountMiddleware(options: AccountMiddlewareOptions) {
       return;
     }
 
+    if (ctx.method === "GET" && ctx.path === "/polity/accounts/health") {
+      ctx.body = { ok: true };
+      return;
+    }
+
     if (ctx.method === "POST" && ctx.path === "/polity/accounts/register") {
       const body = await readJSONBody(ctx);
       if (!isRecord(body) || !stringValue(body.email) || !stringValue(body.username) || !stringValue(body.password)) {

@@ -13,6 +13,7 @@ type OnlineGamesProps = {
   matches: ListedMatch[];
   chatMessages?: ChatMessage[];
   account?: AccountPublicView;
+  passwordResetToken?: string;
   accountStatusMessage?: string;
   statusMessage: string;
   onBackToSetup: () => void;
@@ -91,6 +92,7 @@ export default function OnlineGames({
   matches,
   chatMessages = [],
   account,
+  passwordResetToken,
   accountStatusMessage = "",
   statusMessage,
   onBackToSetup,
@@ -167,6 +169,7 @@ export default function OnlineGames({
 
         <AccountPanel
           account={account}
+          passwordResetToken={passwordResetToken}
           statusMessage={accountStatusMessage}
           onRegister={onRegisterAccount}
           onSignIn={onSignInAccount}

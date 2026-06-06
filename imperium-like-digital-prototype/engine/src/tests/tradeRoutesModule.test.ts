@@ -25,11 +25,11 @@ function addScoringUnrest(G: any, counts: Record<string, number>) {
 describe("trade routes module", () => {
   it("enabled adds exhaust token", () => {
     const G = createInitialGameState({ options: { playerCount:2, mode:"multiplayer", enabledExpansions:["trade_routes"], enabledVariants:[] } });
-    expect(G.players["0"].exhaustTokensBase).toBeGreaterThan(1);
+    expect(G.players["1"].exhaustTokensBase).toBeGreaterThan(1);
   });
   it("trade op logs ignore when disabled", () => {
     const G = createInitialGameState({ options: { playerCount:2, mode:"multiplayer", enabledExpansions:[], enabledVariants:[] } });
-    runEffects({ G, playerId:"0", enabledExpansions:[] as any }, [{ trigger:"on_play", op:"trade" } as any]);
+    runEffects({ G, playerId:"1", enabledExpansions:[] as any }, [{ trigger:"on_play", op:"trade" } as any]);
     expect(G.log.at(-1)?.message).toContain("Ignored trade");
   });
 
@@ -45,21 +45,21 @@ describe("trade routes module", () => {
       tags: [],
       effects: [{ trigger: "on_play", op: "profit", destination: "history", effects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }] } as any]
     };
-    G.players["0"].playArea = ["completed_route"];
-    G.players["0"].actionsRemaining = 1;
-    G.players["0"].actionTokensAvailable = 1;
-    G.players["0"].resources.goods = 0;
-    G.players["0"].resources.knowledge = 0;
+    G.players["1"].playArea = ["completed_route"];
+    G.players["1"].actionsRemaining = 1;
+    G.players["1"].actionTokensAvailable = 1;
+    G.players["1"].resources.goods = 0;
+    G.players["1"].resources.knowledge = 0;
     G.cardStates = { completed_route: { resources: { goods: 3 } } };
 
-    profitCard({ G, ctx: { currentPlayer: "0" } as any }, "completed_route");
+    profitCard({ G, ctx: { currentPlayer: "1" } as any }, "completed_route");
 
-    expect(G.players["0"].actionsRemaining).toBe(1);
-    expect(G.players["0"].actionTokensAvailable).toBe(1);
-    expect(G.players["0"].playArea).toEqual(["completed_route"]);
-    expect(G.players["0"].history).not.toContain("completed_route");
-    expect(G.players["0"].resources.goods).toBe(0);
-    expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.players["1"].actionsRemaining).toBe(1);
+    expect(G.players["1"].actionTokensAvailable).toBe(1);
+    expect(G.players["1"].playArea).toEqual(["completed_route"]);
+    expect(G.players["1"].history).not.toContain("completed_route");
+    expect(G.players["1"].resources.goods).toBe(0);
+    expect(G.players["1"].resources.knowledge).toBe(0);
     expect(G.cardStates?.completed_route?.resources?.goods).toBe(3);
     expect(G.log.at(-1)?.message).toBe("InvalidMove(profitCard): trade_routes_disabled");
   });
@@ -76,17 +76,17 @@ describe("trade routes module", () => {
       tags: [],
       effects: [{ trigger: "on_play", op: "commerce", effects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }] } as any]
     };
-    G.players["0"].hand = ["route"];
-    G.players["0"].playArea = [];
-    G.players["0"].discard = [];
-    G.players["0"].resources.materials = 0;
-    G.players["0"].actionsRemaining = 1;
+    G.players["1"].hand = ["route"];
+    G.players["1"].playArea = [];
+    G.players["1"].discard = [];
+    G.players["1"].resources.materials = 0;
+    G.players["1"].actionsRemaining = 1;
 
-    playCard({ G, ctx: { currentPlayer: "0" } as any }, "route");
+    playCard({ G, ctx: { currentPlayer: "1" } as any }, "route");
 
-    expect(G.players["0"].playArea).toContain("route");
-    expect(G.players["0"].discard).not.toContain("route");
-    expect(G.players["0"].resources.materials).toBe(1);
+    expect(G.players["1"].playArea).toContain("route");
+    expect(G.players["1"].discard).not.toContain("route");
+    expect(G.players["1"].resources.materials).toBe(1);
   });
 
   it("does not play Profit-only text as a normal hand action", () => {
@@ -102,17 +102,17 @@ describe("trade routes module", () => {
       tags: [],
       effects: [{ trigger: "on_play", op: "profit", effects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }] } as any]
     };
-    G.players["0"].hand = [card];
-    G.players["0"].actionsRemaining = 1;
-    G.players["0"].actionTokensAvailable = 1;
+    G.players["1"].hand = [card];
+    G.players["1"].actionsRemaining = 1;
+    G.players["1"].actionTokensAvailable = 1;
 
-    playCard({ G, ctx: { currentPlayer: "0" } as any }, card);
+    playCard({ G, ctx: { currentPlayer: "1" } as any }, card);
 
-    expect(G.players["0"].hand).toEqual([card]);
-    expect(G.players["0"].discard).not.toContain(card);
-    expect(G.players["0"].resources.knowledge).toBe(0);
-    expect(G.players["0"].actionsRemaining).toBe(1);
-    expect(G.players["0"].actionTokensAvailable).toBe(1);
+    expect(G.players["1"].hand).toEqual([card]);
+    expect(G.players["1"].discard).not.toContain(card);
+    expect(G.players["1"].resources.knowledge).toBe(0);
+    expect(G.players["1"].actionsRemaining).toBe(1);
+    expect(G.players["1"].actionTokensAvailable).toBe(1);
     expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): no_resolvable_on_play_effects(${card})`);
   });
 
@@ -128,17 +128,17 @@ describe("trade routes module", () => {
       tags: [],
       effects: []
     };
-    G.players["0"].playArea = ["incomplete_route"];
+    G.players["1"].playArea = ["incomplete_route"];
     G.cardStates = { incomplete_route: { resources: { goods: 2 } } };
 
-    runEffects({ G, playerId:"0", selfCardId:"incomplete_route", enabledExpansions:["trade_routes"] }, [{
+    runEffects({ G, playerId:"1", selfCardId:"incomplete_route", enabledExpansions:["trade_routes"] }, [{
       trigger: "on_play",
       op: "optional",
       effects: [{ trigger: "on_play", op: "profit", effects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }] } as any]
     } as any]);
 
     expect(G.pendingChoice).toEqual({
-      playerId: "0",
+      playerId: "1",
       sourceCardId: "incomplete_route",
       choices: [[]]
     });
@@ -147,14 +147,14 @@ describe("trade routes module", () => {
 
   it("trade spends Goods to gain Progress when enabled and no route is selected", () => {
     const G = createInitialGameState({ options: { playerCount:2, mode:"multiplayer", enabledExpansions:["trade_routes"], enabledVariants:[] } });
-    G.players["0"].resources.goods = 1;
-    G.players["0"].resources.knowledge = 0;
+    G.players["1"].resources.goods = 1;
+    G.players["1"].resources.knowledge = 0;
 
-    const resolved = runEffects({ G, playerId:"0", enabledExpansions:["trade_routes"] }, [{ trigger:"on_play", op:"trade" } as any]);
+    const resolved = runEffects({ G, playerId:"1", enabledExpansions:["trade_routes"] }, [{ trigger:"on_play", op:"trade" } as any]);
 
     expect(resolved).toBe(true);
-    expect(G.players["0"].resources.goods).toBe(0);
-    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["1"].resources.goods).toBe(0);
+    expect(G.players["1"].resources.knowledge).toBe(1);
     expect(G.log.some((entry) => entry.message === "UnsupportedEffectOp(trade)")).toBe(false);
   });
 
@@ -186,49 +186,49 @@ describe("trade routes module", () => {
         reactive: { trigger: "after_gain_resource", resource: "knowledge" }
       } as any]
     };
-    G.players["0"].playArea = ["trade_source", "progress_reactive_exhaust"];
-    G.players["0"].resources.goods = 1;
-    G.players["0"].resources.knowledge = 0;
-    G.players["0"].resources.materials = 0;
-    G.players["0"].resources.influence = 0;
-    G.players["0"].exhaustTokensAvailable = 1;
+    G.players["1"].playArea = ["trade_source", "progress_reactive_exhaust"];
+    G.players["1"].resources.goods = 1;
+    G.players["1"].resources.knowledge = 0;
+    G.players["1"].resources.materials = 0;
+    G.players["1"].resources.influence = 0;
+    G.players["1"].exhaustTokensAvailable = 1;
 
-    const resolved = runEffects({ G, playerId:"0", selfCardId: "trade_source", enabledExpansions:["trade_routes"] }, [
+    const resolved = runEffects({ G, playerId:"1", selfCardId: "trade_source", enabledExpansions:["trade_routes"] }, [
       { trigger:"on_play", op:"trade" } as any,
       { trigger:"on_play", op:"gain_resource", resource:"materials", amount: 2 } as any
     ]);
 
     expect(resolved).toBe(true);
-    expect(G.players["0"].resources.goods).toBe(0);
-    expect(G.players["0"].resources.knowledge).toBe(1);
-    expect(G.players["0"].resources.materials).toBe(0);
+    expect(G.players["1"].resources.goods).toBe(0);
+    expect(G.players["1"].resources.knowledge).toBe(1);
+    expect(G.players["1"].resources.materials).toBe(0);
     expect(G.pendingReactiveExhaustChoice).toMatchObject({
-      playerId: "0",
+      playerId: "1",
       cardIds: ["progress_reactive_exhaust"],
-      resolvingPlayerId: "0",
+      resolvingPlayerId: "1",
       sourceCardId: "trade_source",
       trigger: "after_gain_resource",
       resource: "knowledge"
     });
 
-    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "0" } as any }, "progress_reactive_exhaust");
+    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "1" } as any }, "progress_reactive_exhaust");
 
     expect(G.pendingReactiveExhaustChoice).toBeUndefined();
-    expect(G.players["0"].resources.influence).toBe(1);
-    expect(G.players["0"].resources.materials).toBe(2);
+    expect(G.players["1"].resources.influence).toBe(1);
+    expect(G.players["1"].resources.materials).toBe(2);
   });
 
   it("trade does not spend Goods when Progress supply makes fallback conversion impossible", () => {
     const G = createInitialGameState({ options: { playerCount:2, mode:"multiplayer", enabledExpansions:["trade_routes"], enabledVariants:[] } });
-    G.players["0"].resources.goods = 1;
-    G.players["0"].resources.knowledge = 0;
+    G.players["1"].resources.goods = 1;
+    G.players["1"].resources.knowledge = 0;
     G.resourceSupply = { knowledge: 0 };
 
-    const resolved = runEffects({ G, playerId:"0", enabledExpansions:["trade_routes"] }, [{ trigger:"on_play", op:"trade" } as any]);
+    const resolved = runEffects({ G, playerId:"1", enabledExpansions:["trade_routes"] }, [{ trigger:"on_play", op:"trade" } as any]);
 
     expect(resolved).toBe(false);
-    expect(G.players["0"].resources.goods).toBe(1);
-    expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.players["1"].resources.goods).toBe(1);
+    expect(G.players["1"].resources.knowledge).toBe(0);
   });
 
   it("pauses after a Trade Goods-for-Progress fallback for reactive Exhaust before later text", () => {
@@ -259,52 +259,52 @@ describe("trade routes module", () => {
         reactive: { trigger: "after_gain_resource", resource: "knowledge" }
       } as any]
     };
-    G.players["0"].playArea = ["trade_source", "progress_reactive_exhaust"];
-    G.players["0"].resources.goods = 1;
-    G.players["0"].resources.knowledge = 0;
-    G.players["0"].resources.materials = 0;
-    G.players["0"].resources.influence = 0;
-    G.players["0"].exhaustTokensAvailable = 1;
+    G.players["1"].playArea = ["trade_source", "progress_reactive_exhaust"];
+    G.players["1"].resources.goods = 1;
+    G.players["1"].resources.knowledge = 0;
+    G.players["1"].resources.materials = 0;
+    G.players["1"].resources.influence = 0;
+    G.players["1"].exhaustTokensAvailable = 1;
     G.pendingTradeChoice = {
-      playerId: "0",
+      playerId: "1",
       sourceCardId: "trade_source",
       routeCardIds: [],
       allowGoodsForProgress: true,
       resumeEffects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 2 } as any]
     };
 
-    resolveTradeChoice({ G, ctx: { currentPlayer: "0" } as any });
+    resolveTradeChoice({ G, ctx: { currentPlayer: "1" } as any });
 
     expect(G.pendingTradeChoice).toBeUndefined();
-    expect(G.players["0"].resources.goods).toBe(0);
-    expect(G.players["0"].resources.knowledge).toBe(1);
-    expect(G.players["0"].resources.materials).toBe(0);
+    expect(G.players["1"].resources.goods).toBe(0);
+    expect(G.players["1"].resources.knowledge).toBe(1);
+    expect(G.players["1"].resources.materials).toBe(0);
     expect(G.pendingReactiveExhaustChoice).toMatchObject({
-      playerId: "0",
+      playerId: "1",
       cardIds: ["progress_reactive_exhaust"],
-      resolvingPlayerId: "0",
+      resolvingPlayerId: "1",
       sourceCardId: "trade_source",
       trigger: "after_gain_resource",
       resource: "knowledge"
     });
 
-    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "0" } as any }, "progress_reactive_exhaust");
+    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "1" } as any }, "progress_reactive_exhaust");
 
     expect(G.pendingReactiveExhaustChoice).toBeUndefined();
-    expect(G.players["0"].resources.influence).toBe(1);
-    expect(G.players["0"].resources.materials).toBe(2);
+    expect(G.players["1"].resources.influence).toBe(1);
+    expect(G.players["1"].resources.materials).toBe(2);
   });
 
   it("trade effects fall back to the game options expansion context", () => {
     const G = createInitialGameState({ options: { playerCount:2, mode:"multiplayer", enabledExpansions:["trade_routes"], enabledVariants:[] } });
-    G.players["0"].resources.goods = 1;
-    G.players["0"].resources.knowledge = 0;
+    G.players["1"].resources.goods = 1;
+    G.players["1"].resources.knowledge = 0;
 
-    const resolved = runEffects({ G, playerId:"0" }, [{ trigger:"on_play", op:"trade" } as any]);
+    const resolved = runEffects({ G, playerId:"1" }, [{ trigger:"on_play", op:"trade" } as any]);
 
     expect(resolved).toBe(true);
-    expect(G.players["0"].resources.goods).toBe(0);
-    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["1"].resources.goods).toBe(0);
+    expect(G.players["1"].resources.knowledge).toBe(1);
     expect(G.log.some((entry) => entry.message === "Ignored trade because trade_routes is disabled.")).toBe(false);
   });
 
@@ -320,15 +320,15 @@ describe("trade routes module", () => {
       tags: [],
       effects: [{ trigger: "on_play", op: "commerce", effects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 2 }] } as any]
     };
-    G.players["0"].playArea = ["own_route"];
-    G.players["0"].resources.goods = 1;
-    G.players["0"].resources.materials = 0;
+    G.players["1"].playArea = ["own_route"];
+    G.players["1"].resources.goods = 1;
+    G.players["1"].resources.materials = 0;
 
-    const resolved = runEffects({ G, playerId:"0", enabledExpansions:["trade_routes"] }, [{ trigger:"on_play", op:"trade" } as any]);
+    const resolved = runEffects({ G, playerId:"1", enabledExpansions:["trade_routes"] }, [{ trigger:"on_play", op:"trade" } as any]);
 
     expect(resolved).toBe(true);
-    expect(G.pendingTradeChoice).toEqual({ playerId: "0", routeCardIds: ["own_route"], allowGoodsForProgress: true });
-    expect(G.players["0"].resources.goods).toBe(1);
+    expect(G.pendingTradeChoice).toEqual({ playerId: "1", routeCardIds: ["own_route"], allowGoodsForProgress: true });
+    expect(G.players["1"].resources.goods).toBe(1);
     expect(G.cardStates?.own_route?.resources?.goods).toBeUndefined();
   });
 
@@ -344,16 +344,16 @@ describe("trade routes module", () => {
       tags: ["suit:trade_route"],
       effects: [{ trigger: "on_play", op: "commerce", effects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 2 }] } as any]
     };
-    G.players["0"].playArea = ["imported_route"];
-    G.players["0"].resources.goods = 1;
-    G.players["0"].resources.knowledge = 0;
+    G.players["1"].playArea = ["imported_route"];
+    G.players["1"].resources.goods = 1;
+    G.players["1"].resources.knowledge = 0;
 
-    const resolved = runEffects({ G, playerId:"0", enabledExpansions:["trade_routes"] }, [{ trigger:"on_play", op:"trade" } as any]);
+    const resolved = runEffects({ G, playerId:"1", enabledExpansions:["trade_routes"] }, [{ trigger:"on_play", op:"trade" } as any]);
 
     expect(resolved).toBe(true);
-    expect(G.pendingTradeChoice).toEqual({ playerId: "0", routeCardIds: ["imported_route"], allowGoodsForProgress: true });
-    expect(G.players["0"].resources.goods).toBe(1);
-    expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.pendingTradeChoice).toEqual({ playerId: "1", routeCardIds: ["imported_route"], allowGoodsForProgress: true });
+    expect(G.players["1"].resources.goods).toBe(1);
+    expect(G.players["1"].resources.knowledge).toBe(0);
     expect(G.cardStates?.imported_route?.resources?.goods).toBeUndefined();
   });
 
@@ -369,23 +369,23 @@ describe("trade routes module", () => {
       tags: [],
       effects: [{ trigger: "on_play", op: "commerce", effects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 2 }] } as any]
     };
-    G.players["1"].playArea = ["opponent_route"];
-    G.players["0"].resources.goods = 0;
-    G.players["0"].resources.knowledge = 0;
-    G.players["0"].resources.materials = 0;
-    G.players["0"].resources.influence = 0;
+    G.players["2"].playArea = ["opponent_route"];
+    G.players["1"].resources.goods = 0;
+    G.players["1"].resources.knowledge = 0;
+    G.players["1"].resources.materials = 0;
+    G.players["1"].resources.influence = 0;
 
-    const resolved = runEffects({ G, playerId:"0", enabledExpansions:["trade_routes"] }, [
+    const resolved = runEffects({ G, playerId:"1", enabledExpansions:["trade_routes"] }, [
       { trigger:"on_play", op:"trade" } as any,
       { trigger:"on_play", op:"gain_resource", resource:"influence", amount: 1 } as any
     ]);
 
     expect(resolved).toBe(true);
     expect(G.pendingTradeChoice).toBeUndefined();
-    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["1"].resources.knowledge).toBe(1);
     expect(G.cardStates?.opponent_route?.resources?.goods).toBe(1);
-    expect(G.players["0"].resources.materials).toBe(2);
-    expect(G.players["0"].resources.influence).toBe(1);
+    expect(G.players["1"].resources.materials).toBe(2);
+    expect(G.players["1"].resources.influence).toBe(1);
   });
 
   it("resolving a Trade route choice places Goods on that route and resolves Commerce", () => {
@@ -400,17 +400,17 @@ describe("trade routes module", () => {
       tags: [],
       effects: [{ trigger: "on_play", op: "commerce", effects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 2 }] } as any]
     };
-    G.players["0"].playArea = ["own_route"];
-    G.players["0"].resources.goods = 1;
-    G.players["0"].resources.materials = 0;
-    G.pendingTradeChoice = { playerId: "0", routeCardIds: ["own_route"], allowGoodsForProgress: true };
+    G.players["1"].playArea = ["own_route"];
+    G.players["1"].resources.goods = 1;
+    G.players["1"].resources.materials = 0;
+    G.pendingTradeChoice = { playerId: "1", routeCardIds: ["own_route"], allowGoodsForProgress: true };
 
-    resolveTradeChoice({ G, ctx: { currentPlayer: "0" } as any }, "own_route");
+    resolveTradeChoice({ G, ctx: { currentPlayer: "1" } as any }, "own_route");
 
     expect(G.pendingTradeChoice).toBeUndefined();
-    expect(G.players["0"].resources.goods).toBe(0);
+    expect(G.players["1"].resources.goods).toBe(0);
     expect(G.cardStates?.own_route?.resources?.goods).toBe(1);
-    expect(G.players["0"].resources.materials).toBe(2);
+    expect(G.players["1"].resources.materials).toBe(2);
   });
 
   it("keeps a Trade route choice pending when its Commerce effects fail", () => {
@@ -425,15 +425,15 @@ describe("trade routes module", () => {
       tags: [],
       effects: [{ trigger: "on_play", op: "commerce", effects: [{ trigger: "on_play", op: "spend_resource", resource: "materials", amount: 1 }] } as any]
     };
-    G.players["0"].playArea = ["own_route"];
-    G.players["0"].resources.goods = 1;
-    G.players["0"].resources.materials = 0;
-    G.pendingTradeChoice = { playerId: "0", routeCardIds: ["own_route"], allowGoodsForProgress: true };
+    G.players["1"].playArea = ["own_route"];
+    G.players["1"].resources.goods = 1;
+    G.players["1"].resources.materials = 0;
+    G.pendingTradeChoice = { playerId: "1", routeCardIds: ["own_route"], allowGoodsForProgress: true };
 
-    resolveTradeChoice({ G, ctx: { currentPlayer: "0" } as any }, "own_route");
+    resolveTradeChoice({ G, ctx: { currentPlayer: "1" } as any }, "own_route");
 
-    expect(G.pendingTradeChoice).toEqual({ playerId: "0", routeCardIds: ["own_route"], allowGoodsForProgress: true });
-    expect(G.players["0"].resources.goods).toBe(1);
+    expect(G.pendingTradeChoice).toEqual({ playerId: "1", routeCardIds: ["own_route"], allowGoodsForProgress: true });
+    expect(G.players["1"].resources.goods).toBe(1);
     expect(G.cardStates?.own_route?.resources?.goods).toBeUndefined();
     expect(G.log.at(-1)?.message).toBe("InvalidMove(resolveTradeChoice): trade_choice_failed(own_route)");
   });
@@ -450,21 +450,21 @@ describe("trade routes module", () => {
       tags: [],
       effects: [{ trigger: "on_play", op: "commerce", effects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 2 }] } as any]
     };
-    G.players["1"].playArea = ["opponent_route"];
-    G.players["0"].resources.goods = 0;
-    G.players["0"].resources.knowledge = 0;
-    G.players["0"].resources.materials = 0;
+    G.players["2"].playArea = ["opponent_route"];
+    G.players["1"].resources.goods = 0;
+    G.players["1"].resources.knowledge = 0;
     G.players["1"].resources.materials = 0;
-    G.pendingTradeChoice = { playerId: "0", routeCardIds: ["opponent_route"], allowGoodsForProgress: false };
+    G.players["2"].resources.materials = 0;
+    G.pendingTradeChoice = { playerId: "1", routeCardIds: ["opponent_route"], allowGoodsForProgress: false };
 
-    resolveTradeChoice({ G, ctx: { currentPlayer: "0" } as any }, "opponent_route");
+    resolveTradeChoice({ G, ctx: { currentPlayer: "1" } as any }, "opponent_route");
 
     expect(G.pendingTradeChoice).toBeUndefined();
-    expect(G.players["0"].resources.goods).toBe(0);
-    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["1"].resources.goods).toBe(0);
+    expect(G.players["1"].resources.knowledge).toBe(1);
     expect(G.cardStates?.opponent_route?.resources?.goods).toBe(1);
-    expect(G.players["0"].resources.materials).toBe(2);
-    expect(G.players["1"].resources.materials).toBe(0);
+    expect(G.players["1"].resources.materials).toBe(2);
+    expect(G.players["2"].resources.materials).toBe(0);
   });
 
   it("pauses after an opponent Trade route Progress reward for reactive Exhaust before Commerce", () => {
@@ -495,33 +495,33 @@ describe("trade routes module", () => {
         reactive: { trigger: "after_gain_resource", resource: "knowledge" }
       } as any]
     };
-    G.players["0"].playArea = ["progress_reactive_exhaust"];
-    G.players["1"].playArea = ["opponent_route"];
-    G.players["0"].resources.knowledge = 0;
-    G.players["0"].resources.materials = 0;
-    G.players["0"].resources.influence = 0;
-    G.players["0"].exhaustTokensAvailable = 1;
-    G.pendingTradeChoice = { playerId: "0", routeCardIds: ["opponent_route"], allowGoodsForProgress: false };
+    G.players["1"].playArea = ["progress_reactive_exhaust"];
+    G.players["2"].playArea = ["opponent_route"];
+    G.players["1"].resources.knowledge = 0;
+    G.players["1"].resources.materials = 0;
+    G.players["1"].resources.influence = 0;
+    G.players["1"].exhaustTokensAvailable = 1;
+    G.pendingTradeChoice = { playerId: "1", routeCardIds: ["opponent_route"], allowGoodsForProgress: false };
 
-    resolveTradeChoice({ G, ctx: { currentPlayer: "0" } as any }, "opponent_route");
+    resolveTradeChoice({ G, ctx: { currentPlayer: "1" } as any }, "opponent_route");
 
     expect(G.pendingTradeChoice).toBeUndefined();
-    expect(G.players["0"].resources.knowledge).toBe(1);
-    expect(G.players["0"].resources.materials).toBe(0);
+    expect(G.players["1"].resources.knowledge).toBe(1);
+    expect(G.players["1"].resources.materials).toBe(0);
     expect(G.pendingReactiveExhaustChoice).toMatchObject({
-      playerId: "0",
+      playerId: "1",
       cardIds: ["progress_reactive_exhaust"],
-      resolvingPlayerId: "0",
+      resolvingPlayerId: "1",
       sourceCardId: "opponent_route",
       trigger: "after_gain_resource",
       resource: "knowledge"
     });
 
-    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "0" } as any }, "progress_reactive_exhaust");
+    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "1" } as any }, "progress_reactive_exhaust");
 
     expect(G.pendingReactiveExhaustChoice).toBeUndefined();
-    expect(G.players["0"].resources.influence).toBe(1);
-    expect(G.players["0"].resources.materials).toBe(2);
+    expect(G.players["1"].resources.influence).toBe(1);
+    expect(G.players["1"].resources.materials).toBe(2);
   });
 
   it("does not resolve an opponent Trade route choice when no Goods token can be placed from supply", () => {
@@ -536,17 +536,17 @@ describe("trade routes module", () => {
       tags: [],
       effects: [{ trigger: "on_play", op: "commerce", effects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 2 }] } as any]
     };
-    G.players["1"].playArea = ["opponent_route"];
-    G.players["0"].resources.knowledge = 0;
-    G.players["0"].resources.materials = 0;
+    G.players["2"].playArea = ["opponent_route"];
+    G.players["1"].resources.knowledge = 0;
+    G.players["1"].resources.materials = 0;
     G.resourceSupply = { goods: 0, knowledge: 1, materials: 2 };
-    G.pendingTradeChoice = { playerId: "0", routeCardIds: ["opponent_route"], allowGoodsForProgress: false };
+    G.pendingTradeChoice = { playerId: "1", routeCardIds: ["opponent_route"], allowGoodsForProgress: false };
 
-    resolveTradeChoice({ G, ctx: { currentPlayer: "0" } as any }, "opponent_route");
+    resolveTradeChoice({ G, ctx: { currentPlayer: "1" } as any }, "opponent_route");
 
-    expect(G.pendingTradeChoice).toEqual({ playerId: "0", routeCardIds: ["opponent_route"], allowGoodsForProgress: false });
-    expect(G.players["0"].resources.knowledge).toBe(0);
-    expect(G.players["0"].resources.materials).toBe(0);
+    expect(G.pendingTradeChoice).toEqual({ playerId: "1", routeCardIds: ["opponent_route"], allowGoodsForProgress: false });
+    expect(G.players["1"].resources.knowledge).toBe(0);
+    expect(G.players["1"].resources.materials).toBe(0);
     expect(G.cardStates?.opponent_route?.resources?.goods).toBeUndefined();
     expect(G.log.at(-1)?.message).toBe("InvalidMove(resolveTradeChoice): trade_choice_failed(opponent_route)");
   });
@@ -563,18 +563,18 @@ describe("trade routes module", () => {
       tags: [],
       effects: [{ trigger: "on_play", op: "profit", destination: "history", effects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 2 }] } as any]
     };
-    G.players["0"].playArea = ["completed_route"];
-    G.players["0"].resources.goods = 0;
-    G.players["0"].resources.knowledge = 0;
+    G.players["1"].playArea = ["completed_route"];
+    G.players["1"].resources.goods = 0;
+    G.players["1"].resources.knowledge = 0;
     G.cardStates = { completed_route: { resources: { goods: 3 } } };
 
-    const resolved = runEffects({ G, playerId:"0", selfCardId:"completed_route", enabledExpansions:["trade_routes"] }, [{ trigger:"on_play", op:"profit", destination: "history", effects: [{ trigger:"on_play", op:"gain_resource", resource:"knowledge", amount: 2 }] } as any]);
+    const resolved = runEffects({ G, playerId:"1", selfCardId:"completed_route", enabledExpansions:["trade_routes"] }, [{ trigger:"on_play", op:"profit", destination: "history", effects: [{ trigger:"on_play", op:"gain_resource", resource:"knowledge", amount: 2 }] } as any]);
 
     expect(resolved).toBe(true);
-    expect(G.players["0"].playArea).not.toContain("completed_route");
-    expect(G.players["0"].history).toContain("completed_route");
-    expect(G.players["0"].resources.goods).toBe(3);
-    expect(G.players["0"].resources.knowledge).toBe(2);
+    expect(G.players["1"].playArea).not.toContain("completed_route");
+    expect(G.players["1"].history).toContain("completed_route");
+    expect(G.players["1"].resources.goods).toBe(3);
+    expect(G.players["1"].resources.knowledge).toBe(2);
     expect(G.cardStates?.completed_route).toBeUndefined();
   });
 
@@ -590,22 +590,22 @@ describe("trade routes module", () => {
       tags: [],
       effects: [{ trigger: "on_play", op: "profit", destination: "history", effects: [] } as any]
     };
-    G.players["0"].playArea = ["completed_route"];
-    G.players["0"].resources.goods = 0;
+    G.players["1"].playArea = ["completed_route"];
+    G.players["1"].resources.goods = 0;
     G.cardStates = { completed_route: { resources: { goods: 3 } } };
-    G.activeNationRulesets!["0"] = {
-      ...G.activeNationRulesets!["0"],
+    G.activeNationRulesets!["1"] = {
+      ...G.activeNationRulesets!["1"],
       rulesetTags: ["no_history", "discard_instead_of_history"] as any,
       zoneOverrides: [{ op: "disable_history", replacementBehavior: "discard" } as any]
     };
 
-    const resolved = runEffects({ G, playerId:"0", selfCardId:"completed_route", enabledExpansions:["trade_routes"] }, [{ trigger:"on_play", op:"profit", destination: "history", effects: [] } as any]);
+    const resolved = runEffects({ G, playerId:"1", selfCardId:"completed_route", enabledExpansions:["trade_routes"] }, [{ trigger:"on_play", op:"profit", destination: "history", effects: [] } as any]);
 
     expect(resolved).toBe(true);
-    expect(G.players["0"].playArea).not.toContain("completed_route");
-    expect(G.players["0"].history).not.toContain("completed_route");
-    expect(G.players["0"].discard).toContain("completed_route");
-    expect(G.players["0"].resources.goods).toBe(3);
+    expect(G.players["1"].playArea).not.toContain("completed_route");
+    expect(G.players["1"].history).not.toContain("completed_route");
+    expect(G.players["1"].discard).toContain("completed_route");
+    expect(G.players["1"].resources.goods).toBe(3);
   });
 
   it("profit routes History-bound cards through a Nation History replacement zone", () => {
@@ -620,22 +620,22 @@ describe("trade routes module", () => {
       tags: [],
       effects: [{ trigger: "on_play", op: "profit", destination: "history", effects: [] } as any]
     };
-    G.players["0"].playArea = ["completed_route"];
-    G.players["0"].resources.goods = 0;
-    G.players["0"].sideAreas = { sunken: [] };
+    G.players["1"].playArea = ["completed_route"];
+    G.players["1"].resources.goods = 0;
+    G.players["1"].sideAreas = { sunken: [] };
     G.cardStates = { completed_route: { resources: { goods: 3 } } };
-    G.activeNationRulesets!["0"] = {
-      ...G.activeNationRulesets!["0"],
+    G.activeNationRulesets!["1"] = {
+      ...G.activeNationRulesets!["1"],
       zoneOverrides: [{ op: "replace_history_with_zone", zoneId: "sunken", displayName: "Sunken", cardsScore: true } as any]
     };
 
-    const resolved = runEffects({ G, playerId:"0", selfCardId:"completed_route", enabledExpansions:["trade_routes"] }, [{ trigger:"on_play", op:"profit", destination: "history", effects: [] } as any]);
+    const resolved = runEffects({ G, playerId:"1", selfCardId:"completed_route", enabledExpansions:["trade_routes"] }, [{ trigger:"on_play", op:"profit", destination: "history", effects: [] } as any]);
 
     expect(resolved).toBe(true);
-    expect(G.players["0"].playArea).not.toContain("completed_route");
-    expect(G.players["0"].history).not.toContain("completed_route");
-    expect(G.players["0"].sideAreas?.sunken).toEqual(["completed_route"]);
-    expect(G.players["0"].resources.goods).toBe(3);
+    expect(G.players["1"].playArea).not.toContain("completed_route");
+    expect(G.players["1"].history).not.toContain("completed_route");
+    expect(G.players["1"].sideAreas?.sunken).toEqual(["completed_route"]);
+    expect(G.players["1"].resources.goods).toBe(3);
     expect(G.log).toContainEqual(expect.objectContaining({ message: "ProfitResolved(completed_route->sunken)" }));
   });
 
@@ -651,19 +651,19 @@ describe("trade routes module", () => {
       tags: [],
       effects: [{ trigger: "on_play", op: "profit", effects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }] } as any]
     };
-    G.players["0"].playArea = ["completed_route"];
-    G.players["0"].resources.goods = 0;
-    G.players["0"].resources.knowledge = 0;
+    G.players["1"].playArea = ["completed_route"];
+    G.players["1"].resources.goods = 0;
+    G.players["1"].resources.knowledge = 0;
     G.cardStates = { completed_route: { resources: { goods: 3 } } };
 
-    const resolved = runEffects({ G, playerId:"0", selfCardId:"completed_route", enabledExpansions:["trade_routes"] }, [{ trigger:"on_play", op:"profit", effects: [{ trigger:"on_play", op:"gain_resource", resource:"knowledge", amount: 1 }] } as any]);
+    const resolved = runEffects({ G, playerId:"1", selfCardId:"completed_route", enabledExpansions:["trade_routes"] }, [{ trigger:"on_play", op:"profit", effects: [{ trigger:"on_play", op:"gain_resource", resource:"knowledge", amount: 1 }] } as any]);
 
     expect(resolved).toBe(true);
-    expect(G.players["0"].playArea).not.toContain("completed_route");
-    expect(G.players["0"].discard).toContain("completed_route");
-    expect(G.players["0"].history).not.toContain("completed_route");
-    expect(G.players["0"].resources.goods).toBe(3);
-    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["1"].playArea).not.toContain("completed_route");
+    expect(G.players["1"].discard).toContain("completed_route");
+    expect(G.players["1"].history).not.toContain("completed_route");
+    expect(G.players["1"].resources.goods).toBe(3);
+    expect(G.players["1"].resources.knowledge).toBe(1);
   });
 
   it("profit moves garrisoned cards with the completed route", () => {
@@ -688,20 +688,20 @@ describe("trade routes module", () => {
       tags: [],
       effects: []
     };
-    G.players["0"].playArea = ["completed_route"];
-    G.players["0"].resources.goods = 0;
-    G.players["0"].resources.materials = 0;
+    G.players["1"].playArea = ["completed_route"];
+    G.players["1"].resources.goods = 0;
+    G.players["1"].resources.materials = 0;
     G.cardStates = {
       completed_route: { resources: { goods: 3 }, garrisonedCardIds: ["garrisoned_card"] },
       garrisoned_card: { resources: { materials: 1 } }
     };
 
-    const resolved = runEffects({ G, playerId:"0", selfCardId:"completed_route", enabledExpansions:["trade_routes"] }, [{ trigger:"on_play", op:"profit", effects: [] } as any]);
+    const resolved = runEffects({ G, playerId:"1", selfCardId:"completed_route", enabledExpansions:["trade_routes"] }, [{ trigger:"on_play", op:"profit", effects: [] } as any]);
 
     expect(resolved).toBe(true);
-    expect(G.players["0"].discard).toEqual(["completed_route", "garrisoned_card"]);
-    expect(G.players["0"].resources.goods).toBe(3);
-    expect(G.players["0"].resources.materials).toBe(1);
+    expect(G.players["1"].discard).toEqual(["completed_route", "garrisoned_card"]);
+    expect(G.players["1"].resources.goods).toBe(3);
+    expect(G.players["1"].resources.materials).toBe(1);
     expect(G.cardStates?.completed_route).toBeUndefined();
     expect(G.cardStates?.garrisoned_card).toBeUndefined();
   });
@@ -744,40 +744,40 @@ describe("trade routes module", () => {
         reactive: { trigger: "after_gain_resource", resource: "knowledge", sourceSuit: "civilized" }
       } as any]
     };
-    G.players["0"].playArea = ["completed_route", "child_resource_reactive_exhaust"];
-    G.players["0"].resources.goods = 0;
-    G.players["0"].resources.materials = 0;
-    G.players["0"].resources.knowledge = 0;
-    G.players["0"].resources.influence = 0;
-    G.players["0"].exhaustTokensAvailable = 1;
+    G.players["1"].playArea = ["completed_route", "child_resource_reactive_exhaust"];
+    G.players["1"].resources.goods = 0;
+    G.players["1"].resources.materials = 0;
+    G.players["1"].resources.knowledge = 0;
+    G.players["1"].resources.influence = 0;
+    G.players["1"].exhaustTokensAvailable = 1;
     G.cardStates = {
       completed_route: { resources: { goods: 3 }, garrisonedCardIds: ["garrisoned_card"] },
       garrisoned_card: { resources: { knowledge: 1 } }
     };
 
-    const resolved = runEffects({ G, playerId:"0", selfCardId:"completed_route", enabledExpansions:["trade_routes"] }, [{ trigger:"on_play", op:"profit", effects: [{ trigger:"on_play", op:"gain_resource", resource:"materials", amount:1 }] } as any]);
+    const resolved = runEffects({ G, playerId:"1", selfCardId:"completed_route", enabledExpansions:["trade_routes"] }, [{ trigger:"on_play", op:"profit", effects: [{ trigger:"on_play", op:"gain_resource", resource:"materials", amount:1 }] } as any]);
 
     expect(resolved).toBe(true);
-    expect(G.players["0"].discard).toEqual(["completed_route", "garrisoned_card"]);
-    expect(G.players["0"].resources.goods).toBe(3);
-    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["1"].discard).toEqual(["completed_route", "garrisoned_card"]);
+    expect(G.players["1"].resources.goods).toBe(3);
+    expect(G.players["1"].resources.knowledge).toBe(1);
     expect(G.pendingReactiveExhaustChoice).toMatchObject({
-      playerId: "0",
+      playerId: "1",
       cardIds: ["child_resource_reactive_exhaust"],
-      resolvingPlayerId: "0",
+      resolvingPlayerId: "1",
       sourceCardId: "completed_route",
       trigger: "after_gain_resource",
       resource: "knowledge",
       eventSourceCardId: "garrisoned_card",
       eventSourceWasInPlay: true
     });
-    expect(G.players["0"].resources.materials).toBe(0);
+    expect(G.players["1"].resources.materials).toBe(0);
 
-    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "0" } as any }, "child_resource_reactive_exhaust");
+    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "1" } as any }, "child_resource_reactive_exhaust");
 
     expect(G.pendingReactiveExhaustChoice).toBeUndefined();
-    expect(G.players["0"].resources.influence).toBe(1);
-    expect(G.players["0"].resources.materials).toBe(1);
+    expect(G.players["1"].resources.influence).toBe(1);
+    expect(G.players["1"].resources.materials).toBe(1);
   });
 
   it("profit action spends an Action token to resolve a completed Trade Route", () => {
@@ -792,18 +792,18 @@ describe("trade routes module", () => {
       tags: [],
       effects: [{ trigger: "on_play", op: "profit", destination: "history", effects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }] } as any]
     };
-    G.players["0"].playArea = ["completed_route"];
-    G.players["0"].actionsRemaining = 1;
-    G.players["0"].resources.goods = 0;
-    G.players["0"].resources.knowledge = 0;
+    G.players["1"].playArea = ["completed_route"];
+    G.players["1"].actionsRemaining = 1;
+    G.players["1"].resources.goods = 0;
+    G.players["1"].resources.knowledge = 0;
     G.cardStates = { completed_route: { resources: { goods: 3 } } };
 
-    profitCard({ G, ctx: { currentPlayer: "0" } as any }, "completed_route");
+    profitCard({ G, ctx: { currentPlayer: "1" } as any }, "completed_route");
 
-    expect(G.players["0"].actionsRemaining).toBe(0);
-    expect(G.players["0"].history).toContain("completed_route");
-    expect(G.players["0"].resources.goods).toBe(3);
-    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["1"].actionsRemaining).toBe(0);
+    expect(G.players["1"].history).toContain("completed_route");
+    expect(G.players["1"].resources.goods).toBe(3);
+    expect(G.players["1"].resources.knowledge).toBe(1);
   });
 
   it("profit action treats imported cards with a Trade Route suit icon as Trade Routes", () => {
@@ -818,18 +818,18 @@ describe("trade routes module", () => {
       tags: ["suit:trade_route"],
       effects: [{ trigger: "on_play", op: "profit", destination: "history", effects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }] } as any]
     };
-    G.players["0"].playArea = ["imported_route"];
-    G.players["0"].actionsRemaining = 1;
-    G.players["0"].resources.goods = 0;
-    G.players["0"].resources.knowledge = 0;
+    G.players["1"].playArea = ["imported_route"];
+    G.players["1"].actionsRemaining = 1;
+    G.players["1"].resources.goods = 0;
+    G.players["1"].resources.knowledge = 0;
     G.cardStates = { imported_route: { resources: { goods: 3 } } };
 
-    profitCard({ G, ctx: { currentPlayer: "0" } as any }, "imported_route");
+    profitCard({ G, ctx: { currentPlayer: "1" } as any }, "imported_route");
 
-    expect(G.players["0"].actionsRemaining).toBe(0);
-    expect(G.players["0"].history).toContain("imported_route");
-    expect(G.players["0"].resources.goods).toBe(3);
-    expect(G.players["0"].resources.knowledge).toBe(1);
+    expect(G.players["1"].actionsRemaining).toBe(0);
+    expect(G.players["1"].history).toContain("imported_route");
+    expect(G.players["1"].resources.goods).toBe(3);
+    expect(G.players["1"].resources.knowledge).toBe(1);
     expect(G.log.some((entry) => entry.message === "InvalidMove(profitCard): card_not_trade_route_in_play(imported_route)")).toBe(false);
   });
 
@@ -846,21 +846,21 @@ describe("trade routes module", () => {
       tags: [],
       effects: [{ trigger: "on_play", op: "profit", destination: "history", effects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }] } as any]
     };
-    G.players["0"].playArea = ["completed_route"];
-    G.players["0"].actionsRemaining = 1;
-    G.players["0"].actionTokensAvailable = 1;
-    G.players["0"].resources.goods = 0;
-    G.players["0"].resources.knowledge = 0;
+    G.players["1"].playArea = ["completed_route"];
+    G.players["1"].actionsRemaining = 1;
+    G.players["1"].actionTokensAvailable = 1;
+    G.players["1"].resources.goods = 0;
+    G.players["1"].resources.knowledge = 0;
     G.cardStates = { completed_route: { resources: { goods: 3 } } };
 
-    profitCard({ G, ctx: { currentPlayer: "0" } as any }, "completed_route");
+    profitCard({ G, ctx: { currentPlayer: "1" } as any }, "completed_route");
 
-    expect(G.players["0"].actionsRemaining).toBe(1);
-    expect(G.players["0"].actionTokensAvailable).toBe(1);
-    expect(G.players["0"].playArea).toEqual(["completed_route"]);
-    expect(G.players["0"].history).not.toContain("completed_route");
-    expect(G.players["0"].resources.goods).toBe(0);
-    expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.players["1"].actionsRemaining).toBe(1);
+    expect(G.players["1"].actionTokensAvailable).toBe(1);
+    expect(G.players["1"].playArea).toEqual(["completed_route"]);
+    expect(G.players["1"].history).not.toContain("completed_route");
+    expect(G.players["1"].resources.goods).toBe(0);
+    expect(G.players["1"].resources.knowledge).toBe(0);
     expect(G.cardStates?.completed_route?.resources?.goods).toBe(3);
     expect(G.log.at(-1)?.message).toBe("InvalidMove(profitCard): turn_type_not_activate(revolt)");
   });
@@ -893,37 +893,37 @@ describe("trade routes module", () => {
         reactive: { trigger: "after_gain_resource", resource: "goods" }
       } as any]
     };
-    G.players["0"].playArea = ["completed_route", "goods_reactive_exhaust"];
-    G.players["0"].actionsRemaining = 1;
-    G.players["0"].actionTokensAvailable = 1;
-    G.players["0"].exhaustTokensAvailable = 1;
-    G.players["0"].resources.goods = 0;
-    G.players["0"].resources.knowledge = 0;
-    G.players["0"].resources.influence = 0;
+    G.players["1"].playArea = ["completed_route", "goods_reactive_exhaust"];
+    G.players["1"].actionsRemaining = 1;
+    G.players["1"].actionTokensAvailable = 1;
+    G.players["1"].exhaustTokensAvailable = 1;
+    G.players["1"].resources.goods = 0;
+    G.players["1"].resources.knowledge = 0;
+    G.players["1"].resources.influence = 0;
     G.cardStates = { completed_route: { resources: { goods: 3 } } };
 
-    profitCard({ G, ctx: { currentPlayer: "0" } as any }, "completed_route");
+    profitCard({ G, ctx: { currentPlayer: "1" } as any }, "completed_route");
 
-    expect(G.players["0"].history).toContain("completed_route");
+    expect(G.players["1"].history).toContain("completed_route");
     expect(G.cardStates?.completed_route?.actionTokens).toBe(1);
-    expect(G.players["0"].resources.goods).toBe(3);
-    expect(G.players["0"].resources.knowledge).toBe(0);
-    expect(G.players["0"].resources.influence).toBe(0);
+    expect(G.players["1"].resources.goods).toBe(3);
+    expect(G.players["1"].resources.knowledge).toBe(0);
+    expect(G.players["1"].resources.influence).toBe(0);
     expect(G.pendingReactiveExhaustChoice).toMatchObject({
-      playerId: "0",
+      playerId: "1",
       cardIds: ["goods_reactive_exhaust"],
-      resolvingPlayerId: "0",
+      resolvingPlayerId: "1",
       sourceCardId: "completed_route",
       trigger: "after_gain_resource",
       resource: "goods"
     });
 
-    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "0" } as any }, "goods_reactive_exhaust");
+    resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "1" } as any }, "goods_reactive_exhaust");
 
     expect(G.pendingReactiveExhaustChoice).toBeUndefined();
-    expect(G.players["0"].resources.influence).toBe(1);
-    expect(G.players["0"].resources.knowledge).toBe(1);
-    expect(G.players["0"].exhaustTokensAvailable).toBe(0);
+    expect(G.players["1"].resources.influence).toBe(1);
+    expect(G.players["1"].resources.knowledge).toBe(1);
+    expect(G.players["1"].exhaustTokensAvailable).toBe(0);
     expect(G.cardStates?.goods_reactive_exhaust?.exhaustTokens).toBe(1);
   });
 
@@ -939,19 +939,19 @@ describe("trade routes module", () => {
       tags: [],
       effects: [{ trigger: "on_play", op: "profit", destination: "history", effects: [{ trigger: "on_play", op: "gain_resource", resource: "knowledge", amount: 1 }] } as any]
     };
-    G.players["0"].playArea = ["completed_route"];
-    G.players["0"].actionsRemaining = 1;
-    G.players["0"].actionTokensAvailable = 0;
-    G.players["0"].resources.knowledge = 0;
+    G.players["1"].playArea = ["completed_route"];
+    G.players["1"].actionsRemaining = 1;
+    G.players["1"].actionTokensAvailable = 0;
+    G.players["1"].resources.knowledge = 0;
     G.cardStates = { completed_route: { resources: { goods: 3 } } };
 
-    profitCard({ G, ctx: { currentPlayer: "0" } as any }, "completed_route");
+    profitCard({ G, ctx: { currentPlayer: "1" } as any }, "completed_route");
 
-    expect(G.players["0"].actionsRemaining).toBe(1);
-    expect(G.players["0"].actionTokensAvailable).toBe(0);
-    expect(G.players["0"].playArea).toEqual(["completed_route"]);
-    expect(G.players["0"].history).not.toContain("completed_route");
-    expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.players["1"].actionsRemaining).toBe(1);
+    expect(G.players["1"].actionTokensAvailable).toBe(0);
+    expect(G.players["1"].playArea).toEqual(["completed_route"]);
+    expect(G.players["1"].history).not.toContain("completed_route");
+    expect(G.players["1"].resources.knowledge).toBe(0);
     expect(G.log.at(-1)?.message).toBe("InvalidMove(profitCard): no_action_tokens_available");
   });
 
@@ -967,21 +967,21 @@ describe("trade routes module", () => {
       tags: [],
       effects: [{ trigger: "on_play", op: "profit", destination: "history", effects: [{ trigger: "on_play", op: "spend_resource", resource: "knowledge", amount: 1 }] } as any]
     };
-    G.players["0"].playArea = ["completed_route"];
-    G.players["0"].actionsRemaining = 1;
-    G.players["0"].actionTokensAvailable = 1;
-    G.players["0"].resources.goods = 0;
-    G.players["0"].resources.materials = 0;
-    G.players["0"].resources.knowledge = 0;
+    G.players["1"].playArea = ["completed_route"];
+    G.players["1"].actionsRemaining = 1;
+    G.players["1"].actionTokensAvailable = 1;
+    G.players["1"].resources.goods = 0;
+    G.players["1"].resources.materials = 0;
+    G.players["1"].resources.knowledge = 0;
     G.cardStates = { completed_route: { resources: { goods: 3 } } };
 
-    profitCard({ G, ctx: { currentPlayer: "0" } as any }, "completed_route");
+    profitCard({ G, ctx: { currentPlayer: "1" } as any }, "completed_route");
 
-    expect(G.players["0"].actionsRemaining).toBe(1);
-    expect(G.players["0"].actionTokensAvailable).toBe(1);
-    expect(G.players["0"].playArea).toEqual(["completed_route"]);
-    expect(G.players["0"].history).not.toContain("completed_route");
-    expect(G.players["0"].resources.goods).toBe(0);
+    expect(G.players["1"].actionsRemaining).toBe(1);
+    expect(G.players["1"].actionTokensAvailable).toBe(1);
+    expect(G.players["1"].playArea).toEqual(["completed_route"]);
+    expect(G.players["1"].history).not.toContain("completed_route");
+    expect(G.players["1"].resources.goods).toBe(0);
     expect(G.cardStates?.completed_route?.resources?.goods).toBe(3);
     expect(G.log.at(-1)?.message).toBe("InvalidMove(profitCard): profit_effect_failed(completed_route)");
   });
@@ -1007,26 +1007,26 @@ describe("trade routes module", () => {
       } as any]
     };
     G.unrestPile = [];
-    G.players["0"].playArea = ["completed_route"];
-    G.players["0"].actionsRemaining = 1;
-    G.players["0"].actionTokensAvailable = 1;
-    G.players["0"].resources.goods = 0;
-    G.players["0"].resources.knowledge = 0;
-    addScoringUnrest(G, { "0": 1, "1": 2 });
+    G.players["1"].playArea = ["completed_route"];
+    G.players["1"].actionsRemaining = 1;
+    G.players["1"].actionTokensAvailable = 1;
+    G.players["1"].resources.goods = 0;
+    G.players["1"].resources.knowledge = 0;
+    addScoringUnrest(G, { "1": 1, "2": 2 });
     G.cardStates = { completed_route: { resources: { goods: 3 } } };
 
-    profitCard({ G, ctx: { currentPlayer: "0" } as any }, "completed_route");
+    profitCard({ G, ctx: { currentPlayer: "1" } as any }, "completed_route");
 
     expect(G.gameover).toEqual({
-      winner: "0",
+      winner: "1",
       reason: "collapse:unrest_pile_empty",
-      scores: { "0": 1, "1": 2 }
+      scores: { "1": 1, "2": 2 }
     });
-    expect(G.players["0"].actionsRemaining).toBe(0);
-    expect(G.players["0"].actionTokensAvailable).toBe(0);
-    expect(G.players["0"].playArea).not.toContain("completed_route");
-    expect(G.players["0"].history).toContain("completed_route");
-    expect(G.players["0"].resources.goods).toBe(3);
-    expect(G.players["0"].resources.knowledge).toBe(0);
+    expect(G.players["1"].actionsRemaining).toBe(0);
+    expect(G.players["1"].actionTokensAvailable).toBe(0);
+    expect(G.players["1"].playArea).not.toContain("completed_route");
+    expect(G.players["1"].history).toContain("completed_route");
+    expect(G.players["1"].resources.goods).toBe(3);
+    expect(G.players["1"].resources.knowledge).toBe(0);
   });
 });

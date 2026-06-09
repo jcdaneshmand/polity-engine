@@ -189,9 +189,16 @@ describe("polity lobby middleware", () => {
       setupData: {},
       privateDataFingerprint: "placeholder"
     }), async () => undefined);
-    await middleware(context("POST", "/polity/lobby/matches/match-1/join", { playerID: "0", playerName: "Host", privateDataFingerprint: "placeholder" }), async () => undefined);
+    const join = context("POST", "/polity/lobby/matches/match-1/join", { playerID: "0", playerName: "Host", privateDataFingerprint: "placeholder" });
+    await middleware(join, async () => undefined);
+    const credentials = (join.body as { playerCredentials: string }).playerCredentials;
 
-    const close = context("POST", "/polity/lobby/matches/match-1/close", { playerID: "0" });
+    const forgedClose = context("POST", "/polity/lobby/matches/match-1/close", { playerID: "0", playerCredentials: "wrong-token" });
+    await middleware(forgedClose, async () => undefined);
+    expect(forgedClose.status).toBe(403);
+    expect(forgedClose.body).toEqual({ error: "invalid_credentials" });
+
+    const close = context("POST", "/polity/lobby/matches/match-1/close", { playerID: "0", playerCredentials: credentials });
     await middleware(close, async () => undefined);
     expect(close.body).toEqual({ ok: true });
 
@@ -216,9 +223,16 @@ describe("polity lobby middleware", () => {
       setupData: {},
       privateDataFingerprint: "placeholder"
     }), async () => undefined);
-    await middleware(context("POST", "/polity/lobby/matches/match-1/join", { playerID: "0", playerName: "Host", privateDataFingerprint: "placeholder", clientID: "client-a" }), async () => undefined);
+    const join = context("POST", "/polity/lobby/matches/match-1/join", { playerID: "0", playerName: "Host", privateDataFingerprint: "placeholder", clientID: "client-a" });
+    await middleware(join, async () => undefined);
+    const credentials = (join.body as { playerCredentials: string }).playerCredentials;
 
-    const heartbeat = context("POST", "/polity/lobby/matches/match-1/heartbeat", { playerID: "0", clientID: "client-a" });
+    const forgedHeartbeat = context("POST", "/polity/lobby/matches/match-1/heartbeat", { playerID: "0", playerCredentials: "wrong-token", clientID: "client-a" });
+    await middleware(forgedHeartbeat, async () => undefined);
+    expect(forgedHeartbeat.status).toBe(403);
+    expect(forgedHeartbeat.body).toEqual({ error: "invalid_credentials" });
+
+    const heartbeat = context("POST", "/polity/lobby/matches/match-1/heartbeat", { playerID: "0", playerCredentials: credentials, clientID: "client-a" });
     await middleware(heartbeat, async () => undefined);
     expect(heartbeat.body).toEqual({ ok: true });
   });
@@ -239,14 +253,23 @@ describe("polity lobby middleware", () => {
       setupData: {},
       privateDataFingerprint: "placeholder"
     }), async () => undefined);
-    await middleware(context("POST", "/polity/lobby/matches/match-1/join", { playerID: "0", playerName: "Host", privateDataFingerprint: "placeholder" }), async () => undefined);
-    await middleware(context("POST", "/polity/lobby/matches/match-1/join", { playerID: "1", playerName: "Guest", privateDataFingerprint: "placeholder" }), async () => undefined);
+    const hostJoin = context("POST", "/polity/lobby/matches/match-1/join", { playerID: "0", playerName: "Host", privateDataFingerprint: "placeholder" });
+    await middleware(hostJoin, async () => undefined);
+    const hostCredentials = (hostJoin.body as { playerCredentials: string }).playerCredentials;
+    const guestJoin = context("POST", "/polity/lobby/matches/match-1/join", { playerID: "1", playerName: "Guest", privateDataFingerprint: "placeholder" });
+    await middleware(guestJoin, async () => undefined);
+    const guestCredentials = (guestJoin.body as { playerCredentials: string }).playerCredentials;
 
-    const firstLeave = context("POST", "/polity/lobby/matches/match-1/leave", { playerID: "0" });
+    const forgedLeave = context("POST", "/polity/lobby/matches/match-1/leave", { playerID: "0", playerCredentials: "wrong-token" });
+    await middleware(forgedLeave, async () => undefined);
+    expect(forgedLeave.status).toBe(403);
+    expect(forgedLeave.body).toEqual({ error: "invalid_credentials" });
+
+    const firstLeave = context("POST", "/polity/lobby/matches/match-1/leave", { playerID: "0", playerCredentials: hostCredentials });
     await middleware(firstLeave, async () => undefined);
     expect(firstLeave.body).toEqual({ ok: true, match: expect.objectContaining({ occupiedSeats: [expect.objectContaining({ playerID: "1" })] }) });
 
-    const secondLeave = context("POST", "/polity/lobby/matches/match-1/leave", { playerID: "1" });
+    const secondLeave = context("POST", "/polity/lobby/matches/match-1/leave", { playerID: "1", playerCredentials: guestCredentials });
     await middleware(secondLeave, async () => undefined);
     expect(secondLeave.body).toEqual({ ok: true });
 

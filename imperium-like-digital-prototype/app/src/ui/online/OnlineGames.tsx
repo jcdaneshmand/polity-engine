@@ -181,7 +181,7 @@ export default function OnlineGames({
 
         <section className="setup-stage" aria-labelledby="online-chat">
           <h2 id="online-chat">Online Chat</h2>
-          {!account ? <p className="setup-help">Sign in to chat.</p> : null}
+          {!account ? <p className="setup-help">Sign in with an account to chat.</p> : null}
           <div className="online-chat-log">
             {chatMessages.length ? chatMessages.map((message) => (
               <div className="online-chat-message" key={message.id}>
@@ -317,8 +317,7 @@ export default function OnlineGames({
               const blockedByData = dataStatus === "missing";
               const password = matchPasswords[match.matchID] ?? "";
               const savedMatchSession = findSavedMatchSession(savedSessions, match.matchID);
-              const openSeat = match.availableSeats[0];
-              const canJoin = Boolean(savedMatchSession) || match.status === "setup" && Boolean(openSeat) && !blockedByData && (!match.isLocked || password.trim());
+              const canJoin = Boolean(savedMatchSession) && !blockedByData && (!match.isLocked || password.trim());
               const canSpectate = match.spectatingAllowed && !blockedByData && (!match.isLocked || password.trim());
               return (
                 <article className="online-match-row" key={match.matchID}>
@@ -337,27 +336,15 @@ export default function OnlineGames({
                         <input value={password} onChange={(event: { target: HTMLInputElement }) => setMatchPasswords((current) => ({ ...current, [match.matchID]: event.target.value }))} />
                       </label>
                     ) : null}
-                    <button
-                      type="button"
-                      disabled={!canJoin}
-                      onClick={() => {
-                        if (savedMatchSession) {
-                          onRejoin(savedMatchSession);
-                          return;
-                        }
-                        if (!openSeat) return;
-                        void onJoin({
-                          matchID: match.matchID,
-                          playerID: openSeat,
-                          playerName,
-                          password: password.trim() || undefined,
-                          privateDataFingerprint,
-                          setupConfig
-                        });
-                      }}
-                    >
-                      {savedMatchSession ? "Rejoin Seat" : "Join Seat"}
-                    </button>
+                    {savedMatchSession ? (
+                      <button
+                        type="button"
+                        disabled={!canJoin}
+                        onClick={() => onRejoin(savedMatchSession)}
+                      >
+                        Rejoin Seat
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       disabled={!canSpectate}

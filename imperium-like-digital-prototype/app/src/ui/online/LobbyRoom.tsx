@@ -94,7 +94,7 @@ export default function LobbyRoom({
 
         <section className="setup-stage" aria-labelledby="lobby-chat">
           <h2 id="lobby-chat">Lobby Chat</h2>
-          {!canChat ? <p className="setup-help">Sign in to chat.</p> : null}
+          {!canChat ? <p className="setup-help">Sign in with an account to chat.</p> : null}
           <div className="online-chat-log">
             {chatMessages.length ? chatMessages.map((message) => (
               <div className="online-chat-message" key={message.id}>

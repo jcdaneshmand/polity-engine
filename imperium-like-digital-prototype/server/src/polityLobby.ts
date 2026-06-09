@@ -42,6 +42,7 @@ type JoinBody = {
 
 type LeaveBody = {
   playerID?: unknown;
+  playerCredentials?: unknown;
   clientID?: unknown;
 };
 
@@ -76,6 +77,7 @@ function accessStatus(reason: LobbyAccessFailureReason): number {
   if (reason === "private_data_mismatch") return 409;
   if (reason === "match_not_joinable" || reason === "match_full" || reason === "seat_unavailable") return 409;
   if (reason === "duplicate_client") return 409;
+  if (reason === "invalid_credentials") return 403;
   return 403;
 }
 
@@ -168,7 +170,7 @@ export function createPolityLobbyMiddleware(options: PolityLobbyOptions) {
       }
       const playerName = stringValue(body.playerName)?.trim() || `Player ${Number(playerID) + 1}`;
       const joined = await options.boardgameApi.joinMatch({ matchID: joinMatchID, playerID, playerName });
-      const match = options.store.recordPlayerJoin({ matchID: joinMatchID, playerID, playerName, clientID }) as ListedMatch;
+      const match = options.store.recordPlayerJoin({ matchID: joinMatchID, playerID, playerName, playerCredentials: joined.playerCredentials, clientID }) as ListedMatch;
       ctx.body = { ...joined, playerID, match };
       return;
     }
@@ -201,11 +203,16 @@ export function createPolityLobbyMiddleware(options: PolityLobbyOptions) {
     const leaveMatchID = matchRoute(ctx.path, "leave");
     if (ctx.method === "POST" && leaveMatchID) {
       const body = await readJSONBody(ctx) as LeaveBody;
-      if (!isRecord(body) || typeof body.playerID !== "string") {
+      if (!isRecord(body) || typeof body.playerID !== "string" || typeof body.playerCredentials !== "string") {
         setError(ctx, 400, "invalid_request");
         return;
       }
-      const match = options.store.recordPlayerLeave({ matchID: leaveMatchID, playerID: body.playerID });
+      const access = options.store.validatePlayerCredentials({ matchID: leaveMatchID, playerID: body.playerID, playerCredentials: body.playerCredentials });
+      if (!access.ok) {
+        setError(ctx, accessStatus(access.reason), access.reason);
+        return;
+      }
+      const match = options.store.recordPlayerLeave({ matchID: leaveMatchID, playerID: body.playerID, playerCredentials: body.playerCredentials });
       ctx.body = match ? { ok: true, match } : { ok: true };
       return;
     }
@@ -213,11 +220,11 @@ export function createPolityLobbyMiddleware(options: PolityLobbyOptions) {
     const closeMatchID = matchRoute(ctx.path, "close");
     if (ctx.method === "POST" && closeMatchID) {
       const body = await readJSONBody(ctx) as LeaveBody;
-      if (!isRecord(body) || typeof body.playerID !== "string") {
+      if (!isRecord(body) || typeof body.playerID !== "string" || typeof body.playerCredentials !== "string") {
         setError(ctx, 400, "invalid_request");
         return;
       }
-      const result = options.store.closeMatch({ matchID: closeMatchID, playerID: body.playerID });
+      const result = options.store.closeMatch({ matchID: closeMatchID, playerID: body.playerID, playerCredentials: body.playerCredentials });
       if (!result.ok) {
         setError(ctx, accessStatus(result.reason), result.reason);
         return;
@@ -229,13 +236,14 @@ export function createPolityLobbyMiddleware(options: PolityLobbyOptions) {
     const heartbeatMatchID = matchRoute(ctx.path, "heartbeat");
     if (ctx.method === "POST" && heartbeatMatchID) {
       const body = await readJSONBody(ctx) as LeaveBody;
-      if (!isRecord(body) || typeof body.playerID !== "string") {
+      if (!isRecord(body) || typeof body.playerID !== "string" || typeof body.playerCredentials !== "string") {
         setError(ctx, 400, "invalid_request");
         return;
       }
       const result = options.store.heartbeatPlayer({
         matchID: heartbeatMatchID,
         playerID: body.playerID,
+        playerCredentials: body.playerCredentials,
         clientID: stringValue(body.clientID)
       });
       if (!result.ok) {

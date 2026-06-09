@@ -90,7 +90,7 @@ describe("lobby store", () => {
   it("sorts joinable setup games before spectatable in-progress games", () => {
     const store = createLobbyStore({ now: () => "2026-06-05T01:00:00.000Z" });
     store.createMatchMetadata({ matchID: "full", roomName: "Full", playerCount: 1, setupData: {}, privateDataFingerprint: "placeholder" });
-    store.recordPlayerJoin({ matchID: "full", playerID: "0", playerName: "A" });
+    store.recordPlayerJoin({ matchID: "full", playerID: "0", playerName: "A", playerCredentials: "token-full-0" });
     store.createMatchMetadata({ matchID: "watch", roomName: "Watch", playerCount: 2, setupData: {}, privateDataFingerprint: "placeholder" });
     store.markMatchInProgress("watch");
     store.createMatchMetadata({ matchID: "open", roomName: "Open", playerCount: 2, setupData: {}, privateDataFingerprint: "placeholder" });
@@ -101,15 +101,21 @@ describe("lobby store", () => {
   it("removes listed games after the last occupied seat leaves", () => {
     const store = createLobbyStore({ now: () => "2026-06-05T01:00:00.000Z" });
     store.createMatchMetadata({ matchID: "match-1", roomName: "Leaving", playerCount: 2, setupData: {}, privateDataFingerprint: "placeholder" });
-    store.recordPlayerJoin({ matchID: "match-1", playerID: "0", playerName: "Host" });
-    store.recordPlayerJoin({ matchID: "match-1", playerID: "1", playerName: "Guest" });
+    store.recordPlayerJoin({ matchID: "match-1", playerID: "0", playerName: "Host", playerCredentials: "token-0" });
+    store.recordPlayerJoin({ matchID: "match-1", playerID: "1", playerName: "Guest", playerCredentials: "token-1" });
 
-    expect(store.recordPlayerLeave({ matchID: "match-1", playerID: "0" })).toEqual(expect.objectContaining({
+    expect(store.recordPlayerLeave({ matchID: "match-1", playerID: "0", playerCredentials: "wrong-token" })).toEqual(expect.objectContaining({
+      occupiedSeats: [
+        expect.objectContaining({ playerID: "0" }),
+        expect.objectContaining({ playerID: "1" })
+      ]
+    }));
+    expect(store.recordPlayerLeave({ matchID: "match-1", playerID: "0", playerCredentials: "token-0" })).toEqual(expect.objectContaining({
       matchID: "match-1",
       occupiedSeats: [expect.objectContaining({ playerID: "1" })],
       availableSeats: ["0"]
     }));
-    expect(store.recordPlayerLeave({ matchID: "match-1", playerID: "1" })).toBeUndefined();
+    expect(store.recordPlayerLeave({ matchID: "match-1", playerID: "1", playerCredentials: "token-1" })).toBeUndefined();
     expect(store.listMatches()).toEqual([]);
   });
 
@@ -125,7 +131,7 @@ describe("lobby store", () => {
   it("finds an existing player seat for the same client in one match", () => {
     const store = createLobbyStore({ now: () => "2026-06-05T01:00:00.000Z" });
     store.createMatchMetadata({ matchID: "match-1", roomName: "Open", playerCount: 2, setupData: {}, privateDataFingerprint: "placeholder" });
-    store.recordPlayerJoin({ matchID: "match-1", playerID: "0", playerName: "Host", clientID: "client-a" });
+    store.recordPlayerJoin({ matchID: "match-1", playerID: "0", playerName: "Host", playerCredentials: "token-0", clientID: "client-a" });
 
     expect(store.findPlayerByClientID("match-1", "client-a")).toEqual({ playerID: "0" });
     expect(store.findPlayerByClientID("match-1", "client-b")).toBeUndefined();
@@ -135,10 +141,10 @@ describe("lobby store", () => {
     let nowMs = Date.parse("2026-06-05T01:00:00.000Z");
     const store = createLobbyStore({ now: () => new Date(nowMs).toISOString(), playerStaleMs: 15_000 });
     store.createMatchMetadata({ matchID: "match-1", roomName: "Open", playerCount: 2, setupData: {}, privateDataFingerprint: "placeholder" });
-    store.recordPlayerJoin({ matchID: "match-1", playerID: "0", playerName: "Host", clientID: "client-a" });
+    store.recordPlayerJoin({ matchID: "match-1", playerID: "0", playerName: "Host", playerCredentials: "token-0", clientID: "client-a" });
 
     nowMs += 10_000;
-    expect(store.heartbeatPlayer({ matchID: "match-1", playerID: "0", clientID: "client-a" })).toEqual({ ok: true });
+    expect(store.heartbeatPlayer({ matchID: "match-1", playerID: "0", playerCredentials: "token-0", clientID: "client-a" })).toEqual({ ok: true });
 
     nowMs += 14_000;
     expect(store.listMatches()[0]).toEqual(expect.objectContaining({

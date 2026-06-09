@@ -375,6 +375,7 @@ export function createPregameLobbyMiddleware(options: PregameLobbyOptions) {
           occupiedSeats: start.seats.map((seat) => ({
             playerID: seat.seatID,
             playerName: seat.displayName,
+            playerCredentials: playerCredentialsBySeat[seat.seatID],
             isConnected: true
           }))
         });

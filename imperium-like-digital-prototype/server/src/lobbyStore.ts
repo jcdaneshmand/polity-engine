@@ -14,7 +14,7 @@ type PrivateMatchMetadata = {
   updatedAt: string;
   status: ListedMatchStatus;
   playerCount: number;
-  occupiedSeats: Map<string, { playerID: string; playerName: string; isConnected: boolean; clientID?: string; lastSeenAt: string }>;
+  occupiedSeats: Map<string, { playerID: string; playerName: string; isConnected: boolean; playerCredentials: string; clientID?: string; lastSeenAt: string }>;
   isLocked: boolean;
   spectatingAllowed: boolean;
   privateDataFingerprint: string;
@@ -125,7 +125,7 @@ export function createLobbyStore(options: LobbyStoreOptions = {}) {
         updatedAt: timestamp,
         status: input.status ?? "setup",
         playerCount: input.playerCount,
-        occupiedSeats: new Map((input.occupiedSeats ?? []).map((seat) => [seat.playerID, { ...seat, lastSeenAt: timestamp }])),
+        occupiedSeats: new Map((input.occupiedSeats ?? []).map((seat) => [seat.playerID, { ...seat, playerCredentials: seat.playerCredentials ?? "", lastSeenAt: timestamp }])),
         isLocked: Boolean(passwordVerifier),
         spectatingAllowed: input.spectatingAllowed ?? true,
         privateDataFingerprint: input.privateDataFingerprint,
@@ -154,6 +154,7 @@ export function createLobbyStore(options: LobbyStoreOptions = {}) {
         playerID: input.playerID,
         playerName: input.playerName,
         isConnected: true,
+        playerCredentials: input.playerCredentials,
         lastSeenAt: now(),
         ...(input.clientID ? { clientID: input.clientID } : {})
       });
@@ -168,11 +169,20 @@ export function createLobbyStore(options: LobbyStoreOptions = {}) {
       return seat ? { playerID: seat.playerID } : undefined;
     },
 
-    heartbeatPlayer(input: { matchID: string; playerID: string; clientID?: string }): { ok: true } | { ok: false; reason: "match_not_found" | "seat_unavailable" | "duplicate_client" } {
+    validatePlayerCredentials(input: { matchID: string; playerID: string; playerCredentials: string }): LobbyAccessResult {
       const match = matches.get(input.matchID);
       if (!match) return { ok: false, reason: "match_not_found" };
       const seat = match.occupiedSeats.get(input.playerID);
       if (!seat) return { ok: false, reason: "seat_unavailable" };
+      return seat.playerCredentials === input.playerCredentials ? { ok: true } : { ok: false, reason: "invalid_credentials" };
+    },
+
+    heartbeatPlayer(input: { matchID: string; playerID: string; playerCredentials: string; clientID?: string }): { ok: true } | { ok: false; reason: "match_not_found" | "seat_unavailable" | "duplicate_client" | "invalid_credentials" } {
+      const match = matches.get(input.matchID);
+      if (!match) return { ok: false, reason: "match_not_found" };
+      const seat = match.occupiedSeats.get(input.playerID);
+      if (!seat) return { ok: false, reason: "seat_unavailable" };
+      if (seat.playerCredentials !== input.playerCredentials) return { ok: false, reason: "invalid_credentials" };
       if (input.clientID && seat.clientID && input.clientID !== seat.clientID) return { ok: false, reason: "duplicate_client" };
       seat.lastSeenAt = now();
       seat.isConnected = true;
@@ -183,6 +193,8 @@ export function createLobbyStore(options: LobbyStoreOptions = {}) {
     recordPlayerLeave(input: RecordPlayerLeaveInput): ListedMatch | undefined {
       const match = matches.get(input.matchID);
       if (!match) return undefined;
+      const seat = match.occupiedSeats.get(input.playerID);
+      if (!seat || seat.playerCredentials !== input.playerCredentials) return toListedMatch(match);
       match.occupiedSeats.delete(input.playerID);
       if (match.occupiedSeats.size === 0) {
         matches.delete(input.matchID);
@@ -206,10 +218,12 @@ export function createLobbyStore(options: LobbyStoreOptions = {}) {
       return toListedMatch(match);
     },
 
-    closeMatch(input: { matchID: string; playerID: string }): { ok: true } | { ok: false; reason: "match_not_found" | "not_host" } {
+    closeMatch(input: { matchID: string; playerID: string; playerCredentials: string }): { ok: true } | { ok: false; reason: "match_not_found" | "not_host" | "invalid_credentials" } {
       const match = matches.get(input.matchID);
       if (!match) return { ok: false, reason: "match_not_found" };
       if (input.playerID !== "0") return { ok: false, reason: "not_host" };
+      const seat = match.occupiedSeats.get(input.playerID);
+      if (!seat || seat.playerCredentials !== input.playerCredentials) return { ok: false, reason: "invalid_credentials" };
       matches.delete(input.matchID);
       return { ok: true };
     },

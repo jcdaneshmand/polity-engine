@@ -658,11 +658,12 @@ export async function leavePolityOnlineMatch(args: {
   serverURL: string;
   matchID: string;
   playerID: string;
+  playerCredentials: string;
   fetcher?: Fetcher;
 }): Promise<{ ok: true; match?: ListedMatch }> {
   return postLobbyJSON<{ ok: true; match?: ListedMatch }>(
     lobbyURL(args.serverURL, `/polity/lobby/matches/${encodeURIComponent(args.matchID)}/leave`),
-    { playerID: args.playerID },
+    { playerID: args.playerID, playerCredentials: args.playerCredentials },
     args.fetcher ?? fetch
   );
 }
@@ -671,11 +672,12 @@ export async function closePolityOnlineMatch(args: {
   serverURL: string;
   matchID: string;
   playerID: string;
+  playerCredentials: string;
   fetcher?: Fetcher;
 }): Promise<{ ok: true }> {
   return postLobbyJSON<{ ok: true }>(
     lobbyURL(args.serverURL, `/polity/lobby/matches/${encodeURIComponent(args.matchID)}/close`),
-    { playerID: args.playerID },
+    { playerID: args.playerID, playerCredentials: args.playerCredentials },
     args.fetcher ?? fetch
   );
 }
@@ -684,6 +686,7 @@ export async function heartbeatPolityOnlineMatch(args: {
   serverURL: string;
   matchID: string;
   playerID: string;
+  playerCredentials: string;
   clientID?: string;
   fetcher?: Fetcher;
 }): Promise<{ ok: true }> {
@@ -691,6 +694,7 @@ export async function heartbeatPolityOnlineMatch(args: {
     lobbyURL(args.serverURL, `/polity/lobby/matches/${encodeURIComponent(args.matchID)}/heartbeat`),
     {
       playerID: args.playerID,
+      playerCredentials: args.playerCredentials,
       ...(args.clientID?.trim() ? { clientID: args.clientID.trim() } : {})
     },
     args.fetcher ?? fetch

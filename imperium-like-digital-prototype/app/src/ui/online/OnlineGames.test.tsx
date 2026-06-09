@@ -145,7 +145,7 @@ describe("OnlineGames", () => {
     expect(html).toContain("Join By Code");
     expect(html).toContain("Browse Games");
     expect(html).toContain("Open Table");
-    expect(html).toContain("Join Seat");
+    expect(html).not.toContain("Join Seat");
     expect(html).toContain("Spectate");
   });
 
@@ -172,7 +172,7 @@ describe("OnlineGames", () => {
       />
     );
 
-    expect(html).toContain("Sign in to chat.");
+    expect(html).toContain("Sign in with an account to chat.");
     expect(html).not.toContain("Clear All Games");
   });
 

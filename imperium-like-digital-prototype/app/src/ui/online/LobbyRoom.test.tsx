@@ -150,7 +150,7 @@ describe("LobbyRoom", () => {
       />
     );
 
-    expect(html).toContain("Sign in to chat.");
+    expect(html).toContain("Sign in with an account to chat.");
     expect(html).toContain("disabled");
   });
 

@@ -37,6 +37,7 @@ export type LobbyAccessFailureReason =
   | "match_full"
   | "seat_unavailable"
   | "duplicate_client"
+  | "invalid_credentials"
   | "not_host";
 
 export type LobbyAccessResult = { ok: true } | { ok: false; reason: LobbyAccessFailureReason };
@@ -51,17 +52,19 @@ export type CreateLobbyMatchInput = {
   passwordVerifier?: string;
   spectatingAllowed?: boolean;
   status?: ListedMatchStatus;
-  occupiedSeats?: ListedSeat[];
+  occupiedSeats?: Array<ListedSeat & { playerCredentials?: string }>;
 };
 
 export type RecordPlayerJoinInput = {
   matchID: string;
   playerID: string;
   playerName: string;
+  playerCredentials: string;
   clientID?: string;
 };
 
 export type RecordPlayerLeaveInput = {
   matchID: string;
   playerID: string;
+  playerCredentials: string;
 };

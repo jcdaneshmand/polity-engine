@@ -90,6 +90,30 @@ describe("account store", () => {
     expect(store.requestPasswordReset({ email: "missing@example.com", resetURLBase: "http://localhost/reset-password" })).toEqual({ ok: true });
   });
 
+  it("expires stale sessions and password reset tokens", () => {
+    let now = "2026-06-05T12:00:00.000Z";
+    let id = 0;
+    const store = createAccountStore({
+      now: () => now,
+      createID: () => `id-${id += 1}`,
+      createToken: () => `token-${id += 1}`,
+      saltPassword: (password, salt) => `hash:${salt}:${password}`,
+      sessionTtlMs: 60_000,
+      passwordResetTtlMs: 60_000
+    });
+    const created = store.createAccount({ email: "jonah@example.com", username: "Jonah", password: "secret123" });
+    if (!created.ok) throw new Error("account create failed");
+
+    expect(store.resolveSession(created.token)).toEqual({ ok: true, account: created.account });
+    const reset = store.requestPasswordReset({ email: "jonah@example.com" });
+    expect(reset).toEqual({ ok: true, resetToken: "token-3" });
+
+    now = "2026-06-05T12:02:00.000Z";
+
+    expect(store.resolveSession(created.token)).toEqual({ ok: false, reason: "invalid_session" });
+    expect(store.completePasswordReset({ token: "token-3", password: "changed123", passwordConfirmation: "changed123" })).toEqual({ ok: false, reason: "invalid_session" });
+  });
+
   it("changes a password for the signed-in account with the current password", () => {
     const store = accountStore();
     const created = store.createAccount({ email: "jonah@example.com", username: "Jonah", password: "secret123" });

@@ -259,6 +259,7 @@ export default function App() {
         serverURL: session.serverURL,
         matchID: session.matchID,
         playerID: session.playerID,
+        playerCredentials: session.credentials,
         clientID: onlineClientID
       }).catch(() => undefined);
     };
@@ -707,7 +708,8 @@ export default function App() {
       await closePolityOnlineMatch({
         serverURL: record.serverURL,
         matchID: record.matchID,
-        playerID: record.playerID
+        playerID: record.playerID,
+        playerCredentials: record.credentials
       });
       forgetOnlineSession();
       await refreshOnlineMatches();
@@ -859,7 +861,8 @@ export default function App() {
       void leavePolityOnlineMatch({
         serverURL: session.serverURL,
         matchID: session.matchID,
-        playerID: session.playerID
+        playerID: session.playerID,
+        playerCredentials: session.credentials
       }).catch(() => undefined);
       if (savedOnlineSession?.kind !== "lobby" && savedOnlineSession?.matchID === session.matchID) {
         if (typeof window !== "undefined") window.localStorage.removeItem(ONLINE_SESSION_STORAGE_KEY);

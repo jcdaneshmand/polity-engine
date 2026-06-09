@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type {
   AccountPublicView,
@@ -23,6 +23,8 @@ type AccountStoreOptions = {
   saltPassword?: (password: string, salt: string) => string;
   snapshot?: AccountStoreSnapshot;
   storageFile?: string;
+  sessionTtlMs?: number;
+  passwordResetTtlMs?: number;
 };
 
 type AccountCreateInput = {
@@ -41,6 +43,8 @@ type AccountFailureReason =
   | "history_not_found";
 
 const MIN_PASSWORD_LENGTH = 4;
+const DEFAULT_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const DEFAULT_PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
 
 function key(value: string): string {
   return value.trim().toLowerCase();
@@ -128,12 +132,15 @@ export function createAccountStore(options: AccountStoreOptions = {}) {
   const createToken = options.createToken ?? (() => randomBytes(32).toString("base64url"));
   const createSalt = options.createSalt ?? (() => randomBytes(16).toString("hex"));
   const saltPassword = options.saltPassword ?? defaultSaltPassword;
+  const sessionTtlMs = options.sessionTtlMs ?? DEFAULT_SESSION_TTL_MS;
+  const passwordResetTtlMs = options.passwordResetTtlMs ?? DEFAULT_PASSWORD_RESET_TTL_MS;
   const loadedSnapshot = options.snapshot ?? loadSnapshot(options.storageFile);
   const accounts = new Map<string, AccountRecord>((loadedSnapshot?.accounts ?? []).map((account) => [account.id, account]));
   const sessions = new Map<string, AccountSessionRecord>((loadedSnapshot?.sessions ?? []).map((session) => [session.tokenHash, session]));
   const passwordResets = new Map<string, AccountPasswordResetRecord>((loadedSnapshot?.passwordResets ?? []).map((reset) => [reset.tokenHash, reset]));
 
   function snapshot(): AccountStoreSnapshot {
+    pruneExpiredRecords();
     return {
       accounts: Array.from(accounts.values()),
       sessions: Array.from(sessions.values()),
@@ -144,7 +151,22 @@ export function createAccountStore(options: AccountStoreOptions = {}) {
   function persist(): void {
     if (!options.storageFile) return;
     mkdirSync(dirname(options.storageFile), { recursive: true });
-    writeFileSync(options.storageFile, JSON.stringify(snapshot(), null, 2));
+    const tempFile = `${options.storageFile}.tmp`;
+    writeFileSync(tempFile, JSON.stringify(snapshot(), null, 2));
+    renameSync(tempFile, options.storageFile);
+  }
+
+  function isExpired(timestamp: string, ttlMs: number): boolean {
+    return Date.parse(now()) - Date.parse(timestamp) > ttlMs;
+  }
+
+  function pruneExpiredRecords(): void {
+    for (const [hash, session] of sessions.entries()) {
+      if (isExpired(session.lastSeenAt, sessionTtlMs)) sessions.delete(hash);
+    }
+    for (const [hash, reset] of passwordResets.entries()) {
+      if (reset.usedAt || isExpired(reset.createdAt, passwordResetTtlMs)) passwordResets.delete(hash);
+    }
   }
 
   function findByEmail(email: string): AccountRecord | undefined {
@@ -280,6 +302,7 @@ export function createAccountStore(options: AccountStoreOptions = {}) {
     },
 
     requestPasswordReset(input: { email: string; resetURLBase?: string }): { ok: true; resetLink?: string; resetToken?: string } {
+      pruneExpiredRecords();
       const account = findByEmail(input.email);
       if (!account) return { ok: true };
       const token = createToken();
@@ -301,7 +324,13 @@ export function createAccountStore(options: AccountStoreOptions = {}) {
       if (input.password.length < MIN_PASSWORD_LENGTH || input.password !== input.passwordConfirmation) return { ok: false, reason: "invalid_account" };
       const hash = tokenHash(input.token);
       const reset = passwordResets.get(hash);
-      if (!reset || reset.usedAt) return { ok: false, reason: "invalid_session" };
+      if (!reset || reset.usedAt || isExpired(reset.createdAt, passwordResetTtlMs)) {
+        if (reset) {
+          passwordResets.delete(hash);
+          persist();
+        }
+        return { ok: false, reason: "invalid_session" };
+      }
       const account = accounts.get(reset.accountID);
       if (!account) return { ok: false, reason: "account_not_found" };
       const timestamp = now();
@@ -326,6 +355,11 @@ export function createAccountStore(options: AccountStoreOptions = {}) {
     resolveSession(token: string): { ok: true; account: AccountPublicView } | { ok: false; reason: AccountFailureReason } {
       const session = sessions.get(tokenHash(token));
       if (!session) return { ok: false, reason: "invalid_session" };
+      if (isExpired(session.lastSeenAt, sessionTtlMs)) {
+        sessions.delete(tokenHash(token));
+        persist();
+        return { ok: false, reason: "invalid_session" };
+      }
       const account = accounts.get(session.accountID);
       if (!account) return { ok: false, reason: "account_not_found" };
       session.lastSeenAt = now();

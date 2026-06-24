@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { createPregameLobbyStore } from "./pregameLobbyStore";
 
 function setupData(playerCount = 2) {
@@ -222,5 +225,71 @@ describe("pregame lobby store", () => {
       messages: [expect.objectContaining({ author: "Host", text: "Ready when you are." })]
     });
     expect(store.postLobbyChat({ lobbyID: host.lobbyID, lobbyCredentials: "wrong", text: "Nope" })).toEqual({ ok: false, reason: "invalid_credentials" });
+  });
+
+  it("reloads persisted lobby rooms, chat, and started-match credentials", () => {
+    const dir = mkdtempSync(join(tmpdir(), "polity-pregame-store-"));
+    const storageFile = join(dir, "pregame-lobbies.json");
+    try {
+      let id = 0;
+      const store = createPregameLobbyStore({
+        now: () => "2026-06-05T10:00:00.000Z",
+        createID: () => `id-${id += 1}`,
+        createCredential: () => `cred-${id += 1}`,
+        hashPassword: (value) => `hash:${value}`,
+        storageFile
+      });
+      const host = store.createLobby({
+        roomName: "Restart Lobby",
+        playerCount: 2,
+        setupData: setupData(),
+        privateDataFingerprint: "private:abc",
+        password: "swordfish",
+        hostName: "Host",
+        clientID: "client-host"
+      });
+      const guest = store.joinLobby({
+        lobbyID: host.lobbyID,
+        displayName: "Guest",
+        privateDataFingerprint: "private:abc",
+        password: "swordfish",
+        clientID: "client-guest"
+      });
+      if (!guest.ok) throw new Error("guest join failed");
+      expect(store.postLoungeChat({ author: "Host", text: "Table open." }).ok).toBe(true);
+      expect(store.postLobbyChat({ lobbyID: host.lobbyID, lobbyCredentials: host.lobbyCredentials, text: "Welcome." }).ok).toBe(true);
+      store.markStarted({
+        lobbyID: host.lobbyID,
+        matchID: "match-1",
+        playerCredentialsBySeat: { "0": "player-token-0", "1": "player-token-1" }
+      });
+
+      const reloaded = createPregameLobbyStore({
+        now: () => "2026-06-05T10:00:00.000Z",
+        hashPassword: (value) => `hash:${value}`,
+        storageFile
+      });
+
+      expect(reloaded.getStartedMatch(host.lobbyID)).toEqual({ matchID: "match-1" });
+      expect(reloaded.getLobbyForCredentials(host.lobbyID, host.lobbyCredentials)).toEqual(expect.objectContaining({
+        lobbyID: host.lobbyID,
+        roomName: "Restart Lobby",
+        startedMatchID: "match-1",
+        playerCredentials: "player-token-0"
+      }));
+      expect(reloaded.listLobbyChat({ lobbyID: host.lobbyID, lobbyCredentials: host.lobbyCredentials })).toEqual({
+        ok: true,
+        messages: [expect.objectContaining({ author: "Host", text: "Welcome." })]
+      });
+      expect(reloaded.listLoungeChat()).toEqual([expect.objectContaining({ author: "Host", text: "Table open." })]);
+      expect(JSON.stringify(reloaded.listLobbies())).not.toContain("swordfish");
+      expect(JSON.stringify(reloaded.listLobbies())).not.toContain("player-token-0");
+
+      expect(reloaded.clearLobbies()).toBe(1);
+      expect(createPregameLobbyStore({ storageFile }).getStartedMatch(host.lobbyID)).toBeUndefined();
+      expect(createPregameLobbyStore({ storageFile }).listLoungeChat()).toEqual([expect.objectContaining({ text: "Table open." })]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

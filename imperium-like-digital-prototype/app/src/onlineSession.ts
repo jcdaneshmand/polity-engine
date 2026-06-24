@@ -9,6 +9,7 @@ export type OnlineStartedSessionRecord = {
   credentials: string;
   serverURL: string;
   numPlayers: number;
+  setupData?: unknown;
   savedAt: string;
 };
 

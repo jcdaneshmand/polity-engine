@@ -58,7 +58,7 @@ Contact: [jcdaneshmand@gmail.com](mailto:jcdaneshmand@gmail.com).
 - [x] Vite, React, and TypeScript companion app.
 - [x] Rules-engine scaffolding for game state, turn flow, choices, effects, scoring, and setup.
 - [x] Multiplayer, solo, and practice game setup modes.
-- [x] Online multiplayer lobby server for local/development play.
+- [x] Online multiplayer lobby server with account or guest entry, rejoin support, restart-safe local persistence, and smoke coverage.
 - [x] Metadata-driven Commons setup for placeholder and local private card data.
 - [x] Expansion and variant option plumbing, including the `trade_routes` expansion module.
 - [x] Local private data import for cards, nations, nation rulesets, nation strategy profiles, bot state tables, and bot Trade Routes tables.
@@ -79,7 +79,7 @@ Contact: [jcdaneshmand@gmail.com](mailto:jcdaneshmand@gmail.com).
 - [ ] Undo support and stronger legal-move validation for risky actions.
 - [ ] More complete Steam Deck/controller-oriented UI polish.
 - [ ] Import/export polish for portable local game and campaign files.
-- [ ] Production-ready multiplayer hosting, persistence, and authentication.
+- [ ] Production-ready multiplayer hosting hardening and operational runbook.
 
 ## Repository Structure
 
@@ -122,6 +122,15 @@ This starts the lobby server on `http://127.0.0.1:8000` and the app on `http://1
 npm run server:dev
 ```
 
+For a production-style local server that serves the built app from the same origin:
+
+```powershell
+npm run build -w app
+npm run start
+```
+
+The server reads `POLITY_SERVER_PORT` first, then hosted-platform `PORT`, and defaults to `8000`. Set `POLITY_SERVER_ORIGIN` to restrict browser origins and `POLITY_STORAGE_PATH` to a persistent directory. When storage is configured, boardgame.io match state lives under `boardgame/`, while account, match, and pregame lobby JSON files live at the storage root.
+
 Run the engine test suite:
 
 ```powershell
@@ -138,6 +147,12 @@ Run the app workspace tests directly:
 
 ```powershell
 npm run test -w app
+```
+
+Run the multiplayer restart/rejoin smoke test:
+
+```powershell
+npm run smoke:multiplayer
 ```
 
 Build the app:
@@ -288,3 +303,4 @@ Rules-engine, UI, importer, schema, validation, documentation, and placeholder-d
 - Before merging engine or rules changes, review `imperium-like-digital-prototype/docs/rules-engine-notes.md`.
 - Use `imperium-like-digital-prototype/docs/rules-engine-compliance-checklist.md` when summarizing rules-engine changes.
 - For more detail on content boundaries, see `imperium-like-digital-prototype/docs/legal-boundary.md`.
+- For hosted multiplayer deployment notes, see `imperium-like-digital-prototype/docs/deployment.md`.

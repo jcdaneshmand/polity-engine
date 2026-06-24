@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: polity-engine
+    runtime: node
+    rootDir: imperium-like-digital-prototype
+    buildCommand: npm install && npm run build -w app && npm run typecheck
+    startCommand: npm run start
+    healthCheckPath: /polity/accounts/health
+    envVars:
+      - key: POLITY_STORAGE_PATH
+        value: /var/data/polity-engine
+      - key: POLITY_SERVER_ORIGIN
+        sync: false
+      - key: VITE_SHOW_PRIVATE_CARD_DEBUG
+        value: "false"
+    disk:
+      name: polity-engine-storage
+      mountPath: /var/data
+      sizeGB: 1

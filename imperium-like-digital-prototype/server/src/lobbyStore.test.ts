@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { createLobbyStore } from "./lobbyStore";
 
 describe("lobby store", () => {
@@ -157,5 +160,87 @@ describe("lobby store", () => {
       occupiedSeats: [],
       availableSeats: ["0", "1"]
     }));
+  });
+
+  it("keeps stale in-progress seats reserved but marks them disconnected", () => {
+    let nowMs = Date.parse("2026-06-05T01:00:00.000Z");
+    const store = createLobbyStore({ now: () => new Date(nowMs).toISOString(), playerStaleMs: 15_000 });
+    store.createMatchMetadata({
+      matchID: "match-1",
+      roomName: "Started",
+      playerCount: 2,
+      setupData: {},
+      privateDataFingerprint: "placeholder",
+      status: "in_progress",
+      occupiedSeats: [
+        { playerID: "0", playerName: "Host", isConnected: true, playerCredentials: "token-0" },
+        { playerID: "1", playerName: "Guest", isConnected: true, playerCredentials: "token-1" }
+      ]
+    });
+
+    nowMs += 16_000;
+
+    expect(store.listMatches()[0]).toEqual(expect.objectContaining({
+      occupiedSeats: [
+        { playerID: "0", playerName: "Host", isConnected: false },
+        { playerID: "1", playerName: "Guest", isConnected: false }
+      ],
+      availableSeats: []
+    }));
+  });
+
+  it("reloads persisted match metadata and removes it after final leave", () => {
+    const dir = mkdtempSync(join(tmpdir(), "polity-lobby-store-"));
+    const storageFile = join(dir, "matches.json");
+    try {
+      const store = createLobbyStore({
+        now: () => "2026-06-05T01:00:00.000Z",
+        hashPassword: (value) => `hash:${value}`,
+        storageFile
+      });
+      store.createMatchMetadata({
+        matchID: "match-1",
+        roomName: "Restart Table",
+        playerCount: 2,
+        setupData: {
+          options: { commonsSetId: "classics", enabledExpansions: [], enabledVariants: [] },
+          playerNationIds: { "1": "Sun Coast", "2": "River League" }
+        },
+        privateDataFingerprint: "private:abc",
+        password: "swordfish",
+        status: "in_progress",
+        occupiedSeats: [
+          { playerID: "0", playerName: "Host", isConnected: true, playerCredentials: "token-0" },
+          { playerID: "1", playerName: "Guest", isConnected: true, playerCredentials: "token-1" }
+        ]
+      });
+
+      const reloaded = createLobbyStore({
+        now: () => "2026-06-05T01:00:00.000Z",
+        hashPassword: (value) => `hash:${value}`,
+        storageFile
+      });
+
+      expect(reloaded.listMatches()).toEqual([
+        expect.objectContaining({
+          matchID: "match-1",
+          roomName: "Restart Table",
+          status: "in_progress",
+          isLocked: true,
+          occupiedSeats: [
+            { playerID: "0", playerName: "Host", isConnected: true },
+            { playerID: "1", playerName: "Guest", isConnected: true }
+          ]
+        })
+      ]);
+      expect(JSON.stringify(reloaded.listMatches())).not.toContain("swordfish");
+      expect(JSON.stringify(reloaded.listMatches())).not.toContain("token-0");
+
+      expect(reloaded.recordPlayerLeave({ matchID: "match-1", playerID: "0", playerCredentials: "token-0" })).toEqual(expect.objectContaining({ matchID: "match-1" }));
+      expect(reloaded.recordPlayerLeave({ matchID: "match-1", playerID: "1", playerCredentials: "token-1" })).toBeUndefined();
+      expect(createLobbyStore({ storageFile }).listMatches()).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

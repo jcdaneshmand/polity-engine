@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import type {
   ChatMessage,
   CreatePregameLobbyInput,
@@ -39,6 +41,12 @@ type PrivateLobby = {
   seats: PrivateSeat[];
   startedMatchID?: string;
   spectatingAllowed: boolean;
+};
+
+type PregameLobbyStoreSnapshot = {
+  lobbies: PrivateLobby[];
+  chatMessages: Array<[string, ChatMessage[]]>;
+  nextChatID: number;
 };
 
 const PLACEHOLDER_FINGERPRINTS = new Set(["placeholder", "placeholder:v1"]);
@@ -158,9 +166,26 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
   const hashPassword = options.hashPassword ?? defaultHashPassword;
   const cleanupGraceMs = options.cleanupGraceMs ?? DEFAULT_CLEANUP_GRACE_MS;
   const playerStaleMs = options.playerStaleMs ?? DEFAULT_PLAYER_STALE_MS;
-  const lobbies = new Map<string, PrivateLobby>();
-  const chatMessages = new Map<string, ChatMessage[]>();
-  let nextChatID = 0;
+  const loadedSnapshot = loadSnapshot(options.storageFile);
+  const lobbies = new Map<string, PrivateLobby>((loadedSnapshot?.lobbies ?? []).map((lobby) => [lobby.lobbyID, lobby]));
+  const chatMessages = new Map<string, ChatMessage[]>(loadedSnapshot?.chatMessages ?? []);
+  let nextChatID = loadedSnapshot?.nextChatID ?? 0;
+
+  function snapshot(): PregameLobbyStoreSnapshot {
+    return {
+      lobbies: Array.from(lobbies.values()),
+      chatMessages: Array.from(chatMessages.entries()),
+      nextChatID
+    };
+  }
+
+  function persist(): void {
+    if (!options.storageFile) return;
+    mkdirSync(dirname(options.storageFile), { recursive: true });
+    const tempFile = `${options.storageFile}.tmp`;
+    writeFileSync(tempFile, JSON.stringify(snapshot(), null, 2));
+    renameSync(tempFile, options.storageFile);
+  }
 
   function timestamp(): string {
     return now();
@@ -190,8 +215,8 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
     seat.ready = false;
   }
 
-  function cleanupStaleSeats(lobby: PrivateLobby): void {
-    if (lobby.status === "started" || lobby.status === "starting") return;
+  function cleanupStaleSeats(lobby: PrivateLobby): boolean {
+    if (lobby.status === "started" || lobby.status === "starting") return false;
     const current = Date.parse(timestamp());
     let changed = false;
     for (const seat of occupiedSeats(lobby)) {
@@ -201,9 +226,10 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
         changed = true;
       }
     }
-    if (!changed) return;
+    if (!changed) return false;
     if (occupiedSeats(lobby).length === 0) lobby.emptySince = timestamp();
     reconcileLock(lobby, timestamp());
+    return true;
   }
 
   function appendChat(scope: string, author: string, text: string): { ok: true; message: ChatMessage } | { ok: false; reason: "invalid_chat" } {
@@ -218,6 +244,7 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
     };
     const current = [...(chatMessages.get(scope) ?? []), message].slice(-MAX_CHAT_MESSAGES);
     chatMessages.set(scope, current);
+    persist();
     return { ok: true, message };
   }
 
@@ -228,6 +255,7 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
   function deleteLobby(lobbyID: string): void {
     chatMessages.delete(lobbyChatScope(lobbyID));
     lobbies.delete(lobbyID);
+    persist();
   }
 
   return {
@@ -286,12 +314,15 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
         spectatingAllowed: true
       };
       lobbies.set(lobbyID, lobby);
+      persist();
       return { lobbyID, seatID: "0", lobbyCredentials, lobby: lobbyView(lobby, seats[0]) };
     },
 
     listLobbies(): ListedLobby[] {
-      for (const lobby of lobbies.values()) cleanupStaleSeats(lobby);
+      let changed = false;
+      for (const lobby of lobbies.values()) changed = cleanupStaleSeats(lobby) || changed;
       this.cleanupEmptyLobbies();
+      if (changed) persist();
       return Array.from(lobbies.values())
         .filter((lobby) => lobby.status === "waiting" || lobby.status === "locked")
         .map(toListedLobby)
@@ -302,7 +333,7 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
       const lobby = lobbies.get(input.lobbyID);
       if (!lobby) return { ok: false as const, reason: "lobby_not_found" as const };
       if (lobby.status === "started" || lobby.status === "starting") return { ok: false as const, reason: "lobby_already_started" as const };
-      cleanupStaleSeats(lobby);
+      if (cleanupStaleSeats(lobby)) persist();
       if (lobby.privateDataFingerprint !== input.privateDataFingerprint) return { ok: false as const, reason: "private_data_mismatch" as const };
       if (lobby.isLocked) {
         const password = input.password?.trim();
@@ -325,6 +356,7 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
       seat.ready = false;
       delete lobby.emptySince;
       lobby.updatedAt = timestamp();
+      persist();
       return { ok: true as const, lobbyID: lobby.lobbyID, seatID: seat.seatID, lobbyCredentials: seat.lobbyCredentials, lobby: lobbyView(lobby, seat) };
     },
 
@@ -336,6 +368,7 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
       seat.connected = true;
       seat.lastSeenAt = timestamp();
       delete lobby.emptySince;
+      persist();
       return lobbyView(lobby, seat);
     },
 
@@ -348,6 +381,7 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
       seat.lastSeenAt = timestamp();
       delete lobby.emptySince;
       lobby.updatedAt = timestamp();
+      persist();
       return { ok: true };
     },
 
@@ -374,6 +408,7 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
       if (input.spectatingAllowed !== undefined) lobby.spectatingAllowed = input.spectatingAllowed;
       clearReady(lobby);
       lobby.updatedAt = timestamp();
+      persist();
       return { ok: true };
     },
 
@@ -386,6 +421,7 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
       seat.selectedNationID = input.nationID.trim();
       seat.ready = false;
       reconcileLock(lobby, timestamp());
+      persist();
       return { ok: true };
     },
 
@@ -397,6 +433,7 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
       if (!seat.selectedNationID) return { ok: false, reason: "invalid_nation" };
       seat.ready = input.ready;
       reconcileLock(lobby, timestamp());
+      persist();
       return { ok: true };
     },
 
@@ -411,12 +448,14 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
         return { ok: true };
       }
       lobby.updatedAt = timestamp();
+      persist();
       return { ok: true };
     },
 
     clearLobbies(): number {
       const lobbyIDs = Array.from(lobbies.keys());
       for (const lobbyID of lobbyIDs) deleteLobby(lobbyID);
+      persist();
       return lobbyIDs.length;
     },
 
@@ -429,6 +468,7 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
       if (lobby.status !== "locked") return { ok: false, reason: "not_ready" };
       lobby.status = "starting";
       lobby.updatedAt = timestamp();
+      persist();
       return {
         ok: true,
         roomName: lobby.roomName,
@@ -454,6 +494,7 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
       }
       lobby.updatedAt = timestamp();
       const host = lobby.seats.find((seat) => seat.clientID === lobby.hostClientID) ?? lobby.seats[0];
+      persist();
       return lobbyView(lobby, host);
     },
 
@@ -463,6 +504,7 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
       clearReady(lobby);
       lobby.status = "waiting";
       lobby.updatedAt = timestamp();
+      persist();
     },
 
     getStartedMatch(lobbyID: string): { matchID: string } | undefined {
@@ -474,22 +516,36 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
       const ts = timestamp();
       const current = Date.parse(ts);
       const removed: string[] = [];
+      let changed = false;
       for (const lobby of lobbies.values()) {
         if (lobby.status === "started" || lobby.status === "starting") continue;
         if (occupiedSeats(lobby).length > 0) {
-          delete lobby.emptySince;
+          if (lobby.emptySince) {
+            delete lobby.emptySince;
+            changed = true;
+          }
           continue;
         }
-        lobby.emptySince ??= ts;
+        if (!lobby.emptySince) {
+          lobby.emptySince = ts;
+          changed = true;
+        }
         if (current - Date.parse(lobby.emptySince) > cleanupGraceMs) {
           lobby.status = "abandoned";
           removed.push(lobby.lobbyID);
+          changed = true;
         }
       }
       for (const lobbyID of removed) deleteLobby(lobbyID);
+      if (changed && removed.length === 0) persist();
       return removed;
     }
   };
 }
 
 export type PregameLobbyStore = ReturnType<typeof createPregameLobbyStore>;
+
+function loadSnapshot(storageFile: string | undefined): PregameLobbyStoreSnapshot | undefined {
+  if (!storageFile || !existsSync(storageFile)) return undefined;
+  return JSON.parse(readFileSync(storageFile, "utf8")) as PregameLobbyStoreSnapshot;
+}

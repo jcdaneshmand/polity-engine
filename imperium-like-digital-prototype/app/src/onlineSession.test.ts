@@ -26,6 +26,16 @@ describe("online session utilities", () => {
       credentials: "secret-token",
       serverURL: "http://localhost:8000",
       numPlayers: 2,
+      setupData: {
+        options: {
+          playerCount: 2,
+          mode: "multiplayer",
+          enabledExpansions: ["trade_routes"],
+          enabledVariants: [],
+          commonsSetId: "horizons"
+        },
+        playerNationIds: { "1": "test_nation_sun_coast", "2": "test_nation_river_league" }
+      },
       savedAt: "2026-06-05T01:00:00.000Z"
     };
 

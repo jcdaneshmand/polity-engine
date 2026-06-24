@@ -27,6 +27,8 @@ type GameSession = NewGameSessionConfig & AccountGameTracking & {
   | { kind: "online"; role: "spectator"; matchID: string; credentials: string; serverURL: string }
 );
 
+type HomeView = "setup" | "private-data" | "about" | "online" | "lobby" | "lobby-setup";
+
 const ONLINE_CLIENT_STORAGE_KEY = "polity-engine.onlineClientID.v1";
 const ONLINE_HEARTBEAT_MS = 5_000;
 
@@ -122,6 +124,57 @@ function gamePlayerIDForSeatID(playerID: string | undefined): string {
   return String(Number(playerID ?? "0") + 1);
 }
 
+function isNewGameSessionConfig(value: unknown): value is NewGameSessionConfig {
+  if (!value || typeof value !== "object") return false;
+  const config = value as Partial<NewGameSessionConfig>;
+  const options = config.options as Partial<NewGameSessionConfig["options"]> | undefined;
+  return Boolean(
+    options
+    && typeof options === "object"
+    && Number.isInteger(options.playerCount)
+    && options.mode === "multiplayer"
+    && Array.isArray(options.enabledExpansions)
+    && Array.isArray(options.enabledVariants)
+    && config.playerNationIds
+    && typeof config.playerNationIds === "object"
+  );
+}
+
+export function setupConfigForStartedOnlineSession(record: OnlineStartedSessionRecord): NewGameSessionConfig {
+  if (isNewGameSessionConfig(record.setupData)) return record.setupData;
+  return {
+    options: {
+      playerCount: record.numPlayers as 1 | 2 | 3 | 4,
+      mode: "multiplayer",
+      enabledExpansions: [],
+      enabledVariants: []
+    },
+    playerNationIds: {}
+  };
+}
+
+export function shouldHeartbeatLobbySession(homeView: HomeView): boolean {
+  return homeView === "lobby" || homeView === "lobby-setup";
+}
+
+export function startedSessionRecordForLobby(
+  lobbySession: OnlineLobbySessionRecord,
+  lobby: LobbyRoomDetails,
+  savedAt = new Date().toISOString()
+): OnlineStartedSessionRecord | undefined {
+  if (!lobby.startedMatchID || !lobby.playerCredentials) return undefined;
+  return {
+    kind: "player",
+    matchID: lobby.startedMatchID,
+    playerID: lobby.viewer.seatID || lobbySession.seatID,
+    credentials: lobby.playerCredentials,
+    serverURL: lobbySession.serverURL,
+    numPlayers: lobby.playerCount,
+    setupData: lobby.setupData,
+    savedAt
+  };
+}
+
 function startAccountHistoryEntry(args: {
   serverURL: string;
   accountToken: string;
@@ -139,7 +192,7 @@ function startAccountHistoryEntry(args: {
 
 export default function App() {
   const [session, setSession] = useState<GameSession | null>(null);
-  const [homeView, setHomeView] = useState<"setup" | "private-data" | "about" | "online" | "lobby" | "lobby-setup">("setup");
+  const [homeView, setHomeView] = useState<HomeView>("setup");
   const [pendingCampaignProgress, setPendingCampaignProgress] = useState<CampaignProgress | undefined>(undefined);
   const [savedOnlineSession, setSavedOnlineSession] = useState<OnlineSessionRecord | undefined>(loadOnlineSessionRecord());
   const [onlineSetupConfig, setOnlineSetupConfig] = useState<NewGameSessionConfig | undefined>(undefined);
@@ -239,7 +292,7 @@ export default function App() {
   }, [accountSession?.token, multiplayerServerURL]);
 
   useEffect(() => {
-    if (homeView !== "lobby" || !currentLobbySession) return;
+    if (!shouldHeartbeatLobbySession(homeView) || !currentLobbySession) return;
     const beat = () => {
       void heartbeatLobbyRoom({
         serverURL: currentLobbySession.serverURL,
@@ -300,19 +353,20 @@ export default function App() {
   };
 
   const startOnlineSession = (config: NewGameSessionConfig, record: OnlineStartedSessionRecord) => {
-    saveOnlineSessionRecord(record);
-    setSavedOnlineSession(record);
+    const savedRecord: OnlineStartedSessionRecord = { ...record, setupData: record.setupData ?? config };
+    saveOnlineSessionRecord(savedRecord);
+    setSavedOnlineSession(savedRecord);
     setPendingCampaignProgress(undefined);
-    setOnlineStatus(record.kind === "spectator" ? `Spectating online room ${record.matchID}` : `Online room ${record.matchID} as Player ${Number(record.playerID) + 1}`);
-    if (record.kind === "spectator") {
+    setOnlineStatus(savedRecord.kind === "spectator" ? `Spectating online room ${savedRecord.matchID}` : `Online room ${savedRecord.matchID} as Player ${Number(savedRecord.playerID) + 1}`);
+    if (savedRecord.kind === "spectator") {
       setSession({
         ...config,
         id: Date.now(),
         kind: "online",
         role: "spectator",
-        matchID: record.matchID,
-        credentials: record.credentials,
-        serverURL: record.serverURL
+        matchID: savedRecord.matchID,
+        credentials: savedRecord.credentials,
+        serverURL: savedRecord.serverURL
       });
       return;
     }
@@ -325,7 +379,7 @@ export default function App() {
       }
       : {};
     if (accountSession && tracking.accountHistoryEntryID) {
-      const playerID = record.playerID ?? "0";
+      const playerID = savedRecord.playerID ?? "0";
       const gamePlayerID = gamePlayerIDForSeatID(playerID);
       startAccountHistoryEntry({
         serverURL: multiplayerServerURL,
@@ -336,9 +390,9 @@ export default function App() {
           variant: "multiplayer",
           status: "started",
           outcome: "unknown",
-          matchID: record.matchID,
+          matchID: savedRecord.matchID,
           playerID: gamePlayerID,
-          playerCount: record.numPlayers,
+          playerCount: savedRecord.numPlayers,
           nationID: config.playerNationIds[gamePlayerID]
         },
         onError: setOnlineStatus
@@ -350,11 +404,19 @@ export default function App() {
       id: Date.now(),
       kind: "online",
       role: "player",
-      matchID: record.matchID,
-      playerID: record.playerID ?? "0",
-      credentials: record.credentials,
-      serverURL: record.serverURL
+      matchID: savedRecord.matchID,
+      playerID: savedRecord.playerID ?? "0",
+      credentials: savedRecord.credentials,
+      serverURL: savedRecord.serverURL
     });
+  };
+
+  const startFromLobbyIfStarted = (lobbySession: OnlineLobbySessionRecord, lobby: LobbyRoomDetails): boolean => {
+    const startedRecord = startedSessionRecordForLobby(lobbySession, lobby);
+    if (!startedRecord) return false;
+    startOnlineSession(setupConfigForStartedOnlineSession(startedRecord), startedRecord);
+    setOnlineStatus(`Joining started online room ${startedRecord.matchID}.`);
+    return true;
   };
 
   const rejoinOnlineGame = async () => {
@@ -372,6 +434,7 @@ export default function App() {
           lobbyID: savedOnlineSession.lobbyID,
           lobbyCredentials: savedOnlineSession.lobbyCredentials
         });
+        if (startFromLobbyIfStarted(savedOnlineSession, rejoined.lobby)) return;
         setCurrentLobbySession(savedOnlineSession);
         setCurrentLobby(rejoined.lobby);
         setLobbyChatMessages(chatMessages);
@@ -382,35 +445,28 @@ export default function App() {
       return;
     }
     setOnlineStatus(`Rejoining online room ${savedOnlineSession.matchID}`);
-    const rejoinOptions = {
-      playerCount: savedOnlineSession.numPlayers as 1 | 2 | 3 | 4,
-      mode: "multiplayer" as const,
-      enabledExpansions: [],
-      enabledVariants: []
-    };
+    const rejoinConfig = setupConfigForStartedOnlineSession(savedOnlineSession);
     if (savedOnlineSession.kind === "spectator") {
       setSession({
+        ...rejoinConfig,
         id: Date.now(),
         kind: "online",
         role: "spectator",
         matchID: savedOnlineSession.matchID,
         credentials: savedOnlineSession.credentials,
-        serverURL: savedOnlineSession.serverURL,
-        options: rejoinOptions,
-        playerNationIds: {}
+        serverURL: savedOnlineSession.serverURL
       });
       return;
     }
     setSession({
+      ...rejoinConfig,
       id: Date.now(),
       kind: "online",
       role: "player",
       matchID: savedOnlineSession.matchID,
       credentials: savedOnlineSession.credentials,
       serverURL: savedOnlineSession.serverURL,
-      playerID: savedOnlineSession.playerID ?? "0",
-      options: rejoinOptions,
-      playerNationIds: {}
+      playerID: savedOnlineSession.playerID ?? "0"
     });
   };
 
@@ -578,6 +634,7 @@ export default function App() {
         lobbyID: currentLobbySession.lobbyID,
         lobbyCredentials: currentLobbySession.lobbyCredentials
       });
+      if (startFromLobbyIfStarted(currentLobbySession, rejoined.lobby)) return;
       setCurrentLobby(rejoined.lobby);
       setLobbyChatMessages(chatMessages);
       setOnlineStatus(`Lobby ${currentLobbySession.lobbyID} refreshed.`);

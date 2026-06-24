@@ -9,3 +9,4 @@ imperium-like-digital-prototype/private-card-data/private_nations_README.md
 /imperium-like-digital-prototype/private-card-data/*.csv
 /imperium-like-digital-prototype/private-card-data/*.json
 /imperium-like-digital-prototype/generated-private/*.json
+/imperium-like-digital-prototype/tmp/

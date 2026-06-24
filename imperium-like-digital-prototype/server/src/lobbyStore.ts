@@ -1,10 +1,13 @@
 import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import type { CreateLobbyMatchInput, ListedMatch, ListedMatchStatus, LobbyAccessResult, RecordPlayerJoinInput, RecordPlayerLeaveInput } from "./lobbyTypes";
 
 type LobbyStoreOptions = {
   now?: () => string;
   hashPassword?: (value: string) => string;
   playerStaleMs?: number;
+  storageFile?: string;
 };
 
 type PrivateMatchMetadata = {
@@ -20,6 +23,14 @@ type PrivateMatchMetadata = {
   privateDataFingerprint: string;
   passwordVerifier?: string;
   setupSummary: ListedMatch["setupSummary"];
+};
+
+type PersistedMatchMetadata = Omit<PrivateMatchMetadata, "occupiedSeats"> & {
+  occupiedSeats: Array<{ playerID: string; playerName: string; isConnected: boolean; playerCredentials: string; clientID?: string; lastSeenAt: string }>;
+};
+
+type LobbyStoreSnapshot = {
+  matches: PersistedMatchMetadata[];
 };
 
 const PLACEHOLDER_FINGERPRINTS = new Set(["placeholder", "placeholder:v1"]);
@@ -101,16 +112,51 @@ export function createLobbyStore(options: LobbyStoreOptions = {}) {
   const now = options.now ?? (() => new Date().toISOString());
   const hashPassword = options.hashPassword ?? defaultHashPassword;
   const playerStaleMs = options.playerStaleMs ?? DEFAULT_PLAYER_STALE_MS;
-  const matches = new Map<string, PrivateMatchMetadata>();
+  const loadedSnapshot = loadSnapshot(options.storageFile);
+  const matches = new Map<string, PrivateMatchMetadata>((loadedSnapshot?.matches ?? []).map((match) => [
+    match.matchID,
+    {
+      ...match,
+      occupiedSeats: new Map(match.occupiedSeats.map((seat) => [seat.playerID, seat]))
+    }
+  ]));
 
-  function cleanupStalePlayers(match: PrivateMatchMetadata): void {
+  function snapshot(): LobbyStoreSnapshot {
+    return {
+      matches: Array.from(matches.values()).map((match) => ({
+        ...match,
+        occupiedSeats: Array.from(match.occupiedSeats.values())
+      }))
+    };
+  }
+
+  function persist(): void {
+    if (!options.storageFile) return;
+    mkdirSync(dirname(options.storageFile), { recursive: true });
+    const tempFile = `${options.storageFile}.tmp`;
+    writeFileSync(tempFile, JSON.stringify(snapshot(), null, 2));
+    renameSync(tempFile, options.storageFile);
+  }
+
+  function cleanupStalePlayers(match: PrivateMatchMetadata): boolean {
     const current = Date.parse(now());
+    let changed = false;
     for (const seat of Array.from(match.occupiedSeats.values())) {
       if (current - Date.parse(seat.lastSeenAt) > playerStaleMs) {
-        match.occupiedSeats.delete(seat.playerID);
-        match.updatedAt = now();
+        if (match.status === "in_progress") {
+          if (seat.isConnected) {
+            seat.isConnected = false;
+            match.updatedAt = now();
+            changed = true;
+          }
+        } else {
+          match.occupiedSeats.delete(seat.playerID);
+          match.updatedAt = now();
+          changed = true;
+        }
       }
     }
+    return changed;
   }
 
   return {
@@ -133,17 +179,20 @@ export function createLobbyStore(options: LobbyStoreOptions = {}) {
         setupSummary: deriveSetupSummary(input.setupData)
       };
       matches.set(input.matchID, match);
+      persist();
       return toListedMatch(match);
     },
 
     listMatches(): ListedMatch[] {
-      for (const match of matches.values()) cleanupStalePlayers(match);
+      let changed = false;
+      for (const match of matches.values()) changed = cleanupStalePlayers(match) || changed;
+      if (changed) persist();
       return sortListedMatches(Array.from(matches.values()).map(toListedMatch));
     },
 
     getMatch(matchID: string): ListedMatch | undefined {
       const match = matches.get(matchID);
-      if (match) cleanupStalePlayers(match);
+      if (match && cleanupStalePlayers(match)) persist();
       return match ? toListedMatch(match) : undefined;
     },
 
@@ -159,6 +208,7 @@ export function createLobbyStore(options: LobbyStoreOptions = {}) {
         ...(input.clientID ? { clientID: input.clientID } : {})
       });
       match.updatedAt = now();
+      persist();
       return toListedMatch(match);
     },
 
@@ -187,6 +237,7 @@ export function createLobbyStore(options: LobbyStoreOptions = {}) {
       seat.lastSeenAt = now();
       seat.isConnected = true;
       match.updatedAt = now();
+      persist();
       return { ok: true };
     },
 
@@ -198,15 +249,18 @@ export function createLobbyStore(options: LobbyStoreOptions = {}) {
       match.occupiedSeats.delete(input.playerID);
       if (match.occupiedSeats.size === 0) {
         matches.delete(input.matchID);
+        persist();
         return undefined;
       }
       match.updatedAt = now();
+      persist();
       return toListedMatch(match);
     },
 
     clearMatches(): number {
       const count = matches.size;
       matches.clear();
+      persist();
       return count;
     },
 
@@ -215,6 +269,7 @@ export function createLobbyStore(options: LobbyStoreOptions = {}) {
       if (!match) return undefined;
       match.status = "in_progress";
       match.updatedAt = now();
+      persist();
       return toListedMatch(match);
     },
 
@@ -225,6 +280,7 @@ export function createLobbyStore(options: LobbyStoreOptions = {}) {
       const seat = match.occupiedSeats.get(input.playerID);
       if (!seat || seat.playerCredentials !== input.playerCredentials) return { ok: false, reason: "invalid_credentials" };
       matches.delete(input.matchID);
+      persist();
       return { ok: true };
     },
 
@@ -241,3 +297,8 @@ export function createLobbyStore(options: LobbyStoreOptions = {}) {
 }
 
 export type LobbyStore = ReturnType<typeof createLobbyStore>;
+
+function loadSnapshot(storageFile: string | undefined): LobbyStoreSnapshot | undefined {
+  if (!storageFile || !existsSync(storageFile)) return undefined;
+  return JSON.parse(readFileSync(storageFile, "utf8")) as LobbyStoreSnapshot;
+}

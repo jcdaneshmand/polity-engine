@@ -11,6 +11,9 @@
     "dev": "npm run dev -w app",
     "dev:full": "node ../scripts/dev-full.mjs",
     "server:dev": "npm run dev -w server",
+    "server:start": "npm run dev -w server",
+    "start": "npm run server:start",
+    "smoke:multiplayer": "npm run build -w app && node ../scripts/multiplayer-smoke.mjs",
     "test": "npm run test -w engine",
     "typecheck": "npm run typecheck -w engine && npm run typecheck -w app && npm run typecheck -w server",
     "cards:validate": "tsx tools/card-import/validatePrivateCards.ts",
@@ -43,6 +46,7 @@
   },
   "dependencies": {
     "boardgame.io": "^0.50.2",
+    "node-persist": "^3.1.0",
     "papaparse": "^5.5.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

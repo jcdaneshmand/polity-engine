@@ -7,7 +7,10 @@ describe("server config", () => {
       port: 8000,
       origins: [/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/],
       storageDir: undefined,
-      accountStorageFile: undefined
+      boardgameStorageDir: undefined,
+      accountStorageFile: undefined,
+      lobbyStorageFile: undefined,
+      pregameLobbyStorageFile: undefined
     });
   });
 
@@ -20,8 +23,16 @@ describe("server config", () => {
       port: 9001,
       origins: ["http://localhost:5173", "https://polity.example"],
       storageDir: "tmp/multiplayer",
-      accountStorageFile: "tmp/multiplayer/accounts.json"
+      boardgameStorageDir: "tmp/multiplayer/boardgame",
+      accountStorageFile: "tmp/multiplayer/accounts.json",
+      lobbyStorageFile: "tmp/multiplayer/lobby-matches.json",
+      pregameLobbyStorageFile: "tmp/multiplayer/pregame-lobbies.json"
     });
+  });
+
+  it("uses hosted platform PORT when the Polity-specific port is not set", () => {
+    expect(buildServerConfig({ PORT: "10000" }).port).toBe(10000);
+    expect(buildServerConfig({ PORT: "10000", POLITY_SERVER_PORT: "9001" }).port).toBe(9001);
   });
 
   it("rejects invalid ports", () => {

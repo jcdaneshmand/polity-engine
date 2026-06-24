@@ -104,4 +104,5 @@ export type PregameLobbyStoreOptions = {
   hashPassword?: (value: string) => string;
   cleanupGraceMs?: number;
   playerStaleMs?: number;
+  storageFile?: string;
 };

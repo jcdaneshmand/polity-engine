@@ -1,13 +1,9 @@
 import { describe, expect, it } from "vitest";
-import path from "node:path";
 import { validateNationRuleset } from "../nations/nationRulesetValidation";
 import type { NationRuleset } from "../nations/nationRulesetTypes";
 import { validateNationRulesetCompatibility } from "../nations/nationRulesetRegistry";
-import { parseCsvFile } from "../../../tools/card-import/csvParser";
 import { normalizeNationRuleset } from "../../../tools/card-import/normalizeNationRuleset";
 import { validatePrivateNationRulesetsRows } from "../../../tools/card-import/validatePrivateNationRulesets";
-
-const privateRulesetCsvPath = path.resolve(import.meta.dirname, "../../../private-card-data/imperium_nation_rulesets_private.csv");
 
 function ruleset(overrides: Partial<NationRuleset> = {}): NationRuleset {
   return {
@@ -1581,14 +1577,18 @@ describe("nation ruleset validation", () => {
   });
 
   it("imports nation-specific Bot cleanup Market token overrides", () => {
-    const rows = parseCsvFile(privateRulesetCsvPath);
     const expected = new Map([
-      ["carthaginians", { op: "bot_cleanup_market_resource", resource: "materials", count: 2 }],
-      ["guptas", { op: "bot_cleanup_market_resource", resource: "goods", count: 1 }],
-      ["qin", { op: "bot_cleanup_market_resource", resource: "influence", count: 1 }],
-      ["tang", { op: "bot_cleanup_market_resource", resource: "influence", count: 1 }],
-      ["wagadou", { op: "bot_cleanup_market_resource", resource: "materials", count: 1 }],
+      ["fixture_materials_double", { op: "bot_cleanup_market_resource", resource: "materials", count: 2 }],
+      ["fixture_goods_single", { op: "bot_cleanup_market_resource", resource: "goods", count: 1 }],
+      ["fixture_influence_single", { op: "bot_cleanup_market_resource", resource: "influence", count: 1 }],
     ]);
+    const rows = [...expected].map(([nationId, override]) =>
+      privateRulesetRow({
+        nation_id: nationId,
+        public_placeholder_name: `Fixture ${nationId}`,
+        bot_overrides_json: JSON.stringify([override])
+      })
+    );
 
     for (const [nationId, override] of expected) {
       const row = rows.find((entry) => entry.nation_id === nationId);
@@ -1601,38 +1601,53 @@ describe("nation ruleset validation", () => {
     }
   });
 
-  it("imports the Inuit short-game exception that skips default Nation-card advancement", () => {
-    const rows = parseCsvFile(privateRulesetCsvPath);
-    const inuit = rows.find((row) => row.nation_id === "inuit");
+  it("imports a short-game exception that skips default Nation-card advancement", () => {
+    const fixture = privateRulesetRow({
+      nation_id: "fixture_seasonal_exception",
+      public_placeholder_name: "Fixture Seasonal Exception",
+      short_game_overrides_json: JSON.stringify([
+        { op: "add_nation_cards_to_discard", count: 0 },
+        { op: "move_development_cards_to_discard", cardIds: ["fixture_winter_card", "fixture_summer_card"] }
+      ])
+    });
 
-    expect(inuit).toBeDefined();
-    const normalized = normalizeNationRuleset(inuit as any);
+    const normalized = normalizeNationRuleset(fixture as any);
 
     expect(normalized.shortGameOverrides).toContainEqual({ op: "add_nation_cards_to_discard", count: 0 });
     expect(normalized.shortGameOverrides).toContainEqual({
       op: "move_development_cards_to_discard",
-      cardIds: ["TODO_PRIVATE_INUIT_WINTER_CARD_ID", "TODO_PRIVATE_INUIT_SUMMER_CARD_ID"]
+      cardIds: ["fixture_winter_card", "fixture_summer_card"]
     });
   });
 
-  it("imports Utopians as excluded from the short game variant", () => {
-    const rows = parseCsvFile(privateRulesetCsvPath);
-    const utopians = rows.find((row) => row.nation_id === "utopians");
+  it("imports a ruleset as excluded from the short game variant", () => {
+    const fixture = privateRulesetRow({
+      nation_id: "fixture_short_game_excluded",
+      public_placeholder_name: "Fixture Short Game Excluded",
+      ruleset_tags: "short_game_excluded",
+      short_game_overrides_json: JSON.stringify([{ op: "excluded_from_short_game" }])
+    });
 
-    expect(utopians).toBeDefined();
-    const normalized = normalizeNationRuleset(utopians as any);
+    const normalized = normalizeNationRuleset(fixture as any);
 
     expect(normalized.rulesetTags).toContain("short_game_excluded");
     expect(normalized.shortGameOverrides).toContainEqual({ op: "excluded_from_short_game" });
-    expect(validateNationRulesetCompatibility({ id: "utopians", displayName: "Utopians", powerCardIds: [], stateCardIds: [], startingDeckCardIds: [], nationDeckCardIds: [], developmentCardIds: [], setupRules: [], passiveRules: [], actionTokensBase: 3, exhaustTokensBase: 5, requiredExpansions: [], implemented: false, tested: false } as any, normalized, { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: ["short_game"] })).toContain("Ruleset excluded by enabled variant short_game");
+    expect(validateNationRulesetCompatibility({ id: "fixture_short_game_excluded", displayName: "Fixture Short Game Excluded", powerCardIds: [], stateCardIds: [], startingDeckCardIds: [], nationDeckCardIds: [], developmentCardIds: [], setupRules: [], passiveRules: [], actionTokensBase: 3, exhaustTokensBase: 5, requiredExpansions: [], implemented: false, tested: false } as any, normalized, { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: ["short_game"] })).toContain("Ruleset excluded by enabled variant short_game");
   });
 
-  it("imports and validates the Cultists no-Nation custom-state ruleset", () => {
-    const rows = parseCsvFile(privateRulesetCsvPath);
-    const cultists = rows.find((row) => row.nation_id === "cultists");
+  it("imports and validates a no-Nation custom-state ruleset", () => {
+    const fixture = privateRulesetRow({
+      nation_id: "fixture_no_nation_custom_state",
+      public_placeholder_name: "Fixture No Nation Custom State",
+      ruleset_tags: "no_nation_deck|no_accession|no_development_area|chaos_pile|short_game_excluded|solo_bot_exception",
+      setup_overrides_json: JSON.stringify([{ op: "create_side_area", areaId: "ceremony_track", displayName: "Ceremony Track", public: true }]),
+      zone_overrides_json: JSON.stringify([{ op: "create_zone", zoneId: "chaos_pile", displayName: "Chaos Pile", visibility: "public" }]),
+      collapse_overrides_json: JSON.stringify([{ op: "auto_win_if_zone_empty", zoneId: "chaos_pile" }]),
+      bot_overrides_json: JSON.stringify([{ op: "bot_custom_cleanup", effect: [{ op: "bot_resolve_cultists_state_cleanup" }] }]),
+      short_game_overrides_json: JSON.stringify([{ op: "excluded_from_short_game" }])
+    });
 
-    expect(cultists).toBeDefined();
-    const normalized = normalizeNationRuleset(cultists as any);
+    const normalized = normalizeNationRuleset(fixture as any);
 
     expect(normalized.rulesetTags).toEqual(expect.arrayContaining([
       "no_nation_deck",
@@ -1668,23 +1683,37 @@ describe("nation ruleset validation", () => {
     }))).toEqual([]);
   });
 
-  it("imports the Martians Alien-state scoring, payment, and nadir reshuffle exceptions", () => {
-    const rows = parseCsvFile(privateRulesetCsvPath);
-    const martians = rows.find((row) => row.nation_id === "martians");
+  it("imports alternate-state scoring, payment, and reshuffle exceptions", () => {
+    const fixture = privateRulesetRow({
+      nation_id: "fixture_alternate_state",
+      public_placeholder_name: "Fixture Alternate State",
+      state_overrides_json: JSON.stringify([
+        { op: "start_as_state", state: "alien" },
+        { op: "take_unrest_when_spending_resource", resource: "knowledge", state: "alien" }
+      ]),
+      reshuffle_overrides_json: JSON.stringify([
+        { op: "place_nation_card_in_play_when_added", cardId: "fixture_reactor_card", suppressStateFlip: true }
+      ]),
+      solstice_overrides_json: JSON.stringify([
+        { op: "remove_play_card_and_nation_deck_if_resource_empty", cardId: "fixture_reactor_card", resource: "knowledge", state: "alien", activateState: "native" }
+      ]),
+      scoring_overrides_json: JSON.stringify([
+        { op: "score_resource_ratio", resource: "knowledge", denominator: 3, state: "alien" }
+      ])
+    });
 
-    expect(martians).toBeDefined();
-    const normalized = normalizeNationRuleset(martians as any);
+    const normalized = normalizeNationRuleset(fixture as any);
 
     expect(normalized.stateOverrides).toContainEqual({ op: "start_as_state", state: "alien" });
     expect(normalized.stateOverrides).toContainEqual({ op: "take_unrest_when_spending_resource", resource: "knowledge", state: "alien" });
     expect(normalized.reshuffleOverrides).toContainEqual({
       op: "place_nation_card_in_play_when_added",
-      cardId: "TODO_PRIVATE_REACTOR_OR_NADIR_CARD_ID",
+      cardId: "fixture_reactor_card",
       suppressStateFlip: true
     });
     expect(normalized.solsticeOverrides).toContainEqual({
       op: "remove_play_card_and_nation_deck_if_resource_empty",
-      cardId: "TODO_PRIVATE_REACTOR_OR_NADIR_CARD_ID",
+      cardId: "fixture_reactor_card",
       resource: "knowledge",
       state: "alien",
       activateState: "native"

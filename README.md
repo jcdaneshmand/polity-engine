@@ -161,6 +161,8 @@ Run the public-safe fictional game smoke test:
 npm run smoke:fictional-game
 ```
 
+Local games are saved in browser storage while you play. When a valid saved local game exists, the setup screen offers `Resume Saved Game`; if the saved JSON is corrupt, it offers `Discard Saved Game` without replacing the current setup flow.
+
 Build the app:
 
 ```powershell

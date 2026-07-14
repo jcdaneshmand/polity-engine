@@ -390,7 +390,7 @@ Expected: pass.
 
 Execution note: the setup pipeline already supports `privateData.nationRulesets`, so the fixture pack includes `rulesets.json` with a public-safe `move_cards_to_unrest_supply` override. The scenario metadata and test use `commonsSetId: "custom"` because uploaded/import-like card bundles are routed through the existing custom commons setup path. `npm.cmd run test -w engine -- fictionalRegressionData.test.ts` passed after this adjustment.
 
-- [ ] **Step 7: Commit the fixture pack**
+- [x] **Step 7: Commit the fixture pack**
 
 Run from repo root:
 
@@ -639,7 +639,7 @@ Modify `imperium-like-digital-prototype/docs/rules-engine-parity-matrix.md` by a
 
 Only add that sentence to rows actually exercised by the new tests.
 
-- [ ] **Step 6: Commit expanded fictional rules coverage**
+- [x] **Step 6: Commit expanded fictional rules coverage**
 
 Run from repo root:
 
@@ -671,7 +671,7 @@ Expected: identify the app component or helper that owns local game initializati
 
 Execution note: `App.tsx` owns local session setup and passes setup data into the boardgame.io React client. The React client surface in this version does not expose a simple full `ctx` restore prop, so Task 5 is being split: first commit a tested versioned save-envelope boundary; then wire honest UI resume only once the restore surface is designed.
 
-- [ ] **Step 2: Write failing app tests for local save and resume**
+- [x] **Step 2: Write failing app tests for local save and resume**
 
 Add tests that prove:
 
@@ -683,6 +683,8 @@ Add tests that prove:
 ```
 
 Use `imperium-like-digital-prototype/app/src/App.test.tsx` if the current app tests already cover top-level state; otherwise create a focused helper test beside the new persistence helper.
+
+Execution note: added failing tests in `localGameSave.test.ts` and `App.test.tsx` for storage load states, corrupt-save recovery messaging, a Redux restore enhancer, and saved-game setup-screen controls; verified they failed before implementation.
 
 - [x] **Step 3: Implement a focused persistence helper**
 
@@ -707,7 +709,7 @@ export function parseSavedLocalGame(raw: string): SavedLocalGameEnvelope | null;
 
 Execution note: added `app/src/localGameSave.ts` and `app/src/localGameSave.test.ts`. The helper serializes/parses a versioned envelope, preserves arbitrary saved game/turn state, rejects corrupt JSON and unsupported versions, and rejects known private-content fields (`rawEffectTextPrivate`, `officialName`, `officialText`, `officialRulesText`).
 
-- [ ] **Step 4: Wire resume into the app**
+- [x] **Step 4: Wire resume into the app**
 
 Add UI entry only where current local game setup controls already live. The user-facing behavior should be:
 
@@ -717,7 +719,9 @@ If the saved game is corrupt, show a clear discard/restart action.
 If no saved game exists, keep the current setup flow unchanged.
 ```
 
-- [ ] **Step 5: Run app and type checks**
+Execution note: wired local board state persistence through the boardgame.io React `Client` enhancer path. Local sessions save a versioned envelope to browser storage, valid saves show `Resume Saved Game`, corrupt saves show `Discard Saved Game`, and resume initializes the local client store from the saved state while preserving the public/private-data fingerprint boundary.
+
+- [x] **Step 5: Run app and type checks**
 
 Run from `imperium-like-digital-prototype`:
 
@@ -728,7 +732,9 @@ npm.cmd run typecheck
 
 Expected: both commands exit 0.
 
-- [ ] **Step 6: Commit local save/resume**
+Execution note: `npm.cmd run test -w app` passed with 15 files and 125 tests; `npm.cmd run typecheck` passed for engine, app, and server.
+
+- [x] **Step 6: Commit local save/resume**
 
 Run from repo root:
 

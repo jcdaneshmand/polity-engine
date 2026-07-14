@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import App, { loadOnlineDirectory, setupConfigForStartedOnlineSession, shouldHeartbeatLobbySession, startedSessionRecordForLobby } from "./App";
+import { LOCAL_GAME_SAVE_STORAGE_KEY, serializeLocalGame } from "./localGameSave";
 import type { LobbyRoomDetails, OnlineLobbySessionRecord, OnlineStartedSessionRecord } from "./onlineSession";
 
 const setupConfig = {
@@ -18,11 +19,57 @@ const setupConfig = {
 };
 
 describe("App shell", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function stubBrowserStorage(entries: Record<string, string | null>) {
+    vi.stubGlobal("window", {
+      location: { href: "http://localhost/" },
+      history: { replaceState: () => undefined },
+      localStorage: {
+        getItem: (key: string) => entries[key] ?? null,
+        setItem: (key: string, value: string) => { entries[key] = value; },
+        removeItem: (key: string) => { delete entries[key]; }
+      },
+      crypto: { randomUUID: () => "test-client-id" },
+      setInterval: () => 1,
+      clearInterval: () => undefined
+    });
+  }
+
   it("renders a stable default theme hook on the home shell", () => {
     const html = renderToStaticMarkup(<App />);
 
     expect(html).toContain('data-theme="default"');
     expect(html).toContain("Online Games");
+  });
+
+  it("shows a resume action for a valid saved local game", () => {
+    stubBrowserStorage({
+      [LOCAL_GAME_SAVE_STORAGE_KEY]: serializeLocalGame({
+        privateDataFingerprint: "fictional-fixture-fingerprint",
+        now: new Date("2026-07-14T05:00:00.000Z"),
+        state: {
+          G: { options: { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: [] } },
+          ctx: { currentPlayer: "1", numPlayers: 2 }
+        }
+      })
+    });
+
+    const html = renderToStaticMarkup(<App />);
+
+    expect(html).toContain("Resume Saved Game");
+    expect(html).toContain("Saved local game");
+  });
+
+  it("shows a discard action for a corrupt saved local game", () => {
+    stubBrowserStorage({ [LOCAL_GAME_SAVE_STORAGE_KEY]: "{not json" });
+
+    const html = renderToStaticMarkup(<App />);
+
+    expect(html).toContain("Saved local game could not be loaded");
+    expect(html).toContain("Discard Saved Game");
   });
 
   it("loads listed games even when chat is not available from the server", async () => {

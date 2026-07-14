@@ -7,6 +7,13 @@ export type SavedLocalGameEnvelope = {
   state: unknown;
 };
 
+export type SavedLocalGameRecord =
+  | { kind: "none" }
+  | { kind: "valid"; envelope: SavedLocalGameEnvelope }
+  | { kind: "corrupt" };
+
+type StorageReader = Pick<Storage, "getItem">;
+
 const PRIVATE_FIELD_NAMES = new Set([
   "rawEffectTextPrivate",
   "officialName",
@@ -53,4 +60,17 @@ export function parseSavedLocalGame(raw: string): SavedLocalGameEnvelope | null 
   if (!("state" in envelope)) return null;
   if (containsPrivateField(envelope.state)) return null;
   return envelope as SavedLocalGameEnvelope;
+}
+
+export function loadSavedLocalGameRecord(storage: StorageReader | undefined): SavedLocalGameRecord {
+  if (!storage) return { kind: "none" };
+  const raw = storage.getItem(LOCAL_GAME_SAVE_STORAGE_KEY);
+  if (!raw) return { kind: "none" };
+  const envelope = parseSavedLocalGame(raw);
+  return envelope ? { kind: "valid", envelope } : { kind: "corrupt" };
+}
+
+export function createLocalGameRestoreEnhancer(envelope: SavedLocalGameEnvelope | undefined) {
+  return (createStore: any) => (reducer: any, preloadedState: unknown, enhancer?: any) =>
+    createStore(reducer, envelope?.state ?? preloadedState, enhancer);
 }

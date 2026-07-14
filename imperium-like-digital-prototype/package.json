@@ -17,7 +17,8 @@
     "smoke:fictional-game": "node ../scripts/fictional-game-smoke.mjs",
     "smoke:hosted": "node ../scripts/hosted-smoke.mjs",
     "playtest:local": "node ../scripts/local-playtest-server.mjs",
-    "test:local-qa-scripts": "node --test ../scripts/local-playtest-server.test.mjs",
+    "qa:local-browser": "node ../scripts/local-browser-qa.mjs",
+    "test:local-qa-scripts": "node --test ../scripts/local-playtest-server.test.mjs ../scripts/local-browser-qa.test.mjs",
     "test": "npm run test -w engine",
     "typecheck": "npm run typecheck -w engine && npm run typecheck -w app && npm run typecheck -w server",
     "cards:validate": "tsx tools/card-import/validatePrivateCards.ts",
@@ -43,6 +44,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.5.0",
+    "playwright": "^1.61.1",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3",
     "vite": "^5.4.19",

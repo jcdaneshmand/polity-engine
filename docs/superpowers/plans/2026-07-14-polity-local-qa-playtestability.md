@@ -249,7 +249,7 @@ Execution note: committed as `5bc5536 test: add local playtest server harness`.
 - Create: `scripts/local-browser-qa.test.mjs`
 - Modify: `imperium-like-digital-prototype/package.json`
 
-- [ ] **Step 1: Add Playwright dependency**
+- [x] **Step 1: Add Playwright dependency**
 
 Run from `imperium-like-digital-prototype`:
 
@@ -259,7 +259,9 @@ npm.cmd install --save-dev playwright
 
 Expected: `package.json` and `package-lock.json` include Playwright.
 
-- [ ] **Step 2: Write failing helper tests**
+Execution note: `npm.cmd install --save-dev playwright` succeeded. `npm audit` reports existing dependency vulnerabilities; no audit fixes were applied because that is outside this plan.
+
+- [x] **Step 2: Write failing helper tests**
 
 Create `scripts/local-browser-qa.test.mjs`:
 
@@ -298,7 +300,7 @@ test("redactBrowserQAResult does not include credentials", () => {
 });
 ```
 
-- [ ] **Step 3: Run helper tests and verify they fail**
+- [x] **Step 3: Run helper tests and verify they fail**
 
 Run from `imperium-like-digital-prototype`:
 
@@ -308,7 +310,9 @@ node --test ..\scripts\local-browser-qa.test.mjs
 
 Expected: fail because `scripts/local-browser-qa.mjs` does not exist.
 
-- [ ] **Step 4: Implement browser QA script helpers and API setup**
+Execution note: failed as expected with `ERR_MODULE_NOT_FOUND` for `scripts/local-browser-qa.mjs`.
+
+- [x] **Step 4: Implement browser QA script helpers and API setup**
 
 Create `scripts/local-browser-qa.mjs` with exported helpers:
 
@@ -358,7 +362,7 @@ export function redactBrowserQAResult(result) {
 }
 ```
 
-- [ ] **Step 5: Implement server lifecycle and browser flow**
+- [x] **Step 5: Implement server lifecycle and browser flow**
 
 Add to `scripts/local-browser-qa.mjs` below the helpers:
 
@@ -528,7 +532,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
 }
 ```
 
-- [ ] **Step 6: Add package scripts**
+- [x] **Step 6: Add package scripts**
 
 Modify `imperium-like-digital-prototype/package.json`:
 
@@ -537,7 +541,7 @@ Modify `imperium-like-digital-prototype/package.json`:
 "test:local-qa-scripts": "node --test ../scripts/local-playtest-server.test.mjs ../scripts/local-browser-qa.test.mjs"
 ```
 
-- [ ] **Step 7: Run helper tests**
+- [x] **Step 7: Run helper tests**
 
 Run from `imperium-like-digital-prototype`:
 
@@ -547,7 +551,9 @@ npm.cmd run test:local-qa-scripts
 
 Expected: pass.
 
-- [ ] **Step 8: Run browser QA**
+Execution note: `npm.cmd run test:local-qa-scripts` passed with 7 Node tests after resolving Playwright from the workspace package root.
+
+- [x] **Step 8: Run browser QA**
 
 Run from `imperium-like-digital-prototype`:
 
@@ -557,7 +563,9 @@ npm.cmd run qa:local-browser
 
 Expected: exits 0 and prints JSON with `"ok": true`, `lobbyID`, and `matchID`.
 
-- [ ] **Step 9: Commit local browser QA**
+Execution note: initial browser run found missing Playwright browser binaries; `npm.cmd exec -- playwright install chromium` installed Chromium. A second run revealed the smoke needed to follow the actual `Continue as Guest` UI path before checking saved rejoin entries. After that correction, `npm.cmd run qa:local-browser` passed and printed `"ok": true`, `lobbyID`, and `matchID`.
+
+- [x] **Step 9: Commit local browser QA**
 
 Run from repo root:
 
@@ -565,6 +573,8 @@ Run from repo root:
 git add scripts/local-browser-qa.mjs scripts/local-browser-qa.test.mjs imperium-like-digital-prototype/package.json imperium-like-digital-prototype/package-lock.json
 git commit -m "test: add local browser QA smoke"
 ```
+
+Execution note: committed as `dc3fad0 test: add local browser QA smoke`.
 
 ---
 

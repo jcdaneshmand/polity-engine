@@ -897,11 +897,13 @@ Execution note: committed as `f6da5af feat: add local game import and export`.
 - Modify: `scripts/multiplayer-smoke.mjs` only if hosted smoke needs a non-local URL option
 - Create: `scripts/hosted-smoke.mjs` if `multiplayer-smoke.mjs` should stay local-only
 
-- [ ] **Step 1: Decide hosted smoke shape**
+- [x] **Step 1: Decide hosted smoke shape**
 
 If `scripts/multiplayer-smoke.mjs` can safely accept `POLITY_SMOKE_BASE_URL`, modify it. If the local server lifecycle makes that messy, create `scripts/hosted-smoke.mjs`.
 
-- [ ] **Step 2: Add hosted health checks**
+Execution note: kept `scripts/multiplayer-smoke.mjs` local-only because it owns server lifecycle, restart checks, and storage layout assertions. Added a separate `scripts/hosted-smoke.mjs` for already deployed origins.
+
+- [x] **Step 2: Add hosted health checks**
 
 Hosted smoke must verify:
 
@@ -912,6 +914,8 @@ Hosted smoke must verify:
 4. Account or guest entry can create a lobby using placeholder/fictional fingerprint.
 5. No private debug UI is enabled.
 ```
+
+Execution note: `scripts/hosted-smoke.mjs` checks `/polity/accounts/health`, the React root at `/`, `/polity/lobby/rooms`, placeholder lobby creation, and absence of private-debug/private-field markers in the served app shell. Added `npm.cmd run smoke:hosted`.
 
 - [ ] **Step 3: Run local release gate plus hosted proof**
 
@@ -934,6 +938,8 @@ node ..\scripts\hosted-smoke.mjs
 ```
 
 Expected: all commands exit 0. If Render assigns a different URL, use that real deployed URL for `POLITY_HOSTED_BASE_URL` and record the exact URL policy in the runbook.
+
+Execution note: local public release gates passed on 2026-07-14: `npm.cmd run typecheck`; `npm.cmd run test -w app` with 15 files and 134 tests; `npm.cmd run test -w server` with 11 files and 63 tests; `npm.cmd run test -w engine` with 45 files and 1,487 tests; `npm.cmd run smoke:fictional-game`; and `npm.cmd run smoke:multiplayer`. Hosted smoke against `https://polity-engine.onrender.com` reached the host but `/polity/accounts/health` returned 404, so hosted proof remains blocked until the actual deployed Polity Engine origin is available or Render is redeployed to this service shape.
 
 - [ ] **Step 4: Browser QA**
 

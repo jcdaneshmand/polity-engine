@@ -36,6 +36,16 @@ Before creating a public deployment, set `POLITY_SERVER_ORIGIN` in Render to the
 4. Restart the service and confirm the lobby or match metadata still appears.
 5. Confirm no private CSV/JSON card data is committed or served.
 
+Run the hosted smoke against the deployed origin:
+
+```powershell
+$env:POLITY_HOSTED_BASE_URL="https://polity-engine.onrender.com"
+npm.cmd run smoke:hosted
+```
+
+The hosted smoke checks account health, the React app shell, lobby room listing, placeholder/fictional lobby creation, and absence of private-debug markers in the served app shell.
+
 ## Local Release Gate
 
 - 2026-06-24: `npm.cmd run typecheck`, `npm.cmd run test -w app`, `npm.cmd run test -w server`, and `npm.cmd run smoke:multiplayer` passed from `imperium-like-digital-prototype` before hosted deployment.
+- 2026-07-14: `npm.cmd run typecheck`, `npm.cmd run test -w app`, `npm.cmd run test -w server`, `npm.cmd run test -w engine`, `npm.cmd run smoke:fictional-game`, and `npm.cmd run smoke:multiplayer` passed from `imperium-like-digital-prototype` before hosted proof. `POLITY_HOSTED_BASE_URL=https://polity-engine.onrender.com npm.cmd run smoke:hosted` reached the host but `/polity/accounts/health` returned 404, so hosted proof is pending the actual deployed service origin or redeployment.

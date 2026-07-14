@@ -1,0 +1,34 @@
+[
+  {
+    "id": "fixture_nation_surveyors",
+    "displayName": "Surveyor Compact",
+    "powerCardIds": ["fixture_power_surveyor"],
+    "stateCardIds": ["fixture_state_surveyor"],
+    "startingDeckCardIds": ["fixture_action_draw_one", "fixture_action_gain_materials"],
+    "nationDeckCardIds": [],
+    "developmentCardIds": [],
+    "setupRules": [],
+    "passiveRules": [],
+    "actionTokensBase": 3,
+    "exhaustTokensBase": 1,
+    "requiredExpansions": [],
+    "implemented": true,
+    "tested": true
+  },
+  {
+    "id": "fixture_nation_archivists",
+    "displayName": "Archivist League",
+    "powerCardIds": ["fixture_power_surveyor"],
+    "stateCardIds": ["fixture_state_surveyor"],
+    "startingDeckCardIds": ["fixture_action_gain_materials", "fixture_action_draw_one"],
+    "nationDeckCardIds": [],
+    "developmentCardIds": [],
+    "setupRules": [],
+    "passiveRules": [],
+    "actionTokensBase": 3,
+    "exhaustTokensBase": 1,
+    "requiredExpansions": [],
+    "implemented": true,
+    "tested": true
+  }
+]

@@ -1,0 +1,20 @@
+[
+  {
+    "id": "fixture_2p_setup_and_turn",
+    "description": "Two-player setup creates playable hands, market, unrest pile, and turn order from fictional fixtures.",
+    "mode": "multiplayer",
+    "playerCount": 2,
+    "commonsSetId": "custom",
+    "playerNationIds": {
+      "1": "fixture_nation_surveyors",
+      "2": "fixture_nation_archivists"
+    },
+    "assertions": [
+      "players_exist",
+      "hands_non_empty",
+      "market_non_empty",
+      "unrest_available",
+      "no_private_fields"
+    ]
+  }
+]

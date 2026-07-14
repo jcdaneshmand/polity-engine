@@ -34,6 +34,8 @@ Rejected approach: start from private transcription. The user has explicitly sai
   - Public-safe normalized-style card records with enough breadth to exercise common runtime contracts.
 - Create: `imperium-like-digital-prototype/data/fictional-regression/nations.json`
   - Public-safe fictional nation records that use the cards fixture.
+- Create: `imperium-like-digital-prototype/data/fictional-regression/rulesets.json`
+  - Public-safe fictional nation rulesets that exercise import-like setup overrides without private CSV files.
 - Create: `imperium-like-digital-prototype/data/fictional-regression/scenarios.json`
   - Declarative scenario list for deterministic setup/play/smoke checks.
 - Create: `imperium-like-digital-prototype/engine/src/tests/fictionalRegressionData.test.ts`
@@ -128,10 +130,11 @@ Execution note: the isolated worktree initially exposed existing engine tests th
 - Create: `imperium-like-digital-prototype/data/fictional-regression/README.md`
 - Create: `imperium-like-digital-prototype/data/fictional-regression/cards.json`
 - Create: `imperium-like-digital-prototype/data/fictional-regression/nations.json`
+- Create: `imperium-like-digital-prototype/data/fictional-regression/rulesets.json`
 - Create: `imperium-like-digital-prototype/data/fictional-regression/scenarios.json`
 - Test: `imperium-like-digital-prototype/engine/src/tests/fictionalRegressionData.test.ts`
 
-- [ ] **Step 1: Write the fixture README**
+- [x] **Step 1: Write the fixture README**
 
 Create `imperium-like-digital-prototype/data/fictional-regression/README.md`:
 
@@ -150,7 +153,7 @@ Coverage goals:
 - import-like data shape without requiring private transcription files
 ```
 
-- [ ] **Step 2: Create the initial card fixture**
+- [x] **Step 2: Create the initial card fixture**
 
 Create `imperium-like-digital-prototype/data/fictional-regression/cards.json` with at least these records, then expand only when tests identify an uncovered scenario:
 
@@ -250,7 +253,7 @@ Create `imperium-like-digital-prototype/data/fictional-regression/cards.json` wi
 ]
 ```
 
-- [ ] **Step 3: Create the nation fixture**
+- [x] **Step 3: Create the nation fixture**
 
 Create `imperium-like-digital-prototype/data/fictional-regression/nations.json`:
 
@@ -291,7 +294,7 @@ Create `imperium-like-digital-prototype/data/fictional-regression/nations.json`:
 ]
 ```
 
-- [ ] **Step 4: Create scenario metadata**
+- [x] **Step 4: Create scenario metadata**
 
 Create `imperium-like-digital-prototype/data/fictional-regression/scenarios.json`:
 
@@ -318,7 +321,7 @@ Create `imperium-like-digital-prototype/data/fictional-regression/scenarios.json
 ]
 ```
 
-- [ ] **Step 5: Write the failing fixture validation test**
+- [x] **Step 5: Write the failing fixture validation test**
 
 Create `imperium-like-digital-prototype/engine/src/tests/fictionalRegressionData.test.ts`:
 
@@ -375,7 +378,7 @@ describe("fictional regression data", () => {
 });
 ```
 
-- [ ] **Step 6: Run the focused test**
+- [x] **Step 6: Run the focused test**
 
 Run from `imperium-like-digital-prototype`:
 
@@ -384,6 +387,8 @@ npm.cmd run test -w engine -- fictionalRegressionData.test.ts
 ```
 
 Expected: pass.
+
+Execution note: the setup pipeline already supports `privateData.nationRulesets`, so the fixture pack includes `rulesets.json` with a public-safe `move_cards_to_unrest_supply` override. The scenario metadata and test use `commonsSetId: "custom"` because uploaded/import-like card bundles are routed through the existing custom commons setup path. `npm.cmd run test -w engine -- fictionalRegressionData.test.ts` passed after this adjustment.
 
 - [ ] **Step 7: Commit the fixture pack**
 

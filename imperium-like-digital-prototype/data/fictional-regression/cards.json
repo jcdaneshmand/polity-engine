@@ -1,0 +1,198 @@
+[
+  {
+    "id": "fixture_state_surveyor",
+    "displayName": "Surveyor State",
+    "suit": "state",
+    "cardType": "state",
+    "cost": { "materials": 0, "population": 0, "progress": 0, "goods": 0 },
+    "developmentCost": { "materials": 0, "population": 0, "progress": 0, "goods": 0 },
+    "vp": { "mode": "none", "value": null },
+    "startingLocation": "state",
+    "ownership": "nation",
+    "stateActionTokens": 3,
+    "stateExhaustTokens": 1,
+    "stateHandSize": 5,
+    "effects": [],
+    "tags": ["fixture_state"],
+    "implemented": true,
+    "tested": true
+  },
+  {
+    "id": "fixture_power_surveyor",
+    "displayName": "Surveyor Power",
+    "suit": "power",
+    "cardType": "power",
+    "cost": { "materials": 0, "population": 0, "progress": 0, "goods": 0 },
+    "developmentCost": { "materials": 0, "population": 0, "progress": 0, "goods": 0 },
+    "vp": { "mode": "none", "value": null },
+    "startingLocation": "power",
+    "ownership": "nation",
+    "effects": [
+      { "trigger": "on_play", "op": "gain_resource", "resource": "materials", "amount": 1 }
+    ],
+    "tags": ["fixture_power"],
+    "implemented": true,
+    "tested": true
+  },
+  {
+    "id": "fixture_action_draw_one",
+    "displayName": "Archive Lantern",
+    "suit": "civilized",
+    "cardType": "action",
+    "cost": { "materials": 0, "population": 0, "progress": 0, "goods": 0 },
+    "developmentCost": { "materials": 0, "population": 0, "progress": 0, "goods": 0 },
+    "vp": { "mode": "none", "value": null },
+    "startingLocation": "draw_deck",
+    "ownership": "nation",
+    "effects": [
+      { "trigger": "on_play", "op": "draw", "count": 1 }
+    ],
+    "tags": ["fixture_simple_action"],
+    "implemented": true,
+    "tested": true
+  },
+  {
+    "id": "fixture_action_gain_materials",
+    "displayName": "Foundry Lantern",
+    "suit": "uncivilized",
+    "cardType": "action",
+    "cost": { "materials": 0, "population": 0, "progress": 0, "goods": 0 },
+    "developmentCost": { "materials": 0, "population": 0, "progress": 0, "goods": 0 },
+    "vp": { "mode": "none", "value": null },
+    "startingLocation": "draw_deck",
+    "ownership": "nation",
+    "effects": [
+      { "trigger": "on_play", "op": "gain_resource", "resource": "materials", "amount": 1 }
+    ],
+    "tags": ["fixture_simple_action"],
+    "implemented": true,
+    "tested": true
+  },
+  {
+    "id": "fixture_market_acquire",
+    "displayName": "Open Charter",
+    "suit": "civilized",
+    "cardType": "action",
+    "cost": { "materials": 1, "population": 0, "progress": 0, "goods": 0 },
+    "developmentCost": { "materials": 0, "population": 0, "progress": 1, "goods": 0 },
+    "vp": { "mode": "fixed", "value": 1 },
+    "startingLocation": "market",
+    "ownership": "commons",
+    "commonsSetId": "custom",
+    "commonsGroup": "base",
+    "marketEligible": true,
+    "smallDeckEligible": true,
+    "mainDeckEligible": true,
+    "effects": [
+      { "trigger": "on_play", "op": "acquire_card", "count": 1 }
+    ],
+    "tags": ["fixture_market", "fixture_acquire"],
+    "implemented": true,
+    "tested": true
+  },
+  {
+    "id": "fixture_market_materials",
+    "displayName": "Stone Compact",
+    "suit": "uncivilized",
+    "cardType": "action",
+    "cost": { "materials": 0, "population": 0, "progress": 0, "goods": 0 },
+    "developmentCost": { "materials": 1, "population": 0, "progress": 0, "goods": 0 },
+    "vp": { "mode": "fixed", "value": 1 },
+    "startingLocation": "market",
+    "ownership": "commons",
+    "commonsSetId": "custom",
+    "commonsGroup": "base",
+    "marketEligible": true,
+    "smallDeckEligible": true,
+    "mainDeckEligible": true,
+    "effects": [
+      { "trigger": "on_play", "op": "gain_resource", "resource": "materials", "amount": 1 }
+    ],
+    "tags": ["fixture_market"],
+    "implemented": true,
+    "tested": true
+  },
+  {
+    "id": "fixture_market_knowledge",
+    "displayName": "Lampwright School",
+    "suit": "civilized",
+    "cardType": "action",
+    "cost": { "materials": 0, "population": 0, "progress": 0, "goods": 0 },
+    "developmentCost": { "materials": 0, "population": 0, "progress": 1, "goods": 0 },
+    "vp": { "mode": "fixed", "value": 1 },
+    "startingLocation": "market",
+    "ownership": "commons",
+    "commonsSetId": "custom",
+    "commonsGroup": "base",
+    "marketEligible": true,
+    "smallDeckEligible": true,
+    "mainDeckEligible": true,
+    "effects": [
+      { "trigger": "on_play", "op": "gain_resource", "resource": "knowledge", "amount": 1 }
+    ],
+    "tags": ["fixture_market"],
+    "implemented": true,
+    "tested": true
+  },
+  {
+    "id": "fixture_market_history",
+    "displayName": "Ledger Hall",
+    "suit": "civilized",
+    "cardType": "in_play",
+    "cost": { "materials": 1, "population": 0, "progress": 0, "goods": 0 },
+    "developmentCost": { "materials": 0, "population": 0, "progress": 2, "goods": 0 },
+    "vp": { "mode": "fixed", "value": 2 },
+    "startingLocation": "market",
+    "ownership": "commons",
+    "commonsSetId": "custom",
+    "commonsGroup": "base",
+    "marketEligible": true,
+    "smallDeckEligible": true,
+    "mainDeckEligible": true,
+    "effects": [
+      { "trigger": "on_play", "op": "move_self_to_history" }
+    ],
+    "tags": ["fixture_market", "fixture_history"],
+    "implemented": true,
+    "tested": true
+  },
+  {
+    "id": "fixture_market_unrest",
+    "displayName": "Pressure Forum",
+    "suit": "uncivilized",
+    "cardType": "action",
+    "cost": { "materials": 0, "population": 0, "progress": 0, "goods": 0 },
+    "developmentCost": { "materials": 0, "population": 0, "progress": 0, "goods": 0 },
+    "vp": { "mode": "none", "value": null },
+    "startingLocation": "market",
+    "ownership": "commons",
+    "commonsSetId": "custom",
+    "commonsGroup": "base",
+    "marketEligible": true,
+    "smallDeckEligible": true,
+    "mainDeckEligible": true,
+    "effects": [
+      { "trigger": "on_play", "op": "take_unrest", "count": 1 }
+    ],
+    "tags": ["fixture_market", "fixture_unrest_flow"],
+    "implemented": true,
+    "tested": true
+  },
+  {
+    "id": "fixture_unrest",
+    "displayName": "Fictional Unrest",
+    "suit": "unrest",
+    "cardType": "unrest",
+    "cost": { "materials": 0, "population": 0, "progress": 0, "goods": 0 },
+    "developmentCost": { "materials": 0, "population": 0, "progress": 0, "goods": 0 },
+    "vp": { "mode": "fixed", "value": -1 },
+    "startingLocation": "unrest_pile",
+    "ownership": "commons",
+    "commonsSetId": "custom",
+    "unrestPileEligible": true,
+    "effects": [],
+    "tags": ["fixture_unrest"],
+    "implemented": true,
+    "tested": true
+  }
+]

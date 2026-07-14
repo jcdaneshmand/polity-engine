@@ -75,12 +75,47 @@ export function dispatchBoardAction({ action: a, moves, setDetailCardId, setSele
   if (a.action === "cancel") { setSelection(null); setDetailCardId(null); }
 }
 
+export type LocalUndoAvailability =
+  | { enabled: true; reason?: undefined }
+  | { enabled: false; reason: string };
+
+function hasUnresolvedHiddenInformation(G: any): boolean {
+  return Boolean(
+    G?.pendingDrawChoice
+    ?? G?.pendingFindChoice
+    ?? G?.pendingLookOrderChoice
+    ?? G?.pendingLookTakeChoice
+    ?? G?.lookedCards
+    ?? G?.pendingReshuffleResolution
+    ?? G?.pendingReshuffleDraw
+    ?? G?.pendingAfterReshuffleEffects
+  );
+}
+
+export function getLocalUndoAvailability({
+  G,
+  isMultiplayer,
+  undoStack
+}: {
+  G: any;
+  isMultiplayer?: boolean;
+  undoStack?: unknown[];
+}): LocalUndoAvailability {
+  if (isMultiplayer) return { enabled: false, reason: "Online games cannot use local undo" };
+  if (!Array.isArray(undoStack) || undoStack.length === 0) return { enabled: false, reason: "No move to undo" };
+  if (hasUnresolvedHiddenInformation(G)) return { enabled: false, reason: "Resolve hidden information before undo" };
+  return { enabled: true };
+}
+
 export default function BoardLayout({
   G,
   ctx,
   moves,
   playerID,
   viewerPlayerID,
+  undo,
+  isMultiplayer,
+  _undo,
   onCampaignProgress,
   accountResultContext,
   onAccountGameResult
@@ -124,6 +159,7 @@ export default function BoardLayout({
   const actions = useMemo(() => getAvailableActionsForSelection(selection, G, uiCtx, { cleanupDiscardSelection }), [selection, G, uiCtx, cleanupDiscardSelection]);
   const pending = getPendingUiState(G, uiCtx);
   const primaryBlockedReason = getPrimaryBlockedReason(actions);
+  const localUndoAvailability = getLocalUndoAvailability({ G, isMultiplayer, undoStack: _undo });
   const handActionHintsByCardId = useMemo(() => {
     const hints = getActionHintsByCardId(actions, "hand");
     if (!G.pendingCleanupDiscardChoice) return hints;
@@ -221,6 +257,23 @@ export default function BoardLayout({
             onUnpin={() => setDetailCardId(null)}
             onZoom={visibleDetailCard?.id ? () => setZoomCardId(visibleDetailCard.id) : undefined}
           />}
+      {!isMultiplayer ? <div className="panel">
+        <button
+          className="action-button"
+          type="button"
+          disabled={!localUndoAvailability.enabled}
+          title={localUndoAvailability.reason ?? "Undo last local move"}
+          onClick={() => {
+            if (localUndoAvailability.enabled) undo?.();
+          }}
+        >
+          <span className="action-button-main">
+            <span className="action-symbol" aria-hidden="true">UNDO</span>
+            <span>Undo Last Move</span>
+          </span>
+          {!localUndoAvailability.enabled ? <small>{localUndoAvailability.reason}</small> : null}
+        </button>
+      </div> : null}
       <ActionMenu actions={actions} onAction={onAction} />
       <GameLogPanel entries={getRecentLogEntries(G, 20)} />
     </div>

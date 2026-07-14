@@ -754,11 +754,13 @@ git commit -m "feat: add local game save and resume"
 - Test: `imperium-like-digital-prototype/engine/src/tests/undoAndLegalMoves.test.ts`
 - Test: app UI tests for disabled risky actions
 
-- [ ] **Step 1: Define the first undo scope**
+- [x] **Step 1: Define the first undo scope**
 
 Limit undo to local, non-multiplayer sessions and to the most recent player-initiated move before an irreversible random draw, hidden reveal, or opponent-visible multiplayer mutation.
 
-- [ ] **Step 2: Write failing engine tests**
+Execution note: the first scope uses boardgame.io's existing local undo stack and exposes it only for non-multiplayer sessions. Undo is disabled with visible reasons when there is no local undo history or when unresolved hidden-information windows are open.
+
+- [x] **Step 2: Write failing engine tests**
 
 Create `imperium-like-digital-prototype/engine/src/tests/undoAndLegalMoves.test.ts` with tests for:
 
@@ -769,7 +771,9 @@ Create `imperium-like-digital-prototype/engine/src/tests/undoAndLegalMoves.test.
 4. A disabled or illegal move leaves state unchanged and logs the blocked reason.
 ```
 
-- [ ] **Step 3: Implement undo history in game state or app state**
+Execution note: this implementation did not add a custom engine undo stack because boardgame.io already owns the local undo snapshots. The failing coverage was added in `BoardLayout.test.tsx` for the app-local undo availability contract, disabled online scope, hidden-information blocking, and visible disabled reasons.
+
+- [x] **Step 3: Implement undo history in game state or app state**
 
 Prefer app-local undo history if boardgame.io multiplayer state should remain untouched. Use engine helpers only for pure validation:
 
@@ -782,11 +786,15 @@ export type UndoSnapshot = {
 
 Do not store more than one snapshot in the first implementation unless the tests require multi-step undo.
 
-- [ ] **Step 4: Surface blocked reasons in the UI**
+Execution note: `BoardLayout` now reads boardgame.io's `_undo` stack, calls the client `undo` command only when the local guard permits it, and keeps multiplayer sessions out of the local undo UI.
+
+- [x] **Step 4: Surface blocked reasons in the UI**
 
 Use existing action availability helpers where possible. The UI should show one concise reason for the selected disabled action and should not expose internal debug jargon.
 
-- [ ] **Step 5: Run focused and full checks**
+Execution note: the local undo command shows concise disabled reasons such as `No move to undo` and `Resolve hidden information before undo`, while existing action availability helpers continue to surface disabled move reasons for selected cards.
+
+- [x] **Step 5: Run focused and full checks**
 
 Run from `imperium-like-digital-prototype`:
 
@@ -798,7 +806,9 @@ npm.cmd run typecheck
 
 Expected: all commands exit 0.
 
-- [ ] **Step 6: Commit undo/legal guardrails**
+Execution note: because the implemented undo guardrail is app-local over boardgame.io's built-in undo stack, the focused check was `npm.cmd run test -w app -- BoardLayout.test.tsx`. It passed with 41 BoardLayout tests. `npm.cmd run test -w app` passed with 15 files and 129 tests. `npm.cmd run typecheck` passed for engine, app, and server.
+
+- [x] **Step 6: Commit undo/legal guardrails**
 
 Run from repo root:
 
@@ -806,6 +816,8 @@ Run from repo root:
 git add imperium-like-digital-prototype/engine/src imperium-like-digital-prototype/app/src
 git commit -m "feat: add local undo and legal move guardrails"
 ```
+
+Execution note: committed as `f829c1e feat: add local undo guardrails`.
 
 ---
 

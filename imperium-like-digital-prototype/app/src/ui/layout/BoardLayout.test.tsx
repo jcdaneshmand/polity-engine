@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import BoardLayout, { dispatchBoardAction } from "./BoardLayout";
+import BoardLayout, { dispatchBoardAction, getLocalUndoAvailability } from "./BoardLayout";
 
 const emptyPlayer = {
   hand: [],
@@ -63,6 +63,48 @@ function renderForWrongViewer(overrides: Record<string, unknown> = {}) {
 }
 
 describe("BoardLayout", () => {
+  it("enables local undo when the local board has undo history", () => {
+    expect(getLocalUndoAvailability({
+      isMultiplayer: false,
+      undoStack: [{ G: { marker: "before" } }],
+      G: baseGame()
+    })).toEqual({ enabled: true });
+  });
+
+  it("blocks local undo for online games", () => {
+    expect(getLocalUndoAvailability({
+      isMultiplayer: true,
+      undoStack: [{ G: { marker: "before" } }],
+      G: baseGame()
+    })).toEqual({ enabled: false, reason: "Online games cannot use local undo" });
+  });
+
+  it("blocks local undo while hidden information is being resolved", () => {
+    expect(getLocalUndoAvailability({
+      isMultiplayer: false,
+      undoStack: [{ G: { marker: "before" } }],
+      G: baseGame({ pendingLookTakeChoice: { playerId: "0", source: "deck", destination: "hand", cardIds: ["c1"] } })
+    })).toEqual({ enabled: false, reason: "Resolve hidden information before undo" });
+  });
+
+  it("renders a local undo command with the unavailable reason", () => {
+    const html = renderToStaticMarkup(
+      <BoardLayout
+        G={baseGame()}
+        ctx={{ currentPlayer: "1" }}
+        playerID="0"
+        viewerPlayerID="0"
+        moves={{}}
+        undo={() => undefined}
+        isMultiplayer={false}
+        _undo={[]}
+      />
+    );
+
+    expect(html).toContain("Undo Last Move");
+    expect(html).toContain("No move to undo");
+  });
+
   it("uses the online player seat for pending cleanup market targets", () => {
     const html = renderForViewer({
           pendingCleanupMarketResourceChoice: {

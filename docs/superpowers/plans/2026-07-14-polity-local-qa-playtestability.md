@@ -771,7 +771,7 @@ Execution note: committed as `46074c7 docs: document local playtest QA loop`.
 - Verify only: `imperium-like-digital-prototype`
 - Verify only: repo root git status
 
-- [ ] **Step 1: Run local QA gates**
+- [x] **Step 1: Run local QA gates**
 
 Run from `imperium-like-digital-prototype`:
 
@@ -782,7 +782,9 @@ npm.cmd run qa:local-browser
 
 Expected: both exit 0.
 
-- [ ] **Step 2: Run existing public-safe gates**
+Execution note: `npm.cmd run test:local-qa-scripts` passed with 7 helper tests. `npm.cmd run qa:local-browser` passed and printed `"ok": true` with lobby and match IDs.
+
+- [x] **Step 2: Run existing public-safe gates**
 
 Run from `imperium-like-digital-prototype`:
 
@@ -797,7 +799,9 @@ npm.cmd run smoke:multiplayer
 
 Expected: all exit 0.
 
-- [ ] **Step 3: Confirm private and hosted gates remain deferred**
+Execution note: `npm.cmd run typecheck`, `npm.cmd run test -w app`, `npm.cmd run test -w server`, `npm.cmd run test -w engine`, `npm.cmd run smoke:fictional-game`, and `npm.cmd run smoke:multiplayer` passed. The first sandboxed server-suite attempt hit `EPERM` writing to the Windows temp directory during the restart-persistence test; rerunning the same suite unsandboxed passed with 63 tests, confirming a sandbox permission issue rather than a code failure.
+
+- [x] **Step 3: Confirm private and hosted gates remain deferred**
 
 Run from repo root:
 
@@ -813,7 +817,9 @@ Expected:
 
 No staged files. No `private-card-data/imperium_*_private.csv` files and no `generated-private/` files appear.
 
-- [ ] **Step 4: Commit final evidence note only if needed**
+Execution note: `git status --short --branch` showed the branch ahead with no unstaged files before this plan evidence update. `git diff --cached --name-only` was empty, and `git status --short -- imperium-like-digital-prototype/private-card-data imperium-like-digital-prototype/generated-private` was empty.
+
+- [x] **Step 4: Commit final evidence note only if needed**
 
 If the previous tasks already committed all docs and no evidence note is needed, skip this step. If a dated local QA evidence note is added to `README.md` or `imperium-like-digital-prototype/docs/deployment.md`, run:
 
@@ -821,6 +827,8 @@ If the previous tasks already committed all docs and no evidence note is needed,
 git add README.md imperium-like-digital-prototype/docs/deployment.md
 git commit -m "docs: record local browser QA evidence"
 ```
+
+Execution note: skipped separate README/deployment evidence note; the completed saved plan records verification evidence.
 
 ---
 

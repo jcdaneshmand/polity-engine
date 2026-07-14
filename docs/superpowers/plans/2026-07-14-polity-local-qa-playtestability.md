@@ -60,7 +60,7 @@ Rejected approach: continue relying only on API smoke tests. `smoke:multiplayer`
 - Create: `scripts/local-playtest-server.test.mjs`
 - Modify: `imperium-like-digital-prototype/package.json`
 
-- [ ] **Step 1: Write failing Node tests for server harness helpers**
+- [x] **Step 1: Write failing Node tests for server harness helpers**
 
 Create `scripts/local-playtest-server.test.mjs`:
 
@@ -103,7 +103,7 @@ test("formatPlaytestBanner prints the URLs a human tester needs", () => {
 });
 ```
 
-- [ ] **Step 2: Run tests and verify they fail**
+- [x] **Step 2: Run tests and verify they fail**
 
 Run from `imperium-like-digital-prototype`:
 
@@ -113,7 +113,9 @@ node --test ..\scripts\local-playtest-server.test.mjs
 
 Expected: fail because `scripts/local-playtest-server.mjs` does not exist.
 
-- [ ] **Step 3: Implement `scripts/local-playtest-server.mjs`**
+Execution note: failed as expected with `ERR_MODULE_NOT_FOUND` for `scripts/local-playtest-server.mjs`.
+
+- [x] **Step 3: Implement `scripts/local-playtest-server.mjs`**
 
 Create `scripts/local-playtest-server.mjs`:
 
@@ -206,7 +208,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
 }
 ```
 
-- [ ] **Step 4: Add package script**
+- [x] **Step 4: Add package script**
 
 Modify `imperium-like-digital-prototype/package.json`:
 
@@ -215,7 +217,7 @@ Modify `imperium-like-digital-prototype/package.json`:
 "test:local-qa-scripts": "node --test ../scripts/local-playtest-server.test.mjs"
 ```
 
-- [ ] **Step 5: Run focused script tests**
+- [x] **Step 5: Run focused script tests**
 
 Run from `imperium-like-digital-prototype`:
 
@@ -225,7 +227,9 @@ npm.cmd run test:local-qa-scripts
 
 Expected: pass.
 
-- [ ] **Step 6: Commit local playtest harness**
+Execution note: `npm.cmd run test:local-qa-scripts` passed with 4 Node tests.
+
+- [x] **Step 6: Commit local playtest harness**
 
 Run from repo root:
 
@@ -233,6 +237,8 @@ Run from repo root:
 git add scripts/local-playtest-server.mjs scripts/local-playtest-server.test.mjs imperium-like-digital-prototype/package.json
 git commit -m "test: add local playtest server harness"
 ```
+
+Execution note: committed as `5bc5536 test: add local playtest server harness`.
 
 ---
 

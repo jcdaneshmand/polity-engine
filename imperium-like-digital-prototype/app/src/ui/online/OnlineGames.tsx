@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { AccountPublicView } from "../../accountSession";
 import type { ChatMessage, ListedLobby, ListedMatch, OnlineSessionRecord } from "../../onlineSession";
 import type { NewGameSessionConfig } from "../setup/NewGameSetup";
@@ -117,10 +117,16 @@ export default function OnlineGames({
   const [hostPassword, setHostPassword] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [joinPassword, setJoinPassword] = useState("");
-  const [playerName, setPlayerName] = useState(initialPlayerName.trim() || "Player");
+  const [playerName, setPlayerName] = useState(account?.username.trim() || initialPlayerName.trim() || "Player");
   const [matchPasswords, setMatchPasswords] = useState<Record<string, string>>({});
   const [chatText, setChatText] = useState("");
   const canChat = Boolean(account && onSendChat);
+
+  useEffect(() => {
+    if (account?.username.trim()) {
+      setPlayerName(account.username.trim());
+    }
+  }, [account?.username]);
 
   const submitHost = () => {
     void onHost({

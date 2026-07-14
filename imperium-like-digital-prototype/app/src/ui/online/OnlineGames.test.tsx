@@ -149,6 +149,32 @@ describe("OnlineGames", () => {
     expect(html).toContain("Spectate");
   });
 
+  it("uses the signed-in account username as the lobby player name", () => {
+    const html = renderToStaticMarkup(
+      <OnlineGames
+        setupConfig={config}
+        initialPlayerName="Guest"
+        privateDataFingerprint="placeholder"
+        savedSessions={[]}
+        account={{ ...account, username: "CodexP2" }}
+        lobbies={[]}
+        matches={[]}
+        statusMessage=""
+        onBackToSetup={() => undefined}
+        onRefresh={() => undefined}
+        onHost={() => undefined}
+        onJoinLobby={() => undefined}
+        onJoin={() => undefined}
+        onSpectate={() => undefined}
+        onRejoin={() => undefined}
+        onForgetSession={() => undefined}
+      />
+    );
+
+    expect(html).toContain("value=\"CodexP2\"");
+    expect(html).not.toContain("value=\"Guest\"");
+  });
+
   it("disables chat and hides admin actions for guests", () => {
     const html = renderToStaticMarkup(
       <OnlineGames

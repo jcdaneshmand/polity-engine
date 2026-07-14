@@ -35,3 +35,7 @@ Before creating a public deployment, set `POLITY_SERVER_ORIGIN` in Render to the
 3. Create a multiplayer lobby with account or guest entry.
 4. Restart the service and confirm the lobby or match metadata still appears.
 5. Confirm no private CSV/JSON card data is committed or served.
+
+## Local Release Gate
+
+- 2026-06-24: `npm.cmd run typecheck`, `npm.cmd run test -w app`, `npm.cmd run test -w server`, and `npm.cmd run smoke:multiplayer` passed from `imperium-like-digital-prototype` before hosted deployment.

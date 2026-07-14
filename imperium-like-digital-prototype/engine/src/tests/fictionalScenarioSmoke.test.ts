@@ -62,7 +62,7 @@ describe("fictional scenario smoke", () => {
 
     expect(G.pendingAcquireChoice).toBeUndefined();
     expect(player.hand).toContain(selectedCardId);
-    expect(G.market.map((slot) => slot.cardId)).not.toContain(selectedCardId);
+    expect(G.market).not.toContain(selectedCardId);
   });
 
   it("moves fixture Unrest from the supply to the active player", () => {
@@ -70,11 +70,11 @@ describe("fictional scenario smoke", () => {
     const player = G.players["1"];
     expect(player.hand).toContain("fixture_action_take_unrest");
     expect(G.unrestPile).toContain("fixture_unrest");
-    const unrestBefore = G.unrestPile.length;
+    const unrestBefore = G.unrestPile?.length ?? 0;
 
     playCard({ G, ctx }, "fixture_action_take_unrest");
 
-    expect(G.unrestPile.length).toBe(unrestBefore - 1);
+    expect(G.unrestPile?.length ?? 0).toBe(unrestBefore - 1);
     expect(player.hand).toContain("fixture_unrest");
   });
 });

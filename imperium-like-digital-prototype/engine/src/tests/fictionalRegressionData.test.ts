@@ -46,6 +46,6 @@ describe("fictional regression data", () => {
     expect(G.players["1"].hand.length).toBeGreaterThan(0);
     expect(G.players["2"].hand.length).toBeGreaterThan(0);
     expect(G.market.length).toBeGreaterThan(0);
-    expect(G.unrestPile.length).toBeGreaterThan(0);
+    expect(G.unrestPile?.length ?? 0).toBeGreaterThan(0);
   });
 });

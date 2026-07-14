@@ -659,7 +659,7 @@ git commit -m "test: expand fictional rules scenario coverage"
 - Test: app tests for local save/resume behavior
 - Update: `README.md`
 
-- [ ] **Step 1: Locate current local-game ownership**
+- [x] **Step 1: Locate current local-game ownership**
 
 Run from `imperium-like-digital-prototype`:
 
@@ -668,6 +668,8 @@ rg -n "createInitialGameState|localStorage|save|resume|reset|GameState|NewGameSe
 ```
 
 Expected: identify the app component or helper that owns local game initialization.
+
+Execution note: `App.tsx` owns local session setup and passes setup data into the boardgame.io React client. The React client surface in this version does not expose a simple full `ctx` restore prop, so Task 5 is being split: first commit a tested versioned save-envelope boundary; then wire honest UI resume only once the restore surface is designed.
 
 - [ ] **Step 2: Write failing app tests for local save and resume**
 
@@ -682,7 +684,7 @@ Add tests that prove:
 
 Use `imperium-like-digital-prototype/app/src/App.test.tsx` if the current app tests already cover top-level state; otherwise create a focused helper test beside the new persistence helper.
 
-- [ ] **Step 3: Implement a focused persistence helper**
+- [x] **Step 3: Implement a focused persistence helper**
 
 Create a helper only if no equivalent helper exists. Keep the interface small:
 
@@ -702,6 +704,8 @@ export function serializeLocalGame(input: {
 
 export function parseSavedLocalGame(raw: string): SavedLocalGameEnvelope | null;
 ```
+
+Execution note: added `app/src/localGameSave.ts` and `app/src/localGameSave.test.ts`. The helper serializes/parses a versioned envelope, preserves arbitrary saved game/turn state, rejects corrupt JSON and unsupported versions, and rejects known private-content fields (`rawEffectTextPrivate`, `officialName`, `officialText`, `officialRulesText`).
 
 - [ ] **Step 4: Wire resume into the app**
 

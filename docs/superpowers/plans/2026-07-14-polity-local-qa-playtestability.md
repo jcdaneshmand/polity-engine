@@ -585,7 +585,7 @@ Execution note: committed as `dc3fad0 test: add local browser QA smoke`.
 - Modify: `imperium-like-digital-prototype/app/src/ui/setup/NewGameSetupSummary.test.tsx`
 - Modify: `imperium-like-digital-prototype/app/src/App.tsx`
 
-- [ ] **Step 1: Write failing setup status tests**
+- [x] **Step 1: Write failing setup status tests**
 
 Extend `imperium-like-digital-prototype/app/src/ui/setup/NewGameSetupSummary.test.tsx` with:
 
@@ -609,7 +609,7 @@ it("renders local playtest readiness status", () => {
 });
 ```
 
-- [ ] **Step 2: Run focused test and verify failure**
+- [x] **Step 2: Run focused test and verify failure**
 
 Run from `imperium-like-digital-prototype`:
 
@@ -619,7 +619,9 @@ npm.cmd run test -w app -- NewGameSetupSummary.test.tsx
 
 Expected: fail because `localPlaytestStatus` does not exist.
 
-- [ ] **Step 3: Add `LocalPlaytestStatus` prop and UI**
+Execution note: failed as expected because the rendered setup markup did not contain `Local Playtest`.
+
+- [x] **Step 3: Add `LocalPlaytestStatus` prop and UI**
 
 Modify `NewGameSetup.tsx`:
 
@@ -654,7 +656,7 @@ Render after the launch summary:
 ) : null}
 ```
 
-- [ ] **Step 4: Wire status from `App.tsx`**
+- [x] **Step 4: Wire status from `App.tsx`**
 
 Pass to `NewGameSetup`:
 
@@ -668,7 +670,9 @@ localPlaytestStatus={{
 
 If private data is loaded in setup state inside `NewGameSetup`, adjust Step 3 so `NewGameSetup` derives `dataMode` from `hasPrivateData(privateData)` instead of receiving it from `App.tsx`. Keep the visible labels exactly as tested.
 
-- [ ] **Step 5: Run focused app tests**
+Execution note: `NewGameSetup` derives the visible private-data label from confirmed loaded private data when present, and otherwise uses the local playtest status default from `App.tsx`.
+
+- [x] **Step 5: Run focused app tests**
 
 Run from `imperium-like-digital-prototype`:
 
@@ -678,7 +682,9 @@ npm.cmd run test -w app -- NewGameSetupSummary.test.tsx App.test.tsx
 
 Expected: pass.
 
-- [ ] **Step 6: Commit local playtest status UI**
+Execution note: `npm.cmd run test -w app -- NewGameSetupSummary.test.tsx App.test.tsx` passed with 22 tests.
+
+- [x] **Step 6: Commit local playtest status UI**
 
 Run from repo root:
 
@@ -686,6 +692,8 @@ Run from repo root:
 git add imperium-like-digital-prototype/app/src/App.tsx imperium-like-digital-prototype/app/src/ui/setup/NewGameSetup.tsx imperium-like-digital-prototype/app/src/ui/setup/NewGameSetupSummary.test.tsx
 git commit -m "feat: show local playtest readiness"
 ```
+
+Execution note: committed as `2c68b21 feat: show local playtest readiness`.
 
 ---
 

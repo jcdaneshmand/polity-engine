@@ -1168,6 +1168,11 @@ export default function App() {
           onRequestPasswordReset={(input) => void requestCurrentPasswordReset(input)}
           onCompletePasswordReset={(input) => void completeCurrentPasswordReset(input)}
           onOpenCardEntry={() => setHomeView("private-data")}
+          localPlaytestStatus={{
+            dataMode: "placeholder",
+            savedGameAvailable: savedLocalGame.kind === "valid",
+            hostedDeferred: true
+          }}
         />
         {savedLocalGame.kind !== "none" ? (
           <section className="setup-section setup-section--wide" aria-label="Saved local game">

@@ -15,6 +15,12 @@ export type NewGameSessionConfig = {
   privateData?: PrivateDataBundle;
 };
 
+export type LocalPlaytestStatus = {
+  dataMode: "placeholder" | "private";
+  savedGameAvailable: boolean;
+  hostedDeferred: boolean;
+};
+
 type NewGameSetupProps = {
   onStart: (config: NewGameSessionConfig) => void;
   onOpenOnlineGames?: (config: NewGameSessionConfig, playerName: string) => void;
@@ -33,6 +39,7 @@ type NewGameSetupProps = {
   onCancel?: () => void;
   onlineGamesEnabled?: boolean;
   allowedModes?: GameMode[];
+  localPlaytestStatus?: LocalPlaytestStatus;
 };
 
 const DEFAULT_NATION_ID = "test_nation_sun_coast";
@@ -231,7 +238,8 @@ export default function NewGameSetup({
   submitLabel = "Start Game",
   onCancel,
   onlineGamesEnabled = true,
-  allowedModes
+  allowedModes,
+  localPlaytestStatus
 }: NewGameSetupProps) {
   const initialOptions = initialConfig?.options;
   const modeChoices = modes.filter((item) => !allowedModes || allowedModes.includes(item.id));
@@ -285,6 +293,9 @@ export default function NewGameSetup({
     ...enabledVariants.map((variant) => labelFor(variants, variant))
   ].join(", ") || "Core rules";
   const privateDataSummary = privateDataConfirmed && hasPrivateData(privateData) ? privateDataReadyMessage : "Placeholder data";
+  const localPlaytestDataMode = privateDataConfirmed && hasPrivateData(privateData)
+    ? "private"
+    : localPlaytestStatus?.dataMode ?? "placeholder";
   const effectiveCampaignMode = mode === "solo" ? campaignMode : "none";
   const selectedPlayerOneNationId = playerNationIds["1"] ?? DEFAULT_NATION_ID;
   const launchCampaignOptions = buildCampaignGameOptions({
@@ -475,6 +486,19 @@ export default function NewGameSetup({
             <strong>{campaignSummary}</strong>
           </div>
         </section>
+
+        {localPlaytestStatus ? (
+          <fieldset className="setup-section setup-section--wide">
+            <legend>Local Playtest</legend>
+            <p className="setup-help">
+              {localPlaytestDataMode === "placeholder" ? "Placeholder data" : "Private data loaded"}
+              {" - "}
+              {localPlaytestStatus.savedGameAvailable ? "Saved local game available" : "No saved local game"}
+              {" - "}
+              {localPlaytestStatus.hostedDeferred ? "Public hosting deferred" : "Public hosting active"}
+            </p>
+          </fieldset>
+        ) : null}
 
         <section className="setup-stage" aria-labelledby="setup-stage-session">
           <h2 id="setup-stage-session">Session</h2>

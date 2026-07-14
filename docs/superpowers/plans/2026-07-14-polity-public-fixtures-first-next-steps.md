@@ -915,7 +915,7 @@ Hosted smoke must verify:
 5. No private debug UI is enabled.
 ```
 
-Execution note: `scripts/hosted-smoke.mjs` checks `/polity/accounts/health`, the React root at `/`, `/polity/lobby/rooms`, placeholder lobby creation, and absence of private-debug/private-field markers in the served app shell. Added `npm.cmd run smoke:hosted`.
+Execution note: `scripts/hosted-smoke.mjs` checks `/polity/accounts/health`, the React root at `/`, `/polity/lobby/rooms`, placeholder lobby creation, absence of private-debug/private-field markers in the served app shell, and best-effort cleanup of the smoke lobby. Added `npm.cmd run smoke:hosted`.
 
 - [ ] **Step 3: Run local release gate plus hosted proof**
 
@@ -939,7 +939,7 @@ node ..\scripts\hosted-smoke.mjs
 
 Expected: all commands exit 0. If Render assigns a different URL, use that real deployed URL for `POLITY_HOSTED_BASE_URL` and record the exact URL policy in the runbook.
 
-Execution note: local public release gates passed on 2026-07-14: `npm.cmd run typecheck`; `npm.cmd run test -w app` with 15 files and 134 tests; `npm.cmd run test -w server` with 11 files and 63 tests; `npm.cmd run test -w engine` with 45 files and 1,487 tests; `npm.cmd run smoke:fictional-game`; and `npm.cmd run smoke:multiplayer`. Hosted smoke against `https://polity-engine.onrender.com` reached the host but `/polity/accounts/health` returned 404, so hosted proof remains blocked until the actual deployed Polity Engine origin is available or Render is redeployed to this service shape.
+Execution note: local public release gates passed on 2026-07-14: `npm.cmd run typecheck`; `npm.cmd run test -w app` with 15 files and 134 tests; `npm.cmd run test -w server` with 11 files and 63 tests; `npm.cmd run test -w engine` with 45 files and 1,487 tests; `npm.cmd run smoke:fictional-game`; and `npm.cmd run smoke:multiplayer`. `npm.cmd run smoke:hosted` also passed against a local production-style server at `http://127.0.0.1:8794`, proving the hosted-smoke script against the expected service shape. Hosted smoke against `https://polity-engine.onrender.com` reached the host but `/polity/accounts/health` returned 404 on repeated attempts, so hosted proof remains blocked until the actual deployed Polity Engine origin is available or Render is redeployed to this service shape.
 
 - [ ] **Step 4: Browser QA**
 

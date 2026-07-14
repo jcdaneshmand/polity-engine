@@ -957,6 +957,8 @@ Run a two-context browser QA pass:
 
 Execution note: deferred with hosted proof. Resume this only after `npm.cmd run smoke:hosted` passes against the actual public origin.
 
+Execution note: local browser QA is covered by `docs/superpowers/plans/2026-07-14-polity-local-qa-playtestability.md` while public hosting is deferred. Hosted browser QA remains open and must be rerun against the actual public origin later.
+
 - [ ] **Step 5: Document hosted evidence**
 
 Append a dated section to `imperium-like-digital-prototype/docs/deployment.md`:

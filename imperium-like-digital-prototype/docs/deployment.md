@@ -53,3 +53,4 @@ The hosted smoke checks account health, the React app shell, lobby room listing,
 ## Deferred Hosted Gate
 
 - 2026-07-14: Public hosting is intentionally deferred until later. Keep `npm.cmd run smoke:hosted` as the first hosted gate to run once an actual public origin exists, then complete the two-context browser QA before recording a hosted release gate.
+- While public hosting is deferred, use `npm.cmd run qa:local-browser` as the local browser QA gate. It does not replace hosted proof; it keeps the browser multiplayer flow covered until a public origin exists.

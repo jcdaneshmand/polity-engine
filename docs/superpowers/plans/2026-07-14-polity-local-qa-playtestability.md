@@ -704,7 +704,7 @@ Execution note: committed as `2c68b21 feat: show local playtest readiness`.
 - Modify: `imperium-like-digital-prototype/docs/deployment.md`
 - Modify: `docs/superpowers/plans/2026-07-14-polity-public-fixtures-first-next-steps.md`
 
-- [ ] **Step 1: Update README**
+- [x] **Step 1: Update README**
 
 Add under `Running and Testing the App`:
 
@@ -724,7 +724,7 @@ npm.cmd run qa:local-browser
 These commands use public-safe placeholder data and do not require private CSV files or public hosting.
 ```
 
-- [ ] **Step 2: Update deployment notes**
+- [x] **Step 2: Update deployment notes**
 
 Append to `Deferred Hosted Gate` in `imperium-like-digital-prototype/docs/deployment.md`:
 
@@ -732,7 +732,7 @@ Append to `Deferred Hosted Gate` in `imperium-like-digital-prototype/docs/deploy
 While public hosting is deferred, use `npm.cmd run qa:local-browser` as the local browser QA gate. It does not replace hosted proof; it keeps the browser multiplayer flow covered until a public origin exists.
 ```
 
-- [ ] **Step 3: Update the public-fixtures plan**
+- [x] **Step 3: Update the public-fixtures plan**
 
 In `docs/superpowers/plans/2026-07-14-polity-public-fixtures-first-next-steps.md`, add an execution note under Task 8 Step 4:
 
@@ -740,7 +740,7 @@ In `docs/superpowers/plans/2026-07-14-polity-public-fixtures-first-next-steps.md
 Execution note: local browser QA is covered by `docs/superpowers/plans/2026-07-14-polity-local-qa-playtestability.md` while public hosting is deferred. Hosted browser QA remains open and must be rerun against the actual public origin later.
 ```
 
-- [ ] **Step 4: Run docs status check**
+- [x] **Step 4: Run docs status check**
 
 Run from repo root:
 
@@ -750,7 +750,9 @@ git diff -- README.md imperium-like-digital-prototype/docs/deployment.md docs/su
 
 Expected: only local QA/playtest documentation changes; no private data paths are staged.
 
-- [ ] **Step 5: Commit docs**
+Execution note: `git diff -- README.md imperium-like-digital-prototype/docs/deployment.md docs/superpowers/plans/2026-07-14-polity-public-fixtures-first-next-steps.md` showed only local QA/playtest documentation and deferred-hosted notes.
+
+- [x] **Step 5: Commit docs**
 
 Run from repo root:
 
@@ -758,6 +760,8 @@ Run from repo root:
 git add README.md imperium-like-digital-prototype/docs/deployment.md docs/superpowers/plans/2026-07-14-polity-public-fixtures-first-next-steps.md
 git commit -m "docs: document local playtest QA loop"
 ```
+
+Execution note: committed as `46074c7 docs: document local playtest QA loop`.
 
 ---
 

@@ -12,6 +12,10 @@ export type SavedLocalGameRecord =
   | { kind: "valid"; envelope: SavedLocalGameEnvelope }
   | { kind: "corrupt" };
 
+export type ImportedLocalGameExport =
+  | { kind: "valid"; envelope: SavedLocalGameEnvelope }
+  | { kind: "invalid"; reason: string };
+
 type StorageReader = Pick<Storage, "getItem">;
 
 const PRIVATE_FIELD_NAMES = new Set([
@@ -60,6 +64,57 @@ export function parseSavedLocalGame(raw: string): SavedLocalGameEnvelope | null 
   if (!("state" in envelope)) return null;
   if (containsPrivateField(envelope.state)) return null;
   return envelope as SavedLocalGameEnvelope;
+}
+
+function pad2(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+export function formatLocalGameExportFilename(date: Date): string {
+  return [
+    "polity-local-game-",
+    date.getUTCFullYear(),
+    pad2(date.getUTCMonth() + 1),
+    pad2(date.getUTCDate()),
+    "-",
+    pad2(date.getUTCHours()),
+    pad2(date.getUTCMinutes()),
+    pad2(date.getUTCSeconds()),
+    ".json"
+  ].join("");
+}
+
+function hasResumableGameState(envelope: SavedLocalGameEnvelope): boolean {
+  const state = envelope.state as any;
+  return Boolean(
+    state
+    && typeof state === "object"
+    && state.G
+    && typeof state.G === "object"
+    && state.ctx
+    && typeof state.ctx === "object"
+  );
+}
+
+export function createLocalGameExport(input: {
+  privateDataFingerprint: string;
+  state: unknown;
+  now?: Date;
+}): { fileName: string; content: string } {
+  const now = input.now ?? new Date();
+  return {
+    fileName: formatLocalGameExportFilename(now),
+    content: serializeLocalGame({ ...input, now })
+  };
+}
+
+export function importLocalGameExport(raw: string): ImportedLocalGameExport {
+  const envelope = parseSavedLocalGame(raw);
+  if (!envelope) return { kind: "invalid", reason: "Unsupported or invalid local game export." };
+  if (!hasResumableGameState(envelope)) {
+    return { kind: "invalid", reason: "Local game export does not contain a resumable game state." };
+  }
+  return { kind: "valid", envelope };
 }
 
 export function loadSavedLocalGameRecord(storage: StorageReader | undefined): SavedLocalGameRecord {

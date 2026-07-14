@@ -6,7 +6,7 @@ import type { CampaignProgress } from "../../engine/src/options/gameOptions";
 import { ACCOUNT_SESSION_STORAGE_KEY, parseAccountSessionRecord, serializeAccountSessionRecord, type AccountSessionRecord } from "./accountSession";
 import AboutPage from "./AboutPage";
 import Board from "./Board";
-import { createLocalGameRestoreEnhancer, loadSavedLocalGameRecord, LOCAL_GAME_SAVE_STORAGE_KEY, serializeLocalGame, type SavedLocalGameEnvelope, type SavedLocalGameRecord } from "./localGameSave";
+import { createLocalGameExport, createLocalGameRestoreEnhancer, importLocalGameExport, loadSavedLocalGameRecord, LOCAL_GAME_SAVE_STORAGE_KEY, serializeLocalGame, type SavedLocalGameEnvelope, type SavedLocalGameRecord } from "./localGameSave";
 import { changeAccountPassword, clearAllOnlineGames, closePolityOnlineMatch, completePasswordReset, computePrivateDataFingerprint, createLobbyRoom, heartbeatLobbyRoom, heartbeatPolityOnlineMatch, joinLobbyRoom, joinPolityOnlineMatch, leaveLobbyRoom, leavePolityOnlineMatch, listLobbyChat, listLobbyRooms, listOnlineChat, listOnlineMatches, loadCurrentAccount, ONLINE_SESSION_STORAGE_KEY, parseOnlineSessionRecord, recordAccountGameResult, registerAccount, rejoinLobbyRoom, requestPasswordReset, resolveMultiplayerServerURL, selectLobbyNation, sendLobbyChat, sendOnlineChat, serializeOnlineSessionRecord, setLobbyReady, signInAccount, signOutAccount, spectateOnlineMatch, startAccountGameHistory, startLobbyGame, updateLobbySetup, type AccountGameResultInput, type AccountHistoryStartInput, type ChatMessage, type ListedLobby, type ListedMatch, type LobbyRoomDetails, type OnlineLobbySessionRecord, type OnlineSessionRecord, type OnlineStartedSessionRecord } from "./onlineSession";
 import PrivateCardEntry from "./ui/privateData/PrivateCardEntry";
 import LobbyRoom from "./ui/online/LobbyRoom";
@@ -97,6 +97,16 @@ function clearPasswordResetTokenFromURL(): void {
   const url = new URL(window.location.href);
   url.searchParams.delete("token");
   window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+function downloadJsonFile(fileName: string, content: string): void {
+  if (typeof document === "undefined") return;
+  const url = URL.createObjectURL(new Blob([content], { type: "application/json;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function loadOnlineClientID(): string {
@@ -416,19 +426,50 @@ export default function App() {
 
   const resumeLocalGame = () => {
     if (savedLocalGame.kind !== "valid") return;
-    const config = setupConfigForSavedLocalGame(savedLocalGame.envelope);
+    startImportedLocalGame(savedLocalGame.envelope);
+  };
+
+  const startImportedLocalGame = (envelope: SavedLocalGameEnvelope) => {
+    const config = setupConfigForSavedLocalGame(envelope);
     if (!config) {
       setSavedLocalGame({ kind: "corrupt" });
       return;
     }
     setPendingCampaignProgress(undefined);
     setOnlineStatus("");
-    setSession({ ...config, id: Date.now(), kind: "local", restoredLocalGame: savedLocalGame.envelope });
+    setSession({ ...config, id: Date.now(), kind: "local", restoredLocalGame: envelope });
   };
 
   const discardSavedLocalGame = () => {
     if (typeof window !== "undefined") window.localStorage.removeItem(LOCAL_GAME_SAVE_STORAGE_KEY);
     setSavedLocalGame({ kind: "none" });
+  };
+
+  const exportSavedLocalGame = () => {
+    if (savedLocalGame.kind !== "valid") return;
+    const exported = createLocalGameExport({
+      privateDataFingerprint: savedLocalGame.envelope.privateDataFingerprint,
+      state: savedLocalGame.envelope.state
+    });
+    downloadJsonFile(exported.fileName, exported.content);
+  };
+
+  const importSavedLocalGame = (file: File | undefined) => {
+    if (!file) return;
+    void file.text()
+      .then((content) => {
+        const imported = importLocalGameExport(content);
+        if (imported.kind !== "valid") {
+          setOnlineStatus(imported.reason);
+          return;
+        }
+        if (typeof window !== "undefined") window.localStorage.setItem(LOCAL_GAME_SAVE_STORAGE_KEY, content);
+        setSavedLocalGame({ kind: "valid", envelope: imported.envelope });
+        startImportedLocalGame(imported.envelope);
+      })
+      .catch(() => {
+        setOnlineStatus("Could not read local game export.");
+      });
   };
 
   const startOnlineSession = (config: NewGameSessionConfig, record: OnlineStartedSessionRecord) => {
@@ -1137,6 +1178,20 @@ export default function App() {
                   <button className="primary-action" type="button" onClick={resumeLocalGame}>
                     Resume Saved Game
                   </button>
+                  <button type="button" onClick={exportSavedLocalGame}>
+                    Export Saved Game
+                  </button>
+                  <label className="file-action">
+                    <span>Import Saved Game</span>
+                    <input
+                      type="file"
+                      accept=".json,application/json"
+                      onChange={(event: { currentTarget: HTMLInputElement }) => {
+                        importSavedLocalGame(event.currentTarget.files?.[0]);
+                        event.currentTarget.value = "";
+                      }}
+                    />
+                  </label>
                   <button type="button" onClick={discardSavedLocalGame}>
                     Discard Saved Game
                   </button>

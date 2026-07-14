@@ -829,11 +829,13 @@ Execution note: committed as `f829c1e feat: add local undo guardrails`.
 - Test: app tests for import/export envelope
 - Update: `README.md`
 
-- [ ] **Step 1: Reuse the save envelope**
+- [x] **Step 1: Reuse the save envelope**
 
 Build import/export around the `SavedLocalGameEnvelope` from Task 5. Do not create a separate format unless Task 5 found an existing project format.
 
-- [ ] **Step 2: Write failing tests**
+Execution note: Task 7 reuses the versioned `SavedLocalGameEnvelope` and adds transfer helpers around `serializeLocalGame` and `parseSavedLocalGame`.
+
+- [x] **Step 2: Write failing tests**
 
 Add tests for:
 
@@ -844,7 +846,9 @@ Add tests for:
 4. Import rejects malformed state without replacing the active game.
 ```
 
-- [ ] **Step 3: Implement export**
+Execution note: added failing tests in `localGameSave.test.ts` and `App.test.tsx` for JSON export filename/content, valid import, unsupported-version rejection, malformed-state rejection, and visible setup controls.
+
+- [x] **Step 3: Implement export**
 
 Add a clear user command in the local-game UI that downloads the JSON envelope. Use a filename shape like:
 
@@ -852,11 +856,15 @@ Add a clear user command in the local-game UI that downloads the JSON envelope. 
 polity-local-game-YYYYMMDD-HHMMSS.json
 ```
 
-- [ ] **Step 4: Implement import**
+Execution note: `createLocalGameExport` emits a versioned public-safe JSON envelope with a `polity-local-game-YYYYMMDD-HHMMSS.json` filename, and the setup shell exposes `Export Saved Game` for valid saved local games.
+
+- [x] **Step 4: Implement import**
 
 Add import through a file input near the local resume/export controls. On successful import, show the loaded game state. On failure, preserve the current state and show the rejection reason.
 
-- [ ] **Step 5: Run checks**
+Execution note: `Import Saved Game` reads a JSON file, validates it with `importLocalGameExport`, stores it only on success, and starts the restored local session. Invalid imports leave the current state untouched and surface a rejection message.
+
+- [x] **Step 5: Run checks**
 
 Run from `imperium-like-digital-prototype`:
 
@@ -867,7 +875,9 @@ npm.cmd run typecheck
 
 Expected: both commands exit 0.
 
-- [ ] **Step 6: Commit import/export**
+Execution note: `npm.cmd run test -w app` passed with 15 files and 134 tests. `npm.cmd run typecheck` passed for engine, app, and server.
+
+- [x] **Step 6: Commit import/export**
 
 Run from repo root:
 
@@ -875,6 +885,8 @@ Run from repo root:
 git add imperium-like-digital-prototype/app/src README.md
 git commit -m "feat: add local game import and export"
 ```
+
+Execution note: committed as `f6da5af feat: add local game import and export`.
 
 ---
 

@@ -60,6 +60,8 @@ describe("App shell", () => {
     const html = renderToStaticMarkup(<App />);
 
     expect(html).toContain("Resume Saved Game");
+    expect(html).toContain("Export Saved Game");
+    expect(html).toContain("Import Saved Game");
     expect(html).toContain("Saved local game");
   });
 

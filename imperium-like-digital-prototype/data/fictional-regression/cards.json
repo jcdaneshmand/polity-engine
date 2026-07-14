@@ -69,6 +69,40 @@
     "tested": true
   },
   {
+    "id": "fixture_action_choose_market",
+    "displayName": "Market Lens",
+    "suit": "civilized",
+    "cardType": "action",
+    "cost": { "materials": 0, "population": 0, "progress": 0, "goods": 0 },
+    "developmentCost": { "materials": 0, "population": 0, "progress": 0, "goods": 0 },
+    "vp": { "mode": "none", "value": null },
+    "startingLocation": "draw_deck",
+    "ownership": "nation",
+    "effects": [
+      { "trigger": "on_play", "op": "acquire_card", "source": "market", "count": 1 }
+    ],
+    "tags": ["fixture_pending_choice"],
+    "implemented": true,
+    "tested": true
+  },
+  {
+    "id": "fixture_action_take_unrest",
+    "displayName": "Strain Engine",
+    "suit": "uncivilized",
+    "cardType": "action",
+    "cost": { "materials": 0, "population": 0, "progress": 0, "goods": 0 },
+    "developmentCost": { "materials": 0, "population": 0, "progress": 0, "goods": 0 },
+    "vp": { "mode": "none", "value": null },
+    "startingLocation": "draw_deck",
+    "ownership": "nation",
+    "effects": [
+      { "trigger": "on_play", "op": "take_unrest", "count": 1 }
+    ],
+    "tags": ["fixture_unrest_flow"],
+    "implemented": true,
+    "tested": true
+  },
+  {
     "id": "fixture_market_acquire",
     "displayName": "Open Charter",
     "suit": "civilized",

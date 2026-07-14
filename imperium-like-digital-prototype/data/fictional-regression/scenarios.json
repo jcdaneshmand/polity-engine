@@ -14,7 +14,10 @@
       "hands_non_empty",
       "market_non_empty",
       "unrest_available",
-      "no_private_fields"
+      "no_private_fields",
+      "pending_choice_opens",
+      "pending_choice_resolves",
+      "unrest_moves_from_pile"
     ]
   }
 ]

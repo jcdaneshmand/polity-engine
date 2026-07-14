@@ -541,7 +541,7 @@ npm run smoke:fictional-game
 ```
 ```
 
-- [ ] **Step 7: Commit the scenario smoke**
+- [x] **Step 7: Commit the scenario smoke**
 
 Run from repo root:
 
@@ -560,7 +560,7 @@ git commit -m "test: add fictional game smoke gate"
 - Modify: `imperium-like-digital-prototype/engine/src/tests/fictionalScenarioSmoke.test.ts`
 - Modify: `imperium-like-digital-prototype/docs/rules-engine-parity-matrix.md`
 
-- [ ] **Step 1: Add fixture cards for choice-heavy contracts**
+- [x] **Step 1: Add fixture cards for choice-heavy contracts**
 
 Extend `cards.json` with fictional records covering:
 
@@ -599,7 +599,7 @@ Extend `cards.json` with fictional records covering:
 ]
 ```
 
-- [ ] **Step 2: Add scenarios for pending choices and Unrest**
+- [x] **Step 2: Add scenarios for pending choices and Unrest**
 
 Extend `scenarios.json` with scenario entries whose `assertions` include:
 
@@ -612,11 +612,11 @@ Extend `scenarios.json` with scenario entries whose `assertions` include:
 ]
 ```
 
-- [ ] **Step 3: Add tests for pending choice and Unrest scenarios**
+- [x] **Step 3: Add tests for pending choice and Unrest scenarios**
 
 Extend `fictionalScenarioSmoke.test.ts` with one test per scenario. Use existing move helpers from `turnLoop.test.ts` and `effectRunner.test.ts`; do not add new engine behavior unless the test reveals a real runtime gap.
 
-- [ ] **Step 4: Run the fictional and full engine tests**
+- [x] **Step 4: Run the fictional and full engine tests**
 
 Run from `imperium-like-digital-prototype`:
 
@@ -627,7 +627,9 @@ npm.cmd run test -w engine
 
 Expected: both commands exit 0.
 
-- [ ] **Step 5: Update parity evidence**
+Execution note: expanded `fictionalScenarioSmoke.test.ts` now covers deterministic resource gain, a pending Market acquire choice that resolves into hand, and Unrest moving from the public-safe fixture supply into hand. `npm.cmd run smoke:fictional-game` and `npm.cmd run test -w engine` both passed with 45 engine test files and 1,487 tests.
+
+- [x] **Step 5: Update parity evidence**
 
 Modify `imperium-like-digital-prototype/docs/rules-engine-parity-matrix.md` by appending one sentence to the covered rows touched by the fictional smoke tests:
 

@@ -939,7 +939,7 @@ node ..\scripts\hosted-smoke.mjs
 
 Expected: all commands exit 0. If Render assigns a different URL, use that real deployed URL for `POLITY_HOSTED_BASE_URL` and record the exact URL policy in the runbook.
 
-Execution note: local public release gates passed on 2026-07-14: `npm.cmd run typecheck`; `npm.cmd run test -w app` with 15 files and 134 tests; `npm.cmd run test -w server` with 11 files and 63 tests; `npm.cmd run test -w engine` with 45 files and 1,487 tests; `npm.cmd run smoke:fictional-game`; and `npm.cmd run smoke:multiplayer`. `npm.cmd run smoke:hosted` also passed against a local production-style server at `http://127.0.0.1:8794`, proving the hosted-smoke script against the expected service shape. Hosted smoke against `https://polity-engine.onrender.com` reached the host but `/polity/accounts/health` returned 404 on repeated attempts, so hosted proof remains blocked until the actual deployed Polity Engine origin is available or Render is redeployed to this service shape.
+Execution note: local public release gates passed on 2026-07-14: `npm.cmd run typecheck`; `npm.cmd run test -w app` with 15 files and 134 tests; `npm.cmd run test -w server` with 11 files and 63 tests; `npm.cmd run test -w engine` with 45 files and 1,487 tests; `npm.cmd run smoke:fictional-game`; and `npm.cmd run smoke:multiplayer`. `npm.cmd run smoke:hosted` also passed against a local production-style server at `http://127.0.0.1:8794`, proving the hosted-smoke script against the expected service shape. Hosted smoke against `https://polity-engine.onrender.com` reached the host but `/polity/accounts/health` returned 404 on repeated attempts. On 2026-07-14 the owner deferred public hosting until later, so this step remains intentionally open and should resume when an actual deployed Polity Engine origin is available or Render is redeployed to this service shape.
 
 - [ ] **Step 4: Browser QA**
 
@@ -955,6 +955,8 @@ Run a two-context browser QA pass:
 7. Restart service and verify lobby or match metadata persists.
 ```
 
+Execution note: deferred with hosted proof. Resume this only after `npm.cmd run smoke:hosted` passes against the actual public origin.
+
 - [ ] **Step 5: Document hosted evidence**
 
 Append a dated section to `imperium-like-digital-prototype/docs/deployment.md`:
@@ -966,6 +968,8 @@ Append a dated section to `imperium-like-digital-prototype/docs/deployment.md`:
 ```
 
 Use the actual date and URL policy chosen by the repository owner.
+
+Execution note: do not add the `Hosted Release Gate` success section until a real public deployment passes hosted smoke and two-context browser QA.
 
 - [ ] **Step 6: Commit deployment proof**
 

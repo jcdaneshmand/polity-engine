@@ -155,6 +155,12 @@ Run the multiplayer restart/rejoin smoke test:
 npm run smoke:multiplayer
 ```
 
+Run the public-safe fictional game smoke test:
+
+```powershell
+npm run smoke:fictional-game
+```
+
 Build the app:
 
 ```powershell

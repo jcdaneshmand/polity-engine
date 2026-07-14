@@ -409,7 +409,7 @@ git commit -m "test: add fictional regression fixture pack"
 - Modify: `imperium-like-digital-prototype/package.json`
 - Modify: `README.md`
 
-- [ ] **Step 1: Add an engine-level scenario smoke test**
+- [x] **Step 1: Add an engine-level scenario smoke test**
 
 Create `imperium-like-digital-prototype/engine/src/tests/fictionalScenarioSmoke.test.ts`:
 
@@ -468,7 +468,7 @@ describe("fictional scenario smoke", () => {
 });
 ```
 
-- [ ] **Step 2: Run the focused scenario test**
+- [x] **Step 2: Run the focused scenario test**
 
 Run from `imperium-like-digital-prototype`:
 
@@ -478,7 +478,7 @@ npm.cmd run test -w engine -- fictionalScenarioSmoke.test.ts
 
 Expected: pass. If the exact `resolveDrawChoice` argument shape differs, inspect existing `turnLoop.test.ts` draw-choice tests and adjust this test to match the existing move API before implementation changes.
 
-- [ ] **Step 3: Add a Node smoke script**
+- [x] **Step 3: Add a Node smoke script**
 
 Create `scripts/fictional-game-smoke.mjs`:
 
@@ -503,7 +503,7 @@ if (result.status !== 0) {
 console.log(JSON.stringify({ ok: true, smoke: "fictional-game" }));
 ```
 
-- [ ] **Step 4: Add the package script**
+- [x] **Step 4: Add the package script**
 
 Modify `imperium-like-digital-prototype/package.json` scripts:
 
@@ -513,7 +513,7 @@ Modify `imperium-like-digital-prototype/package.json` scripts:
 
 Keep the existing `smoke:multiplayer` script unchanged.
 
-- [ ] **Step 5: Run the new smoke script**
+- [x] **Step 5: Run the new smoke script**
 
 Run from `imperium-like-digital-prototype`:
 
@@ -527,7 +527,9 @@ Expected:
 {"ok":true,"smoke":"fictional-game"}
 ```
 
-- [ ] **Step 6: Document the new smoke gate**
+Execution note: the initial scenario smoke uses `fixture_action_gain_materials` because it is deterministic and avoids hidden draw randomness in the first gate. The Node smoke wrapper uses `cmd.exe /d /s /c npm.cmd ...` on Windows, matching the project smoke-script pattern. `npm.cmd run test -w engine -- fictionalScenarioSmoke.test.ts` and `npm.cmd run smoke:fictional-game` both passed.
+
+- [x] **Step 6: Document the new smoke gate**
 
 Update `README.md` under Running and Testing with:
 

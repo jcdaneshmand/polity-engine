@@ -14,7 +14,7 @@ import type { AccountGameResultInput } from "../../onlineSession";
 import { getActionHintsByCardId, getAvailableActionsForSelection, getMarketCardClickAction, getPendingUiState, getPrimaryBlockedReason, getSelectedCard, type Selection } from "../controller/selectionModel";
 import { CONTROLLER_HINTS } from "../controller/controllerHints";
 import { handleBoardKeyDown } from "../controller/keyboardControls";
-import { getBotPiles, getCurrentPlayer, getInspectableLookedCards, getInspectableSharedPile, getInspectableZone, getMarketCards, getOwnerVisibleZoneIds, getPlayerZoneLabels, getRecentLogEntries, getSharedPiles } from "./uiSelectors";
+import { getBotPiles, getCurrentPlayer, getInspectableLookedCards, getInspectableSharedPile, getInspectableZone, getMarketCards, getOwnerVisibleZoneIds, getPlayerZoneCounts, getPlayerZoneLabels, getRecentLogEntries, getSharedPiles } from "./uiSelectors";
 import { resourceLabelsForGame } from "./resourceDisplay";
 
 function mapViewerPlayerId(G: any, candidate?: string | null): string | undefined {
@@ -107,6 +107,90 @@ export function getLocalUndoAvailability({
   return { enabled: true };
 }
 
+export type PlaytestDiagnostics = {
+  schemaVersion: 1;
+  generatedAtIso: string;
+  appVersion: string;
+  mode: "local" | "online";
+  activePlayer: string;
+  viewerPlayer: string;
+  options: {
+    mode?: string;
+    playerCount?: number;
+    commonsSetId?: string;
+    enabledExpansions: string[];
+    enabledVariants: string[];
+  };
+  pendingAction?: string;
+  sharedPiles: Record<string, number>;
+  players: Record<string, { zones: Record<string, number>; resources: Record<string, number> }>;
+  recentPublicLog: Array<{ round?: number; playerId?: string; message: string }>;
+};
+
+function redactKnownCardIds(message: string, cardIds: string[]): string {
+  return cardIds.reduce((current, cardId) => current.split(cardId).join("[card]"), message);
+}
+
+export function buildPlaytestDiagnostics({
+  G,
+  ctx,
+  viewerId,
+  mode,
+  pendingAction,
+  appVersion = "local-dev",
+  now = new Date()
+}: {
+  G: any;
+  ctx: any;
+  viewerId: string;
+  mode: "local" | "online";
+  pendingAction?: string;
+  appVersion?: string;
+  now?: Date;
+}): PlaytestDiagnostics {
+  const knownCardIds = Object.keys(G?.cardDb ?? {});
+  return {
+    schemaVersion: 1,
+    generatedAtIso: now.toISOString(),
+    appVersion,
+    mode,
+    activePlayer: String(ctx?.currentPlayer ?? ""),
+    viewerPlayer: viewerId,
+    options: {
+      mode: G?.options?.mode,
+      playerCount: G?.options?.playerCount,
+      commonsSetId: G?.options?.commonsSetId,
+      enabledExpansions: Array.isArray(G?.options?.enabledExpansions) ? G.options.enabledExpansions : [],
+      enabledVariants: Array.isArray(G?.options?.enabledVariants) ? G.options.enabledVariants : []
+    },
+    pendingAction,
+    sharedPiles: Object.fromEntries(getSharedPiles(G).map((pile) => [pile.id, pile.count])),
+    players: Object.fromEntries(Object.entries(G?.players ?? {}).map(([playerId, player]) => [
+      playerId,
+      {
+        zones: getPlayerZoneCounts(player),
+        resources: { ...((player as any)?.resources ?? {}) }
+      }
+    ])),
+    recentPublicLog: getRecentLogEntries(G, 20).map((entry: any) => ({
+      round: typeof entry?.round === "number" ? entry.round : undefined,
+      playerId: entry?.playerId === undefined ? undefined : String(entry.playerId),
+      message: redactKnownCardIds(String(entry?.message ?? ""), knownCardIds)
+    }))
+  };
+}
+
+function downloadPlaytestDiagnostics(diagnostics: PlaytestDiagnostics): void {
+  if (typeof document === "undefined" || typeof URL === "undefined" || typeof Blob === "undefined") return;
+  const content = JSON.stringify(diagnostics, null, 2);
+  const url = URL.createObjectURL(new Blob([content], { type: "application/json;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `polity-playtest-diagnostics-${diagnostics.generatedAtIso.replace(/[:.]/g, "-")}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function BoardLayout({
   G,
   ctx,
@@ -160,6 +244,14 @@ export default function BoardLayout({
   const pending = getPendingUiState(G, uiCtx);
   const primaryBlockedReason = getPrimaryBlockedReason(actions);
   const localUndoAvailability = getLocalUndoAvailability({ G, isMultiplayer, undoStack: _undo });
+  const diagnostics = useMemo(() => buildPlaytestDiagnostics({
+    G,
+    ctx,
+    viewerId,
+    mode: isMultiplayer ? "online" : "local",
+    pendingAction: pending?.detail,
+    appVersion: (import.meta as any).env?.VITE_GIT_COMMIT ?? "local-dev"
+  }), [G, ctx, viewerId, isMultiplayer, pending?.detail]);
   const handActionHintsByCardId = useMemo(() => {
     const hints = getActionHintsByCardId(actions, "hand");
     if (!G.pendingCleanupDiscardChoice) return hints;
@@ -274,6 +366,24 @@ export default function BoardLayout({
           {!localUndoAvailability.enabled ? <small>{localUndoAvailability.reason}</small> : null}
         </button>
       </div> : null}
+      <section className="panel playtest-diagnostics" data-qa="playtest-diagnostics" aria-label="Playtest diagnostics">
+        <div className="diagnostic-grid">
+          <div>
+            <span className="eyebrow">Active Player</span>
+            <strong>Player {diagnostics.activePlayer}</strong>
+          </div>
+          <div>
+            <span className="eyebrow">Viewer Player</span>
+            <strong>Player {diagnostics.viewerPlayer}</strong>
+          </div>
+        </div>
+        <button className="action-button" type="button" onClick={() => downloadPlaytestDiagnostics(diagnostics)}>
+          <span className="action-button-main">
+            <span className="action-symbol" aria-hidden="true">JSON</span>
+            <span>Export Playtest Diagnostics</span>
+          </span>
+        </button>
+      </section>
       <ActionMenu actions={actions} onAction={onAction} />
       <GameLogPanel entries={getRecentLogEntries(G, 20)} />
     </div>

@@ -488,7 +488,13 @@ export default function NewGameSetup({
         </section>
 
         {localPlaytestStatus ? (
-          <fieldset className="setup-section setup-section--wide">
+          <fieldset
+            className="setup-section setup-section--wide"
+            data-qa="local-playtest-status"
+            data-data-mode={localPlaytestDataMode}
+            data-saved-game={localPlaytestStatus.savedGameAvailable ? "available" : "none"}
+            data-hosting={localPlaytestStatus.hostedDeferred ? "deferred" : "active"}
+          >
             <legend>Local Playtest</legend>
             <p className="setup-help">
               {localPlaytestDataMode === "placeholder" ? "Placeholder data" : "Private data loaded"}

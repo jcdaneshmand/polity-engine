@@ -366,7 +366,7 @@ Execution note: Task 4 completed as an audited no-op. There are currently no pub
 - Create: `imperium-like-digital-prototype/docs/local-playtest-checklist.md`
 - Modify: `scripts/local-browser-qa.mjs`
 
-- [ ] **Step 1: Add a local playtest checklist doc**
+- [x] **Step 1: Add a local playtest checklist doc**
 
 Include public-safe manual scripts for:
 
@@ -378,7 +378,9 @@ Include public-safe manual scripts for:
 - campaign end and next setup
 - Trade Routes enabled game
 
-- [ ] **Step 2: Add in-app playtest cues**
+Execution note: created `imperium-like-digital-prototype/docs/local-playtest-checklist.md` with public-safe scripts for new multiplayer, host/join/ready/start/rejoin, solo Bot turn, save/resume/export/import, undo/blocked actions, campaign handoff, and Trade Routes enabled playtests.
+
+- [x] **Step 2: Add in-app playtest cues**
 
 Add compact, non-marketing cues where they help a tester:
 
@@ -390,7 +392,9 @@ Add compact, non-marketing cues where they help a tester:
 
 Do not add tutorial prose that clutters normal play.
 
-- [ ] **Step 3: Add a playtest issue capture affordance**
+Execution note: setup local playtest status now has stable QA attributes for data mode, saved-game availability, and hosting state. The board now shows a compact playtest diagnostics panel with active player, viewer player, and diagnostics export near existing action/status surfaces.
+
+- [x] **Step 3: Add a playtest issue capture affordance**
 
 Add a local-only copy/export action that gathers public-safe diagnostics:
 
@@ -402,7 +406,9 @@ Add a local-only copy/export action that gathers public-safe diagnostics:
 - no hidden card identities from non-viewer zones
 - no private text/content
 
-- [ ] **Step 4: Extend browser QA to touch setup and board state**
+Execution note: added `buildPlaytestDiagnostics` and an `Export Playtest Diagnostics` button. The payload includes app version, mode/options, active/viewer player, public pile counts, per-player zone/resource counts, and redacted recent log messages without hidden zone card IDs or private debug text.
+
+- [x] **Step 4: Extend browser QA to touch setup and board state**
 
 Extend `qa:local-browser` beyond rejoin visibility:
 
@@ -412,7 +418,9 @@ Extend `qa:local-browser` beyond rejoin visibility:
 - verify active player/action UI is present
 - verify no private-debug markers are served
 
-- [ ] **Step 5: Run local browser QA and app tests**
+Execution note: `qa:local-browser` now builds the app before launching the local server, verifies setup local status, starts a placeholder local game, verifies the board diagnostics panel, checks visible text for private debug markers, then runs the existing lobby/start/rejoin flow. Windows cleanup now stops the exact listener PID instead of using `taskkill`, avoiding stuck cleanup processes.
+
+- [x] **Step 5: Run local browser QA and app tests**
 
 Run:
 
@@ -423,6 +431,8 @@ npm.cmd run typecheck
 ```
 
 Expected: automated QA covers the human playtest happy path and status surfaces.
+
+Execution note: focused setup/board tests first failed on missing QA attributes and diagnostics, then passed after implementation. `npm.cmd run test:local-qa-scripts` passed 7 tests. `npm.cmd run qa:local-browser` passed and reported setup status, local board, and private-debug checks. `npm.cmd run test -w app` passed 15 files / 137 tests. `npm.cmd run typecheck` passed engine, app, and server.
 
 ---
 

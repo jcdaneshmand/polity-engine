@@ -25,8 +25,19 @@ test("redactBrowserQAResult does not include credentials", () => {
   const redacted = redactBrowserQAResult({
     ok: true,
     lobbyID: "lobby-1",
+    matchID: "match-1",
+    setupStatusChecked: true,
+    localBoardChecked: true,
+    noPrivateDebugMarkers: true,
     hostCredentials: "secret-host",
     guestCredentials: "secret-guest"
   });
-  assert.deepEqual(redacted, { ok: true, lobbyID: "lobby-1", matchID: undefined });
+  assert.deepEqual(redacted, {
+    ok: true,
+    lobbyID: "lobby-1",
+    matchID: "match-1",
+    setupStatusChecked: true,
+    localBoardChecked: true,
+    noPrivateDebugMarkers: true
+  });
 });

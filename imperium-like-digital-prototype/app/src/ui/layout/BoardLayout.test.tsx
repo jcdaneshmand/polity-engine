@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import BoardLayout, { dispatchBoardAction, getLocalUndoAvailability } from "./BoardLayout";
+import BoardLayout, { buildPlaytestDiagnostics, dispatchBoardAction, getLocalUndoAvailability } from "./BoardLayout";
 
 const emptyPlayer = {
   hand: [],
@@ -103,6 +103,51 @@ describe("BoardLayout", () => {
 
     expect(html).toContain("Undo Last Move");
     expect(html).toContain("No move to undo");
+  });
+
+  it("builds public-safe playtest diagnostics without hidden card identities", () => {
+    const diagnostics = buildPlaytestDiagnostics({
+      G: baseGame({
+        players: {
+          "0": { ...emptyPlayer, hand: ["secret-card"], deck: ["hidden-deck-card"], discard: ["public-discard-card"] },
+          "1": { ...emptyPlayer, hand: ["opponent-secret"] }
+        },
+        log: [
+          { round: 1, playerId: "0", message: "Played public-discard-card" },
+          { round: 1, playerId: "1", message: "Opponent gained resource" }
+        ],
+        options: { mode: "multiplayer", playerCount: 2, enabledExpansions: ["trade_routes"], enabledVariants: [] }
+      }),
+      ctx: { currentPlayer: "1" },
+      viewerId: "0",
+      mode: "local"
+    });
+
+    expect(diagnostics).toMatchObject({
+      schemaVersion: 1,
+      mode: "local",
+      activePlayer: "1",
+      viewerPlayer: "0",
+      options: {
+        mode: "multiplayer",
+        playerCount: 2,
+        enabledExpansions: ["trade_routes"]
+      }
+    });
+    expect(diagnostics.players["0"].zones.hand).toBe(1);
+    expect(diagnostics.players["1"].zones.hand).toBe(1);
+    expect(JSON.stringify(diagnostics)).not.toContain("secret-card");
+    expect(JSON.stringify(diagnostics)).not.toContain("hidden-deck-card");
+    expect(JSON.stringify(diagnostics)).not.toContain("opponent-secret");
+  });
+
+  it("renders a playtest diagnostics export affordance", () => {
+    const html = renderForViewer();
+
+    expect(html).toContain("data-qa=\"playtest-diagnostics\"");
+    expect(html).toContain("Export Playtest Diagnostics");
+    expect(html).toContain("Active Player");
+    expect(html).toContain("Viewer Player");
   });
 
   it("uses the online player seat for pending cleanup market targets", () => {

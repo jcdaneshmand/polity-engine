@@ -42,7 +42,10 @@ export function redactBrowserQAResult(result) {
   return {
     ok: result.ok,
     lobbyID: result.lobbyID,
-    matchID: result.matchID
+    matchID: result.matchID,
+    setupStatusChecked: result.setupStatusChecked,
+    localBoardChecked: result.localBoardChecked,
+    noPrivateDebugMarkers: result.noPrivateDebugMarkers
   };
 }
 
@@ -78,6 +81,22 @@ function serverCommand() {
     : { command: npmCommand(), args: ["run", "server:dev"] };
 }
 
+function buildAppForBrowserQA() {
+  const command = process.platform === "win32" ? "cmd.exe" : npmCommand();
+  const args = process.platform === "win32"
+    ? ["/d", "/s", "/c", npmCommand(), "run", "build", "-w", "app"]
+    : ["run", "build", "-w", "app"];
+  const result = spawnSync(command, args, {
+    cwd: process.cwd(),
+    env: { ...process.env, VITE_SHOW_PRIVATE_CARD_DEBUG: "false" },
+    stdio: "pipe",
+    encoding: "utf8"
+  });
+  if (result.status !== 0) {
+    throw new Error(`App build failed before browser QA.\n${result.error?.message ?? ""}\n${result.stdout ?? ""}\n${result.stderr ?? ""}`.trim());
+  }
+}
+
 function buildServerEnv(config) {
   const childEnv = {};
   for (const [key, value] of Object.entries(process.env)) {
@@ -105,18 +124,52 @@ function startServer(config) {
   child.stderr.setEncoding("utf8");
   child.stdout.on("data", (chunk) => logs.push(chunk));
   child.stderr.on("data", (chunk) => logs.push(chunk));
-  return { child, logs };
+  return { child, logs, port: config.port };
+}
+
+function listenerPidForPort(port) {
+  if (process.platform !== "win32") return undefined;
+  const result = spawnSync("netstat", ["-ano", "-p", "tcp"], { encoding: "utf8" });
+  if (result.status !== 0) return undefined;
+  const listenLine = result.stdout
+    .split(/\r?\n/)
+    .find((line) => line.includes(`:${port}`) && line.includes("LISTENING"));
+  const pid = listenLine?.trim().split(/\s+/).at(-1);
+  return pid && /^\d+$/.test(pid) ? pid : undefined;
+}
+
+function stopWindowsPid(pid) {
+  spawnSync("powershell.exe", [
+    "-NoProfile",
+    "-Command",
+    `Stop-Process -Id ${pid} -Force -ErrorAction SilentlyContinue`
+  ], { stdio: "ignore" });
 }
 
 async function stopServer(running) {
   if (!running?.child || running.child.killed) return;
+  const waitForExit = new Promise((resolveWait) => {
+    const timeout = setTimeout(resolveWait, 5_000);
+    running.child.once("exit", () => {
+      clearTimeout(timeout);
+      resolveWait();
+    });
+    running.child.once("close", () => {
+      clearTimeout(timeout);
+      resolveWait();
+    });
+  });
   if (process.platform === "win32") {
-    spawnSync("taskkill", ["/pid", String(running.child.pid), "/t", "/f"], { stdio: "ignore" });
+    running.child.kill();
+    const listenerPid = listenerPidForPort(running.port);
+    if (listenerPid) stopWindowsPid(listenerPid);
+    await waitForExit;
     running.child.stdout.destroy();
     running.child.stderr.destroy();
     return;
   }
   running.child.kill("SIGTERM");
+  await waitForExit;
 }
 
 function shouldStartServer(config) {
@@ -127,8 +180,38 @@ function logTail(running) {
   return running?.logs?.join("").split(/\r?\n/).slice(-40).join("\n") ?? "";
 }
 
+async function assertNoPrivateDebugMarkers(page) {
+  const bodyText = await page.locator("body").innerText();
+  for (const marker of ["rawEffectTextPrivate", "privateName"]) {
+    if (bodyText.includes(marker)) throw new Error(`Private debug marker is visible: ${marker}`);
+  }
+}
+
+async function assertLocalSetupAndBoard(baseURL, browser) {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await page.goto(baseURL);
+  await page.getByText("Polity Engine").first().waitFor();
+  const status = page.locator('[data-qa="local-playtest-status"]');
+  await status.waitFor();
+  const dataMode = await status.getAttribute("data-data-mode");
+  const hosting = await status.getAttribute("data-hosting");
+  if (dataMode !== "placeholder") throw new Error(`Expected placeholder setup data mode, received ${dataMode ?? "missing"}.`);
+  if (hosting !== "deferred") throw new Error(`Expected public hosting to be marked deferred, received ${hosting ?? "missing"}.`);
+  await assertNoPrivateDebugMarkers(page);
+
+  await page.getByRole("button", { name: "Start Game" }).click();
+  await page.locator(".board-layout").waitFor();
+  await page.locator('[data-qa="playtest-diagnostics"]').waitFor();
+  await page.getByText("Active Player").waitFor();
+  await page.getByText("Export Playtest Diagnostics").waitFor();
+  await assertNoPrivateDebugMarkers(page);
+  await context.close();
+}
+
 export async function runBrowserQA(config = buildBrowserQAConfig()) {
   await mkdir(config.storagePath, { recursive: true });
+  buildAppForBrowserQA();
   const running = shouldStartServer(config) ? startServer(config) : undefined;
   let browser;
   try {
@@ -169,6 +252,8 @@ export async function runBrowserQA(config = buildBrowserQAConfig()) {
     });
 
     browser = await chromium.launch({ headless: config.headless });
+    await assertLocalSetupAndBoard(config.baseURL, browser);
+
     const hostContext = await browser.newContext();
     const guestContext = await browser.newContext();
     const hostPage = await hostContext.newPage();
@@ -217,7 +302,14 @@ export async function runBrowserQA(config = buildBrowserQAConfig()) {
     await hostPage.getByText("Rejoin").first().waitFor();
     await guestPage.getByText("Rejoin").first().waitFor();
 
-    return redactBrowserQAResult({ ok: true, lobbyID: lobby.lobbyID, matchID: started.matchID });
+    return redactBrowserQAResult({
+      ok: true,
+      lobbyID: lobby.lobbyID,
+      matchID: started.matchID,
+      setupStatusChecked: true,
+      localBoardChecked: true,
+      noPrivateDebugMarkers: true
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const tail = logTail(running);

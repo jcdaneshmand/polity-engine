@@ -6,7 +6,7 @@ This handoff covers the public hosting gate before private data is introduced.
 
 - Repository: `jcdaneshmand/polity-engine`
 - Branch: `agent/remaining-gaps-rules-playability`
-- Current pushed head at handoff: `2b74f8e`
+- Current pushed head at handoff: `46b984c`
 - PR URL, if needed: `https://github.com/jcdaneshmand/polity-engine/pull/new/agent/remaining-gaps-rules-playability`
 
 Private data remains out of scope for this gate. Do not run `private:preflight`, `private:import-all`, or `private:completeness` until hosted proof passes.
@@ -43,6 +43,8 @@ npm.cmd run smoke:hosted
 ```
 
 Result: `GET /polity/accounts/health failed with 404: Not Found`.
+
+After pushing the Render Blueprint hardening commit `46b984c`, the same hosted smoke was rerun against `https://polity-engine.onrender.com` and still returned `GET /polity/accounts/health failed with 404: Not Found`. This means the public origin still needs a real Render deployment of the selected branch, or the correct deployed origin must be supplied.
 
 ```powershell
 $env:POLITY_HOSTED_BASE_URL="https://polity-engine.onrender.com"

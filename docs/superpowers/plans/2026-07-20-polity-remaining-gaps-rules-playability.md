@@ -556,7 +556,7 @@ npm.cmd run smoke:hosted
 
 Expected: health, React shell, lobby listing, placeholder lobby creation, and no-private-debug checks pass.
 
-Execution note: `POLITY_HOSTED_BASE_URL=https://polity-engine.onrender.com npm.cmd run smoke:hosted` reached the public host but failed at `GET /polity/accounts/health` with `404 Not Found`. Hosted smoke is not complete until Render is redeployed from the selected branch or the correct public origin is supplied.
+Execution note: `POLITY_HOSTED_BASE_URL=https://polity-engine.onrender.com npm.cmd run smoke:hosted` reached the public host but failed at `GET /polity/accounts/health` with `404 Not Found`. After pushing the Blueprint hardening checkpoint `46b984c`, the same hosted smoke was rerun and still failed with `GET /polity/accounts/health failed with 404: Not Found`. Hosted smoke is not complete until Render is redeployed from the selected branch or the correct public origin is supplied.
 
 - [ ] **Step 4: Run hosted browser QA**
 

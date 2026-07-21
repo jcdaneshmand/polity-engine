@@ -210,6 +210,19 @@ export function setupConfigForStartedOnlineSession(record: OnlineStartedSessionR
   };
 }
 
+function savedGameMetadataSummary(envelope: SavedLocalGameEnvelope): string {
+  const metadata = envelope.metadata;
+  const playerText = metadata.playerCount === 1 ? "1 player" : `${metadata.playerCount ?? "unknown"} players`;
+  const moduleText = [
+    ...metadata.enabledExpansions,
+    ...metadata.enabledVariants
+  ].join(", ") || "core rules";
+  const roundText = metadata.round === undefined ? "round unknown" : `round ${metadata.round}`;
+  const currentPlayerText = metadata.currentPlayer ? `Player ${metadata.currentPlayer}` : "active player unknown";
+  const dataText = metadata.dataSource === "placeholder" ? "placeholder data" : "private data";
+  return `${metadata.mode} / ${playerText} / ${roundText} / ${currentPlayerText} / ${moduleText} / ${dataText}`;
+}
+
 export function shouldHeartbeatLobbySession(homeView: HomeView): boolean {
   return homeView === "lobby" || homeView === "lobby-setup";
 }
@@ -458,7 +471,9 @@ export default function App() {
     if (!file) return;
     void file.text()
       .then((content) => {
-        const imported = importLocalGameExport(content);
+        const imported = importLocalGameExport(content, {
+          expectedPrivateDataFingerprint: savedLocalGame.kind === "valid" ? savedLocalGame.envelope.privateDataFingerprint : undefined
+        });
         if (imported.kind !== "valid") {
           setOnlineStatus(imported.reason);
           return;
@@ -1046,6 +1061,7 @@ export default function App() {
         setSavedOnlineSession(undefined);
       }
     }
+    setSavedLocalGame(loadSavedLocalGame());
     setSession(null);
   };
 
@@ -1178,7 +1194,11 @@ export default function App() {
           <section className="setup-section setup-section--wide" aria-label="Saved local game">
             {savedLocalGame.kind === "valid" ? (
               <>
-                <p className="setup-help">Saved local game from {savedLocalGame.envelope.savedAtIso} is available.</p>
+                <p className="setup-help">
+                  <strong>{savedLocalGame.envelope.metadata.slotName}</strong>
+                  {" - "}
+                  Saved local game from {savedLocalGame.envelope.savedAtIso} is available. {savedGameMetadataSummary(savedLocalGame.envelope)}
+                </p>
                 <div className="private-data-actions">
                   <button className="primary-action" type="button" onClick={resumeLocalGame}>
                     Resume Saved Game

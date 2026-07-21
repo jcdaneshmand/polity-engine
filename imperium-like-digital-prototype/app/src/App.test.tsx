@@ -63,6 +63,10 @@ describe("App shell", () => {
     expect(html).toContain("Export Saved Game");
     expect(html).toContain("Import Saved Game");
     expect(html).toContain("Saved local game");
+    expect(html).toContain("Autosave");
+    expect(html).toContain("multiplayer / 2 players");
+    expect(html).toContain("Player 1");
+    expect(html).toContain("private data");
   });
 
   it("shows a discard action for a corrupt saved local game", () => {

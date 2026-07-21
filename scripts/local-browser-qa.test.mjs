@@ -28,6 +28,8 @@ test("redactBrowserQAResult does not include credentials", () => {
     matchID: "match-1",
     setupStatusChecked: true,
     localBoardChecked: true,
+    saveResumeChecked: true,
+    invalidSaveChecked: true,
     noPrivateDebugMarkers: true,
     hostCredentials: "secret-host",
     guestCredentials: "secret-guest"
@@ -38,6 +40,8 @@ test("redactBrowserQAResult does not include credentials", () => {
     matchID: "match-1",
     setupStatusChecked: true,
     localBoardChecked: true,
+    saveResumeChecked: true,
+    invalidSaveChecked: true,
     noPrivateDebugMarkers: true
   });
 });

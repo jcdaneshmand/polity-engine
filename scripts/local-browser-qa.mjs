@@ -45,6 +45,8 @@ export function redactBrowserQAResult(result) {
     matchID: result.matchID,
     setupStatusChecked: result.setupStatusChecked,
     localBoardChecked: result.localBoardChecked,
+    saveResumeChecked: result.saveResumeChecked,
+    invalidSaveChecked: result.invalidSaveChecked,
     noPrivateDebugMarkers: result.noPrivateDebugMarkers
   };
 }
@@ -206,6 +208,20 @@ async function assertLocalSetupAndBoard(baseURL, browser) {
   await page.getByText("Active Player").waitFor();
   await page.getByText("Export Playtest Diagnostics").waitFor();
   await assertNoPrivateDebugMarkers(page);
+
+  await page.waitForFunction(() => Boolean(localStorage.getItem("polity-engine.localGame.v1")));
+  await page.getByRole("button", { name: "New Game" }).click();
+  await page.getByText("Autosave").waitFor();
+  await page.getByRole("button", { name: "Export Saved Game" }).waitFor();
+  await page.getByText("Import Saved Game").waitFor();
+  await page.getByRole("button", { name: "Resume Saved Game" }).click();
+  await page.locator(".board-layout").waitFor();
+
+  await page.evaluate(() => {
+    localStorage.setItem("polity-engine.localGame.v1", "{not json");
+  });
+  await page.reload();
+  await page.getByText("Saved local game could not be loaded").waitFor();
   await context.close();
 }
 
@@ -308,6 +324,8 @@ export async function runBrowserQA(config = buildBrowserQAConfig()) {
       matchID: started.matchID,
       setupStatusChecked: true,
       localBoardChecked: true,
+      saveResumeChecked: true,
+      invalidSaveChecked: true,
       noPrivateDebugMarkers: true
     });
   } catch (error) {

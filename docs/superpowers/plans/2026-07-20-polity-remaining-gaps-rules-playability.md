@@ -447,7 +447,7 @@ Execution note: focused setup/board tests first failed on missing QA attributes 
 - Modify or create: save/resume UI tests
 - Modify: `imperium-like-digital-prototype/docs/save-resume-ux-design.md`
 
-- [ ] **Step 1: Add multi-slot save metadata**
+- [x] **Step 1: Add multi-slot save metadata**
 
 Support named local save slots with public-safe metadata:
 
@@ -458,7 +458,9 @@ Support named local save slots with public-safe metadata:
 - expansions/variants
 - data source/fingerprint label
 
-- [ ] **Step 2: Scrub resume-list hidden info**
+Execution note: `SavedLocalGameEnvelope` now includes public-safe metadata with slot name, mode, player count, round/current player, timestamp, expansions/variants, Commons set, and data-source label. `upsertLocalGameSlot` supports named slot replacement and most-recent-first ordering for the next multi-slot UI expansion.
+
+- [x] **Step 2: Scrub resume-list hidden info**
 
 Add tests proving save-list metadata does not expose:
 
@@ -467,7 +469,9 @@ Add tests proving save-list metadata does not expose:
 - private raw text
 - generated private card names
 
-- [ ] **Step 3: Improve import/export errors**
+Execution note: `createLocalSaveMetadata` derives only public-safe summary fields from game state. Tests prove metadata omits hidden hand/deck IDs, opponent hand IDs, private names, and private raw text. The setup resume panel now renders metadata instead of raw state.
+
+- [x] **Step 3: Improve import/export errors**
 
 Add clear user-facing errors for:
 
@@ -476,7 +480,9 @@ Add clear user-facing errors for:
 - private-data fingerprint mismatch
 - missing session config
 
-- [ ] **Step 4: Add browser QA coverage**
+Execution note: import errors now distinguish corrupt JSON, unsupported versions, private-field contamination, non-resumable state, missing fields, and explicit private-data fingerprint mismatches. Exported saves include metadata and remain versioned JSON.
+
+- [x] **Step 4: Add browser QA coverage**
 
 Extend local browser QA or add a new local save QA script to cover:
 
@@ -487,7 +493,9 @@ Extend local browser QA or add a new local save QA script to cover:
 - import
 - reject invalid import
 
-- [ ] **Step 5: Run app, browser, and smoke gates**
+Execution note: `qa:local-browser` now verifies local autosave creation, return-to-setup resume metadata, export/import control visibility, resume back to board, and corrupt saved-state rejection before the online lobby/rejoin flow. The app refreshes saved-local-game metadata when leaving a local game.
+
+- [x] **Step 5: Run app, browser, and smoke gates**
 
 Run:
 
@@ -497,6 +505,8 @@ npm.cmd run qa:local-browser
 npm.cmd run smoke:fictional-game
 npm.cmd run typecheck
 ```
+
+Execution note: focused save/app tests first failed on missing metadata UI and mismatch handling, then passed. `npm.cmd run test:local-qa-scripts` passed 7 tests. `npm.cmd run qa:local-browser` passed and reported setup, local board, save/resume, invalid-save, no-private-debug, lobby, and match checks. `npm.cmd run test -w app` passed 15 files / 141 tests. `npm.cmd run smoke:fictional-game` passed 46 engine files / 1,489 tests and reported 5 public-safe scenarios. `npm.cmd run typecheck` passed engine, app, and server after updating one old test fixture to the metadata envelope.
 
 ---
 

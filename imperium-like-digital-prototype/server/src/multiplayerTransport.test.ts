@@ -201,6 +201,37 @@ async function waitForPersistedMatch(
   throw new Error(`Timed out waiting for ${label}; last persisted value: ${JSON.stringify(lastDiagnostic)}`);
 }
 
+async function waitForPersistedConnectionStatus(
+  running: RunningBoardgameServer,
+  matchID: string,
+  expected: Record<string, boolean>,
+  label: string,
+  timeoutMs = 5000
+) {
+  if (!running.db) {
+    throw new Error("Persistent connection polling requires FlatFile storage");
+  }
+  const startedAt = Date.now();
+  let lastDiagnostic: unknown;
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      const persisted = await running.db.fetch(matchID, { metadata: true });
+      const players = (persisted.metadata as any)?.players ?? {};
+      const actual = Object.fromEntries(
+        Object.keys(expected).map((playerID) => [playerID, Boolean(players[playerID]?.isConnected)])
+      );
+      if (Object.entries(expected).every(([playerID, connected]) => actual[playerID] === connected)) {
+        return persisted;
+      }
+      lastDiagnostic = actual;
+    } catch (error) {
+      lastDiagnostic = error instanceof Error ? error.message : error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`Timed out waiting for ${label}; last persisted connections: ${JSON.stringify(lastDiagnostic)}`);
+}
+
 async function removeTempDir(dir: string) {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
@@ -315,8 +346,9 @@ describe("multiplayer Socket.IO transport", () => {
   it("persists match state across server restart and reconnects with saved credentials", async () => {
     const storageDir = await mkdtemp(join(tmpdir(), "polity-boardgame-restart-"));
     let running: RunningBoardgameServer | undefined = await runBoardgameServer({ storageDir });
+    let matchID: string | undefined;
     try {
-      const { matchID } = await createMatch(running.serverURL);
+      ({ matchID } = await createMatch(running.serverURL));
       const host = await joinMatch(running.serverURL, matchID, "0", "Host");
       const guest = await joinMatch(running.serverURL, matchID, "1", "Guest");
       const hostClient = startClient(running.serverURL, matchID, "0", host.playerCredentials);
@@ -349,6 +381,7 @@ describe("multiplayer Socket.IO transport", () => {
 
       stopClient(hostClient);
       stopClient(guestClient);
+      await waitForPersistedConnectionStatus(running, matchID, { "0": false, "1": false }, "FlatFile storage to persist client disconnects before restart");
       await waitForPersistedMatch(running, matchID, "FlatFile storage to settle after client disconnects", "1");
       await stopBoardgameServer(running);
       running = undefined;
@@ -378,6 +411,9 @@ describe("multiplayer Socket.IO transport", () => {
       expect(rejoinedState._stateID).toBeGreaterThanOrEqual(guestStateAfterMove._stateID);
     } finally {
       stopAllClients();
+      if (running && matchID) {
+        await waitForPersistedConnectionStatus(running, matchID, { "0": false, "1": false }, "FlatFile storage to persist final client disconnects");
+      }
       await stopBoardgameServer(running);
       await removeTempDir(storageDir);
     }

@@ -13,6 +13,11 @@ test("buildBrowserQAConfig uses local defaults", () => {
   assert.equal(config.headless, true);
 });
 
+test("buildBrowserQAConfig normalizes explicit hosted base URLs", () => {
+  const config = buildBrowserQAConfig({ POLITY_BROWSER_QA_BASE_URL: "https://polity-engine.example.com/" });
+  assert.equal(config.baseURL, "https://polity-engine.example.com");
+});
+
 test("localQASetupData uses public-safe placeholder setup", () => {
   const setup = localQASetupData();
   assert.equal(setup.options.mode, "multiplayer");

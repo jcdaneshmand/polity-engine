@@ -520,7 +520,7 @@ Execution note: focused save/app tests first failed on missing metadata UI and m
 - Modify if needed: `scripts/hosted-smoke.mjs`
 - Modify if needed: `scripts/local-browser-qa.mjs` or create hosted browser QA wrapper
 
-- [ ] **Step 1: Confirm deploy source branch**
+- [x] **Step 1: Confirm deploy source branch**
 
 Decide whether Render deploys:
 
@@ -529,6 +529,8 @@ Decide whether Render deploys:
 - a new release branch
 
 Record the exact branch and commit.
+
+Execution note: deployment source selected as `agent/remaining-gaps-rules-playability`. Last completed local-gate commit before Task 7 hosted-prep docs/scripts was `6c4e891`. The branch is intended to be redeployed from its latest pushed head after this hosted-prep checkpoint lands.
 
 - [ ] **Step 2: Redeploy or configure Render**
 
@@ -541,6 +543,8 @@ Confirm:
 - `POLITY_SERVER_ORIGIN` equals the public origin
 - private debug UI is disabled
 
+Execution note: `render.yaml` already declares `rootDir: imperium-like-digital-prototype`, `startCommand: npm run start`, a `/var/data` persistent disk, `POLITY_STORAGE_PATH=/var/data/polity-engine`, `POLITY_SERVER_ORIGIN` as a Render-synced value, and `VITE_SHOW_PRIVATE_CARD_DEBUG=false`. Actual Render dashboard state could not be changed from this workspace; the documented origin still appears to be serving a stale or wrong service.
+
 - [ ] **Step 3: Run hosted smoke**
 
 Run from `imperium-like-digital-prototype`:
@@ -552,6 +556,8 @@ npm.cmd run smoke:hosted
 
 Expected: health, React shell, lobby listing, placeholder lobby creation, and no-private-debug checks pass.
 
+Execution note: `POLITY_HOSTED_BASE_URL=https://polity-engine.onrender.com npm.cmd run smoke:hosted` reached the public host but failed at `GET /polity/accounts/health` with `404 Not Found`. Hosted smoke is not complete until Render is redeployed from the selected branch or the correct public origin is supplied.
+
 - [ ] **Step 4: Run hosted browser QA**
 
 Run a two-context browser QA against the actual public origin:
@@ -562,7 +568,9 @@ Run a two-context browser QA against the actual public origin:
 - refresh/rejoin both contexts
 - confirm persistent storage after restart if possible
 
-- [ ] **Step 5: Document hosted evidence**
+Execution note: added `npm.cmd run qa:hosted-browser`, backed by `scripts/hosted-browser-qa.mjs`, to run the two-context browser QA against `POLITY_HOSTED_BASE_URL` without starting a local server. Against `https://polity-engine.onrender.com`, it timed out waiting for `/polity/accounts/health` with `404 Not Found`, matching hosted smoke. Hosted browser QA remains pending redeploy/correct origin.
+
+- [x] **Step 5: Document hosted evidence**
 
 Update `imperium-like-digital-prototype/docs/deployment.md` with:
 
@@ -573,6 +581,8 @@ Update `imperium-like-digital-prototype/docs/deployment.md` with:
 - browser QA result
 - storage/restart proof
 - private-debug disabled proof
+
+Execution note: `imperium-like-digital-prototype/docs/deployment.md` now records the selected source branch, the `6c4e891` local-gate commit, the hosted smoke 404, the hosted browser QA 404, and the required next action: redeploy the selected branch or provide the actual public origin. Storage/restart and private-debug disabled proof still require a live hosted service.
 
 ---
 

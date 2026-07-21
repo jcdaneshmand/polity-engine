@@ -14,9 +14,10 @@ function npmCommand() {
 export function buildBrowserQAConfig(env = process.env) {
   const port = Number(env.POLITY_BROWSER_QA_PORT ?? "8786");
   if (!Number.isInteger(port) || port <= 0) throw new Error("POLITY_BROWSER_QA_PORT must be a positive integer.");
+  const baseURL = (env.POLITY_BROWSER_QA_BASE_URL ?? `http://127.0.0.1:${port}`).replace(/\/+$/, "");
   return {
     port,
-    baseURL: env.POLITY_BROWSER_QA_BASE_URL ?? `http://127.0.0.1:${port}`,
+    baseURL,
     storagePath: env.POLITY_BROWSER_QA_STORAGE_PATH ?? resolve("tmp", "local-browser-qa", `storage-${Date.now()}`),
     headless: env.POLITY_BROWSER_QA_HEADLESS !== "false"
   };
@@ -227,8 +228,9 @@ async function assertLocalSetupAndBoard(baseURL, browser) {
 
 export async function runBrowserQA(config = buildBrowserQAConfig()) {
   await mkdir(config.storagePath, { recursive: true });
-  buildAppForBrowserQA();
-  const running = shouldStartServer(config) ? startServer(config) : undefined;
+  const shouldRunLocalServer = shouldStartServer(config);
+  if (shouldRunLocalServer) buildAppForBrowserQA();
+  const running = shouldRunLocalServer ? startServer(config) : undefined;
   let browser;
   try {
     await waitForHTTP(`${config.baseURL}/polity/accounts/health`);

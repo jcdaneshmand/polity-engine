@@ -6,7 +6,7 @@ This handoff covers the public hosting gate before private data is introduced.
 
 - Repository: `jcdaneshmand/polity-engine`
 - Branch: `agent/remaining-gaps-rules-playability`
-- Current pushed head at handoff: `af18a2c`
+- Current pushed head at handoff: `2b74f8e`
 - PR URL, if needed: `https://github.com/jcdaneshmand/polity-engine/pull/new/agent/remaining-gaps-rules-playability`
 
 Private data remains out of scope for this gate. Do not run `private:preflight`, `private:import-all`, or `private:completeness` until hosted proof passes.
@@ -16,7 +16,8 @@ Private data remains out of scope for this gate. Do not run `private:preflight`,
 The repository `render.yaml` already declares:
 
 - root directory: `imperium-like-digital-prototype`
-- build command: `npm install && npm run build -w app && npm run typecheck`
+- plan: `free`
+- build command: `npm ci && npm run build -w app && npm run typecheck`
 - start command: `npm run start`
 - health check: `/polity/accounts/health`
 - persistent disk: `/var/data`
@@ -29,6 +30,8 @@ In the Render dashboard, confirm:
 - `POLITY_SERVER_ORIGIN` equals the exact public origin
 - persistent disk is attached at `/var/data`
 - the latest deployed commit is visible and matches the intended branch head
+
+If using Codex or another MCP client to deploy directly, the Render account must expose service-management tools such as `list_services`, `list_deploys`, and `update_environment_variables`. Installing the skill alone is not enough; the active task also needs an authenticated Render MCP server or a local Render CLI session with `RENDER_API_KEY` configured.
 
 ## Current Hosted State
 

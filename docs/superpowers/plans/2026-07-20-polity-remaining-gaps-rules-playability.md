@@ -543,7 +543,7 @@ Confirm:
 - `POLITY_SERVER_ORIGIN` equals the public origin
 - private debug UI is disabled
 
-Execution note: `render.yaml` already declares `rootDir: imperium-like-digital-prototype`, `startCommand: npm run start`, a `/var/data` persistent disk, `POLITY_STORAGE_PATH=/var/data/polity-engine`, `POLITY_SERVER_ORIGIN` as a Render-synced value, and `VITE_SHOW_PRIVATE_CARD_DEBUG=false`. Actual Render dashboard state could not be changed from this workspace; the documented origin still appears to be serving a stale or wrong service.
+Execution note: `render.yaml` declares `rootDir: imperium-like-digital-prototype`, `plan: free`, `buildCommand: npm ci && npm run build -w app && npm run typecheck`, `startCommand: npm run start`, a `/var/data` persistent disk, `POLITY_STORAGE_PATH=/var/data/polity-engine`, `POLITY_SERVER_ORIGIN` as a Render-synced value, and `VITE_SHOW_PRIVATE_CARD_DEBUG=false`. The branch head `2b74f8e` was verified on GitHub, and the local equivalents of the Render build install/build/typecheck path passed after running `npm.cmd ci`, `npm.cmd run build -w app`, and `npm.cmd run typecheck`. Actual Render dashboard state could not be changed from this workspace because no authenticated Render MCP service-management tools are exposed and no local `RENDER_API_KEY` is configured; the documented origin still appears to be serving a stale or wrong service.
 
 - [ ] **Step 3: Run hosted smoke**
 

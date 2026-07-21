@@ -24,7 +24,7 @@ Do not point `POLITY_STORAGE_PATH` at a public static directory.
 
 ## Render Blueprint
 
-The repository root includes `render.yaml`. It defines one Node web service rooted at `imperium-like-digital-prototype`, a persistent disk mounted at `/var/data`, `POLITY_STORAGE_PATH=/var/data/polity-engine`, and a health check at `/polity/accounts/health`.
+The repository root includes `render.yaml`. It defines one free-plan Node web service rooted at `imperium-like-digital-prototype`, a persistent disk mounted at `/var/data`, `POLITY_STORAGE_PATH=/var/data/polity-engine`, and a health check at `/polity/accounts/health`.
 
 Before creating a public deployment, set `POLITY_SERVER_ORIGIN` in Render to the deployed URL. Leave `VITE_SHOW_PRIVATE_CARD_DEBUG` unset or `false` for public builds.
 
@@ -59,6 +59,7 @@ The hosted browser QA reuses the local browser flow without starting a local ser
 - 2026-06-24: `npm.cmd run typecheck`, `npm.cmd run test -w app`, `npm.cmd run test -w server`, and `npm.cmd run smoke:multiplayer` passed from `imperium-like-digital-prototype` before hosted deployment.
 - 2026-07-14: `npm.cmd run typecheck`, `npm.cmd run test -w app`, `npm.cmd run test -w server`, `npm.cmd run test -w engine`, `npm.cmd run smoke:fictional-game`, and `npm.cmd run smoke:multiplayer` passed from `imperium-like-digital-prototype` before hosted proof. `POLITY_HOSTED_BASE_URL=http://127.0.0.1:8794 npm.cmd run smoke:hosted` passed against a local production-style server. `POLITY_HOSTED_BASE_URL=https://polity-engine.onrender.com npm.cmd run smoke:hosted` reached the host but `/polity/accounts/health` returned 404 on repeated attempts, so hosted proof is pending the actual deployed service origin or redeployment.
 - 2026-07-21: Candidate deployment source is branch `agent/remaining-gaps-rules-playability`; last completed local-gate commit before hosted-prep docs/scripts was `6c4e891`. `POLITY_HOSTED_BASE_URL=https://polity-engine.onrender.com npm.cmd run smoke:hosted` reached Render but `/polity/accounts/health` returned `404 Not Found`. `POLITY_HOSTED_BASE_URL=https://polity-engine.onrender.com npm.cmd run qa:hosted-browser` also timed out waiting for `/polity/accounts/health` with `404 Not Found`. Hosted proof remains pending redeploying the selected branch or supplying the correct public origin.
+- 2026-07-21: Render Blueprint hardening changed the build command to `npm ci && npm run build -w app && npm run typecheck` and declared `plan: free`. The deployment candidate branch head was verified on GitHub at `2b74f8e`.
 
 ## Deferred Hosted Gate
 

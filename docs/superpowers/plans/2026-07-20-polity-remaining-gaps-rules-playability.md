@@ -560,6 +560,8 @@ Execution note: `POLITY_HOSTED_BASE_URL=https://polity-engine.onrender.com npm.c
 
 Local substitute note: added `npm.cmd run smoke:hosted:local` to start a temporary local server, run the same hosted smoke script against localhost, and stop/clean up the temp server afterward. This keeps pre-Render testing repeatable but does not satisfy the real hosted proof checkbox.
 
+2026-07-21 evidence note: at branch head `a8acba8`, `npm.cmd run test:local-qa-scripts`, `npm.cmd run smoke:hosted:local`, and `npm.cmd run typecheck` passed. `https://polity-engine.onrender.com/polity/accounts/health` still returned `404 Not Found`, so Task 7 hosted smoke remains unchecked pending a real Render deployment or the actual public origin.
+
 - [ ] **Step 4: Run hosted browser QA**
 
 Run a two-context browser QA against the actual public origin:

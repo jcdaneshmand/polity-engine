@@ -5,7 +5,7 @@ Polity Engine can serve the built React app, the lobby HTTP API, and the Socket.
 ## Required Runtime Shape
 
 - Build from `imperium-like-digital-prototype`.
-- Run `npm install`, `npm run build -w app`, and `npm run typecheck` before deployment.
+- Run `npm ci`, `npm run build -w app`, and `npm run typecheck` before deployment.
 - Start with `npm run start`.
 - Expose the service port through `PORT` or `POLITY_SERVER_PORT`.
 - Set `POLITY_SERVER_ORIGIN` to the exact public app origin, such as `https://polity-engine.example.com`.
@@ -70,6 +70,7 @@ The hosted browser QA reuses the local browser flow without starting a local ser
 - 2026-07-21: Render Blueprint hardening changed the build command to `npm ci && npm run build -w app && npm run typecheck` and declared an explicit service plan. The deployment candidate branch head was verified on GitHub at `2b74f8e`.
 - 2026-07-21: Render Blueprint validation rejected `plan: free` because disks are not supported for free web services. The Blueprint now uses `plan: starter` to keep the persistent disk required for restart/storage proof.
 - 2026-07-21: After pushing the Blueprint hardening checkpoint `46b984c`, `POLITY_HOSTED_BASE_URL=https://polity-engine.onrender.com npm.cmd run smoke:hosted` still failed at `/polity/accounts/health` with `404 Not Found`. The code/config source is ready for Render, but public hosted proof still requires an authenticated Render deployment or the actual deployed public origin.
+- 2026-07-21: Current deployment branch head is `a8acba8`. `npm.cmd run test:local-qa-scripts`, `npm.cmd run smoke:hosted:local`, and `npm.cmd run typecheck` passed locally. `https://polity-engine.onrender.com/polity/accounts/health` still returns `404 Not Found`, so real hosted proof remains open.
 
 ## Deferred Hosted Gate
 

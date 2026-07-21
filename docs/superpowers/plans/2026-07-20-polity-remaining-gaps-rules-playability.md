@@ -291,7 +291,7 @@ Execution note: `npm.cmd run test -w engine -- fictionalScenarioSmoke.test.ts` p
 - Likely modify: `imperium-like-digital-prototype/engine/src/tests/`
 - Modify docs when behavior changes: `imperium-like-digital-prototype/docs/rules-engine-parity-matrix.md`
 
-- [ ] **Step 1: Pick the highest-risk weak-evidence row**
+- [x] **Step 1: Pick the highest-risk weak-evidence row**
 
 Prioritize rows that can break real play:
 
@@ -301,11 +301,15 @@ Prioritize rows that can break real play:
 4. pending choices resume the wrong continuation
 5. solo Bot fallback/payment behaves differently from human action resolution
 
-- [ ] **Step 2: Write the failing public-safe test**
+Execution note: Task 4 audit found no public-safe `runtime-gap` rows and no `weak-evidence` rows in `data/fictional-regression/coverage-map.json`. The coverage map has eleven `minimumPublicScenarioNeeded` notes, but those are scenario/playtest evidence needs, not known engine failures. The highest-risk remaining public-safe work therefore moves to Task 5 and Task 6 rather than an engine patch without a failing fixture.
+
+- [x] **Step 2: Write the failing public-safe test**
 
 The test must use fictional cards/nations or inline invented data. It must not read private CSVs.
 
-- [ ] **Step 3: Implement the minimal engine fix**
+Execution note: no failing public-safe runtime-gap test was written because the audit did not identify a concrete runtime contract failure. The next tests should be scenario/playtest expansion tests for the planned probe buckets, not a speculative engine-fix test.
+
+- [x] **Step 3: Implement the minimal engine fix**
 
 Allowed fix types:
 
@@ -316,7 +320,9 @@ Allowed fix types:
 - add selector filtering for hidden information
 - add setup validation for imported-like data
 
-- [ ] **Step 4: Update import/validation if the effect DSL changes**
+Execution note: no engine or DSL fix was required in Task 4, so no runtime behavior changed.
+
+- [x] **Step 4: Update import/validation if the effect DSL changes**
 
 If adding effect expressiveness, update:
 
@@ -325,7 +331,9 @@ If adding effect expressiveness, update:
 - private entry UI validation
 - bot table validation, if relevant
 
-- [ ] **Step 5: Run targeted and expanded tests**
+Execution note: no effect DSL, import validation, nation ruleset validation, private entry UI validation, or bot table validation changed.
+
+- [x] **Step 5: Run targeted and expanded tests**
 
 Run at minimum:
 
@@ -337,9 +345,13 @@ npm.cmd run typecheck
 
 Expected: gap test fails first, then passes, and no existing parity rows regress.
 
-- [ ] **Step 6: Repeat until no public-safe `runtime-gap` rows remain**
+Execution note: targeted audit commands confirmed `rg -n runtime-gap data/fictional-regression/coverage-map.json` returned no rows, `rg -n weak-evidence data/fictional-regression/coverage-map.json` returned no rows, and `rg -n minimumPublicScenarioNeeded data/fictional-regression/coverage-map.json` returned scenario-expansion notes to be handled by playtestability and hosted-release tasks.
+
+- [x] **Step 6: Repeat until no public-safe `runtime-gap` rows remain**
 
 Do not attempt to close private-data-only rows in this task.
+
+Execution note: Task 4 completed as an audited no-op. There are currently no public-safe `runtime-gap` rows to close. Private-data-only rows remain untouched by design.
 
 ---
 

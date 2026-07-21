@@ -5,6 +5,7 @@ Use this matrix to drive runtime-contract parity with Imperium: Horizons while k
 Primary local contract: `docs/rules-engine-notes.md`.
 Supporting evidence: `docs/rules-engine-compliance-checklist.md`.
 Auditable coverage map: `data/fictional-regression/coverage-map.json`.
+Public-safe scenario taxonomy: `data/fictional-regression/scenarios.json`, enforced by `fictionalScenarioSmoke.test.ts` and summarized by `npm.cmd run smoke:fictional-game`.
 Public references used for audit orientation: the Osprey Horizons rulebook PDF, Osprey Trade Routes article, and Osprey compatibility/replacement-card article.
 
 Status values:
@@ -19,7 +20,7 @@ Status values:
 | Bucket | Status | Next gate |
 | --- | --- | --- |
 | Local QA/playtest | Baseline complete on `agent/public-fixtures-next` and continued by `agent/remaining-gaps-rules-playability` | Keep local browser QA, fictional smoke, multiplayer smoke, typecheck, and app/server/engine tests green before major changes. |
-| Rules parity | Matrix rows are broadly covered, with remaining risk in auditability and scenario-level evidence rather than known public runtime gaps | Build a coverage map that links each non-private row to tests/scenarios and downgrades any weak evidence explicitly. |
+| Rules parity | Matrix rows are broadly covered and now linked to an auditable coverage map; remaining risk is richer runtime scenario evidence rather than known public runtime gaps | Expand public-safe runtime scenarios for the planned probe buckets in `data/fictional-regression/scenarios.json`. |
 | Playability | Core local play, online lobby, rejoin, save/resume, and import/export baselines exist | Add a human playtest checklist, public-safe diagnostics, and broader browser QA against setup and board states. |
 | Hosted release | Deferred | Prove the actual public origin with hosted smoke and hosted two-context browser QA. |
 | Private data | Final gate only | Run local private preflight/import/completeness only after public-safe and hosted gates pass; convert any runtime discovery to public-safe fixtures first. |

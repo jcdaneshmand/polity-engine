@@ -69,17 +69,32 @@ Contact: [jcdaneshmand@gmail.com](mailto:jcdaneshmand@gmail.com).
 - [x] Solo campaign setup, continuation, end-game update flow, and campaign sheet export.
 - [x] Board UI for core bookkeeping, public/shared zones, player zones, card inspection, logs, and keyboard-oriented controls.
 - [x] Fictional placeholder/demo data and schema examples only.
+- [x] Public-safe fictional scenario smoke coverage.
+- [x] Local save/resume baseline for in-progress local games.
+- [x] Local game export/import baseline for portable save files.
+- [x] Undo and legal-move guardrail baseline for risky actions.
+- [x] Local playtest server and two-context browser QA loop.
 
 ### Planned
 
 - [ ] Custom Commons setup workflow for choosing or composing the Commons pool from local data.
-- [ ] Save/resume support for in-progress local games.
+- [ ] Save/resume polish: multi-slot metadata, migration handling, and stronger hidden-info scrubbing in resume lists.
 - [ ] Extensive local testing with privately entered real card data to improve rules-engine coverage, without committing or distributing that data.
-- [ ] Broader rules parity coverage for remaining keywords, edge cases, and card-specific effects.
-- [ ] Undo support and stronger legal-move validation for risky actions.
+- [ ] Broader scenario-level rules parity coverage for remaining edge cases and card-specific effect patterns.
+- [ ] Undo/legal-move polish for additional edge cases found through playtesting.
 - [ ] More complete Steam Deck/controller-oriented UI polish.
-- [ ] Import/export polish for portable local game and campaign files.
-- [ ] Production-ready multiplayer hosting hardening and operational runbook.
+- [ ] Import/export polish for clearer errors, private-data fingerprint mismatch recovery, and cross-version migration.
+- [ ] Production-ready multiplayer hosting proof, hardening, and operational runbook.
+
+### Current Gap Snapshot
+
+| Bucket | Status | Next gate |
+| --- | --- | --- |
+| Local QA/playtest | Baseline complete | Keep `npm.cmd run qa:local-browser` and the local smoke gates green before major changes. |
+| Rules parity | Broad covered matrix with strong unit evidence | Add an auditable coverage map and richer public-safe scenarios. |
+| Playability | Locally playable with save/resume and rejoin flows | Add human playtest checklist, diagnostics, and browser QA coverage for more board states. |
+| Hosted release | Deferred | Run hosted smoke and hosted two-context browser QA against the real public origin. |
+| Private data | Final gate only | Run private preflight/import/completeness only after public-safe and hosted gates pass. |
 
 ## Repository Structure
 

@@ -959,6 +959,8 @@ Execution note: deferred with hosted proof. Resume this only after `npm.cmd run 
 
 Execution note: local browser QA is covered by `docs/superpowers/plans/2026-07-14-polity-local-qa-playtestability.md` while public hosting is deferred. Hosted browser QA remains open and must be rerun against the actual public origin later.
 
+Execution note: as of the remaining-gaps follow-up, local QA/playtestability is treated as a completed baseline, not a hosted-release substitute. The remaining release proof is the real public origin plus hosted two-context browser QA.
+
 - [ ] **Step 5: Document hosted evidence**
 
 Append a dated section to `imperium-like-digital-prototype/docs/deployment.md`:

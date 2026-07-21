@@ -100,7 +100,7 @@ Execution note: baseline verification initially exposed a real cleanup race in `
 - Modify: `imperium-like-digital-prototype/docs/rules-engine-parity-matrix.md`
 - Modify: `docs/superpowers/plans/2026-07-14-polity-public-fixtures-first-next-steps.md`
 
-- [ ] **Step 1: Split implemented baselines from remaining polish**
+- [x] **Step 1: Split implemented baselines from remaining polish**
 
 Update README planned items so they distinguish:
 
@@ -109,7 +109,9 @@ Update README planned items so they distinguish:
 - implemented undo/legal guardrail baseline versus remaining playability and edge-case polish
 - local browser QA implemented versus hosted browser QA deferred
 
-- [ ] **Step 2: Add a current gap table**
+Execution note: README now lists public-safe fictional smoke, local save/resume baseline, local game export/import baseline, undo/legal guardrail baseline, and local playtest/browser QA as included. Planned items now describe remaining polish and gates rather than missing baseline features.
+
+- [x] **Step 2: Add a current gap table**
 
 Add a small public-safe table with these buckets:
 
@@ -121,7 +123,9 @@ Add a small public-safe table with these buckets:
 | Hosted release | deferred | Task 7 |
 | Private data | final gate only | Task 8 |
 
-- [ ] **Step 3: Run docs-only diff check**
+Execution note: added current gap snapshots to README and the rules-engine parity matrix, and updated the roadmap to separate implemented baselines from remaining polish/release proof.
+
+- [x] **Step 3: Run docs-only diff check**
 
 Run:
 
@@ -130,6 +134,8 @@ git diff -- README.md imperium-like-digital-prototype/docs/roadmap.md imperium-l
 ```
 
 Expected: public-safe status documentation only.
+
+Execution note: `git diff -- README.md imperium-like-digital-prototype/docs/roadmap.md imperium-like-digital-prototype/docs/rules-engine-parity-matrix.md docs/superpowers/plans/2026-07-14-polity-public-fixtures-first-next-steps.md` showed only public-safe status documentation updates.
 
 ---
 

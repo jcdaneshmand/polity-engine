@@ -34,6 +34,8 @@ Rejected approach: start from private transcription. The user has explicitly sai
   - Public-safe normalized-style card records with enough breadth to exercise common runtime contracts.
 - Create: `imperium-like-digital-prototype/data/fictional-regression/nations.json`
   - Public-safe fictional nation records that use the cards fixture.
+- Create: `imperium-like-digital-prototype/data/fictional-regression/rulesets.json`
+  - Public-safe fictional nation rulesets that exercise import-like setup overrides without private CSV files.
 - Create: `imperium-like-digital-prototype/data/fictional-regression/scenarios.json`
   - Declarative scenario list for deterministic setup/play/smoke checks.
 - Create: `imperium-like-digital-prototype/engine/src/tests/fictionalRegressionData.test.ts`
@@ -59,7 +61,7 @@ Rejected approach: start from private transcription. The user has explicitly sai
 - Verify only: `E:\Repositories\Jonah\polity-engine`
 - Verify only: `E:\Repositories\Jonah\polity-engine\imperium-like-digital-prototype`
 
-- [ ] **Step 1: Confirm branch and working tree**
+- [x] **Step 1: Confirm branch and working tree**
 
 Run from repo root:
 
@@ -68,14 +70,14 @@ git status --short --branch
 git log --oneline --decorate -5
 ```
 
-Expected:
+Expected on `main`; implementation is isolated on `agent/public-fixtures-next`:
 
 ```text
 ## main...origin/main
 f4f43fd (HEAD -> main, origin/main, origin/HEAD) chore: record product readiness gate
 ```
 
-- [ ] **Step 2: Run the current public release gate**
+- [x] **Step 2: Run the current public release gate**
 
 Run from `imperium-like-digital-prototype`:
 
@@ -88,7 +90,7 @@ npm.cmd run smoke:multiplayer
 
 Expected: all commands exit 0. `smoke:multiplayer` reports `"ok": true`.
 
-- [ ] **Step 3: Run the current engine suite**
+- [x] **Step 3: Run the current engine suite**
 
 Run from `imperium-like-digital-prototype`:
 
@@ -98,7 +100,7 @@ npm.cmd run test -w engine
 
 Expected: engine suite exits 0.
 
-- [ ] **Step 4: Confirm no private artifacts are staged**
+- [x] **Step 4: Confirm no private artifacts are staged**
 
 Run from repo root:
 
@@ -109,7 +111,7 @@ git diff --cached --name-only
 
 Expected: no staged `private-card-data/imperium_*_private.csv` files and no staged `generated-private/` files.
 
-- [ ] **Step 5: Commit only if documentation evidence changes**
+- [x] **Step 5: Commit only if documentation evidence changes**
 
 If no files changed, skip this step. If a dated release-gate note is updated, commit only that doc edit:
 
@@ -117,6 +119,8 @@ If no files changed, skip this step. If a dated release-gate note is updated, co
 git add imperium-like-digital-prototype/docs/deployment.md
 git commit -m "docs: refresh local release gate evidence"
 ```
+
+Execution note: the isolated worktree initially exposed existing engine tests that read ignored private CSV files directly. Before proceeding to Task 2, replace those direct private-file reads with inline public-safe fixture rows in `nationRulesetValidation.test.ts`, `nationStrategyImport.test.ts`, and `soloBotReview.test.ts`, then rerun `npm.cmd run test -w engine`. This preserves the plan constraint that private data remains the final phase.
 
 ---
 
@@ -126,10 +130,11 @@ git commit -m "docs: refresh local release gate evidence"
 - Create: `imperium-like-digital-prototype/data/fictional-regression/README.md`
 - Create: `imperium-like-digital-prototype/data/fictional-regression/cards.json`
 - Create: `imperium-like-digital-prototype/data/fictional-regression/nations.json`
+- Create: `imperium-like-digital-prototype/data/fictional-regression/rulesets.json`
 - Create: `imperium-like-digital-prototype/data/fictional-regression/scenarios.json`
 - Test: `imperium-like-digital-prototype/engine/src/tests/fictionalRegressionData.test.ts`
 
-- [ ] **Step 1: Write the fixture README**
+- [x] **Step 1: Write the fixture README**
 
 Create `imperium-like-digital-prototype/data/fictional-regression/README.md`:
 
@@ -148,7 +153,7 @@ Coverage goals:
 - import-like data shape without requiring private transcription files
 ```
 
-- [ ] **Step 2: Create the initial card fixture**
+- [x] **Step 2: Create the initial card fixture**
 
 Create `imperium-like-digital-prototype/data/fictional-regression/cards.json` with at least these records, then expand only when tests identify an uncovered scenario:
 
@@ -248,7 +253,7 @@ Create `imperium-like-digital-prototype/data/fictional-regression/cards.json` wi
 ]
 ```
 
-- [ ] **Step 3: Create the nation fixture**
+- [x] **Step 3: Create the nation fixture**
 
 Create `imperium-like-digital-prototype/data/fictional-regression/nations.json`:
 
@@ -289,7 +294,7 @@ Create `imperium-like-digital-prototype/data/fictional-regression/nations.json`:
 ]
 ```
 
-- [ ] **Step 4: Create scenario metadata**
+- [x] **Step 4: Create scenario metadata**
 
 Create `imperium-like-digital-prototype/data/fictional-regression/scenarios.json`:
 
@@ -316,7 +321,7 @@ Create `imperium-like-digital-prototype/data/fictional-regression/scenarios.json
 ]
 ```
 
-- [ ] **Step 5: Write the failing fixture validation test**
+- [x] **Step 5: Write the failing fixture validation test**
 
 Create `imperium-like-digital-prototype/engine/src/tests/fictionalRegressionData.test.ts`:
 
@@ -373,7 +378,7 @@ describe("fictional regression data", () => {
 });
 ```
 
-- [ ] **Step 6: Run the focused test**
+- [x] **Step 6: Run the focused test**
 
 Run from `imperium-like-digital-prototype`:
 
@@ -383,7 +388,9 @@ npm.cmd run test -w engine -- fictionalRegressionData.test.ts
 
 Expected: pass.
 
-- [ ] **Step 7: Commit the fixture pack**
+Execution note: the setup pipeline already supports `privateData.nationRulesets`, so the fixture pack includes `rulesets.json` with a public-safe `move_cards_to_unrest_supply` override. The scenario metadata and test use `commonsSetId: "custom"` because uploaded/import-like card bundles are routed through the existing custom commons setup path. `npm.cmd run test -w engine -- fictionalRegressionData.test.ts` passed after this adjustment.
+
+- [x] **Step 7: Commit the fixture pack**
 
 Run from repo root:
 
@@ -402,7 +409,7 @@ git commit -m "test: add fictional regression fixture pack"
 - Modify: `imperium-like-digital-prototype/package.json`
 - Modify: `README.md`
 
-- [ ] **Step 1: Add an engine-level scenario smoke test**
+- [x] **Step 1: Add an engine-level scenario smoke test**
 
 Create `imperium-like-digital-prototype/engine/src/tests/fictionalScenarioSmoke.test.ts`:
 
@@ -461,7 +468,7 @@ describe("fictional scenario smoke", () => {
 });
 ```
 
-- [ ] **Step 2: Run the focused scenario test**
+- [x] **Step 2: Run the focused scenario test**
 
 Run from `imperium-like-digital-prototype`:
 
@@ -471,7 +478,7 @@ npm.cmd run test -w engine -- fictionalScenarioSmoke.test.ts
 
 Expected: pass. If the exact `resolveDrawChoice` argument shape differs, inspect existing `turnLoop.test.ts` draw-choice tests and adjust this test to match the existing move API before implementation changes.
 
-- [ ] **Step 3: Add a Node smoke script**
+- [x] **Step 3: Add a Node smoke script**
 
 Create `scripts/fictional-game-smoke.mjs`:
 
@@ -496,7 +503,7 @@ if (result.status !== 0) {
 console.log(JSON.stringify({ ok: true, smoke: "fictional-game" }));
 ```
 
-- [ ] **Step 4: Add the package script**
+- [x] **Step 4: Add the package script**
 
 Modify `imperium-like-digital-prototype/package.json` scripts:
 
@@ -506,7 +513,7 @@ Modify `imperium-like-digital-prototype/package.json` scripts:
 
 Keep the existing `smoke:multiplayer` script unchanged.
 
-- [ ] **Step 5: Run the new smoke script**
+- [x] **Step 5: Run the new smoke script**
 
 Run from `imperium-like-digital-prototype`:
 
@@ -520,7 +527,9 @@ Expected:
 {"ok":true,"smoke":"fictional-game"}
 ```
 
-- [ ] **Step 6: Document the new smoke gate**
+Execution note: the initial scenario smoke uses `fixture_action_gain_materials` because it is deterministic and avoids hidden draw randomness in the first gate. The Node smoke wrapper uses `cmd.exe /d /s /c npm.cmd ...` on Windows, matching the project smoke-script pattern. `npm.cmd run test -w engine -- fictionalScenarioSmoke.test.ts` and `npm.cmd run smoke:fictional-game` both passed.
+
+- [x] **Step 6: Document the new smoke gate**
 
 Update `README.md` under Running and Testing with:
 
@@ -532,7 +541,7 @@ npm run smoke:fictional-game
 ```
 ```
 
-- [ ] **Step 7: Commit the scenario smoke**
+- [x] **Step 7: Commit the scenario smoke**
 
 Run from repo root:
 
@@ -551,7 +560,7 @@ git commit -m "test: add fictional game smoke gate"
 - Modify: `imperium-like-digital-prototype/engine/src/tests/fictionalScenarioSmoke.test.ts`
 - Modify: `imperium-like-digital-prototype/docs/rules-engine-parity-matrix.md`
 
-- [ ] **Step 1: Add fixture cards for choice-heavy contracts**
+- [x] **Step 1: Add fixture cards for choice-heavy contracts**
 
 Extend `cards.json` with fictional records covering:
 
@@ -590,7 +599,7 @@ Extend `cards.json` with fictional records covering:
 ]
 ```
 
-- [ ] **Step 2: Add scenarios for pending choices and Unrest**
+- [x] **Step 2: Add scenarios for pending choices and Unrest**
 
 Extend `scenarios.json` with scenario entries whose `assertions` include:
 
@@ -603,11 +612,11 @@ Extend `scenarios.json` with scenario entries whose `assertions` include:
 ]
 ```
 
-- [ ] **Step 3: Add tests for pending choice and Unrest scenarios**
+- [x] **Step 3: Add tests for pending choice and Unrest scenarios**
 
 Extend `fictionalScenarioSmoke.test.ts` with one test per scenario. Use existing move helpers from `turnLoop.test.ts` and `effectRunner.test.ts`; do not add new engine behavior unless the test reveals a real runtime gap.
 
-- [ ] **Step 4: Run the fictional and full engine tests**
+- [x] **Step 4: Run the fictional and full engine tests**
 
 Run from `imperium-like-digital-prototype`:
 
@@ -618,7 +627,9 @@ npm.cmd run test -w engine
 
 Expected: both commands exit 0.
 
-- [ ] **Step 5: Update parity evidence**
+Execution note: expanded `fictionalScenarioSmoke.test.ts` now covers deterministic resource gain, a pending Market acquire choice that resolves into hand, and Unrest moving from the public-safe fixture supply into hand. `npm.cmd run smoke:fictional-game` and `npm.cmd run test -w engine` both passed with 45 engine test files and 1,487 tests.
+
+- [x] **Step 5: Update parity evidence**
 
 Modify `imperium-like-digital-prototype/docs/rules-engine-parity-matrix.md` by appending one sentence to the covered rows touched by the fictional smoke tests:
 
@@ -628,7 +639,7 @@ Modify `imperium-like-digital-prototype/docs/rules-engine-parity-matrix.md` by a
 
 Only add that sentence to rows actually exercised by the new tests.
 
-- [ ] **Step 6: Commit expanded fictional rules coverage**
+- [x] **Step 6: Commit expanded fictional rules coverage**
 
 Run from repo root:
 
@@ -648,7 +659,7 @@ git commit -m "test: expand fictional rules scenario coverage"
 - Test: app tests for local save/resume behavior
 - Update: `README.md`
 
-- [ ] **Step 1: Locate current local-game ownership**
+- [x] **Step 1: Locate current local-game ownership**
 
 Run from `imperium-like-digital-prototype`:
 
@@ -658,7 +669,9 @@ rg -n "createInitialGameState|localStorage|save|resume|reset|GameState|NewGameSe
 
 Expected: identify the app component or helper that owns local game initialization.
 
-- [ ] **Step 2: Write failing app tests for local save and resume**
+Execution note: `App.tsx` owns local session setup and passes setup data into the boardgame.io React client. The React client surface in this version does not expose a simple full `ctx` restore prop, so Task 5 is being split: first commit a tested versioned save-envelope boundary; then wire honest UI resume only once the restore surface is designed.
+
+- [x] **Step 2: Write failing app tests for local save and resume**
 
 Add tests that prove:
 
@@ -671,7 +684,9 @@ Add tests that prove:
 
 Use `imperium-like-digital-prototype/app/src/App.test.tsx` if the current app tests already cover top-level state; otherwise create a focused helper test beside the new persistence helper.
 
-- [ ] **Step 3: Implement a focused persistence helper**
+Execution note: added failing tests in `localGameSave.test.ts` and `App.test.tsx` for storage load states, corrupt-save recovery messaging, a Redux restore enhancer, and saved-game setup-screen controls; verified they failed before implementation.
+
+- [x] **Step 3: Implement a focused persistence helper**
 
 Create a helper only if no equivalent helper exists. Keep the interface small:
 
@@ -692,7 +707,9 @@ export function serializeLocalGame(input: {
 export function parseSavedLocalGame(raw: string): SavedLocalGameEnvelope | null;
 ```
 
-- [ ] **Step 4: Wire resume into the app**
+Execution note: added `app/src/localGameSave.ts` and `app/src/localGameSave.test.ts`. The helper serializes/parses a versioned envelope, preserves arbitrary saved game/turn state, rejects corrupt JSON and unsupported versions, and rejects known private-content fields (`rawEffectTextPrivate`, `officialName`, `officialText`, `officialRulesText`).
+
+- [x] **Step 4: Wire resume into the app**
 
 Add UI entry only where current local game setup controls already live. The user-facing behavior should be:
 
@@ -702,7 +719,9 @@ If the saved game is corrupt, show a clear discard/restart action.
 If no saved game exists, keep the current setup flow unchanged.
 ```
 
-- [ ] **Step 5: Run app and type checks**
+Execution note: wired local board state persistence through the boardgame.io React `Client` enhancer path. Local sessions save a versioned envelope to browser storage, valid saves show `Resume Saved Game`, corrupt saves show `Discard Saved Game`, and resume initializes the local client store from the saved state while preserving the public/private-data fingerprint boundary.
+
+- [x] **Step 5: Run app and type checks**
 
 Run from `imperium-like-digital-prototype`:
 
@@ -713,7 +732,9 @@ npm.cmd run typecheck
 
 Expected: both commands exit 0.
 
-- [ ] **Step 6: Commit local save/resume**
+Execution note: `npm.cmd run test -w app` passed with 15 files and 125 tests; `npm.cmd run typecheck` passed for engine, app, and server.
+
+- [x] **Step 6: Commit local save/resume**
 
 Run from repo root:
 
@@ -733,11 +754,13 @@ git commit -m "feat: add local game save and resume"
 - Test: `imperium-like-digital-prototype/engine/src/tests/undoAndLegalMoves.test.ts`
 - Test: app UI tests for disabled risky actions
 
-- [ ] **Step 1: Define the first undo scope**
+- [x] **Step 1: Define the first undo scope**
 
 Limit undo to local, non-multiplayer sessions and to the most recent player-initiated move before an irreversible random draw, hidden reveal, or opponent-visible multiplayer mutation.
 
-- [ ] **Step 2: Write failing engine tests**
+Execution note: the first scope uses boardgame.io's existing local undo stack and exposes it only for non-multiplayer sessions. Undo is disabled with visible reasons when there is no local undo history or when unresolved hidden-information windows are open.
+
+- [x] **Step 2: Write failing engine tests**
 
 Create `imperium-like-digital-prototype/engine/src/tests/undoAndLegalMoves.test.ts` with tests for:
 
@@ -748,7 +771,9 @@ Create `imperium-like-digital-prototype/engine/src/tests/undoAndLegalMoves.test.
 4. A disabled or illegal move leaves state unchanged and logs the blocked reason.
 ```
 
-- [ ] **Step 3: Implement undo history in game state or app state**
+Execution note: this implementation did not add a custom engine undo stack because boardgame.io already owns the local undo snapshots. The failing coverage was added in `BoardLayout.test.tsx` for the app-local undo availability contract, disabled online scope, hidden-information blocking, and visible disabled reasons.
+
+- [x] **Step 3: Implement undo history in game state or app state**
 
 Prefer app-local undo history if boardgame.io multiplayer state should remain untouched. Use engine helpers only for pure validation:
 
@@ -761,11 +786,15 @@ export type UndoSnapshot = {
 
 Do not store more than one snapshot in the first implementation unless the tests require multi-step undo.
 
-- [ ] **Step 4: Surface blocked reasons in the UI**
+Execution note: `BoardLayout` now reads boardgame.io's `_undo` stack, calls the client `undo` command only when the local guard permits it, and keeps multiplayer sessions out of the local undo UI.
+
+- [x] **Step 4: Surface blocked reasons in the UI**
 
 Use existing action availability helpers where possible. The UI should show one concise reason for the selected disabled action and should not expose internal debug jargon.
 
-- [ ] **Step 5: Run focused and full checks**
+Execution note: the local undo command shows concise disabled reasons such as `No move to undo` and `Resolve hidden information before undo`, while existing action availability helpers continue to surface disabled move reasons for selected cards.
+
+- [x] **Step 5: Run focused and full checks**
 
 Run from `imperium-like-digital-prototype`:
 
@@ -777,7 +806,9 @@ npm.cmd run typecheck
 
 Expected: all commands exit 0.
 
-- [ ] **Step 6: Commit undo/legal guardrails**
+Execution note: because the implemented undo guardrail is app-local over boardgame.io's built-in undo stack, the focused check was `npm.cmd run test -w app -- BoardLayout.test.tsx`. It passed with 41 BoardLayout tests. `npm.cmd run test -w app` passed with 15 files and 129 tests. `npm.cmd run typecheck` passed for engine, app, and server.
+
+- [x] **Step 6: Commit undo/legal guardrails**
 
 Run from repo root:
 
@@ -785,6 +816,8 @@ Run from repo root:
 git add imperium-like-digital-prototype/engine/src imperium-like-digital-prototype/app/src
 git commit -m "feat: add local undo and legal move guardrails"
 ```
+
+Execution note: committed as `f829c1e feat: add local undo guardrails`.
 
 ---
 
@@ -796,11 +829,13 @@ git commit -m "feat: add local undo and legal move guardrails"
 - Test: app tests for import/export envelope
 - Update: `README.md`
 
-- [ ] **Step 1: Reuse the save envelope**
+- [x] **Step 1: Reuse the save envelope**
 
 Build import/export around the `SavedLocalGameEnvelope` from Task 5. Do not create a separate format unless Task 5 found an existing project format.
 
-- [ ] **Step 2: Write failing tests**
+Execution note: Task 7 reuses the versioned `SavedLocalGameEnvelope` and adds transfer helpers around `serializeLocalGame` and `parseSavedLocalGame`.
+
+- [x] **Step 2: Write failing tests**
 
 Add tests for:
 
@@ -811,7 +846,9 @@ Add tests for:
 4. Import rejects malformed state without replacing the active game.
 ```
 
-- [ ] **Step 3: Implement export**
+Execution note: added failing tests in `localGameSave.test.ts` and `App.test.tsx` for JSON export filename/content, valid import, unsupported-version rejection, malformed-state rejection, and visible setup controls.
+
+- [x] **Step 3: Implement export**
 
 Add a clear user command in the local-game UI that downloads the JSON envelope. Use a filename shape like:
 
@@ -819,11 +856,15 @@ Add a clear user command in the local-game UI that downloads the JSON envelope. 
 polity-local-game-YYYYMMDD-HHMMSS.json
 ```
 
-- [ ] **Step 4: Implement import**
+Execution note: `createLocalGameExport` emits a versioned public-safe JSON envelope with a `polity-local-game-YYYYMMDD-HHMMSS.json` filename, and the setup shell exposes `Export Saved Game` for valid saved local games.
+
+- [x] **Step 4: Implement import**
 
 Add import through a file input near the local resume/export controls. On successful import, show the loaded game state. On failure, preserve the current state and show the rejection reason.
 
-- [ ] **Step 5: Run checks**
+Execution note: `Import Saved Game` reads a JSON file, validates it with `importLocalGameExport`, stores it only on success, and starts the restored local session. Invalid imports leave the current state untouched and surface a rejection message.
+
+- [x] **Step 5: Run checks**
 
 Run from `imperium-like-digital-prototype`:
 
@@ -834,7 +875,9 @@ npm.cmd run typecheck
 
 Expected: both commands exit 0.
 
-- [ ] **Step 6: Commit import/export**
+Execution note: `npm.cmd run test -w app` passed with 15 files and 134 tests. `npm.cmd run typecheck` passed for engine, app, and server.
+
+- [x] **Step 6: Commit import/export**
 
 Run from repo root:
 
@@ -842,6 +885,8 @@ Run from repo root:
 git add imperium-like-digital-prototype/app/src README.md
 git commit -m "feat: add local game import and export"
 ```
+
+Execution note: committed as `f6da5af feat: add local game import and export`.
 
 ---
 
@@ -852,11 +897,13 @@ git commit -m "feat: add local game import and export"
 - Modify: `scripts/multiplayer-smoke.mjs` only if hosted smoke needs a non-local URL option
 - Create: `scripts/hosted-smoke.mjs` if `multiplayer-smoke.mjs` should stay local-only
 
-- [ ] **Step 1: Decide hosted smoke shape**
+- [x] **Step 1: Decide hosted smoke shape**
 
 If `scripts/multiplayer-smoke.mjs` can safely accept `POLITY_SMOKE_BASE_URL`, modify it. If the local server lifecycle makes that messy, create `scripts/hosted-smoke.mjs`.
 
-- [ ] **Step 2: Add hosted health checks**
+Execution note: kept `scripts/multiplayer-smoke.mjs` local-only because it owns server lifecycle, restart checks, and storage layout assertions. Added a separate `scripts/hosted-smoke.mjs` for already deployed origins.
+
+- [x] **Step 2: Add hosted health checks**
 
 Hosted smoke must verify:
 
@@ -867,6 +914,8 @@ Hosted smoke must verify:
 4. Account or guest entry can create a lobby using placeholder/fictional fingerprint.
 5. No private debug UI is enabled.
 ```
+
+Execution note: `scripts/hosted-smoke.mjs` checks `/polity/accounts/health`, the React root at `/`, `/polity/lobby/rooms`, placeholder lobby creation, absence of private-debug/private-field markers in the served app shell, and best-effort cleanup of the smoke lobby. Added `npm.cmd run smoke:hosted`.
 
 - [ ] **Step 3: Run local release gate plus hosted proof**
 
@@ -890,6 +939,8 @@ node ..\scripts\hosted-smoke.mjs
 
 Expected: all commands exit 0. If Render assigns a different URL, use that real deployed URL for `POLITY_HOSTED_BASE_URL` and record the exact URL policy in the runbook.
 
+Execution note: local public release gates passed on 2026-07-14: `npm.cmd run typecheck`; `npm.cmd run test -w app` with 15 files and 134 tests; `npm.cmd run test -w server` with 11 files and 63 tests; `npm.cmd run test -w engine` with 45 files and 1,487 tests; `npm.cmd run smoke:fictional-game`; and `npm.cmd run smoke:multiplayer`. `npm.cmd run smoke:hosted` also passed against a local production-style server at `http://127.0.0.1:8794`, proving the hosted-smoke script against the expected service shape. Hosted smoke against `https://polity-engine.onrender.com` reached the host but `/polity/accounts/health` returned 404 on repeated attempts. On 2026-07-14 the owner deferred public hosting until later, so this step remains intentionally open and should resume when an actual deployed Polity Engine origin is available or Render is redeployed to this service shape.
+
 - [ ] **Step 4: Browser QA**
 
 Run a two-context browser QA pass:
@@ -904,6 +955,12 @@ Run a two-context browser QA pass:
 7. Restart service and verify lobby or match metadata persists.
 ```
 
+Execution note: deferred with hosted proof. Resume this only after `npm.cmd run smoke:hosted` passes against the actual public origin.
+
+Execution note: local browser QA is covered by `docs/superpowers/plans/2026-07-14-polity-local-qa-playtestability.md` while public hosting is deferred. Hosted browser QA remains open and must be rerun against the actual public origin later.
+
+Execution note: as of the remaining-gaps follow-up, local QA/playtestability is treated as a completed baseline, not a hosted-release substitute. The remaining release proof is the real public origin plus hosted two-context browser QA.
+
 - [ ] **Step 5: Document hosted evidence**
 
 Append a dated section to `imperium-like-digital-prototype/docs/deployment.md`:
@@ -915,6 +972,8 @@ Append a dated section to `imperium-like-digital-prototype/docs/deployment.md`:
 ```
 
 Use the actual date and URL policy chosen by the repository owner.
+
+Execution note: do not add the `Hosted Release Gate` success section until a real public deployment passes hosted smoke and two-context browser QA.
 
 - [ ] **Step 6: Commit deployment proof**
 

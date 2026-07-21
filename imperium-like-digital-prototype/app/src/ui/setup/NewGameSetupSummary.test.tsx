@@ -17,6 +17,28 @@ describe("NewGameSetup summary", () => {
     expect(html).toContain("Content");
   });
 
+  it("renders local playtest readiness status", () => {
+    const html = renderToStaticMarkup(
+      <NewGameSetup
+        onStart={() => undefined}
+        localPlaytestStatus={{
+          dataMode: "placeholder",
+          savedGameAvailable: true,
+          hostedDeferred: true
+        }}
+      />
+    );
+
+    expect(html).toContain("Local Playtest");
+    expect(html).toContain("data-qa=\"local-playtest-status\"");
+    expect(html).toContain("data-data-mode=\"placeholder\"");
+    expect(html).toContain("data-saved-game=\"available\"");
+    expect(html).toContain("data-hosting=\"deferred\"");
+    expect(html).toContain("Placeholder data");
+    expect(html).toContain("Saved local game available");
+    expect(html).toContain("Public hosting deferred");
+  });
+
   it("can render as a lobby setup editor with an existing config", () => {
     const html = renderToStaticMarkup(
       <NewGameSetup

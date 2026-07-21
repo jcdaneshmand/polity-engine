@@ -259,7 +259,8 @@
   margin-top: 10px;
 }
 
-.private-data-actions button {
+.private-data-actions button,
+.private-data-actions .file-action {
   min-height: 38px;
   border: 1px solid #7a6a57;
   border-radius: 6px;
@@ -267,6 +268,15 @@
   color: #f3ead8;
   cursor: pointer;
   padding: 0 12px;
+}
+
+.private-data-actions .file-action {
+  display: inline-flex;
+  align-items: center;
+}
+
+.private-data-actions .file-action input {
+  display: none;
 }
 
 .private-data-actions button:disabled {

@@ -2,7 +2,7 @@
 
 Purpose: define the app-side save/resume experience before engine persistence is implemented.
 
-This design intentionally avoids official card text, artwork, names, and rulebook wording. Saved game metadata should use prototype IDs, placeholder display names, counts, and user-provided private data already loaded locally.
+This design intentionally avoids official card text, artwork, names, and rulebook wording. Saved game metadata should use mode/options, counts, timestamps, and data-source labels, not card identities from hidden zones or private text.
 
 ## Goals
 
@@ -13,7 +13,9 @@ This design intentionally avoids official card text, artwork, names, and ruleboo
 
 ## First Pass UX
 
-Add a `Save Game` control to the game shell bar beside `New Game`.
+Current implementation autosaves local games after board updates and refreshes the saved-game panel when returning to setup. Manual naming is supported at the storage layer through `metadata.slotName`; the UI currently uses the `Autosave` slot.
+
+Future manual save controls can add a `Save Game` action to the game shell bar beside `New Game`.
 
 When selected, open a compact save dialog with:
 
@@ -32,43 +34,43 @@ The setup screen gains a `Resume Game` area above the configuration grid when lo
 - last saved timestamp
 - data status
 - `Resume` and `Delete` actions
+- `Export` and `Import` actions for local JSON save files
 
 ## Storage Shape
 
 The app owns save metadata. The engine owns serializable game state.
 
 ```ts
-type SavedGameSlot = {
-  id: string;
-  name: string;
-  savedAt: string;
-  appVersion: string;
+type SavedLocalGameEnvelope = {
+  version: 1;
+  savedAtIso: string;
+  privateDataFingerprint: string;
   metadata: {
+    slotName: string;
     mode: string;
-    playerCount: number;
-    round: number;
-    currentPlayer: string;
+    playerCount?: number;
+    round?: number;
+    currentPlayer?: string;
     enabledExpansions: string[];
     enabledVariants: string[];
-    commonsSetId: string;
-    usesPrivateData: boolean;
+    commonsSetId?: string;
+    dataSource: "placeholder" | "private";
   };
-  sessionConfig: NewGameSessionConfig;
-  gameState: unknown;
+  state: unknown;
 };
 ```
 
-The first pass can use `localStorage` under one key, `polity-engine.savedGames.v1`. If a later engine snapshot format needs migration, add a versioned migration layer before loading any slot.
+The current first pass uses `localStorage` under `polity-engine.localGame.v1` for the active local slot. `upsertLocalGameSlot` supports named slot replacement and most-recent-first ordering for the next UI expansion. If a later engine snapshot format needs migration, add a versioned migration layer before loading any slot.
 
 ## Hidden Information
 
-Save metadata must not include face-down card identities, hidden deck order, hidden Bot deck cards, or non-current-player hand contents. The full serialized engine snapshot may contain that data for restore, but the resume list must only render public-safe metadata.
+Save metadata must not include face-down card identities, hidden deck order, hidden Bot deck cards, private raw text, generated private names, or non-current-player hand contents. The full serialized engine snapshot may contain hidden card IDs for restore, but the resume list must only render public-safe metadata. Import rejects corrupt JSON, unsupported versions, private-field contamination, non-resumable state, and explicit private-data fingerprint mismatches when an expected fingerprint is supplied.
 
 ## Verification
 
 - Unit test the save-slot metadata formatter with placeholder and private-data sessions.
 - Unit test that resume list rows omit hidden card IDs and card names from metadata.
-- Browser-test saving, returning to setup, resuming, and deleting a slot.
+- Browser-test autosave creation, returning to setup, resuming, export/import controls visibility, and corrupt-save rejection.
 - Typecheck both app and engine after adding the serialization boundary.
 
 ## Deferred

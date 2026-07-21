@@ -1,0 +1,96 @@
+[
+  {
+    "id": "fixture_2p_setup_and_turn",
+    "description": "Two-player setup creates playable hands, market, unrest pile, and turn order from fictional fixtures.",
+    "mode": "multiplayer",
+    "playerCount": 2,
+    "commonsSetId": "custom",
+    "playerNationIds": {
+      "1": "fixture_nation_surveyors",
+      "2": "fixture_nation_archivists"
+    },
+    "tags": ["setup_variants", "market_acquisition", "pending_choices"],
+    "coverageLevel": "runtime_smoke",
+    "assertions": [
+      "players_exist",
+      "hands_non_empty",
+      "market_non_empty",
+      "unrest_available",
+      "no_private_fields",
+      "pending_choice_opens",
+      "pending_choice_resolves"
+    ]
+  },
+  {
+    "id": "fixture_unrest_flow_serialization",
+    "description": "Active-player action moves fictional Unrest from the supply and leaves the game state JSON-serializable.",
+    "mode": "multiplayer",
+    "playerCount": 2,
+    "commonsSetId": "custom",
+    "playerNationIds": {
+      "1": "fixture_nation_surveyors",
+      "2": "fixture_nation_archivists"
+    },
+    "tags": ["reactive_exhaust_timing", "save_resume_import_export"],
+    "coverageLevel": "runtime_smoke",
+    "assertions": [
+      "unrest_moves_from_pile",
+      "state_serializes",
+      "no_private_fields"
+    ]
+  },
+  {
+    "id": "fixture_trade_routes_finite_resource_probe",
+    "description": "Public-safe probe for future Trade Routes scenario coverage with finite resource constraints and opponent-trigger timing.",
+    "mode": "multiplayer",
+    "playerCount": 2,
+    "commonsSetId": "custom",
+    "enabledExpansions": ["trade_routes"],
+    "playerNationIds": {
+      "1": "fixture_nation_surveyors",
+      "2": "fixture_nation_archivists"
+    },
+    "tags": ["trade_routes", "market_acquisition", "pending_choices"],
+    "coverageLevel": "planned_runtime_expansion",
+    "assertions": [
+      "trade_routes_enabled",
+      "finite_resource_supply_checked",
+      "opponent_trigger_order_checked"
+    ]
+  },
+  {
+    "id": "fixture_garrison_history_fame_probe",
+    "description": "Public-safe probe for future Garrison, History replacement, and Fame timing scenario coverage.",
+    "mode": "multiplayer",
+    "playerCount": 2,
+    "commonsSetId": "custom",
+    "playerNationIds": {
+      "1": "fixture_nation_surveyors",
+      "2": "fixture_nation_archivists"
+    },
+    "tags": ["garrison_region_movement", "history_replacement", "fame_timing"],
+    "coverageLevel": "planned_runtime_expansion",
+    "assertions": [
+      "garrison_host_child_movement_checked",
+      "history_replacement_checked",
+      "fame_bottom_timing_checked"
+    ]
+  },
+  {
+    "id": "fixture_solo_campaign_handoff_probe",
+    "description": "Public-safe probe for future solo Bot, campaign progression, and next-game setup handoff coverage.",
+    "mode": "solo",
+    "playerCount": 1,
+    "commonsSetId": "custom",
+    "playerNationIds": {
+      "1": "fixture_nation_surveyors"
+    },
+    "tags": ["solo_bot", "campaign_progression", "save_resume_import_export"],
+    "coverageLevel": "planned_runtime_expansion",
+    "assertions": [
+      "solo_bot_turn_checked",
+      "campaign_outcome_checked",
+      "next_setup_handoff_checked"
+    ]
+  }
+]

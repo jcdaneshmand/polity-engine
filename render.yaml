@@ -2,8 +2,9 @@ services:
   - type: web
     name: polity-engine
     runtime: node
+    plan: starter
     rootDir: imperium-like-digital-prototype
-    buildCommand: npm install && npm run build -w app && npm run typecheck
+    buildCommand: npm ci && npm run build -w app && npm run typecheck
     startCommand: npm run start
     healthCheckPath: /polity/accounts/health
     envVars:

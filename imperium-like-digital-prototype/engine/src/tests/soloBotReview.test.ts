@@ -13,12 +13,10 @@ import { createInitialGameStateFromPipeline } from "../setup/setupPipeline";
 import { applyBotEffect, resolveBotCard } from "../solo/botStateTableResolver";
 import { setupSoloBot } from "../solo/botSetup";
 import { resolveBotProfitsWhereAble, resolveBotTrade, resolveBotTradeRoutesEndOfTurn, resolveBotTriggerTradeRoute } from "../solo/botTradeRoutesResolver";
-import { parseCsvFile } from "../../../tools/card-import/csvParser";
 import { normalizeBotStateTables } from "../../../tools/card-import/normalizeBotStateTable";
 
 const baseCost = { materials: 0, population: 0, progress: 0, goods: 0 };
 const options: GameOptions = { playerCount: 1, mode: "solo", enabledExpansions: [], enabledVariants: [], soloDifficulty: "chieftain" };
-const privateBotStateTablesCsvPath = path.resolve(import.meta.dirname, "../../../private-card-data/imperium_bot_state_tables_private.csv");
 const nation: any = {
   id: "test_nation_sun_coast",
   displayName: "N",
@@ -91,6 +89,134 @@ function writePrivateBotTableFixtures(prefix: string): { botStateTablePath: stri
       fs.rmSync(botTradeRoutesTablePath, { force: true });
     }
   };
+}
+
+function botStateRow(overrides: Record<string, string>) {
+  return {
+    table_id: "fixture_ceremonial_gathering",
+    bot_nation_id: "fixture_bot_nation",
+    table_side: "F",
+    row_id: "other",
+    priority: "10",
+    trigger_kind: "other",
+    trigger_value: "",
+    public_placeholder_label: "Fixture row",
+    private_trigger_label: "",
+    private_effect_text: "",
+    effects_json: "[]",
+    implemented: "true",
+    tested: "true",
+    notes: "",
+    ...overrides
+  };
+}
+
+function fixtureBotStateTables() {
+  return normalizeBotStateTables([
+    botStateRow({
+      row_id: "unrest",
+      priority: "1",
+      trigger_kind: "unrest",
+      effects_json: JSON.stringify([
+        { op: "bot_return_revealed_card_to_unrest" },
+        { op: "bot_spend_resource_to_state_card", spendResource: "influence", spendCount: 1, placeResource: "influence", placeCount: 1 }
+      ])
+    }),
+    botStateRow({
+      row_id: "trade_route",
+      priority: "2",
+      trigger_kind: "suit",
+      trigger_value: "trade_route",
+      effects_json: JSON.stringify([{ op: "bot_play_revealed_card" }, { op: "bot_trigger_trade_route" }])
+    }),
+    botStateRow({
+      row_id: "progress_history",
+      priority: "3",
+      trigger_kind: "tag",
+      trigger_value: "progress_history",
+      effects_json: JSON.stringify([{ op: "bot_put_revealed_card_into_history" }, { op: "bot_gain_resource", resource: "knowledge", count: 1 }])
+    }),
+    botStateRow({
+      row_id: "hammer_state_token",
+      priority: "4",
+      trigger_kind: "card_type",
+      trigger_value: "power",
+      effects_json: JSON.stringify([
+        { op: "bot_spend_resource_to_state_card", spendResource: "influence", spendCount: 1, placeResource: "influence", placeCount: 1 },
+        { op: "human_gain_resource", resource: "goods", count: 2 },
+        { op: "human_take_chaos", count: 1 }
+      ])
+    }),
+    botStateRow({
+      row_id: "region_state_token",
+      priority: "5",
+      trigger_kind: "suit",
+      trigger_value: "region",
+      effects_json: JSON.stringify([
+        { op: "bot_play_revealed_card" },
+        { op: "bot_spend_resource_to_state_card", spendResource: "influence", spendCount: 1, placeResource: "influence", placeCount: 1 }
+      ])
+    }),
+    botStateRow({
+      row_id: "other",
+      priority: "99",
+      effects_json: JSON.stringify([
+        { op: "bot_put_revealed_card_into_history" },
+        { op: "bot_return_from_discard", filter: { suits: ["unrest"] } },
+        { op: "bot_discard_top_bot_deck", count: 1 },
+        { op: "bot_gain_resource", resource: "influence", count: 1 }
+      ])
+    }),
+    botStateRow({
+      table_id: "fixture_research_ceremony",
+      table_side: "S",
+      row_id: "unrest",
+      priority: "1",
+      trigger_kind: "unrest",
+      effects_json: JSON.stringify([{ op: "bot_return_revealed_card_to_unrest" }, { op: "bot_gain_resource", resource: "influence", count: 1 }])
+    }),
+    botStateRow({
+      table_id: "fixture_research_ceremony",
+      table_side: "S",
+      row_id: "trade_route",
+      priority: "2",
+      trigger_kind: "suit",
+      trigger_value: "trade_route",
+      effects_json: JSON.stringify([{ op: "bot_play_revealed_card" }, { op: "bot_trigger_trade_route" }])
+    }),
+    botStateRow({
+      table_id: "fixture_research_ceremony",
+      table_side: "S",
+      row_id: "progress_history",
+      priority: "3",
+      trigger_kind: "tag",
+      trigger_value: "progress_history",
+      effects_json: JSON.stringify([{ op: "bot_put_revealed_card_into_history" }, { op: "bot_gain_resource", resource: "knowledge", count: 1 }])
+    }),
+    botStateRow({
+      table_id: "fixture_research_ceremony",
+      table_side: "S",
+      row_id: "fixture_state_progress",
+      priority: "4",
+      trigger_kind: "card_type",
+      trigger_value: "state",
+      effects_json: JSON.stringify([
+        { op: "bot_spend_resource_to_state_card", spendResource: "influence", spendCount: 2, placeResource: "knowledge", placeCount: 1 }
+      ])
+    }),
+    botStateRow({
+      table_id: "fixture_research_ceremony",
+      table_side: "S",
+      row_id: "other",
+      priority: "99",
+      effects_json: JSON.stringify([
+        { op: "bot_put_revealed_card_into_history" },
+        { op: "bot_return_from_discard", filter: { suits: ["unrest"] } },
+        { op: "bot_discard_top_bot_deck", count: 2 },
+        { op: "bot_gain_resource", resource: "influence", count: 1 }
+      ])
+    })
+  ] as any);
 }
 
 describe("solo bot setup from imported cards", () => {
@@ -1469,9 +1595,9 @@ describe("solo bot setup from imported cards", () => {
     expect(bot.stateTokens?.cultists_ceremonial_gathering_F?.knowledge).toBe(1);
   });
 
-  it("covers the private Cultists ceremonial Unrest row through the Bot table resolver", () => {
-    const tables = normalizeBotStateTables(parseCsvFile(privateBotStateTablesCsvPath) as any);
-    const table = tables.cultists_ceremonial_gathering_F;
+  it("covers the fixture ceremonial Unrest row through the Bot table resolver", () => {
+    const tables = fixtureBotStateTables();
+    const table = tables.fixture_ceremonial_gathering_F;
     const row = table.rows.find((candidate) => candidate.id === "unrest");
     expect(row?.implemented).toBe(true);
     expect(row?.tested).toBe(true);
@@ -1480,7 +1606,7 @@ describe("solo bot setup from imported cards", () => {
       options,
       cardDb: {
         starter: card({}),
-        cultist_unrest: card({ id: "cultist_unrest", displayName: "Unrest", suit: "unrest", cardType: "unrest", tags: ["unrest"] })
+        fixture_unrest: card({ id: "fixture_unrest", displayName: "Unrest", suit: "unrest", cardType: "unrest", tags: ["unrest"] })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
       playerNationIds: { "1": "test_nation_sun_coast" }
@@ -1488,18 +1614,18 @@ describe("solo bot setup from imported cards", () => {
     const bot = G.solo!.bot;
     bot.resources.influence = 1;
 
-    const result = resolveBotCard({ G, bot, revealedCardId: "cultist_unrest", source: "slot", table });
+    const result = resolveBotCard({ G, bot, revealedCardId: "fixture_unrest", source: "slot", table });
 
     expect(result).toMatchObject({ resolvedRowId: "unrest", cardDestination: "unrest", resolvedAny: true, warnings: [] });
-    expect(G.unrestPile).toContain("cultist_unrest");
-    expect(bot.botDiscard).not.toContain("cultist_unrest");
+    expect(G.unrestPile).toContain("fixture_unrest");
+    expect(bot.botDiscard).not.toContain("fixture_unrest");
     expect(bot.resources.influence).toBe(0);
-    expect(bot.stateTokens?.cultists_ceremonial_gathering_F?.influence).toBe(1);
+    expect(bot.stateTokens?.fixture_ceremonial_gathering_F?.influence).toBe(1);
   });
 
-  it("covers the private Cultists ceremonial Trade Route row through the Bot table resolver", () => {
-    const tables = normalizeBotStateTables(parseCsvFile(privateBotStateTablesCsvPath) as any);
-    const table = tables.cultists_ceremonial_gathering_F;
+  it("covers the fixture ceremonial Trade Route row through the Bot table resolver", () => {
+    const tables = fixtureBotStateTables();
+    const table = tables.fixture_ceremonial_gathering_F;
     const row = table.rows.find((candidate) => candidate.id === "trade_route");
     expect(row?.implemented).toBe(true);
     expect(row?.tested).toBe(true);
@@ -1508,7 +1634,7 @@ describe("solo bot setup from imported cards", () => {
       options: { ...options, enabledExpansions: ["trade_routes"] },
       cardDb: {
         starter: card({}),
-        cultist_route: card({ id: "cultist_route", displayName: "Route", suit: "trade_route", cardType: "trade_route" })
+        fixture_route: card({ id: "fixture_route", displayName: "Route", suit: "trade_route", cardType: "trade_route" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
       playerNationIds: { "1": "test_nation_sun_coast" }
@@ -1518,23 +1644,23 @@ describe("solo bot setup from imported cards", () => {
       cultists_routes: {
         id: "cultists_routes",
         rows: [
-          { tradeRouteId: "cultist_route", publicPlaceholderName: "Route", commerceEffects: [{ op: "bot_gain_resource", resource: "goods", count: 2 }], profitEffects: [] }
+          { tradeRouteId: "fixture_route", publicPlaceholderName: "Route", commerceEffects: [{ op: "bot_gain_resource", resource: "goods", count: 2 }], profitEffects: [] }
         ],
         endOfTurnRows: []
       }
     };
 
-    const result = resolveBotCard({ G, bot, revealedCardId: "cultist_route", source: "slot", table });
+    const result = resolveBotCard({ G, bot, revealedCardId: "fixture_route", source: "slot", table });
 
     expect(result).toMatchObject({ resolvedRowId: "trade_route", cardDestination: "play", resolvedAny: true, warnings: [] });
-    expect(bot.botPlayArea).toContain("cultist_route");
+    expect(bot.botPlayArea).toContain("fixture_route");
     expect(bot.resources.goods).toBe(2);
-    expect(bot.botDiscard).not.toContain("cultist_route");
+    expect(bot.botDiscard).not.toContain("fixture_route");
   });
 
-  it("covers the private Cultists ceremonial Progress/history row through the Bot table resolver", () => {
-    const tables = normalizeBotStateTables(parseCsvFile(privateBotStateTablesCsvPath) as any);
-    const table = tables.cultists_ceremonial_gathering_F;
+  it("covers the fixture ceremonial Progress/history row through the Bot table resolver", () => {
+    const tables = fixtureBotStateTables();
+    const table = tables.fixture_ceremonial_gathering_F;
     const row = table.rows.find((candidate) => candidate.id === "progress_history");
     expect(row?.implemented).toBe(true);
     expect(row?.tested).toBe(true);
@@ -1543,7 +1669,7 @@ describe("solo bot setup from imported cards", () => {
       options,
       cardDb: {
         starter: card({}),
-        cultist_progress: card({ id: "cultist_progress", displayName: "Progress", suit: "none", cardType: "action", tags: ["progress_history"] })
+        fixture_progress: card({ id: "fixture_progress", displayName: "Progress", suit: "none", cardType: "action", tags: ["progress_history"] })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
       playerNationIds: { "1": "test_nation_sun_coast" }
@@ -1551,17 +1677,17 @@ describe("solo bot setup from imported cards", () => {
     const bot = G.solo!.bot;
     bot.resources.knowledge = 0;
 
-    const result = resolveBotCard({ G, bot, revealedCardId: "cultist_progress", source: "slot", table });
+    const result = resolveBotCard({ G, bot, revealedCardId: "fixture_progress", source: "slot", table });
 
     expect(result).toMatchObject({ resolvedRowId: "progress_history", cardDestination: "history", resolvedAny: true, warnings: [] });
     expect(bot.resources.knowledge).toBe(1);
-    expect(bot.botHistory).toContain("cultist_progress");
-    expect(bot.botDiscard).not.toContain("cultist_progress");
+    expect(bot.botHistory).toContain("fixture_progress");
+    expect(bot.botDiscard).not.toContain("fixture_progress");
   });
 
-  it("covers the private Cultists ceremonial fallback row through the Bot table resolver", () => {
-    const tables = normalizeBotStateTables(parseCsvFile(privateBotStateTablesCsvPath) as any);
-    const table = tables.cultists_ceremonial_gathering_F;
+  it("covers the fixture ceremonial fallback row through the Bot table resolver", () => {
+    const tables = fixtureBotStateTables();
+    const table = tables.fixture_ceremonial_gathering_F;
     const row = table.rows.find((candidate) => candidate.id === "other");
     expect(row?.implemented).toBe(true);
     expect(row?.tested).toBe(true);
@@ -1570,7 +1696,7 @@ describe("solo bot setup from imported cards", () => {
       options,
       cardDb: {
         starter: card({}),
-        cultist_other: card({ id: "cultist_other", displayName: "Other", suit: "civilized", cardType: "action" }),
+        fixture_other: card({ id: "fixture_other", displayName: "Other", suit: "civilized", cardType: "action" }),
         deck_card: card({ id: "deck_card", displayName: "Deck Card", suit: "uncivilized", cardType: "action" }),
         discarded_unrest: card({ id: "discarded_unrest", displayName: "Unrest", suit: "unrest", cardType: "unrest", tags: ["unrest"] })
       } as any,
@@ -1582,19 +1708,19 @@ describe("solo bot setup from imported cards", () => {
     bot.botDiscard = ["discarded_unrest"];
     bot.resources.influence = 0;
 
-    const result = resolveBotCard({ G, bot, revealedCardId: "cultist_other", source: "slot", table });
+    const result = resolveBotCard({ G, bot, revealedCardId: "fixture_other", source: "slot", table });
 
     expect(result).toMatchObject({ resolvedRowId: "other", cardDestination: "history", resolvedAny: true, warnings: [] });
     expect(bot.botDeck).toEqual([]);
     expect(bot.botDiscard).toEqual(["deck_card"]);
     expect(G.unrestPile).toContain("discarded_unrest");
     expect(bot.resources.influence).toBe(1);
-    expect(bot.botHistory).toContain("cultist_other");
+    expect(bot.botHistory).toContain("fixture_other");
   });
 
-  it("covers the private Cultists research Unrest row through the Bot table resolver", () => {
-    const tables = normalizeBotStateTables(parseCsvFile(privateBotStateTablesCsvPath) as any);
-    const table = tables.cultists_research_ceremony_S;
+  it("covers the fixture research Unrest row through the Bot table resolver", () => {
+    const tables = fixtureBotStateTables();
+    const table = tables.fixture_research_ceremony_S;
     const row = table.rows.find((candidate) => candidate.id === "unrest");
     expect(row?.implemented).toBe(true);
     expect(row?.tested).toBe(true);
@@ -1603,7 +1729,7 @@ describe("solo bot setup from imported cards", () => {
       options,
       cardDb: {
         starter: card({}),
-        cultist_unrest: card({ id: "cultist_unrest", displayName: "Unrest", suit: "unrest", cardType: "unrest", tags: ["unrest"] })
+        fixture_unrest: card({ id: "fixture_unrest", displayName: "Unrest", suit: "unrest", cardType: "unrest", tags: ["unrest"] })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
       playerNationIds: { "1": "test_nation_sun_coast" }
@@ -1611,17 +1737,17 @@ describe("solo bot setup from imported cards", () => {
     const bot = G.solo!.bot;
     bot.resources.influence = 0;
 
-    const result = resolveBotCard({ G, bot, revealedCardId: "cultist_unrest", source: "slot", table });
+    const result = resolveBotCard({ G, bot, revealedCardId: "fixture_unrest", source: "slot", table });
 
     expect(result).toMatchObject({ resolvedRowId: "unrest", cardDestination: "unrest", resolvedAny: true, warnings: [] });
-    expect(G.unrestPile).toContain("cultist_unrest");
+    expect(G.unrestPile).toContain("fixture_unrest");
     expect(bot.resources.influence).toBe(1);
-    expect(bot.botDiscard).not.toContain("cultist_unrest");
+    expect(bot.botDiscard).not.toContain("fixture_unrest");
   });
 
-  it("covers the private Cultists research Trade Route row through the Bot table resolver", () => {
-    const tables = normalizeBotStateTables(parseCsvFile(privateBotStateTablesCsvPath) as any);
-    const table = tables.cultists_research_ceremony_S;
+  it("covers the fixture research Trade Route row through the Bot table resolver", () => {
+    const tables = fixtureBotStateTables();
+    const table = tables.fixture_research_ceremony_S;
     const row = table.rows.find((candidate) => candidate.id === "trade_route");
     expect(row?.implemented).toBe(true);
     expect(row?.tested).toBe(true);
@@ -1630,7 +1756,7 @@ describe("solo bot setup from imported cards", () => {
       options: { ...options, enabledExpansions: ["trade_routes"] },
       cardDb: {
         starter: card({}),
-        cultist_route: card({ id: "cultist_route", displayName: "Route", suit: "trade_route", cardType: "trade_route" })
+        fixture_route: card({ id: "fixture_route", displayName: "Route", suit: "trade_route", cardType: "trade_route" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
       playerNationIds: { "1": "test_nation_sun_coast" }
@@ -1640,23 +1766,23 @@ describe("solo bot setup from imported cards", () => {
       cultists_routes: {
         id: "cultists_routes",
         rows: [
-          { tradeRouteId: "cultist_route", publicPlaceholderName: "Route", commerceEffects: [{ op: "bot_gain_resource", resource: "materials", count: 2 }], profitEffects: [] }
+          { tradeRouteId: "fixture_route", publicPlaceholderName: "Route", commerceEffects: [{ op: "bot_gain_resource", resource: "materials", count: 2 }], profitEffects: [] }
         ],
         endOfTurnRows: []
       }
     };
 
-    const result = resolveBotCard({ G, bot, revealedCardId: "cultist_route", source: "slot", table });
+    const result = resolveBotCard({ G, bot, revealedCardId: "fixture_route", source: "slot", table });
 
     expect(result).toMatchObject({ resolvedRowId: "trade_route", cardDestination: "play", resolvedAny: true, warnings: [] });
-    expect(bot.botPlayArea).toContain("cultist_route");
+    expect(bot.botPlayArea).toContain("fixture_route");
     expect(bot.resources.materials).toBe(2);
-    expect(bot.botDiscard).not.toContain("cultist_route");
+    expect(bot.botDiscard).not.toContain("fixture_route");
   });
 
-  it("covers the private Cultists research Progress/history row through the Bot table resolver", () => {
-    const tables = normalizeBotStateTables(parseCsvFile(privateBotStateTablesCsvPath) as any);
-    const table = tables.cultists_research_ceremony_S;
+  it("covers the fixture research Progress/history row through the Bot table resolver", () => {
+    const tables = fixtureBotStateTables();
+    const table = tables.fixture_research_ceremony_S;
     const row = table.rows.find((candidate) => candidate.id === "progress_history");
     expect(row?.implemented).toBe(true);
     expect(row?.tested).toBe(true);
@@ -1665,7 +1791,7 @@ describe("solo bot setup from imported cards", () => {
       options,
       cardDb: {
         starter: card({}),
-        cultist_progress: card({ id: "cultist_progress", displayName: "Progress", suit: "none", cardType: "action", tags: ["progress_history"] })
+        fixture_progress: card({ id: "fixture_progress", displayName: "Progress", suit: "none", cardType: "action", tags: ["progress_history"] })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
       playerNationIds: { "1": "test_nation_sun_coast" }
@@ -1673,17 +1799,17 @@ describe("solo bot setup from imported cards", () => {
     const bot = G.solo!.bot;
     bot.resources.knowledge = 0;
 
-    const result = resolveBotCard({ G, bot, revealedCardId: "cultist_progress", source: "slot", table });
+    const result = resolveBotCard({ G, bot, revealedCardId: "fixture_progress", source: "slot", table });
 
     expect(result).toMatchObject({ resolvedRowId: "progress_history", cardDestination: "history", resolvedAny: true, warnings: [] });
     expect(bot.resources.knowledge).toBe(1);
-    expect(bot.botHistory).toContain("cultist_progress");
-    expect(bot.botDiscard).not.toContain("cultist_progress");
+    expect(bot.botHistory).toContain("fixture_progress");
+    expect(bot.botDiscard).not.toContain("fixture_progress");
   });
 
-  it("covers the private Cultists research fallback row through the Bot table resolver", () => {
-    const tables = normalizeBotStateTables(parseCsvFile(privateBotStateTablesCsvPath) as any);
-    const table = tables.cultists_research_ceremony_S;
+  it("covers the fixture research fallback row through the Bot table resolver", () => {
+    const tables = fixtureBotStateTables();
+    const table = tables.fixture_research_ceremony_S;
     const row = table.rows.find((candidate) => candidate.id === "other");
     expect(row?.implemented).toBe(true);
     expect(row?.tested).toBe(true);
@@ -1692,7 +1818,7 @@ describe("solo bot setup from imported cards", () => {
       options,
       cardDb: {
         starter: card({}),
-        cultist_other: card({ id: "cultist_other", displayName: "Other", suit: "civilized", cardType: "action" }),
+        fixture_other: card({ id: "fixture_other", displayName: "Other", suit: "civilized", cardType: "action" }),
         deck_one: card({ id: "deck_one", displayName: "Deck One", suit: "uncivilized", cardType: "action" }),
         deck_two: card({ id: "deck_two", displayName: "Deck Two", suit: "civilized", cardType: "action" }),
         discarded_unrest: card({ id: "discarded_unrest", displayName: "Unrest", suit: "unrest", cardType: "unrest", tags: ["unrest"] })
@@ -1705,19 +1831,19 @@ describe("solo bot setup from imported cards", () => {
     bot.botDiscard = ["discarded_unrest"];
     bot.resources.influence = 0;
 
-    const result = resolveBotCard({ G, bot, revealedCardId: "cultist_other", source: "slot", table });
+    const result = resolveBotCard({ G, bot, revealedCardId: "fixture_other", source: "slot", table });
 
     expect(result).toMatchObject({ resolvedRowId: "other", cardDestination: "history", resolvedAny: true, warnings: [] });
     expect(G.unrestPile).toContain("discarded_unrest");
     expect(bot.botDeck).toEqual([]);
     expect(bot.botDiscard).toEqual(["deck_one", "deck_two"]);
     expect(bot.resources.influence).toBe(1);
-    expect(bot.botHistory).toContain("cultist_other");
+    expect(bot.botHistory).toContain("fixture_other");
   });
 
-  it("covers the private Cultists ceremonial hammer state-token row through the Bot table resolver", () => {
-    const tables = normalizeBotStateTables(parseCsvFile(privateBotStateTablesCsvPath) as any);
-    const table = tables.cultists_ceremonial_gathering_F;
+  it("covers the fixture ceremonial hammer state-token row through the Bot table resolver", () => {
+    const tables = fixtureBotStateTables();
+    const table = tables.fixture_ceremonial_gathering_F;
     const row = table.rows.find((candidate) => candidate.id === "hammer_state_token");
     expect(row?.implemented).toBe(true);
     expect(row?.tested).toBe(true);
@@ -1726,7 +1852,7 @@ describe("solo bot setup from imported cards", () => {
       options,
       cardDb: {
         starter: card({}),
-        cultist_power: card({ id: "cultist_power", displayName: "Power", suit: "civilized", cardType: "power", type: "power" }),
+        fixture_power: card({ id: "fixture_power", displayName: "Power", suit: "civilized", cardType: "power", type: "power" }),
         chaos_one: card({ id: "chaos_one", displayName: "Chaos", suit: "unrest", cardType: "unrest" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
@@ -1737,20 +1863,20 @@ describe("solo bot setup from imported cards", () => {
     G.players["1"].resources.goods = 0;
     G.specialZones = { "1": { chaos_pile: { id: "chaos_pile", displayName: "Chaos Pile", cardIds: ["chaos_one"], visibility: "public", scoresAsOwned: false } } };
 
-    const result = resolveBotCard({ G, bot, revealedCardId: "cultist_power", source: "slot", table });
+    const result = resolveBotCard({ G, bot, revealedCardId: "fixture_power", source: "slot", table });
 
     expect(result).toMatchObject({ resolvedRowId: "hammer_state_token", cardDestination: "discard", resolvedAny: true, warnings: [] });
     expect(bot.resources.influence).toBe(0);
-    expect(bot.stateTokens?.cultists_ceremonial_gathering_F?.influence).toBe(1);
+    expect(bot.stateTokens?.fixture_ceremonial_gathering_F?.influence).toBe(1);
     expect(G.players["1"].resources.goods).toBe(2);
     expect(G.specialZones["1"].chaos_pile.cardIds).toEqual([]);
     expect(G.players["1"].discard).toContain("chaos_one");
-    expect(bot.botDiscard).toContain("cultist_power");
+    expect(bot.botDiscard).toContain("fixture_power");
   });
 
-  it("covers the private Cultists ceremonial Region state-token row through the Bot table resolver", () => {
-    const tables = normalizeBotStateTables(parseCsvFile(privateBotStateTablesCsvPath) as any);
-    const table = tables.cultists_ceremonial_gathering_F;
+  it("covers the fixture ceremonial Region state-token row through the Bot table resolver", () => {
+    const tables = fixtureBotStateTables();
+    const table = tables.fixture_ceremonial_gathering_F;
     const row = table.rows.find((candidate) => candidate.id === "region_state_token");
     expect(row?.implemented).toBe(true);
     expect(row?.tested).toBe(true);
@@ -1759,7 +1885,7 @@ describe("solo bot setup from imported cards", () => {
       options,
       cardDb: {
         starter: card({}),
-        cultist_region: card({ id: "cultist_region", displayName: "Region", suit: "region", cardType: "region", tags: ["region"] })
+        fixture_region: card({ id: "fixture_region", displayName: "Region", suit: "region", cardType: "region", tags: ["region"] })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
       playerNationIds: { "1": "test_nation_sun_coast" }
@@ -1767,19 +1893,19 @@ describe("solo bot setup from imported cards", () => {
     const bot = G.solo!.bot;
     bot.resources.influence = 1;
 
-    const result = resolveBotCard({ G, bot, revealedCardId: "cultist_region", source: "slot", table });
+    const result = resolveBotCard({ G, bot, revealedCardId: "fixture_region", source: "slot", table });
 
     expect(result).toMatchObject({ resolvedRowId: "region_state_token", cardDestination: "play", resolvedAny: true, warnings: [] });
-    expect(bot.botPlayArea).toContain("cultist_region");
+    expect(bot.botPlayArea).toContain("fixture_region");
     expect(bot.resources.influence).toBe(0);
-    expect(bot.stateTokens?.cultists_ceremonial_gathering_F?.influence).toBe(1);
-    expect(bot.botDiscard).not.toContain("cultist_region");
+    expect(bot.stateTokens?.fixture_ceremonial_gathering_F?.influence).toBe(1);
+    expect(bot.botDiscard).not.toContain("fixture_region");
   });
 
-  it("covers the private Cultists research state-progress row through the Bot table resolver", () => {
-    const tables = normalizeBotStateTables(parseCsvFile(privateBotStateTablesCsvPath) as any);
-    const table = tables.cultists_research_ceremony_S;
-    const row = table.rows.find((candidate) => candidate.id === "cultist_state_progress");
+  it("covers the fixture research state-progress row through the Bot table resolver", () => {
+    const tables = fixtureBotStateTables();
+    const table = tables.fixture_research_ceremony_S;
+    const row = table.rows.find((candidate) => candidate.id === "fixture_state_progress");
     expect(row?.implemented).toBe(true);
     expect(row?.tested).toBe(true);
 
@@ -1787,7 +1913,7 @@ describe("solo bot setup from imported cards", () => {
       options,
       cardDb: {
         starter: card({}),
-        cultist_state_card: card({ id: "cultist_state_card", displayName: "Cultist", suit: "civilized", cardType: "state" })
+        fixture_state_card: card({ id: "fixture_state_card", displayName: "Fixture", suit: "civilized", cardType: "state" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
       playerNationIds: { "1": "test_nation_sun_coast" }
@@ -1795,12 +1921,12 @@ describe("solo bot setup from imported cards", () => {
     const bot = G.solo!.bot;
     bot.resources.influence = 2;
 
-    const result = resolveBotCard({ G, bot, revealedCardId: "cultist_state_card", source: "slot", table });
+    const result = resolveBotCard({ G, bot, revealedCardId: "fixture_state_card", source: "slot", table });
 
-    expect(result).toMatchObject({ resolvedRowId: "cultist_state_progress", cardDestination: "discard", resolvedAny: true, warnings: [] });
+    expect(result).toMatchObject({ resolvedRowId: "fixture_state_progress", cardDestination: "discard", resolvedAny: true, warnings: [] });
     expect(bot.resources.influence).toBe(0);
-    expect(bot.stateTokens?.cultists_research_ceremony_S?.knowledge).toBe(1);
-    expect(bot.botDiscard).toContain("cultist_state_card");
+    expect(bot.stateTokens?.fixture_research_ceremony_S?.knowledge).toBe(1);
+    expect(bot.botDiscard).toContain("fixture_state_card");
   });
 
   it("human_take_chaos moves Chaos from the Cultists pile to the human discard", () => {

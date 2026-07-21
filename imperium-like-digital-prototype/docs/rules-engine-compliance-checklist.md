@@ -25,10 +25,13 @@ External reference: the public Imperium: Horizons rulebook PDF. Do not copy offi
 - [x] **Solstice/endgame:** Changes that can affect round boundaries, scoring, collapse, or Fame deck timing update tests and notes.
 - [x] **State-model consistency:** Changes stay aligned with vocabulary and milestone direction in `rules-engine-notes.md`.
 - [x] **High-risk areas reviewed:** Consider reshuffle timing, market refill source logic, garrison movement, payment substitution, hidden info, and endgame interrupt implications.
+- [x] **Coverage-map alignment:** Rules parity evidence stays aligned with `data/fictional-regression/coverage-map.json` and `engine/src/tests/rulesParityCoverage.test.ts`.
 
 ## PR notes requirement
 
 In PR descriptions for engine changes, include a brief "Rules Notes Alignment" section describing which checklist items were touched and how they were satisfied.
+
+When a change touches a parity-matrix row, also mention whether `data/fictional-regression/coverage-map.json` needed a new test, scenario, weak-evidence note, or runtime-gap reproduction plan.
 
 ## Current Evidence
 

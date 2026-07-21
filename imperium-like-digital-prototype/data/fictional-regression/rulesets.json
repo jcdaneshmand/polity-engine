@@ -1,0 +1,49 @@
+[
+  {
+    "nationId": "fixture_nation_surveyors",
+    "displayName": "Surveyor Compact Rules",
+    "rulesetTags": ["default_nation_deck"],
+    "requiredExpansions": [],
+    "excludedExpansions": [],
+    "setupOverrides": [
+      {
+        "op": "move_cards_to_unrest_supply",
+        "cardIds": ["fixture_unrest"]
+      }
+    ],
+    "zoneOverrides": [],
+    "stateOverrides": [],
+    "reshuffleOverrides": [],
+    "cleanupOverrides": [],
+    "solsticeOverrides": [],
+    "scoringOverrides": [],
+    "collapseOverrides": [],
+    "botOverrides": [],
+    "shortGameOverrides": [],
+    "hookRules": [],
+    "publicSummary": "Public-safe fixture ruleset for deterministic setup regression tests.",
+    "implemented": true,
+    "tested": true
+  },
+  {
+    "nationId": "fixture_nation_archivists",
+    "displayName": "Archivist League Rules",
+    "rulesetTags": ["default_nation_deck"],
+    "requiredExpansions": [],
+    "excludedExpansions": [],
+    "setupOverrides": [],
+    "zoneOverrides": [],
+    "stateOverrides": [],
+    "reshuffleOverrides": [],
+    "cleanupOverrides": [],
+    "solsticeOverrides": [],
+    "scoringOverrides": [],
+    "collapseOverrides": [],
+    "botOverrides": [],
+    "shortGameOverrides": [],
+    "hookRules": [],
+    "publicSummary": "Public-safe fixture ruleset with no special overrides.",
+    "implemented": true,
+    "tested": true
+  }
+]

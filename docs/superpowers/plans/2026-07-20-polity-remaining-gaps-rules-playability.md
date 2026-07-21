@@ -42,7 +42,7 @@
 - Verify only: git branches and plans
 - Modify only if needed: no code changes
 
-- [ ] **Step 1: Confirm branch state**
+- [x] **Step 1: Confirm branch state**
 
 Run from repo root:
 
@@ -54,7 +54,9 @@ git log --oneline origin/agent/public-fixtures-next -5
 
 Expected: identify whether the active branch already includes `42cf8ec`.
 
-- [ ] **Step 2: Bring the local QA baseline into the execution branch**
+Execution note: created `agent/remaining-gaps-rules-playability` from the clean `.worktrees/public-fixtures-next` baseline. `git log --oneline -5` matches `origin/agent/public-fixtures-next` at `42cf8ec docs: record local QA execution evidence`.
+
+- [x] **Step 2: Bring the local QA baseline into the execution branch**
 
 If executing on a new work branch from `main`, merge or cherry-pick the public fixtures branch:
 
@@ -65,7 +67,9 @@ git merge origin/agent/public-fixtures-next
 
 Expected: local QA scripts, public fixtures, save/resume baseline, and local playtest status are present.
 
-- [ ] **Step 3: Run baseline gates**
+Execution note: branch was created directly from `origin/agent/public-fixtures-next` state instead of merging into `main`, avoiding the untracked July 14 plan conflict in the main checkout.
+
+- [x] **Step 3: Run baseline gates**
 
 Run from `imperium-like-digital-prototype`:
 
@@ -82,6 +86,8 @@ npm.cmd run smoke:multiplayer
 
 Expected: all pass before new work begins.
 
+Execution note: baseline verification initially exposed a real cleanup race in `server/src/multiplayerTransport.test.ts`: the restart-persistence test removed its FlatFile temp directory before boardgame.io disconnect metadata writes had settled. Added persisted connection-status waits before restart and final cleanup. After the fix, `npm.cmd run test -w server -- multiplayerTransport.test.ts`, `npm.cmd run test -w server`, `npm.cmd run test:local-qa-scripts`, `npm.cmd run qa:local-browser`, `npm.cmd run typecheck`, `npm.cmd run test -w app`, `npm.cmd run test -w engine`, `npm.cmd run smoke:fictional-game`, and `npm.cmd run smoke:multiplayer` passed. `smoke:multiplayer` still emits the existing Vite large-chunk warning.
+
 ---
 
 ## Task 1: Reconcile The Public Status Docs
@@ -94,7 +100,7 @@ Expected: all pass before new work begins.
 - Modify: `imperium-like-digital-prototype/docs/rules-engine-parity-matrix.md`
 - Modify: `docs/superpowers/plans/2026-07-14-polity-public-fixtures-first-next-steps.md`
 
-- [ ] **Step 1: Split implemented baselines from remaining polish**
+- [x] **Step 1: Split implemented baselines from remaining polish**
 
 Update README planned items so they distinguish:
 
@@ -103,7 +109,9 @@ Update README planned items so they distinguish:
 - implemented undo/legal guardrail baseline versus remaining playability and edge-case polish
 - local browser QA implemented versus hosted browser QA deferred
 
-- [ ] **Step 2: Add a current gap table**
+Execution note: README now lists public-safe fictional smoke, local save/resume baseline, local game export/import baseline, undo/legal guardrail baseline, and local playtest/browser QA as included. Planned items now describe remaining polish and gates rather than missing baseline features.
+
+- [x] **Step 2: Add a current gap table**
 
 Add a small public-safe table with these buckets:
 
@@ -115,7 +123,9 @@ Add a small public-safe table with these buckets:
 | Hosted release | deferred | Task 7 |
 | Private data | final gate only | Task 8 |
 
-- [ ] **Step 3: Run docs-only diff check**
+Execution note: added current gap snapshots to README and the rules-engine parity matrix, and updated the roadmap to separate implemented baselines from remaining polish/release proof.
+
+- [x] **Step 3: Run docs-only diff check**
 
 Run:
 
@@ -124,6 +134,8 @@ git diff -- README.md imperium-like-digital-prototype/docs/roadmap.md imperium-l
 ```
 
 Expected: public-safe status documentation only.
+
+Execution note: `git diff -- README.md imperium-like-digital-prototype/docs/roadmap.md imperium-like-digital-prototype/docs/rules-engine-parity-matrix.md docs/superpowers/plans/2026-07-14-polity-public-fixtures-first-next-steps.md` showed only public-safe status documentation updates.
 
 ---
 
@@ -137,7 +149,7 @@ Expected: public-safe status documentation only.
 - Modify: `imperium-like-digital-prototype/docs/rules-engine-parity-matrix.md`
 - Modify: `imperium-like-digital-prototype/docs/rules-engine-compliance-checklist.md`
 
-- [ ] **Step 1: Create a public-safe coverage map**
+- [x] **Step 1: Create a public-safe coverage map**
 
 Create a JSON coverage map that lists contract areas from the parity matrix and maps each to:
 
@@ -148,7 +160,9 @@ Create a JSON coverage map that lists contract areas from the parity matrix and 
 
 Do not include official names or rulebook text.
 
-- [ ] **Step 2: Write a failing test for stale coverage map rows**
+Execution note: added `data/fictional-regression/coverage-map.json` with public-safe contract areas, evidence test files, scenario fixture links, scenario needs, and `private-data-only` separation for private completeness.
+
+- [x] **Step 2: Write a failing test for stale coverage map rows**
 
 Add a test that fails if:
 
@@ -156,7 +170,9 @@ Add a test that fails if:
 - a row is marked `covered` without evidence
 - a row is marked `runtime-gap` without a planned public-safe reproduction
 
-- [ ] **Step 3: Populate the coverage map from current evidence**
+Execution note: added `engine/src/tests/rulesParityCoverage.test.ts`; first focused run failed as expected because `coverage-map.json` did not exist.
+
+- [x] **Step 3: Populate the coverage map from current evidence**
 
 Use current public evidence first:
 
@@ -170,7 +186,9 @@ Use current public evidence first:
 - `uiSelectionModel.test.ts`
 - `fictionalScenarioSmoke.test.ts`
 
-- [ ] **Step 4: Downgrade only concrete weak spots**
+Execution note: populated the map from current public evidence including turn loop, effect runner, setup, scoring, progression, Trade Routes, solo Bot, UI selection, fictional scenario, and server transport tests.
+
+- [x] **Step 4: Downgrade only concrete weak spots**
 
 If an area has only broad unit coverage but no scenario-level evidence, mark it `weak-evidence`, not `runtime-gap`.
 
@@ -183,7 +201,9 @@ Candidate areas to inspect carefully:
 - solo Bot fallback rows with human reactive windows
 - campaign carryover with imported-like setup modifications
 
-- [ ] **Step 5: Run focused and engine tests**
+Execution note: no current row was downgraded to `runtime-gap`; scenario-level needs were recorded as public-safe follow-up notes where unit coverage is broad but richer end-to-end scenarios would improve playtest confidence.
+
+- [x] **Step 5: Run focused and engine tests**
 
 Run:
 
@@ -193,6 +213,8 @@ npm.cmd run test -w engine
 ```
 
 Expected: coverage map is internally consistent and full engine suite passes.
+
+Execution note: `npm.cmd run test -w engine -- rulesParityCoverage.test.ts` first failed on missing map, then passed after adding the map. The passing run covered 46 engine test files and 1,488 tests.
 
 ---
 
@@ -206,7 +228,7 @@ Expected: coverage map is internally consistent and full engine suite passes.
 - Modify: `scripts/fictional-game-smoke.mjs`
 - Modify: `imperium-like-digital-prototype/docs/rules-engine-parity-matrix.md`
 
-- [ ] **Step 1: Add scenario taxonomy**
+- [x] **Step 1: Add scenario taxonomy**
 
 Add scenario tags for:
 
@@ -222,7 +244,9 @@ Add scenario tags for:
 - campaign progression
 - save/resume/import/export
 
-- [ ] **Step 2: Add at least five richer public-safe scenarios**
+Execution note: `data/fictional-regression/scenarios.json` now includes required scenario tags for setup variants, market acquisition, pending choices, reactive Exhaust timing, Trade Routes, Garrison/Region movement, Fame timing, History replacement, solo Bot, campaign progression, and save/resume/import/export.
+
+- [x] **Step 2: Add at least five richer public-safe scenarios**
 
 Create fictional scenarios that exercise:
 
@@ -232,11 +256,15 @@ Create fictional scenarios that exercise:
 4. Garrison/Region movement followed by scoring-relevant state
 5. campaign game end and next-game setup handoff
 
-- [ ] **Step 3: Extend the fictional smoke**
+Execution note: added five public-safe scenario rows. Two are current runtime-smoke scenarios, and three are explicit planned runtime-expansion probes for Trade Routes finite-resource timing, Garrison/History/Fame timing, and solo Bot/campaign handoff.
+
+- [x] **Step 3: Extend the fictional smoke**
 
 Update `npm.cmd run smoke:fictional-game` so it reports scenario counts by tag and fails if any required tag bucket is empty.
 
-- [ ] **Step 4: Run scenario and full gates**
+Execution note: `fictionalScenarioSmoke.test.ts` now enforces that all required scenario tag buckets are populated. `scripts/fictional-game-smoke.mjs` now prints scenario count and tag counts.
+
+- [x] **Step 4: Run scenario and full gates**
 
 Run:
 
@@ -247,6 +275,8 @@ npm.cmd run typecheck
 ```
 
 Expected: all pass; parity matrix evidence is updated with scenario names, not private data.
+
+Execution note: `npm.cmd run test -w engine -- fictionalScenarioSmoke.test.ts` passed with 46 files and 1,489 tests. `npm.cmd run smoke:fictional-game` passed and reported 5 scenarios with every required tag bucket populated. `npm.cmd run typecheck` passed. The parity matrix now points to the scenario taxonomy and coverage map.
 
 ---
 
@@ -261,7 +291,7 @@ Expected: all pass; parity matrix evidence is updated with scenario names, not p
 - Likely modify: `imperium-like-digital-prototype/engine/src/tests/`
 - Modify docs when behavior changes: `imperium-like-digital-prototype/docs/rules-engine-parity-matrix.md`
 
-- [ ] **Step 1: Pick the highest-risk weak-evidence row**
+- [x] **Step 1: Pick the highest-risk weak-evidence row**
 
 Prioritize rows that can break real play:
 
@@ -271,11 +301,15 @@ Prioritize rows that can break real play:
 4. pending choices resume the wrong continuation
 5. solo Bot fallback/payment behaves differently from human action resolution
 
-- [ ] **Step 2: Write the failing public-safe test**
+Execution note: Task 4 audit found no public-safe `runtime-gap` rows and no `weak-evidence` rows in `data/fictional-regression/coverage-map.json`. The coverage map has eleven `minimumPublicScenarioNeeded` notes, but those are scenario/playtest evidence needs, not known engine failures. The highest-risk remaining public-safe work therefore moves to Task 5 and Task 6 rather than an engine patch without a failing fixture.
+
+- [x] **Step 2: Write the failing public-safe test**
 
 The test must use fictional cards/nations or inline invented data. It must not read private CSVs.
 
-- [ ] **Step 3: Implement the minimal engine fix**
+Execution note: no failing public-safe runtime-gap test was written because the audit did not identify a concrete runtime contract failure. The next tests should be scenario/playtest expansion tests for the planned probe buckets, not a speculative engine-fix test.
+
+- [x] **Step 3: Implement the minimal engine fix**
 
 Allowed fix types:
 
@@ -286,7 +320,9 @@ Allowed fix types:
 - add selector filtering for hidden information
 - add setup validation for imported-like data
 
-- [ ] **Step 4: Update import/validation if the effect DSL changes**
+Execution note: no engine or DSL fix was required in Task 4, so no runtime behavior changed.
+
+- [x] **Step 4: Update import/validation if the effect DSL changes**
 
 If adding effect expressiveness, update:
 
@@ -295,7 +331,9 @@ If adding effect expressiveness, update:
 - private entry UI validation
 - bot table validation, if relevant
 
-- [ ] **Step 5: Run targeted and expanded tests**
+Execution note: no effect DSL, import validation, nation ruleset validation, private entry UI validation, or bot table validation changed.
+
+- [x] **Step 5: Run targeted and expanded tests**
 
 Run at minimum:
 
@@ -307,9 +345,13 @@ npm.cmd run typecheck
 
 Expected: gap test fails first, then passes, and no existing parity rows regress.
 
-- [ ] **Step 6: Repeat until no public-safe `runtime-gap` rows remain**
+Execution note: targeted audit commands confirmed `rg -n runtime-gap data/fictional-regression/coverage-map.json` returned no rows, `rg -n weak-evidence data/fictional-regression/coverage-map.json` returned no rows, and `rg -n minimumPublicScenarioNeeded data/fictional-regression/coverage-map.json` returned scenario-expansion notes to be handled by playtestability and hosted-release tasks.
+
+- [x] **Step 6: Repeat until no public-safe `runtime-gap` rows remain**
 
 Do not attempt to close private-data-only rows in this task.
+
+Execution note: Task 4 completed as an audited no-op. There are currently no public-safe `runtime-gap` rows to close. Private-data-only rows remain untouched by design.
 
 ---
 
@@ -324,7 +366,7 @@ Do not attempt to close private-data-only rows in this task.
 - Create: `imperium-like-digital-prototype/docs/local-playtest-checklist.md`
 - Modify: `scripts/local-browser-qa.mjs`
 
-- [ ] **Step 1: Add a local playtest checklist doc**
+- [x] **Step 1: Add a local playtest checklist doc**
 
 Include public-safe manual scripts for:
 
@@ -336,7 +378,9 @@ Include public-safe manual scripts for:
 - campaign end and next setup
 - Trade Routes enabled game
 
-- [ ] **Step 2: Add in-app playtest cues**
+Execution note: created `imperium-like-digital-prototype/docs/local-playtest-checklist.md` with public-safe scripts for new multiplayer, host/join/ready/start/rejoin, solo Bot turn, save/resume/export/import, undo/blocked actions, campaign handoff, and Trade Routes enabled playtests.
+
+- [x] **Step 2: Add in-app playtest cues**
 
 Add compact, non-marketing cues where they help a tester:
 
@@ -348,7 +392,9 @@ Add compact, non-marketing cues where they help a tester:
 
 Do not add tutorial prose that clutters normal play.
 
-- [ ] **Step 3: Add a playtest issue capture affordance**
+Execution note: setup local playtest status now has stable QA attributes for data mode, saved-game availability, and hosting state. The board now shows a compact playtest diagnostics panel with active player, viewer player, and diagnostics export near existing action/status surfaces.
+
+- [x] **Step 3: Add a playtest issue capture affordance**
 
 Add a local-only copy/export action that gathers public-safe diagnostics:
 
@@ -360,7 +406,9 @@ Add a local-only copy/export action that gathers public-safe diagnostics:
 - no hidden card identities from non-viewer zones
 - no private text/content
 
-- [ ] **Step 4: Extend browser QA to touch setup and board state**
+Execution note: added `buildPlaytestDiagnostics` and an `Export Playtest Diagnostics` button. The payload includes app version, mode/options, active/viewer player, public pile counts, per-player zone/resource counts, and redacted recent log messages without hidden zone card IDs or private debug text.
+
+- [x] **Step 4: Extend browser QA to touch setup and board state**
 
 Extend `qa:local-browser` beyond rejoin visibility:
 
@@ -370,7 +418,9 @@ Extend `qa:local-browser` beyond rejoin visibility:
 - verify active player/action UI is present
 - verify no private-debug markers are served
 
-- [ ] **Step 5: Run local browser QA and app tests**
+Execution note: `qa:local-browser` now builds the app before launching the local server, verifies setup local status, starts a placeholder local game, verifies the board diagnostics panel, checks visible text for private debug markers, then runs the existing lobby/start/rejoin flow. Windows cleanup now stops the exact listener PID instead of using `taskkill`, avoiding stuck cleanup processes.
+
+- [x] **Step 5: Run local browser QA and app tests**
 
 Run:
 
@@ -381,6 +431,8 @@ npm.cmd run typecheck
 ```
 
 Expected: automated QA covers the human playtest happy path and status surfaces.
+
+Execution note: focused setup/board tests first failed on missing QA attributes and diagnostics, then passed after implementation. `npm.cmd run test:local-qa-scripts` passed 7 tests. `npm.cmd run qa:local-browser` passed and reported setup status, local board, and private-debug checks. `npm.cmd run test -w app` passed 15 files / 137 tests. `npm.cmd run typecheck` passed engine, app, and server.
 
 ---
 
@@ -395,7 +447,7 @@ Expected: automated QA covers the human playtest happy path and status surfaces.
 - Modify or create: save/resume UI tests
 - Modify: `imperium-like-digital-prototype/docs/save-resume-ux-design.md`
 
-- [ ] **Step 1: Add multi-slot save metadata**
+- [x] **Step 1: Add multi-slot save metadata**
 
 Support named local save slots with public-safe metadata:
 
@@ -406,7 +458,9 @@ Support named local save slots with public-safe metadata:
 - expansions/variants
 - data source/fingerprint label
 
-- [ ] **Step 2: Scrub resume-list hidden info**
+Execution note: `SavedLocalGameEnvelope` now includes public-safe metadata with slot name, mode, player count, round/current player, timestamp, expansions/variants, Commons set, and data-source label. `upsertLocalGameSlot` supports named slot replacement and most-recent-first ordering for the next multi-slot UI expansion.
+
+- [x] **Step 2: Scrub resume-list hidden info**
 
 Add tests proving save-list metadata does not expose:
 
@@ -415,7 +469,9 @@ Add tests proving save-list metadata does not expose:
 - private raw text
 - generated private card names
 
-- [ ] **Step 3: Improve import/export errors**
+Execution note: `createLocalSaveMetadata` derives only public-safe summary fields from game state. Tests prove metadata omits hidden hand/deck IDs, opponent hand IDs, private names, and private raw text. The setup resume panel now renders metadata instead of raw state.
+
+- [x] **Step 3: Improve import/export errors**
 
 Add clear user-facing errors for:
 
@@ -424,7 +480,9 @@ Add clear user-facing errors for:
 - private-data fingerprint mismatch
 - missing session config
 
-- [ ] **Step 4: Add browser QA coverage**
+Execution note: import errors now distinguish corrupt JSON, unsupported versions, private-field contamination, non-resumable state, missing fields, and explicit private-data fingerprint mismatches. Exported saves include metadata and remain versioned JSON.
+
+- [x] **Step 4: Add browser QA coverage**
 
 Extend local browser QA or add a new local save QA script to cover:
 
@@ -435,7 +493,9 @@ Extend local browser QA or add a new local save QA script to cover:
 - import
 - reject invalid import
 
-- [ ] **Step 5: Run app, browser, and smoke gates**
+Execution note: `qa:local-browser` now verifies local autosave creation, return-to-setup resume metadata, export/import control visibility, resume back to board, and corrupt saved-state rejection before the online lobby/rejoin flow. The app refreshes saved-local-game metadata when leaving a local game.
+
+- [x] **Step 5: Run app, browser, and smoke gates**
 
 Run:
 
@@ -445,6 +505,8 @@ npm.cmd run qa:local-browser
 npm.cmd run smoke:fictional-game
 npm.cmd run typecheck
 ```
+
+Execution note: focused save/app tests first failed on missing metadata UI and mismatch handling, then passed. `npm.cmd run test:local-qa-scripts` passed 7 tests. `npm.cmd run qa:local-browser` passed and reported setup, local board, save/resume, invalid-save, no-private-debug, lobby, and match checks. `npm.cmd run test -w app` passed 15 files / 141 tests. `npm.cmd run smoke:fictional-game` passed 46 engine files / 1,489 tests and reported 5 public-safe scenarios. `npm.cmd run typecheck` passed engine, app, and server after updating one old test fixture to the metadata envelope.
 
 ---
 
@@ -458,7 +520,7 @@ npm.cmd run typecheck
 - Modify if needed: `scripts/hosted-smoke.mjs`
 - Modify if needed: `scripts/local-browser-qa.mjs` or create hosted browser QA wrapper
 
-- [ ] **Step 1: Confirm deploy source branch**
+- [x] **Step 1: Confirm deploy source branch**
 
 Decide whether Render deploys:
 
@@ -467,6 +529,8 @@ Decide whether Render deploys:
 - a new release branch
 
 Record the exact branch and commit.
+
+Execution note: deployment source selected as `agent/remaining-gaps-rules-playability`. Last completed local-gate commit before Task 7 hosted-prep docs/scripts was `6c4e891`. The branch is intended to be redeployed from its latest pushed head after this hosted-prep checkpoint lands.
 
 - [ ] **Step 2: Redeploy or configure Render**
 
@@ -479,6 +543,8 @@ Confirm:
 - `POLITY_SERVER_ORIGIN` equals the public origin
 - private debug UI is disabled
 
+Execution note: `render.yaml` declares `rootDir: imperium-like-digital-prototype`, `plan: starter`, `buildCommand: npm ci && npm run build -w app && npm run typecheck`, `startCommand: npm run start`, a `/var/data` persistent disk, `POLITY_STORAGE_PATH=/var/data/polity-engine`, `POLITY_SERVER_ORIGIN` as a Render-synced value, and `VITE_SHOW_PRIVATE_CARD_DEBUG=false`. The branch head `2b74f8e` was verified on GitHub, and the local equivalents of the Render build install/build/typecheck path passed after running `npm.cmd ci`, `npm.cmd run build -w app`, and `npm.cmd run typecheck`. Render Blueprint validation rejected the earlier `plan: free` because disks are not supported for free web services; the disk is retained because hosted release proof needs persistent storage/restart evidence. Actual Render dashboard state could not be changed from this workspace because no authenticated Render MCP service-management tools are exposed and no local `RENDER_API_KEY` is configured; the documented origin still appears to be serving a stale or wrong service.
+
 - [ ] **Step 3: Run hosted smoke**
 
 Run from `imperium-like-digital-prototype`:
@@ -490,6 +556,12 @@ npm.cmd run smoke:hosted
 
 Expected: health, React shell, lobby listing, placeholder lobby creation, and no-private-debug checks pass.
 
+Execution note: `POLITY_HOSTED_BASE_URL=https://polity-engine.onrender.com npm.cmd run smoke:hosted` reached the public host but failed at `GET /polity/accounts/health` with `404 Not Found`. After pushing the Blueprint hardening checkpoint `46b984c`, the same hosted smoke was rerun and still failed with `GET /polity/accounts/health failed with 404: Not Found`. Hosted smoke is not complete until Render is redeployed from the selected branch or the correct public origin is supplied.
+
+Local substitute note: added `npm.cmd run smoke:hosted:local` to start a temporary local server, run the same hosted smoke script against localhost, and stop/clean up the temp server afterward. This keeps pre-Render testing repeatable but does not satisfy the real hosted proof checkbox.
+
+2026-07-21 evidence note: at branch head `a8acba8`, `npm.cmd run test:local-qa-scripts`, `npm.cmd run smoke:hosted:local`, and `npm.cmd run typecheck` passed. `https://polity-engine.onrender.com/polity/accounts/health` still returned `404 Not Found`, so Task 7 hosted smoke remains unchecked pending a real Render deployment or the actual public origin.
+
 - [ ] **Step 4: Run hosted browser QA**
 
 Run a two-context browser QA against the actual public origin:
@@ -500,7 +572,9 @@ Run a two-context browser QA against the actual public origin:
 - refresh/rejoin both contexts
 - confirm persistent storage after restart if possible
 
-- [ ] **Step 5: Document hosted evidence**
+Execution note: added `npm.cmd run qa:hosted-browser`, backed by `scripts/hosted-browser-qa.mjs`, to run the two-context browser QA against `POLITY_HOSTED_BASE_URL` without starting a local server. Against `https://polity-engine.onrender.com`, it timed out waiting for `/polity/accounts/health` with `404 Not Found`, matching hosted smoke. Hosted browser QA remains pending redeploy/correct origin.
+
+- [x] **Step 5: Document hosted evidence**
 
 Update `imperium-like-digital-prototype/docs/deployment.md` with:
 
@@ -511,6 +585,10 @@ Update `imperium-like-digital-prototype/docs/deployment.md` with:
 - browser QA result
 - storage/restart proof
 - private-debug disabled proof
+
+Execution note: `imperium-like-digital-prototype/docs/deployment.md` now records the selected source branch, the `6c4e891` local-gate commit, the hosted smoke 404, the hosted browser QA 404, and the required next action: redeploy the selected branch or provide the actual public origin. Storage/restart and private-debug disabled proof still require a live hosted service.
+
+Execution note: added `imperium-like-digital-prototype/docs/hosted-release-handoff.md` with the candidate branch, current pushed head, Render settings to confirm, current hosted 404 evidence, exact hosted smoke/browser QA commands, expected proof, and the explicit instruction to keep private data out until hosted proof passes.
 
 ---
 

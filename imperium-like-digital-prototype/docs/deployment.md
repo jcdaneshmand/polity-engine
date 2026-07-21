@@ -45,6 +45,14 @@ npm.cmd run smoke:hosted
 
 The hosted smoke checks account health, the React app shell, lobby room listing, placeholder/fictional lobby creation, and absence of private-debug markers in the served app shell. After verifying the placeholder lobby appears in the room listing, it calls the lobby leave endpoint for cleanup.
 
+Before Render is available, run the same hosted smoke script against a temporary local server:
+
+```powershell
+npm.cmd run smoke:hosted:local
+```
+
+This is a local-only confidence gate. It does not replace hosted proof against the real public origin.
+
 Run the hosted two-context browser QA against the deployed origin:
 
 ```powershell

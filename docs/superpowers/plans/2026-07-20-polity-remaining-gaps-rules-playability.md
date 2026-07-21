@@ -149,7 +149,7 @@ Execution note: `git diff -- README.md imperium-like-digital-prototype/docs/road
 - Modify: `imperium-like-digital-prototype/docs/rules-engine-parity-matrix.md`
 - Modify: `imperium-like-digital-prototype/docs/rules-engine-compliance-checklist.md`
 
-- [ ] **Step 1: Create a public-safe coverage map**
+- [x] **Step 1: Create a public-safe coverage map**
 
 Create a JSON coverage map that lists contract areas from the parity matrix and maps each to:
 
@@ -160,7 +160,9 @@ Create a JSON coverage map that lists contract areas from the parity matrix and 
 
 Do not include official names or rulebook text.
 
-- [ ] **Step 2: Write a failing test for stale coverage map rows**
+Execution note: added `data/fictional-regression/coverage-map.json` with public-safe contract areas, evidence test files, scenario fixture links, scenario needs, and `private-data-only` separation for private completeness.
+
+- [x] **Step 2: Write a failing test for stale coverage map rows**
 
 Add a test that fails if:
 
@@ -168,7 +170,9 @@ Add a test that fails if:
 - a row is marked `covered` without evidence
 - a row is marked `runtime-gap` without a planned public-safe reproduction
 
-- [ ] **Step 3: Populate the coverage map from current evidence**
+Execution note: added `engine/src/tests/rulesParityCoverage.test.ts`; first focused run failed as expected because `coverage-map.json` did not exist.
+
+- [x] **Step 3: Populate the coverage map from current evidence**
 
 Use current public evidence first:
 
@@ -182,7 +186,9 @@ Use current public evidence first:
 - `uiSelectionModel.test.ts`
 - `fictionalScenarioSmoke.test.ts`
 
-- [ ] **Step 4: Downgrade only concrete weak spots**
+Execution note: populated the map from current public evidence including turn loop, effect runner, setup, scoring, progression, Trade Routes, solo Bot, UI selection, fictional scenario, and server transport tests.
+
+- [x] **Step 4: Downgrade only concrete weak spots**
 
 If an area has only broad unit coverage but no scenario-level evidence, mark it `weak-evidence`, not `runtime-gap`.
 
@@ -195,7 +201,9 @@ Candidate areas to inspect carefully:
 - solo Bot fallback rows with human reactive windows
 - campaign carryover with imported-like setup modifications
 
-- [ ] **Step 5: Run focused and engine tests**
+Execution note: no current row was downgraded to `runtime-gap`; scenario-level needs were recorded as public-safe follow-up notes where unit coverage is broad but richer end-to-end scenarios would improve playtest confidence.
+
+- [x] **Step 5: Run focused and engine tests**
 
 Run:
 
@@ -205,6 +213,8 @@ npm.cmd run test -w engine
 ```
 
 Expected: coverage map is internally consistent and full engine suite passes.
+
+Execution note: `npm.cmd run test -w engine -- rulesParityCoverage.test.ts` first failed on missing map, then passed after adding the map. The passing run covered 46 engine test files and 1,488 tests.
 
 ---
 

@@ -4,6 +4,7 @@ Use this matrix to drive runtime-contract parity with Imperium: Horizons while k
 
 Primary local contract: `docs/rules-engine-notes.md`.
 Supporting evidence: `docs/rules-engine-compliance-checklist.md`.
+Auditable coverage map: `data/fictional-regression/coverage-map.json`.
 Public references used for audit orientation: the Osprey Horizons rulebook PDF, Osprey Trade Routes article, and Osprey compatibility/replacement-card article.
 
 Status values:
@@ -58,8 +59,9 @@ Status values:
 ## Current Runtime Parity Backlog
 
 1. Keep private card, nation, and Bot table transcription out of the public repo; classify data-only omissions as `private-data-only`.
-2. Continue auditing this matrix after each rulebook or private-import sweep; downgrade any row to `weak-evidence` or `runtime-gap` only when a concrete rule contract lacks direct public-safe coverage.
-3. Treat rows marked `covered` as regression surfaces: any behavior change touching those rows must update the named tests and checklist evidence.
+2. Keep `data/fictional-regression/coverage-map.json` aligned with this matrix; `rulesParityCoverage.test.ts` fails if non-private rows lack public-safe evidence or runtime gaps lack reproduction plans.
+3. Continue auditing this matrix after each rulebook or private-import sweep; downgrade any row to `weak-evidence` or `runtime-gap` only when a concrete rule contract lacks direct public-safe coverage.
+4. Treat rows marked `covered` as regression surfaces: any behavior change touching those rows must update the named tests, the coverage map, and checklist evidence.
 
 ## Closed During 2026-06-04 Follow-up Pass
 

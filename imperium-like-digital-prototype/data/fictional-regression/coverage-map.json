@@ -1,0 +1,206 @@
+{
+  "version": 1,
+  "updated": "2026-07-20",
+  "entries": [
+    {
+      "id": "legal-boundary-fixtures",
+      "contractArea": "Legal boundary and public-safe placeholder fixtures",
+      "status": "covered",
+      "evidenceTests": ["fictionalRegressionData.test.ts", "privateCardImport.test.ts", "privateDataImport.test.ts"],
+      "scenarioFixtures": ["cards.json", "nations.json", "rulesets.json"]
+    },
+    {
+      "id": "card-ids-in-zones",
+      "contractArea": "Card IDs in all runtime zones",
+      "status": "covered",
+      "evidenceTests": ["setupPipeline.test.ts", "turnLoop.test.ts", "zones.test.ts"],
+      "scenarioFixtures": ["cards.json", "nations.json"]
+    },
+    {
+      "id": "hidden-information",
+      "contractArea": "Hidden information and owner-visible zones",
+      "status": "covered",
+      "evidenceTests": ["uiSelectors.test.ts", "uiSelectionModel.test.ts", "playerView.test.ts", "multiplayerTransport.test.ts"],
+      "scenarioFixtures": []
+    },
+    {
+      "id": "setup-determinism",
+      "contractArea": "Setup pipeline determinism",
+      "status": "covered",
+      "evidenceTests": ["setupPipeline.test.ts", "commonsDeckConstruction.test.ts", "fictionalRegressionData.test.ts"],
+      "scenarioFixtures": ["cards.json", "nations.json", "rulesets.json"]
+    },
+    {
+      "id": "commons-replacement-policy",
+      "contractArea": "Commons replacement policy, including direct replacement metadata",
+      "status": "covered",
+      "evidenceTests": ["commonsSetup.test.ts", "commonsReplacementPolicy.test.ts", "commonsSelection.test.ts"],
+      "scenarioFixtures": ["cards.json", "scenarios.json"]
+    },
+    {
+      "id": "trade-routes-setup-gating",
+      "contractArea": "Trade Routes-required Commons, nation and ruleset gating, and mutually exclusive alternates",
+      "status": "covered",
+      "evidenceTests": ["commonsSelection.test.ts", "commonsSetup.test.ts", "setupPipeline.test.ts", "tradeRoutesModule.test.ts", "expansionToggle.test.ts"],
+      "scenarioFixtures": ["scenarios.json"],
+      "minimumPublicScenarioNeeded": "Add richer end-to-end Trade Routes commerce and profit scenario coverage."
+    },
+    {
+      "id": "nation-setup-progression",
+      "contractArea": "Nation setup, Accession, no-Nation/no-Development tags, and Development progression",
+      "status": "covered",
+      "evidenceTests": ["progression.test.ts", "setupPipeline.test.ts", "variants.test.ts"],
+      "scenarioFixtures": ["nations.json", "rulesets.json"]
+    },
+    {
+      "id": "short-game-setup-scoring",
+      "contractArea": "Short-game setup exceptions and scoring timing",
+      "status": "covered",
+      "evidenceTests": ["variants.test.ts", "progression.test.ts", "setupPipeline.test.ts", "soloBotReview.test.ts", "scoring.test.ts"],
+      "scenarioFixtures": []
+    },
+    {
+      "id": "human-effect-dsl",
+      "contractArea": "Effect DSL expressiveness for human card text",
+      "status": "covered",
+      "evidenceTests": ["privateCardImport.test.ts", "nationRulesetValidation.test.ts", "effectRunner.test.ts", "turnLoop.test.ts", "uiSelectionModel.test.ts"],
+      "scenarioFixtures": ["cards.json", "scenarios.json"],
+      "minimumPublicScenarioNeeded": "Keep expanding scenario-level coverage for multi-step effect combinations discovered during playtests."
+    },
+    {
+      "id": "attack-protection",
+      "contractArea": "Attack protection and ignored targeted attack text",
+      "status": "covered",
+      "evidenceTests": ["effectRunner.test.ts", "privateCardImport.test.ts", "nationRulesetValidation.test.ts"],
+      "scenarioFixtures": []
+    },
+    {
+      "id": "ruleset-hooks",
+      "contractArea": "Ruleset override and hook expressiveness",
+      "status": "covered",
+      "evidenceTests": ["nationRulesetValidation.test.ts", "nationHookCore.test.ts", "setupPipeline.test.ts", "turnLoop.test.ts", "scoring.test.ts"],
+      "scenarioFixtures": ["rulesets.json"]
+    },
+    {
+      "id": "bot-table-effects",
+      "contractArea": "Bot table effect expressiveness",
+      "status": "covered",
+      "evidenceTests": ["botTableCli.test.ts", "soloBotReview.test.ts", "tradeRoutesModule.test.ts"],
+      "scenarioFixtures": [],
+      "minimumPublicScenarioNeeded": "Add full-flow solo Bot scenario fixtures with fallback, payment, and human-facing choices."
+    },
+    {
+      "id": "cost-payment-substitution",
+      "contractArea": "Cost-before-benefit and payment substitution",
+      "status": "covered",
+      "evidenceTests": ["effectRunner.test.ts", "progression.test.ts", "turnLoop.test.ts"],
+      "scenarioFixtures": ["scenarios.json"]
+    },
+    {
+      "id": "reactive-exhaust-timing",
+      "contractArea": "Reactive Exhaust timing between effect sentences",
+      "status": "covered",
+      "evidenceTests": ["turnLoop.test.ts", "effectRunner.test.ts", "tradeRoutesModule.test.ts", "progression.test.ts", "soloBotReview.test.ts", "scoring.test.ts"],
+      "scenarioFixtures": [],
+      "minimumPublicScenarioNeeded": "Add scenario fixtures that chain reactive Exhaust windows with other pending-choice continuations."
+    },
+    {
+      "id": "pending-choices-resume",
+      "contractArea": "Pending choices and resume effects",
+      "status": "covered",
+      "evidenceTests": ["turnLoop.test.ts", "effectRunner.test.ts", "progression.test.ts", "tradeRoutesModule.test.ts", "uiSelectionModel.test.ts", "fictionalScenarioSmoke.test.ts"],
+      "scenarioFixtures": ["scenarios.json"],
+      "minimumPublicScenarioNeeded": "Add longer end-to-end scenarios with multiple interruption types in one turn."
+    },
+    {
+      "id": "rollback-nested-effects",
+      "contractArea": "Rollback after failed nested hooks and effects",
+      "status": "covered",
+      "evidenceTests": ["turnLoop.test.ts", "progression.test.ts", "tradeRoutesModule.test.ts", "soloBotReview.test.ts"],
+      "scenarioFixtures": []
+    },
+    {
+      "id": "market-slots-resources-refill",
+      "contractArea": "Market slots, tucked Unrest, resources, and refill source decks",
+      "status": "covered",
+      "evidenceTests": ["effectRunner.test.ts", "turnLoop.test.ts", "commonsDeckConstruction.test.ts", "setupPipeline.test.ts", "tradeRoutesModule.test.ts", "soloBotReview.test.ts", "fictionalScenarioSmoke.test.ts"],
+      "scenarioFixtures": ["scenarios.json"]
+    },
+    {
+      "id": "fame-bottom-card",
+      "contractArea": "Fame deck and special bottom-card timing",
+      "status": "covered",
+      "evidenceTests": ["fame.test.ts", "effectRunner.test.ts", "turnLoop.test.ts", "scoring.test.ts", "soloBotReview.test.ts"],
+      "scenarioFixtures": [],
+      "minimumPublicScenarioNeeded": "Add a public-safe scenario that crosses ordinary Fame into special bottom-card timing."
+    },
+    {
+      "id": "exile-history-routing",
+      "contractArea": "Exile, History, History replacement, and no-History routing",
+      "status": "covered",
+      "evidenceTests": ["effectRunner.test.ts", "turnLoop.test.ts", "setupPipeline.test.ts", "scoring.test.ts", "exile.test.ts", "tradeRoutesModule.test.ts"],
+      "scenarioFixtures": []
+    },
+    {
+      "id": "garrison-region-scoring",
+      "contractArea": "Garrison host and child movement and resource collection",
+      "status": "covered",
+      "evidenceTests": ["effectRunner.test.ts", "regions.test.ts", "zones.test.ts", "turnLoop.test.ts", "scoring.test.ts"],
+      "scenarioFixtures": [],
+      "minimumPublicScenarioNeeded": "Add an end-to-end Garrison or Region movement scenario followed by scoring-relevant state."
+    },
+    {
+      "id": "return-give-swap-look-find",
+      "contractArea": "Return, Give, Swap, Look, and Find keyword edge cases",
+      "status": "covered",
+      "evidenceTests": ["effectRunner.test.ts", "turnLoop.test.ts", "scoring.test.ts", "uiSelectionModel.test.ts"],
+      "scenarioFixtures": []
+    },
+    {
+      "id": "solo-bot-setup-campaign",
+      "contractArea": "Solo Bot setup, Dynasty, difficulty, scoring, and campaign modifiers",
+      "status": "covered",
+      "evidenceTests": ["soloBotReview.test.ts", "setupPipeline.test.ts", "scoring.test.ts", "campaign.test.ts", "commonsSelection.test.ts", "commonsSetup.test.ts", "gameOptions.test.ts"],
+      "scenarioFixtures": [],
+      "minimumPublicScenarioNeeded": "Add public-safe solo Bot campaign handoff scenarios."
+    },
+    {
+      "id": "solo-bot-table-resolution",
+      "contractArea": "Solo Bot table resolution, fallback, payment/refund, and Trade Routes rows",
+      "status": "covered",
+      "evidenceTests": ["soloBotReview.test.ts", "tradeRoutesModule.test.ts", "botTableCli.test.ts", "scoring.test.ts"],
+      "scenarioFixtures": [],
+      "minimumPublicScenarioNeeded": "Add full-flow solo Bot fallback scenarios with human reactive windows."
+    },
+    {
+      "id": "practice-mode",
+      "contractArea": "Practice mode market churn and scoring timing",
+      "status": "covered",
+      "evidenceTests": ["soloPracticeModes.test.ts", "turnLoop.test.ts", "setupPipeline.test.ts", "scoring.test.ts"],
+      "scenarioFixtures": []
+    },
+    {
+      "id": "campaign-progression",
+      "contractArea": "Campaign result and progression metadata",
+      "status": "covered",
+      "evidenceTests": ["campaign.test.ts", "setupPipeline.test.ts", "scoring.test.ts", "commonsSelection.test.ts", "commonsSetup.test.ts", "gameOptions.test.ts", "EndGameSummary.test.tsx"],
+      "scenarioFixtures": [],
+      "minimumPublicScenarioNeeded": "Add a public-safe campaign end and next-game setup scenario."
+    },
+    {
+      "id": "ui-move-availability",
+      "contractArea": "UI move availability, hidden-info selectors, and public move map",
+      "status": "covered",
+      "evidenceTests": ["uiSelectors.test.ts", "uiSelectionModel.test.ts", "turnLoop.test.ts", "privateCardEntryNavigation.test.tsx", "BoardLayout.test.tsx"],
+      "scenarioFixtures": []
+    },
+    {
+      "id": "private-data-completeness",
+      "contractArea": "Private data completeness",
+      "status": "private-data-only",
+      "evidenceTests": [],
+      "scenarioFixtures": [],
+      "minimumPublicScenarioNeeded": "None. This remains local private transcription and completeness reporting."
+    }
+  ]
+}

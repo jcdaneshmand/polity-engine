@@ -125,9 +125,11 @@ async function main() {
 }
 
 main().then(
-  () => process.exit(0),
+  () => {
+    process.exitCode = 0;
+  },
   (error) => {
     console.error(error instanceof Error ? error.message : error);
-    process.exit(1);
+    process.exitCode = 1;
   }
 );

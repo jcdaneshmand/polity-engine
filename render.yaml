@@ -2,7 +2,7 @@ services:
   - type: web
     name: polity-engine
     runtime: node
-    plan: free
+    plan: starter
     rootDir: imperium-like-digital-prototype
     buildCommand: npm ci && npm run build -w app && npm run typecheck
     startCommand: npm run start

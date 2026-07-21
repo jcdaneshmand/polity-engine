@@ -584,6 +584,8 @@ Update `imperium-like-digital-prototype/docs/deployment.md` with:
 
 Execution note: `imperium-like-digital-prototype/docs/deployment.md` now records the selected source branch, the `6c4e891` local-gate commit, the hosted smoke 404, the hosted browser QA 404, and the required next action: redeploy the selected branch or provide the actual public origin. Storage/restart and private-debug disabled proof still require a live hosted service.
 
+Execution note: added `imperium-like-digital-prototype/docs/hosted-release-handoff.md` with the candidate branch, current pushed head, Render settings to confirm, current hosted 404 evidence, exact hosted smoke/browser QA commands, expected proof, and the explicit instruction to keep private data out until hosted proof passes.
+
 ---
 
 ## Task 8: Private Data Final Gate

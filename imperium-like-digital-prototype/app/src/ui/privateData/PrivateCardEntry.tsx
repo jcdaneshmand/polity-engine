@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Papa from "papaparse";
 import type { PrivateCardCsvRow } from "../../../../tools/card-import/cardCsvTypes";
+import { validatePrivateCardsRows } from "../../../../tools/card-import/validatePrivateCards";
 import type { PrivateNationCsvRow } from "../../../../tools/card-import/nationCsvTypes";
 import type { NationRulesetTag } from "../../../../engine/src/nations/nationRulesetTypes";
 import type { PrivateNationRulesetCsvRow } from "../../../../tools/card-import/nationRulesetCsvTypes";
@@ -99,11 +100,68 @@ type WindowWithFilePicker = Window & {
 
 type ValidationMessage = {
   level: "fatal" | "warning";
+  row?: number;
   field: string;
   message: string;
 };
 
 type PrivateEntryMode = "cards" | "nations" | "bot-state" | "bot-trade";
+
+const privateEntryDraftStorageKey = "polity.privateEntry.autosave.v1";
+
+type PrivateEntryDraftSnapshot = {
+  entryMode: PrivateEntryMode;
+  profileId: string;
+  nationId: string;
+  rows: PrivateCardCsvRow[];
+  draft: CardEntryDraft;
+  fileName: string;
+  cardDirty: boolean;
+  nationRows: PrivateNationCsvRow[];
+  nationDraft: NationEntryDraft;
+  nationFileName: string;
+  nationDirty: boolean;
+  selectedNationCardRoles: NationCardRole[];
+  rulesetRows: PrivateNationRulesetCsvRow[];
+  rulesetDraft: NationRulesetEntryDraft;
+  rulesetFileName: string;
+  rulesetDirty: boolean;
+  botStateRows: PrivateBotStateTableCsvRow[];
+  botStateDraft: BotStateTableEntryDraft;
+  botStateFileName: string;
+  botStateDirty: boolean;
+  botTradeRows: PrivateBotTradeRoutesTableCsvRow[];
+  botTradeDraft: BotTradeRoutesTableEntryDraft;
+  botTradeFileName: string;
+  botTradeDirty: boolean;
+  botTradeNationId: string;
+  variableVpDetails: VariableVpDraftDetails;
+  formDraftDirty: boolean;
+  savedAt: string;
+};
+
+function readPrivateEntryDraftSnapshot(): PrivateEntryDraftSnapshot | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(privateEntryDraftStorageKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<PrivateEntryDraftSnapshot>;
+    if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.rows)) return null;
+    return parsed as PrivateEntryDraftSnapshot;
+  } catch {
+    return null;
+  }
+}
+
+function writePrivateEntryDraftSnapshot(snapshot: PrivateEntryDraftSnapshot) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(privateEntryDraftStorageKey, JSON.stringify(snapshot));
+}
+
+function clearPrivateEntryDraftSnapshot() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(privateEntryDraftStorageKey);
+}
 
 function profileFromSelection(profileId: string, nationId: string): CardEntryBatchProfile {
   if (profileId === "nation-custom") return createNationBatchProfile(nationId.trim());
@@ -181,26 +239,12 @@ function toBotTradeRoutesTableCsv(rows: PrivateBotTradeRoutesTableCsvRow[]): str
 }
 
 function validateRows(rows: PrivateCardCsvRow[]): ValidationMessage[] {
-  const messages: ValidationMessage[] = [];
-  const seen = new Set<string>();
-  rows.forEach((row, index) => {
-    const rowNumber = index + 2;
-    const cardId = row.card_id?.trim();
-    for (const field of ["card_id", "public_placeholder_name", "suit", "card_type", "starting_location", "vp_mode", "implemented", "tested"]) {
-      if (!row[field]?.trim()) messages.push({ level: "fatal", field, message: `Row ${rowNumber}: required field missing` });
-    }
-    if (cardId) {
-      if (seen.has(cardId)) messages.push({ level: "fatal", field: "card_id", message: `Row ${rowNumber}: duplicate card_id` });
-      seen.add(cardId);
-    }
-    if (row.raw_effect_text_private?.trim() && !row.effect_ops_json?.trim()) {
-      messages.push({ level: "warning", field: "effect_ops_json", message: `Row ${rowNumber}: raw private text present but effect ops are blank` });
-    }
-    if (row.card_name_private?.trim() && row.card_name_private.trim() === row.public_placeholder_name?.trim()) {
-      messages.push({ level: "warning", field: "public_placeholder_name", message: `Row ${rowNumber}: placeholder matches private name` });
-    }
-  });
-  return messages;
+  return validatePrivateCardsRows(rows).errors.map((error) => ({
+    level: error.level,
+    row: error.row,
+    field: error.field,
+    message: `Row ${error.row}: ${error.message}`
+  }));
 }
 
 function isIntegerOrBlank(value: string | undefined): boolean {
@@ -297,50 +341,53 @@ function downloadCsv(filename: string, content: string) {
 }
 
 export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
-  const [entryMode, setEntryMode] = useState<PrivateEntryMode>("cards");
-  const [profileId, setProfileId] = useState(commonsBatchProfiles[0].id);
-  const [nationId, setNationId] = useState("");
-  const [rows, setRows] = useState<PrivateCardCsvRow[]>([]);
-  const [draft, setDraft] = useState<CardEntryDraft>({ ...createBlankCardDraft(commonsBatchProfiles[0]), cardId: "1" });
+  const restoredSnapshot = useMemo(() => readPrivateEntryDraftSnapshot(), []);
+  const [entryMode, setEntryMode] = useState<PrivateEntryMode>(restoredSnapshot?.entryMode ?? "cards");
+  const [profileId, setProfileId] = useState(restoredSnapshot?.profileId ?? commonsBatchProfiles[0].id);
+  const [nationId, setNationId] = useState(restoredSnapshot?.nationId ?? "");
+  const [rows, setRows] = useState<PrivateCardCsvRow[]>(restoredSnapshot?.rows ?? []);
+  const [draft, setDraft] = useState<CardEntryDraft>(restoredSnapshot?.draft ?? { ...createBlankCardDraft(commonsBatchProfiles[0]), cardId: "1" });
   const [previousDraft, setPreviousDraft] = useState<CardEntryDraft | null>(null);
-  const [fileName, setFileName] = useState("imperium_cards_private.csv");
-  const [status, setStatus] = useState("No private CSV loaded. New saves stay in this browser until exported.");
+  const [fileName, setFileName] = useState(restoredSnapshot?.fileName ?? "imperium_cards_private.csv");
+  const [status, setStatus] = useState(restoredSnapshot ? `Restored local draft from ${new Date(restoredSnapshot.savedAt).toLocaleString()}.` : "No private CSV loaded. New saves stay in this browser until exported.");
   const [fileHandle, setFileHandle] = useState<FileSystemFileHandleLike | null>(null);
-  const [cardDirty, setCardDirty] = useState(false);
-  const [variableVpDetails, setVariableVpDetails] = useState<VariableVpDraftDetails>({
+  const [cardDirty, setCardDirty] = useState(restoredSnapshot?.cardDirty ?? false);
+  const [variableVpDetails, setVariableVpDetails] = useState<VariableVpDraftDetails>(restoredSnapshot?.variableVpDetails ?? {
     formula: "per_card",
     amountEach: "1",
     target: "",
     cap: "",
     note: ""
   });
-  const [nationRows, setNationRows] = useState<PrivateNationCsvRow[]>([]);
-  const [nationDraft, setNationDraft] = useState<NationEntryDraft>(createBlankNationDraft("1"));
-  const [nationFileName, setNationFileName] = useState("imperium_nations_private.csv");
-  const [nationStatus, setNationStatus] = useState("No private nation CSV loaded. New nation rows stay in this browser until exported.");
+  const [nationRows, setNationRows] = useState<PrivateNationCsvRow[]>(restoredSnapshot?.nationRows ?? []);
+  const [nationDraft, setNationDraft] = useState<NationEntryDraft>(restoredSnapshot?.nationDraft ?? createBlankNationDraft("1"));
+  const [nationFileName, setNationFileName] = useState(restoredSnapshot?.nationFileName ?? "imperium_nations_private.csv");
+  const [nationStatus, setNationStatus] = useState(restoredSnapshot ? "Restored local nation draft." : "No private nation CSV loaded. New nation rows stay in this browser until exported.");
   const [nationFileHandle, setNationFileHandle] = useState<FileSystemFileHandleLike | null>(null);
-  const [nationDirty, setNationDirty] = useState(false);
-  const [selectedNationCardRoles, setSelectedNationCardRoles] = useState<NationCardRole[]>(["nation"]);
-  const [rulesetRows, setRulesetRows] = useState<PrivateNationRulesetCsvRow[]>([]);
-  const [rulesetDraft, setRulesetDraft] = useState<NationRulesetEntryDraft>(createBlankNationRulesetDraft());
-  const [rulesetFileName, setRulesetFileName] = useState("imperium_nation_rulesets_private.csv");
-  const [rulesetStatus, setRulesetStatus] = useState("No private ruleset CSV loaded. Builder traits stay in this browser until exported.");
+  const [nationDirty, setNationDirty] = useState(restoredSnapshot?.nationDirty ?? false);
+  const [selectedNationCardRoles, setSelectedNationCardRoles] = useState<NationCardRole[]>(restoredSnapshot?.selectedNationCardRoles ?? ["nation"]);
+  const [rulesetRows, setRulesetRows] = useState<PrivateNationRulesetCsvRow[]>(restoredSnapshot?.rulesetRows ?? []);
+  const [rulesetDraft, setRulesetDraft] = useState<NationRulesetEntryDraft>(restoredSnapshot?.rulesetDraft ?? createBlankNationRulesetDraft());
+  const [rulesetFileName, setRulesetFileName] = useState(restoredSnapshot?.rulesetFileName ?? "imperium_nation_rulesets_private.csv");
+  const [rulesetStatus, setRulesetStatus] = useState(restoredSnapshot ? "Restored local ruleset draft." : "No private ruleset CSV loaded. Builder traits stay in this browser until exported.");
   const [rulesetFileHandle, setRulesetFileHandle] = useState<FileSystemFileHandleLike | null>(null);
-  const [rulesetDirty, setRulesetDirty] = useState(false);
-  const [botStateRows, setBotStateRows] = useState<PrivateBotStateTableCsvRow[]>([]);
-  const [botStateDraft, setBotStateDraft] = useState<BotStateTableEntryDraft>(createBlankBotStateTableDraft());
-  const [botStateFileName, setBotStateFileName] = useState("imperium_bot_state_tables_private.csv");
-  const [botStateStatus, setBotStateStatus] = useState("No bot state table CSV loaded. New rows stay in this browser until exported.");
+  const [rulesetDirty, setRulesetDirty] = useState(restoredSnapshot?.rulesetDirty ?? false);
+  const [botStateRows, setBotStateRows] = useState<PrivateBotStateTableCsvRow[]>(restoredSnapshot?.botStateRows ?? []);
+  const [botStateDraft, setBotStateDraft] = useState<BotStateTableEntryDraft>(restoredSnapshot?.botStateDraft ?? createBlankBotStateTableDraft());
+  const [botStateFileName, setBotStateFileName] = useState(restoredSnapshot?.botStateFileName ?? "imperium_bot_state_tables_private.csv");
+  const [botStateStatus, setBotStateStatus] = useState(restoredSnapshot ? "Restored local bot state draft." : "No bot state table CSV loaded. New rows stay in this browser until exported.");
   const [botStateFileHandle, setBotStateFileHandle] = useState<FileSystemFileHandleLike | null>(null);
-  const [botStateDirty, setBotStateDirty] = useState(false);
-  const [botTradeRows, setBotTradeRows] = useState<PrivateBotTradeRoutesTableCsvRow[]>([]);
-  const [botTradeDraft, setBotTradeDraft] = useState<BotTradeRoutesTableEntryDraft>(createBlankBotTradeRoutesTableDraft());
-  const [botTradeFileName, setBotTradeFileName] = useState("imperium_bot_trade_routes_private.csv");
-  const [botTradeStatus, setBotTradeStatus] = useState("No bot trade route table CSV loaded. New rows stay in this browser until exported.");
+  const [botStateDirty, setBotStateDirty] = useState(restoredSnapshot?.botStateDirty ?? false);
+  const [botTradeRows, setBotTradeRows] = useState<PrivateBotTradeRoutesTableCsvRow[]>(restoredSnapshot?.botTradeRows ?? []);
+  const [botTradeDraft, setBotTradeDraft] = useState<BotTradeRoutesTableEntryDraft>(restoredSnapshot?.botTradeDraft ?? createBlankBotTradeRoutesTableDraft());
+  const [botTradeFileName, setBotTradeFileName] = useState(restoredSnapshot?.botTradeFileName ?? "imperium_bot_trade_routes_private.csv");
+  const [botTradeStatus, setBotTradeStatus] = useState(restoredSnapshot ? "Restored local bot trade draft." : "No bot trade route table CSV loaded. New rows stay in this browser until exported.");
   const [botTradeFileHandle, setBotTradeFileHandle] = useState<FileSystemFileHandleLike | null>(null);
-  const [botTradeDirty, setBotTradeDirty] = useState(false);
-  const [botTradeNationId, setBotTradeNationId] = useState("");
+  const [botTradeDirty, setBotTradeDirty] = useState(restoredSnapshot?.botTradeDirty ?? false);
+  const [botTradeNationId, setBotTradeNationId] = useState(restoredSnapshot?.botTradeNationId ?? "");
+  const [formDraftDirty, setFormDraftDirty] = useState(restoredSnapshot?.formDraftDirty ?? false);
   const [suitSelectElement, setSuitSelectElement] = useState<HTMLSelectElement | null>(null);
+  const [autosaveReady, setAutosaveReady] = useState(false);
 
   const selectedProfile = useMemo(() => profileFromSelection(profileId, nationId), [profileId, nationId]);
   const isNationBatch = profileId === "nation-custom";
@@ -385,10 +432,12 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
 
   const updateDraft = (field: keyof CardEntryDraft, value: string) => {
     setDraft((current) => ({ ...current, [field]: value }));
+    setFormDraftDirty(true);
   };
 
   const updateNationDraft = (field: keyof NationEntryDraft, value: string) => {
     setNationDraft((current) => ({ ...current, [field]: value }));
+    setFormDraftDirty(true);
     if (field === "nationId") setNationId(value);
     if (field === "nationId") setRulesetDraft((current) => ({ ...current, nationId: value }));
     if (field === "privateName") setRulesetDraft((current) => ({ ...current, privateName: value }));
@@ -397,14 +446,17 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
 
   const updateRulesetDraft = (field: keyof NationRulesetEntryDraft, value: string) => {
     setRulesetDraft((current) => ({ ...current, [field]: value }));
+    setFormDraftDirty(true);
   };
 
   const updateBotStateDraft = (field: keyof BotStateTableEntryDraft, value: string) => {
     setBotStateDraft((current) => ({ ...current, [field]: value }));
+    setFormDraftDirty(true);
   };
 
   const updateBotTradeDraft = (field: keyof BotTradeRoutesTableEntryDraft, value: string) => {
     setBotTradeDraft((current) => ({ ...current, [field]: value }));
+    setFormDraftDirty(true);
   };
 
   const draftChange = (field: keyof CardEntryDraft) => (event: { target: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement }) => {
@@ -419,6 +471,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
     const value = event.target.value;
     setNationDraft((current) => ({ ...current, privateName: value, publicPlaceholderName: value }));
     setRulesetDraft((current) => ({ ...current, privateName: value, publicPlaceholderName: value }));
+    setFormDraftDirty(true);
   };
 
   const rulesetDraftChange = (field: keyof NationRulesetEntryDraft) => (event: { target: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement }) => {
@@ -442,6 +495,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
   const toggleNationCardRole = (role: NationCardRole) => {
     const isSelected = selectedNationCardRoles.includes(role);
     setSelectedNationCardRoles((current) => current.includes(role) ? current.filter((value) => value !== role) : [...current, role]);
+    setFormDraftDirty(true);
     if (!isSelected) {
       applyNationCardRoleDefaults(role);
     }
@@ -449,22 +503,27 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
 
   const toggleSuitIcon = (suitIcon: string) => {
     setDraft((current) => toggleDraftSuitIcon(current, suitIcon));
+    setFormDraftDirty(true);
   };
 
   const updateVariableVpDetail = (field: keyof VariableVpDraftDetails, value: string) => {
     setVariableVpDetails((current) => ({ ...current, [field]: value }));
+    setFormDraftDirty(true);
   };
 
   const applyVariableVpDetails = () => {
     setDraft((current) => applyVariableVpDraftDetails(current, variableVpDetails));
+    setFormDraftDirty(true);
   };
 
   const insertSpecialSetupTemplate = (template: typeof specialSetupTemplates[number]["value"]) => {
     setNationDraft((current) => insertNationJsonTemplate(current, "specialSetupJson", template));
+    setFormDraftDirty(true);
   };
 
   const insertPassiveRuleTemplate = (template: typeof passiveRuleTemplates[number]["value"]) => {
     setNationDraft((current) => insertNationJsonTemplate(current, "passiveRulesJson", template));
+    setFormDraftDirty(true);
   };
 
   const createAutoNumberedDraft = (profile: CardEntryBatchProfile, availableRows = rows): CardEntryDraft => ({
@@ -492,6 +551,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
       botNationId: selectedNationId,
       tableId: getNextBotStateTableId(botStateRows, selectedNationId)
     }));
+    setFormDraftDirty(true);
   };
 
   const changeBotTradeNation = (selectedNationId: string) => {
@@ -500,6 +560,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
       ...current,
       tableId: getNextBotTradeRoutesTableId(botTradeRows, selectedNationId)
     }));
+    setFormDraftDirty(true);
   };
 
   const inferBotTradeNationId = (tableId: string): string =>
@@ -568,6 +629,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
       setRows(nextRows);
       resetDraftForProfile(selectedProfile, nextRows);
       setCardDirty(false);
+      setFormDraftDirty(false);
       setStatus(`Loaded ${file.name}.`);
       return;
     }
@@ -582,6 +644,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
     setRows(nextRows);
     resetDraftForProfile(selectedProfile, nextRows);
     setCardDirty(false);
+    setFormDraftDirty(false);
     setStatus(`Loaded ${file.name}. Saving will download a replacement CSV.`);
   };
 
@@ -598,6 +661,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
       setNationFileName(file.name);
       setNationRows(nextRows);
       setNationDirty(false);
+      setFormDraftDirty(false);
       const firstNation = sortNationRowsByName(nextRows)[0];
       if (firstNation?.nation_id) selectNation(firstNation.nation_id, nextRows);
       else setNationDraft(createAutoNumberedNationDraft(nextRows));
@@ -614,6 +678,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
     setNationFileName(file.name);
     setNationRows(nextRows);
     setNationDirty(false);
+    setFormDraftDirty(false);
     const firstNation = sortNationRowsByName(nextRows)[0];
     if (firstNation?.nation_id) selectNation(firstNation.nation_id, nextRows);
     else setNationDraft(createAutoNumberedNationDraft(nextRows));
@@ -633,6 +698,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
       setRulesetFileName(file.name);
       setRulesetRows(nextRows);
       setRulesetDirty(false);
+      setFormDraftDirty(false);
       if (nationId) selectRulesetForNation(nationId, nextRows);
       setRulesetStatus(`Loaded ${file.name}.`);
       return;
@@ -647,6 +713,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
     setRulesetFileName(file.name);
     setRulesetRows(nextRows);
     setRulesetDirty(false);
+    setFormDraftDirty(false);
     if (nationId) selectRulesetForNation(nationId, nextRows);
     setRulesetStatus(`Loaded ${file.name}. Saving will download a replacement CSV.`);
   };
@@ -665,6 +732,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
       setBotStateRows(nextRows);
       setBotStateDraft(nextRows[0] ? botStateTableRowToDraft(nextRows[0]) : createBotStateDraftForNation(botStateNationId, nextRows));
       setBotStateDirty(false);
+      setFormDraftDirty(false);
       setBotStateStatus(`Loaded ${file.name}.`);
       return;
     }
@@ -679,6 +747,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
     setBotStateRows(nextRows);
     setBotStateDraft(nextRows[0] ? botStateTableRowToDraft(nextRows[0]) : createBotStateDraftForNation(botStateNationId, nextRows));
     setBotStateDirty(false);
+    setFormDraftDirty(false);
     setBotStateStatus(`Loaded ${file.name}. Saving will download a replacement CSV.`);
   };
 
@@ -698,6 +767,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
       setBotTradeDraft(nextDraft);
       setBotTradeNationId(inferBotTradeNationId(nextDraft.tableId));
       setBotTradeDirty(false);
+      setFormDraftDirty(false);
       setBotTradeStatus(`Loaded ${file.name}.`);
       return;
     }
@@ -714,6 +784,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
     setBotTradeDraft(nextDraft);
     setBotTradeNationId(inferBotTradeNationId(nextDraft.tableId));
     setBotTradeDirty(false);
+    setFormDraftDirty(false);
     setBotTradeStatus(`Loaded ${file.name}. Saving will download a replacement CSV.`);
   };
 
@@ -731,6 +802,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
     }
     setRows(nextRows);
     setCardDirty(true);
+    setFormDraftDirty(false);
     setPreviousDraft(draftForSave);
     setDraft(createAutoNumberedDraft(selectedProfile, nextRows));
     if (isNationBatch && selectedNationCardRoles.length > 0 && row.card_id.trim()) {
@@ -767,6 +839,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
     }
     setNationRows(nextRows);
     setNationDirty(true);
+    setFormDraftDirty(false);
     setNationId(row.nation_id.trim());
     setNationDraft(nationRowToDraft(row));
     resetDraftForProfile(createNationBatchProfile(row.nation_id.trim()));
@@ -796,6 +869,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
     }
     setRulesetRows(nextRows);
     setRulesetDirty(true);
+    setFormDraftDirty(false);
     setRulesetDraft((current) => ({ ...current, nationId: row.nation_id.trim() }));
     setRulesetStatus(`Saved ruleset ${row.nation_id}. Rows: ${nextRows.length}.`);
   };
@@ -811,6 +885,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
     }
     setBotStateRows(nextRows);
     setBotStateDirty(true);
+    setFormDraftDirty(false);
     setBotStateStatus(`Saved bot state row ${row.row_id}. Rows: ${nextRows.length}.`);
   };
 
@@ -825,6 +900,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
     }
     setBotTradeRows(nextRows);
     setBotTradeDirty(true);
+    setFormDraftDirty(false);
     setBotTradeStatus(`Saved bot trade ${row.row_type} row. Rows: ${nextRows.length}.`);
   };
 
@@ -913,7 +989,91 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
       return;
     }
     setDraft({ ...duplicateCardDraft(previousDraft, { includePrivateText }), cardId: getNextNumericCardId(rows) });
+    setFormDraftDirty(true);
   };
+
+  const hasUnsavedPrivateEntryWork = cardDirty || nationDirty || rulesetDirty || botStateDirty || botTradeDirty || formDraftDirty;
+
+  useEffect(() => {
+    if (!autosaveReady) {
+      setAutosaveReady(true);
+      return;
+    }
+    if (!hasUnsavedPrivateEntryWork) {
+      clearPrivateEntryDraftSnapshot();
+      return;
+    }
+    writePrivateEntryDraftSnapshot({
+      entryMode,
+      profileId,
+      nationId,
+      rows,
+      draft,
+      fileName,
+      cardDirty,
+      nationRows,
+      nationDraft,
+      nationFileName,
+      nationDirty,
+      selectedNationCardRoles,
+      rulesetRows,
+      rulesetDraft,
+      rulesetFileName,
+      rulesetDirty,
+      botStateRows,
+      botStateDraft,
+      botStateFileName,
+      botStateDirty,
+      botTradeRows,
+      botTradeDraft,
+      botTradeFileName,
+      botTradeDirty,
+      botTradeNationId,
+      variableVpDetails,
+      formDraftDirty,
+      savedAt: new Date().toISOString()
+    });
+  }, [
+    botStateDirty,
+    botStateDraft,
+    botStateFileName,
+    botStateRows,
+    botTradeDirty,
+    botTradeDraft,
+    botTradeFileName,
+    botTradeNationId,
+    botTradeRows,
+    cardDirty,
+    draft,
+    entryMode,
+    fileName,
+    formDraftDirty,
+    autosaveReady,
+    hasUnsavedPrivateEntryWork,
+    nationDirty,
+    nationDraft,
+    nationFileName,
+    nationId,
+    nationRows,
+    profileId,
+    rows,
+    rulesetDirty,
+    rulesetDraft,
+    rulesetFileName,
+    rulesetRows,
+    selectedNationCardRoles,
+    variableVpDetails
+  ]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!hasUnsavedPrivateEntryWork) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasUnsavedPrivateEntryWork]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -981,7 +1141,11 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
 
             <div className={`private-entry-status ${fatalCount > 0 ? "is-error" : ""}`}>
               <span>{status}</span>
-              <span>{cardDirty ? <strong className="private-entry-unsaved">Card CSV changed</strong> : null}{rows.length} rows / {fatalCount} fatal / {warningCount} warnings</span>
+              <span>
+                {cardDirty ? <strong className="private-entry-unsaved">Card CSV changed</strong> : null}
+                {formDraftDirty ? <strong className="private-entry-unsaved">Draft autosaved</strong> : null}
+                {rows.length} rows / {fatalCount} fatal / {warningCount} warnings
+              </span>
             </div>
 
             <div className="private-entry-shortcuts">

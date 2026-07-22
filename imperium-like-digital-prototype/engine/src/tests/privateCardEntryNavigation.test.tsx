@@ -39,6 +39,15 @@ describe("private card entry navigation", () => {
     expect(html).not.toContain("Private Name <input");
   });
 
+  it("reuses the import validator and protects browser drafts", () => {
+    const source = fs.readFileSync(path.resolve(import.meta.dirname, "../../../app/src/ui/privateData/PrivateCardEntry.tsx"), "utf8");
+
+    expect(source).toContain("validatePrivateCardsRows");
+    expect(source).toContain("polity.privateEntry.autosave.v1");
+    expect(source).toContain("beforeunload");
+    expect(source).toContain("Draft autosaved");
+  });
+
   it("offers every runtime card type in the private card entry selector", () => {
     expect(cardTypeOptions).toEqual(expect.arrayContaining(["unit", "technology", "legacy"]));
   });

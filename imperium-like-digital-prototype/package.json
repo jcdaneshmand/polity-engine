@@ -26,7 +26,7 @@
     "test:local-qa-scripts": "node --test ../scripts/local-playtest-server.test.mjs ../scripts/local-browser-qa.test.mjs ../scripts/hosted-browser-qa.test.mjs ../scripts/local-hosted-smoke.test.mjs",
     "test": "npm run test -w engine",
     "typecheck": "npm run typecheck -w engine && npm run typecheck -w app && npm run typecheck -w server",
-    "cards:validate": "tsx tools/card-import/validatePrivateCards.ts",
+    "cards:validate": "tsx tools/card-import/validatePrivateCardsCli.ts",
     "cards:import": "tsx tools/card-import/importPrivateCards.ts",
     "cards:report": "tsx tools/card-import/importPrivateCards.ts --print-report generated-private/card-import-report.json",
     "nations:validate": "tsx tools/card-import/validatePrivateNations.ts",

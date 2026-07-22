@@ -1,4 +1,3 @@
-import { parseCsvFile } from "./csvParser";
 import type { CardImportError, CardImportReport, PrivateCardCsvRow } from "./cardCsvTypes";
 import { collectInvalidResourceNames } from "./normalizeResources";
 
@@ -805,12 +804,4 @@ export function validatePrivateCardsRows(rows: PrivateCardCsvRow[]): CardImportR
   });
   const fatal=errors.filter(e=>e.level==="fatal").length; const warnings=errors.filter(e=>e.level==="warning").length;
   return { errors, counts:{rows:rows.length,validRows,fatal,warnings}, coverage:{implemented,tested} };
-}
-
-if (process.argv[1]?.endsWith("validatePrivateCards.ts")) {
-  const input = process.argv[process.argv.indexOf("--input") + 1];
-  if (!input) throw new Error("Usage: --input <csv>");
-  const report = validatePrivateCardsRows(parseCsvFile(input));
-  console.log(`rows=${report.counts.rows} valid=${report.counts.validRows} fatal=${report.counts.fatal} warnings=${report.counts.warnings}`);
-  if (report.counts.fatal > 0) process.exitCode = 1;
 }

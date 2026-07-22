@@ -279,6 +279,33 @@ export function createAccountStore(options: AccountStoreOptions = {}) {
       return { ok: true, ...sessionForAccount(account) };
     },
 
+    updateAccountByAdmin(accountID: string, input: Partial<AccountCreateInput> & { role?: AccountRecord["role"] }): { ok: true; account: AccountPublicView } | { ok: false; reason: AccountFailureReason } {
+      const account = accounts.get(accountID);
+      if (!account) return { ok: false, reason: "account_not_found" };
+      const email = input.email?.trim().toLowerCase();
+      const username = input.username?.trim();
+      if (input.email !== undefined && !email) return { ok: false, reason: "invalid_account" };
+      if (input.username !== undefined && !username) return { ok: false, reason: "invalid_account" };
+      if (input.password !== undefined && input.password.length < MIN_PASSWORD_LENGTH) return { ok: false, reason: "invalid_account" };
+      const emailOwner = email ? findByEmail(email) : undefined;
+      if (emailOwner && emailOwner.id !== accountID) return { ok: false, reason: "email_taken" };
+      const usernameOwner = username ? findByUsername(username) : undefined;
+      if (usernameOwner && usernameOwner.id !== accountID) return { ok: false, reason: "username_taken" };
+      if (input.role !== undefined) account.role = input.role;
+      if (email) {
+        account.email = email;
+        account.emailKey = key(email);
+      }
+      if (username) {
+        account.username = username;
+        account.usernameKey = key(username);
+      }
+      if (input.password !== undefined) setPassword(account, input.password, now());
+      else account.updatedAt = now();
+      persist();
+      return { ok: true, account: publicAccount(account) };
+    },
+
     ensureDefaultAdmin(input: AccountCreateInput): { ok: true; account: AccountPublicView } | { ok: false; reason: AccountFailureReason } {
       const existing = findByEmail(input.email) ?? findByUsername(input.username);
       if (existing) {

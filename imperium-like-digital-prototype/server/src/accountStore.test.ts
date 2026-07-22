@@ -47,6 +47,38 @@ describe("account store", () => {
     });
   });
 
+  it("lets an admin path update account identity and credentials", () => {
+    const store = accountStore();
+    const created = store.createAccountWithRole({ email: "bootstrap@example.com", username: "Bootstrap", password: "admin123", role: "admin" });
+    if (!created.ok) throw new Error("account create failed");
+
+    expect(store.updateAccountByAdmin(created.account.id, {
+      email: "Jonah@Example.com",
+      username: "Xenokinesis",
+      password: "changed123",
+      role: "admin"
+    })).toEqual({
+      ok: true,
+      account: expect.objectContaining({ email: "jonah@example.com", username: "Xenokinesis", role: "admin" })
+    });
+    expect(store.signIn({ login: "bootstrap@example.com", password: "admin123" })).toEqual({ ok: false, reason: "invalid_credentials" });
+    expect(store.signIn({ login: "xenokinesis", password: "changed123" })).toEqual({
+      ok: true,
+      account: expect.objectContaining({ email: "jonah@example.com", username: "Xenokinesis", role: "admin" }),
+      token: expect.stringMatching(/^token-\d+$/)
+    });
+  });
+
+  it("prevents admin account updates from taking another account email or username", () => {
+    const store = accountStore();
+    const first = store.createAccountWithRole({ email: "first@example.com", username: "First", password: "secret123", role: "admin" });
+    const second = store.createAccountWithRole({ email: "second@example.com", username: "Second", password: "secret123", role: "player" });
+    if (!first.ok || !second.ok) throw new Error("account create failed");
+
+    expect(store.updateAccountByAdmin(first.account.id, { email: "SECOND@example.com" })).toEqual({ ok: false, reason: "email_taken" });
+    expect(store.updateAccountByAdmin(first.account.id, { username: "second" })).toEqual({ ok: false, reason: "username_taken" });
+  });
+
   it("ensures a default admin account exists", () => {
     const store = accountStore();
 

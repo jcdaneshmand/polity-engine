@@ -85,6 +85,37 @@ describe("account middleware", () => {
     expect(blocked.body).toEqual({ error: "not_admin" });
   });
 
+  it("lets admins update an account and blocks non-admin updates", async () => {
+    const accountStore = store();
+    const middleware = createAccountMiddleware({ store: accountStore });
+    const registered = context("POST", "/polity/accounts/register", { email: "admin@example.com", username: "Admin", password: "secret123" });
+    await middleware(registered, async () => undefined);
+    const adminToken = (registered.body as { token: string }).token;
+    const playerCreate = context("POST", "/polity/accounts/admin/create", { email: "player@example.com", username: "Player", password: "secret123", role: "player" }, adminToken);
+    await middleware(playerCreate, async () => undefined);
+    const playerAccount = (playerCreate.body as { account: { id: string }; token: string }).account;
+    const playerToken = (playerCreate.body as { token: string }).token;
+
+    const blocked = context("POST", "/polity/accounts/admin/update", { accountID: playerAccount.id, role: "admin" }, playerToken);
+    await middleware(blocked, async () => undefined);
+    expect(blocked.status).toBe(403);
+    expect(blocked.body).toEqual({ error: "not_admin" });
+
+    const updated = context("POST", "/polity/accounts/admin/update", {
+      accountID: playerAccount.id,
+      email: "jonah@example.com",
+      username: "Xenokinesis",
+      password: "changed123",
+      role: "admin"
+    }, adminToken);
+    await middleware(updated, async () => undefined);
+    expect(updated.body).toEqual({ account: expect.objectContaining({ email: "jonah@example.com", username: "Xenokinesis", role: "admin" }) });
+
+    const signIn = context("POST", "/polity/accounts/sign-in", { login: "Xenokinesis", password: "changed123" });
+    await middleware(signIn, async () => undefined);
+    expect(signIn.body).toEqual({ account: expect.objectContaining({ username: "Xenokinesis", role: "admin" }), token: expect.any(String) });
+  });
+
   it("signs in and signs out", async () => {
     const accountStore = store();
     const middleware = createAccountMiddleware({ store: accountStore });

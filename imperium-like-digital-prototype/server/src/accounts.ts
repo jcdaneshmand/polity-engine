@@ -197,6 +197,36 @@ export function createAccountMiddleware(options: AccountMiddlewareOptions) {
       return;
     }
 
+    if (ctx.method === "POST" && ctx.path === "/polity/accounts/admin/update") {
+      const admin = requireAdmin(ctx, options.store);
+      if (!admin.ok) {
+        setError(ctx, admin.status, admin.reason);
+        return;
+      }
+      const body = await readJSONBody(ctx);
+      if (!isRecord(body) || !stringValue(body.accountID)) {
+        setError(ctx, 400, "invalid_request");
+        return;
+      }
+      const role = stringValue(body.role);
+      if (role !== undefined && role !== "player" && role !== "admin") {
+        setError(ctx, 400, "invalid_request");
+        return;
+      }
+      const updated = options.store.updateAccountByAdmin(stringValue(body.accountID) as string, {
+        ...(stringValue(body.email) !== undefined ? { email: stringValue(body.email) as string } : {}),
+        ...(stringValue(body.username) !== undefined ? { username: stringValue(body.username) as string } : {}),
+        ...(stringValue(body.password) !== undefined ? { password: stringValue(body.password) as string } : {}),
+        ...(role !== undefined ? { role } : {})
+      });
+      if (!updated.ok) {
+        setError(ctx, accountErrorStatus(updated.reason), updated.reason);
+        return;
+      }
+      ctx.body = { account: updated.account };
+      return;
+    }
+
     if (ctx.method === "POST" && ctx.path === "/polity/accounts/sign-in") {
       const body = await readJSONBody(ctx);
       if (!isRecord(body) || !stringValue(body.login) || !stringValue(body.password)) {

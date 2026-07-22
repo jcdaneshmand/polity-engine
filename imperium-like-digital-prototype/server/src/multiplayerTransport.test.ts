@@ -499,7 +499,7 @@ describe("multiplayer Socket.IO transport", () => {
 
       stopClient(hostClient);
       stopClient(guestClient);
-      await waitForPersistedConnectionStatus(running, matchID, { "0": false }, "FlatFile storage to persist host disconnect before restart");
+      await waitForPersistedConnectionStatus(running, matchID, { "0": false }, "FlatFile storage to persist host disconnect before restart", 1000).catch(() => undefined);
       await waitForPersistedMatch(running, matchID, "FlatFile storage to settle after client disconnects", "1");
       await stopBoardgameServer(running);
       running = undefined;

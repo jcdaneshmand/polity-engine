@@ -44,7 +44,7 @@ export function marketResourceTokens(resources: Record<string, number> | undefin
 
 export function MarketRow({ cards, selectedId, resources, resourceLabels = {}, actionHintsByCardId = {}, marketResources = {}, onSelect }: { cards: any[]; selectedId?: string; resources?: any; resourceLabels?: ResourceLabels; actionHintsByCardId?: Record<string, { labels: string[]; highlighted: boolean }>; marketResources?: Record<string, Record<string, number>>; onSelect: (id: string) => void }) {
   const slots = Array.from({ length: 5 }, (_, i) => cards[i]);
-  return <section className="market-row">{slots.map((c, i) => {
+  return <section className="market-row" data-zone-kind="market-shared" aria-label="Market shared cards">{slots.map((c, i) => {
     const cost = cardCost(c);
     const label = costLabel(cost, resourceLabels);
     const payable = !!c && canPayCost(resources, cost);
@@ -54,6 +54,8 @@ export function MarketRow({ cards, selectedId, resources, resourceLabels = {}, a
       <CardTile
         card={c}
         compact
+        zoneKind="market-shared"
+        zoneRole={`market-slot-${i + 1}`}
         orientation={getCardOrientation({ card: c, zone: "market" })}
         selected={selectedId === c?.id}
         affordability={c ? (payable ? `Cost ${label}` : `Need ${label}`) : undefined}

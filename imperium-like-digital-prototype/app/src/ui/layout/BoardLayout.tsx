@@ -9,9 +9,10 @@ import { GameLogPanel } from "./GameLogPanel";
 import { BotRow } from "./BotRow";
 import { ZoneDetailPanel } from "./ZoneDetailPanel";
 import { TurnStatusBar } from "./TurnStatusBar";
+import { RuleAidPanel } from "./RuleAidPanel";
 import EndGameSummary, { type AccountGameResultContext } from "./EndGameSummary";
 import type { AccountGameResultInput } from "../../onlineSession";
-import { getActionHintsByCardId, getAvailableActionsForSelection, getMarketCardClickAction, getPendingUiState, getPrimaryBlockedReason, getSelectedCard, type Selection } from "../controller/selectionModel";
+import { getActionHintsByCardId, getAvailableActionsForSelection, getCurrentTaskUiState, getMarketCardClickAction, getPendingUiState, getPrimaryBlockedReason, getSelectedCard, ruleProvenanceLabels, type CurrentTaskUiState, type Selection } from "../controller/selectionModel";
 import { CONTROLLER_HINTS } from "../controller/controllerHints";
 import { handleBoardKeyDown } from "../controller/keyboardControls";
 import { getBotPiles, getCurrentPlayer, getInspectableLookedCards, getInspectableSharedPile, getInspectableZone, getMarketCards, getOwnerVisibleZoneIds, getPlayerZoneCounts, getPlayerZoneLabels, getRecentLogEntries, getSharedPiles } from "./uiSelectors";
@@ -19,9 +20,11 @@ import { resourceLabelsForGame } from "./resourceDisplay";
 
 function mapViewerPlayerId(G: any, candidate?: string | null): string | undefined {
   if (candidate == null) return undefined;
+  const seatIndex = Array.isArray(G?.seatOrder) && G.seatOrder.includes(candidate) ? Number(candidate) : Number.NaN;
+  const mappedPlayerId = Number.isInteger(seatIndex) && Array.isArray(G?.playOrder) ? G.playOrder[seatIndex] : undefined;
+  if (mappedPlayerId && G?.players?.[mappedPlayerId]) return mappedPlayerId;
   if (G?.players?.[candidate]) return candidate;
-  const mappedPlayerId = Array.isArray(G?.playOrder) ? G.playOrder[Number(candidate)] : undefined;
-  return mappedPlayerId && G?.players?.[mappedPlayerId] ? mappedPlayerId : candidate;
+  return candidate;
 }
 
 function viewerPlayerId(G: any, ctx: any, viewerPlayerID?: string | null, playerID?: string | null): string {
@@ -122,6 +125,15 @@ export type PlaytestDiagnostics = {
     enabledVariants: string[];
   };
   pendingAction?: string;
+  currentTask?: CurrentTaskUiState;
+  ruleUiState: {
+    enabledActions: string[];
+    blockedActions: Array<{ label: string; reason: string; provenance?: string }>;
+    selectedPublicCardId?: string;
+  };
+  zoneUiState: {
+    zones: Array<{ role: string; kind: string; count: number; hidden: boolean; selected: boolean }>;
+  };
   sharedPiles: Record<string, number>;
   players: Record<string, { zones: Record<string, number>; resources: Record<string, number> }>;
   recentPublicLog: Array<{ round?: number; playerId?: string; message: string }>;
@@ -131,12 +143,69 @@ function redactKnownCardIds(message: string, cardIds: string[]): string {
   return cardIds.reduce((current, cardId) => current.split(cardId).join("[card]"), message);
 }
 
+function buildZoneUiState(G: any, viewerId: string, selection?: Selection | null) {
+  const player = G?.players?.[viewerId];
+  const playerZones = player
+    ? Object.entries(getPlayerZoneCounts(player)).map(([role, count]) => ({
+      role,
+      kind: "own-private",
+      count: Number(count),
+      hidden: false,
+      selected: selection?.kind === "player_zone" && selection.id === role
+    }))
+    : [];
+  return {
+    zones: [
+      ...getSharedPiles(G).map((pile) => ({
+        role: pile.id,
+        kind: "public-shared",
+        count: pile.count,
+        hidden: false,
+        selected: selection?.kind === "pile" && selection.id === pile.id
+      })),
+      {
+        role: "market",
+        kind: "market-shared",
+        count: Array.isArray(G?.market) ? G.market.length : 0,
+        hidden: false,
+        selected: selection?.kind === "market_slot"
+      },
+      ...playerZones,
+      ...(G?.solo?.bot ? getBotPiles(G.solo.bot).map((pile) => ({
+        role: `bot:${pile.id}`,
+        kind: "opponent-hidden",
+        count: pile.count,
+        hidden: true,
+        selected: selection?.kind === "bot_zone" && selection.id === pile.id
+      })) : []),
+      ...(G?.lookedCards ? [{
+        role: `looked:${G.lookedCards.source ?? "cards"}`,
+        kind: "own-private",
+        count: Array.isArray(G.lookedCards.cardIds) ? G.lookedCards.cardIds.length : 0,
+        hidden: false,
+        selected: false
+      }] : []),
+      ...(G?.pendingCleanupMarketResourceChoice || G?.pendingChoice ? [{
+        role: "pending-choice",
+        kind: "pending-choice",
+        count: 1,
+        hidden: false,
+        selected: true
+      }] : [])
+    ]
+  };
+}
+
 export function buildPlaytestDiagnostics({
   G,
   ctx,
   viewerId,
   mode,
   pendingAction,
+  currentTask,
+  actions = [],
+  selectedCardId,
+  selection,
   appVersion = "local-dev",
   now = new Date()
 }: {
@@ -145,10 +214,15 @@ export function buildPlaytestDiagnostics({
   viewerId: string;
   mode: "local" | "online";
   pendingAction?: string;
+  currentTask?: CurrentTaskUiState;
+  actions?: any[];
+  selectedCardId?: string;
+  selection?: Selection | null;
   appVersion?: string;
   now?: Date;
 }): PlaytestDiagnostics {
   const knownCardIds = Object.keys(G?.cardDb ?? {});
+  const resolvedCurrentTask = currentTask ?? getCurrentTaskUiState(G, { ...ctx, currentPlayer: viewerId });
   return {
     schemaVersion: 1,
     generatedAtIso: now.toISOString(),
@@ -164,6 +238,19 @@ export function buildPlaytestDiagnostics({
       enabledVariants: Array.isArray(G?.options?.enabledVariants) ? G.options.enabledVariants : []
     },
     pendingAction,
+    currentTask: resolvedCurrentTask,
+    ruleUiState: {
+      enabledActions: actions.filter((action) => action.enabled).map((action) => String(action.label ?? action.action)),
+      blockedActions: actions
+        .filter((action) => !action.enabled)
+        .map((action) => ({
+          label: String(action.label ?? action.action),
+          reason: String(action.reason ?? "Unavailable"),
+          ...(action.provenance ? { provenance: ruleProvenanceLabels[action.provenance as keyof typeof ruleProvenanceLabels] ?? String(action.provenance) } : {})
+        })),
+      ...(selectedCardId && G?.cardDb?.[selectedCardId] ? { selectedPublicCardId: selectedCardId } : {})
+    },
+    zoneUiState: buildZoneUiState(G, viewerId, selection),
     sharedPiles: Object.fromEntries(getSharedPiles(G).map((pile) => [pile.id, pile.count])),
     players: Object.fromEntries(Object.entries(G?.players ?? {}).map(([playerId, player]) => [
       playerId,
@@ -215,6 +302,7 @@ export default function BoardLayout({
   const [summaryDismissed, setSummaryDismissed] = useState(false);
   const [cleanupDiscardSlots, setCleanupDiscardSlots] = useState<number[]>([]);
   const viewerId = viewerPlayerId(G, ctx, viewerPlayerID, playerID);
+  const activePlayerId = mapViewerPlayerId(G, ctx?.currentPlayer) ?? String(ctx?.currentPlayer ?? "");
   const uiCtx = useMemo(() => ({ ...ctx, currentPlayer: viewerId }), [ctx, viewerId]);
   const player = getCurrentPlayer(G, uiCtx);
   const marketIds = getMarketCards(G);
@@ -242,16 +330,22 @@ export default function BoardLayout({
     .filter((cardId): cardId is string => !!cardId);
   const actions = useMemo(() => getAvailableActionsForSelection(selection, G, uiCtx, { cleanupDiscardSelection }), [selection, G, uiCtx, cleanupDiscardSelection]);
   const pending = getPendingUiState(G, uiCtx);
+  const currentTask = getCurrentTaskUiState(G, uiCtx);
   const primaryBlockedReason = getPrimaryBlockedReason(actions);
+  const primaryBlockedAction = actions.find((action: any) => !action.enabled && action.reason);
   const localUndoAvailability = getLocalUndoAvailability({ G, isMultiplayer, undoStack: _undo });
   const diagnostics = useMemo(() => buildPlaytestDiagnostics({
     G,
-    ctx,
+    ctx: { ...ctx, currentPlayer: activePlayerId },
     viewerId,
     mode: isMultiplayer ? "online" : "local",
     pendingAction: pending?.detail,
+    currentTask,
+    actions,
+    selectedCardId: selectedCard?.id,
+    selection,
     appVersion: (import.meta as any).env?.VITE_GIT_COMMIT ?? "local-dev"
-  }), [G, ctx, viewerId, isMultiplayer, pending?.detail]);
+  }), [G, ctx, activePlayerId, viewerId, isMultiplayer, pending?.detail, currentTask, actions, selectedCard?.id, selection]);
   const handActionHintsByCardId = useMemo(() => {
     const hints = getActionHintsByCardId(actions, "hand");
     if (!G.pendingCleanupDiscardChoice) return hints;
@@ -323,7 +417,7 @@ export default function BoardLayout({
 
   return <div className="board-layout">
     <div className="left">
-      <TurnStatusBar G={G} ctx={ctx} player={player} pending={pending} />
+      <TurnStatusBar G={G} ctx={{ ...ctx, currentPlayer: activePlayerId }} player={player} currentTask={currentTask} />
       <SharedAreaRow piles={shared} round={G.round ?? 1} selectedId={selection?.kind === "pile" ? selection.id : undefined} onSelectPile={(id)=>setSelection({kind:"pile",id})} />
       <MarketRow cards={marketCards} selectedId={selection?.id} resources={player?.resources} resourceLabels={resourceLabels} actionHintsByCardId={marketActionHintsByCardId} marketResources={G.marketResources ?? {}} onSelect={onMarketCardClick} />
       <BotRow bot={G.solo?.bot} cardDb={G.cardDb ?? {}} selectedId={selection?.kind === "bot_zone" ? selection.id : undefined} resourceLabels={resourceLabels} onSelectZone={(id)=>setSelection({kind:"bot_zone",id})} />
@@ -331,21 +425,22 @@ export default function BoardLayout({
       <div className="panel hints">{CONTROLLER_HINTS.map((h)=> <div key={h}>{h}</div>)}</div>
     </div>
     <div className="right">
-      {lookedZone ? <ZoneDetailPanel title={`Looked ${lookedZone.source}`} cardIds={lookedZone.cardIds} hidden={lookedZone.hidden} count={lookedZone.count} cardDb={G.cardDb ?? {}} /> : null}
+      {lookedZone ? <ZoneDetailPanel title={`Looked ${lookedZone.source}`} cardIds={lookedZone.cardIds} hidden={lookedZone.hidden} count={lookedZone.count} cardDb={G.cardDb ?? {}} zoneKind="own-private" zoneRole={`looked:${lookedZone.source}`} /> : null}
       {pending ? <div className="panel choice-banner is-secondary">
         <div className="eyebrow">{pending.title}</div>
         <strong>{pending.detail}</strong>
       </div> : null}
       {selection?.kind === "player_zone"
-        ? <ZoneDetailPanel title={playerZoneLabels[selection.id] ?? selection.id} cardIds={selectedZone?.cardIds ?? []} hidden={selectedZone?.hidden} count={selectedZone?.count} cardDb={G.cardDb ?? {}} />
+        ? <ZoneDetailPanel title={playerZoneLabels[selection.id] ?? selection.id} cardIds={selectedZone?.cardIds ?? []} hidden={selectedZone?.hidden} count={selectedZone?.count} cardDb={G.cardDb ?? {}} zoneKind={selectedZone?.hidden ? "opponent-hidden" : "own-private"} zoneRole={selection.id} />
         : selection?.kind === "pile"
-          ? <ZoneDetailPanel title={(shared.find((p)=>p.id===selection.id)?.label) ?? selection.id} cardIds={selectedSharedPile?.cardIds ?? []} hidden={selectedSharedPile?.hidden} count={selectedSharedPile?.count} cardDb={G.cardDb ?? {}} />
+          ? <ZoneDetailPanel title={(shared.find((p)=>p.id===selection.id)?.label) ?? selection.id} cardIds={selectedSharedPile?.cardIds ?? []} hidden={selectedSharedPile?.hidden} count={selectedSharedPile?.count} cardDb={G.cardDb ?? {}} zoneKind={selectedSharedPile?.hidden ? "hidden-shared" : "public-shared"} zoneRole={selection.id} />
         : selection?.kind === "bot_zone"
-          ? <ZoneDetailPanel title={(getBotPiles(G.solo?.bot).find((p)=>p.id===selection.id)?.label) ?? selection.id} cardIds={selectedBotZone?.cardIds ?? []} hidden={selectedBotZone?.hidden} count={selectedBotZone?.count} cardDb={G.cardDb ?? {}} />
+          ? <ZoneDetailPanel title={(getBotPiles(G.solo?.bot).find((p)=>p.id===selection.id)?.label) ?? selection.id} cardIds={selectedBotZone?.cardIds ?? []} hidden={selectedBotZone?.hidden} count={selectedBotZone?.count} cardDb={G.cardDb ?? {}} zoneKind="opponent-hidden" zoneRole={`bot:${selection.id}`} />
           : <CardDetailPanel
             card={visibleDetailCard}
             pinned={!!detailCardId}
             blockedReason={selectedCard ? primaryBlockedReason : undefined}
+            ruleProvenance={selectedCard && primaryBlockedAction?.provenance ? ruleProvenanceLabels[primaryBlockedAction.provenance as keyof typeof ruleProvenanceLabels] : undefined}
             onUnpin={() => setDetailCardId(null)}
             onZoom={visibleDetailCard?.id ? () => setZoomCardId(visibleDetailCard.id) : undefined}
           />}
@@ -366,7 +461,16 @@ export default function BoardLayout({
           {!localUndoAvailability.enabled ? <small>{localUndoAvailability.reason}</small> : null}
         </button>
       </div> : null}
-      <section className="panel playtest-diagnostics" data-qa="playtest-diagnostics" aria-label="Playtest diagnostics">
+      <section
+        className="panel playtest-diagnostics"
+        data-qa="playtest-diagnostics"
+        data-current-task-title={diagnostics.currentTask?.title ?? ""}
+        data-enabled-action-count={diagnostics.ruleUiState.enabledActions.length}
+        data-blocked-action-count={diagnostics.ruleUiState.blockedActions.length}
+        data-zone-kind-count={diagnostics.zoneUiState.zones.length}
+        data-zone-kinds={Array.from(new Set(diagnostics.zoneUiState.zones.map((zone) => zone.kind))).join(" ")}
+        aria-label="Playtest diagnostics"
+      >
         <div className="diagnostic-grid">
           <div>
             <span className="eyebrow">Active Player</span>
@@ -385,6 +489,7 @@ export default function BoardLayout({
         </button>
       </section>
       <ActionMenu actions={actions} onAction={onAction} />
+      <RuleAidPanel G={G} pending={pending} selectedCard={selectedCard} />
       <GameLogPanel entries={getRecentLogEntries(G, 20)} />
     </div>
     <CardInspectionModal card={zoomCard} onClose={() => setZoomCardId(null)} />

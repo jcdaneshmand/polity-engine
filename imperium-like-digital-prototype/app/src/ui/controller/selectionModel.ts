@@ -221,7 +221,41 @@ function cardCombinations(cardIds: string[], count: number): string[][] {
   return results;
 }
 
-export function getPendingUiState(G: any, ctx: any): { title: string; detail: string; playerId?: string } | undefined {
+export type ChoiceType =
+  | "generic"
+  | "draw"
+  | "find"
+  | "acquire"
+  | "market_card"
+  | "market_resource"
+  | "break_through"
+  | "exile"
+  | "garrison"
+  | "region"
+  | "development"
+  | "trade"
+  | "discard"
+  | "return"
+  | "deck_placement"
+  | "free_play"
+  | "give_card"
+  | "swap"
+  | "reactive_exhaust"
+  | "unrest_allocation"
+  | "order"
+  | "look"
+  | "cleanup_resource"
+  | "cleanup_discard";
+
+export interface CurrentTaskUiState {
+  title: string;
+  detail: string;
+  playerId?: string;
+  choiceType?: ChoiceType;
+  suppressNormalActions: boolean;
+}
+
+export function getPendingUiState(G: any, ctx: any): CurrentTaskUiState | undefined {
   const plural = (count: number, singular: string) => `${count} ${singular}${count === 1 ? "" : "s"}`;
   const pendingExileDetail = (pendingExileChoice: any) => {
     const optionCount = pendingExileChoice.cardIds?.length ?? 0;
@@ -231,41 +265,51 @@ export function getPendingUiState(G: any, ctx: any): { title: string; detail: st
     return optionCount > 1 ? `Choose 1 card to exile from ${plural(optionCount, "option")}` : "Choose 1 card to exile";
   };
   const pending =
-    G.pendingChoice ? { title: "Pending Choice", detail: plural(G.pendingChoice.choices?.length ?? 0, "option"), playerId: G.pendingChoice.playerId } :
-    G.pendingDrawChoice ? { title: "Pending Draw", detail: plural(G.pendingDrawChoice.cardIds?.length ?? 0, "card"), playerId: G.pendingDrawChoice.playerId } :
-    G.pendingFindChoice ? { title: "Pending Find", detail: plural(G.pendingFindChoice.cardIds?.length ?? 0, "card"), playerId: G.pendingFindChoice.playerId } :
-    G.pendingAcquireChoice ? { title: "Pending Acquire", detail: `Choose ${plural(G.pendingAcquireChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingAcquireChoice.playerId } :
-    G.pendingMarketCardChoice ? { title: G.pendingMarketCardChoice.op === "take_card" ? "Pending Take Card" : "Pending Gain Card", detail: `Choose ${plural(G.pendingMarketCardChoice.cardIds?.length ?? 0, "market card")}`, playerId: G.pendingMarketCardChoice.playerId } :
-    G.pendingMarketResourcePlacementChoice ? { title: "Pending Market Resource", detail: `Choose ${plural(G.pendingMarketResourcePlacementChoice.amount ?? 0, "market card")} for ${plural(G.pendingMarketResourcePlacementChoice.amount ?? 0, "resource")}`, playerId: G.pendingMarketResourcePlacementChoice.playerId } :
-    G.pendingBreakThroughChoice ? { title: "Pending Break Through", detail: `Choose ${plural(G.pendingBreakThroughChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingBreakThroughChoice.playerId } :
-    G.pendingExileChoice ? { title: "Pending Exile", detail: pendingExileDetail(G.pendingExileChoice), playerId: G.pendingExileChoice.playerId } :
-    G.pendingGarrisonChoice ? { title: "Pending Garrison", detail: `${plural(G.pendingGarrisonChoice.cardIds?.length ?? 0, "card")} / ${plural(G.pendingGarrisonChoice.hostCardIds?.length ?? 0, "host")}`, playerId: G.pendingGarrisonChoice.playerId } :
-    G.pendingRegionChoice ? { title: "Pending Region", detail: `Choose ${plural(G.pendingRegionChoice.cardIds?.length ?? 0, "region")}`, playerId: G.pendingRegionChoice.playerId } :
-    G.pendingDevelopmentChoice ? { title: "Pending Development", detail: `Choose ${plural(G.pendingDevelopmentChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingDevelopmentChoice.playerId } :
-    G.pendingShortGameDevelopmentExileChoice ? { title: "Pending Development Removal", detail: `Choose ${plural(G.pendingShortGameDevelopmentExileChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingShortGameDevelopmentExileChoice.playerId } :
-    G.pendingTradeChoice ? { title: "Pending Trade", detail: plural((G.pendingTradeChoice.routeCardIds?.length ?? 0) + (G.pendingTradeChoice.allowGoodsForProgress ? 1 : 0), "option"), playerId: G.pendingTradeChoice.playerId } :
-    G.pendingDiscardChoice ? { title: "Pending Discard", detail: `Choose ${G.pendingDiscardChoice.count ?? 0} ${(G.pendingDiscardChoice.count ?? 0) === 1 ? "card" : "cards"} from ${plural(G.pendingDiscardChoice.cardIds?.length ?? 0, "option")}`, playerId: G.pendingDiscardChoice.playerId } :
-    G.pendingReturnUnrestChoice ? { title: "Pending Return Unrest", detail: `Choose ${plural(G.pendingReturnUnrestChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingReturnUnrestChoice.playerId } :
-    G.pendingReturnFameChoice ? { title: "Pending Return Fame", detail: `Choose ${plural(G.pendingReturnFameChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingReturnFameChoice.playerId } :
-    G.pendingPlaceOnDeckChoice ? { title: "Pending Deck Placement", detail: `Choose ${plural(G.pendingPlaceOnDeckChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingPlaceOnDeckChoice.playerId } :
-    G.pendingReturnExhaustTokenChoice ? { title: "Pending Return Exhaust", detail: `Choose ${plural(G.pendingReturnExhaustTokenChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingReturnExhaustTokenChoice.playerId } :
-    G.pendingFreePlayChoice ? { title: "Pending Free Play", detail: `Choose ${plural(G.pendingFreePlayChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingFreePlayChoice.playerId } :
-    G.pendingGiveCardChoice ? { title: "Pending Give Card", detail: `${plural(G.pendingGiveCardChoice.cardIds?.length ?? 0, "card")} / ${plural(G.pendingGiveCardChoice.recipientPlayerIds?.length ?? 0, "recipient")}`, playerId: G.pendingGiveCardChoice.playerId } :
-    G.pendingSwapChoice ? { title: "Pending Swap", detail: plural(G.pendingSwapChoice.choices?.length ?? 0, "option"), playerId: G.pendingSwapChoice.playerId } :
-    G.pendingReactiveExhaustChoice ? { title: "Pending Reactive Exhaust", detail: `Choose ${plural(G.pendingReactiveExhaustChoice.cardIds?.length ?? 0, "card")}, or skip`, playerId: G.pendingReactiveExhaustChoice.playerId } :
-    G.pendingUnrestAllocationChoice ? { title: "Pending Unrest Allocation", detail: plural(G.pendingUnrestAllocationChoice.availableUnrestCardIds?.length ?? 0, "Unrest"), playerId: G.pendingUnrestAllocationChoice.playerId } :
-    G.pendingSolsticeOrderChoice ? { title: "Pending Solstice Order", detail: `Choose order for ${plural(G.pendingSolsticeOrderChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingSolsticeOrderChoice.playerId } :
-    G.pendingLookOrderChoice ? { title: "Pending Look Order", detail: `Choose order for ${plural(G.pendingLookOrderChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingLookOrderChoice.playerId } :
-    G.pendingLookTakeChoice ? { title: "Pending Look Take", detail: `Choose 1 card from ${plural(G.pendingLookTakeChoice.cardIds?.length ?? 0, "looked card")}`, playerId: G.pendingLookTakeChoice.playerId } :
+    G.pendingChoice ? { title: "Pending Choice", detail: plural(G.pendingChoice.choices?.length ?? 0, "option"), playerId: G.pendingChoice.playerId, choiceType: "generic" as const } :
+    G.pendingDrawChoice ? { title: "Pending Draw", detail: plural(G.pendingDrawChoice.cardIds?.length ?? 0, "card"), playerId: G.pendingDrawChoice.playerId, choiceType: "draw" as const } :
+    G.pendingFindChoice ? { title: "Pending Find", detail: plural(G.pendingFindChoice.cardIds?.length ?? 0, "card"), playerId: G.pendingFindChoice.playerId, choiceType: "find" as const } :
+    G.pendingAcquireChoice ? { title: "Pending Acquire", detail: `Choose ${plural(G.pendingAcquireChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingAcquireChoice.playerId, choiceType: "acquire" as const } :
+    G.pendingMarketCardChoice ? { title: G.pendingMarketCardChoice.op === "take_card" ? "Pending Take Card" : "Pending Gain Card", detail: `Choose ${plural(G.pendingMarketCardChoice.cardIds?.length ?? 0, "market card")}`, playerId: G.pendingMarketCardChoice.playerId, choiceType: "market_card" as const } :
+    G.pendingMarketResourcePlacementChoice ? { title: "Pending Market Resource", detail: `Choose ${plural(G.pendingMarketResourcePlacementChoice.amount ?? 0, "market card")} for ${plural(G.pendingMarketResourcePlacementChoice.amount ?? 0, "resource")}`, playerId: G.pendingMarketResourcePlacementChoice.playerId, choiceType: "market_resource" as const } :
+    G.pendingBreakThroughChoice ? { title: "Pending Break Through", detail: `Choose ${plural(G.pendingBreakThroughChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingBreakThroughChoice.playerId, choiceType: "break_through" as const } :
+    G.pendingExileChoice ? { title: "Pending Exile", detail: pendingExileDetail(G.pendingExileChoice), playerId: G.pendingExileChoice.playerId, choiceType: "exile" as const } :
+    G.pendingGarrisonChoice ? { title: "Pending Garrison", detail: `${plural(G.pendingGarrisonChoice.cardIds?.length ?? 0, "card")} / ${plural(G.pendingGarrisonChoice.hostCardIds?.length ?? 0, "host")}`, playerId: G.pendingGarrisonChoice.playerId, choiceType: "garrison" as const } :
+    G.pendingRegionChoice ? { title: "Pending Region", detail: `Choose ${plural(G.pendingRegionChoice.cardIds?.length ?? 0, "region")}`, playerId: G.pendingRegionChoice.playerId, choiceType: "region" as const } :
+    G.pendingDevelopmentChoice ? { title: "Pending Development", detail: `Choose ${plural(G.pendingDevelopmentChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingDevelopmentChoice.playerId, choiceType: "development" as const } :
+    G.pendingShortGameDevelopmentExileChoice ? { title: "Pending Development Removal", detail: `Choose ${plural(G.pendingShortGameDevelopmentExileChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingShortGameDevelopmentExileChoice.playerId, choiceType: "development" as const } :
+    G.pendingTradeChoice ? { title: "Pending Trade", detail: plural((G.pendingTradeChoice.routeCardIds?.length ?? 0) + (G.pendingTradeChoice.allowGoodsForProgress ? 1 : 0), "option"), playerId: G.pendingTradeChoice.playerId, choiceType: "trade" as const } :
+    G.pendingDiscardChoice ? { title: "Pending Discard", detail: `Choose ${G.pendingDiscardChoice.count ?? 0} ${(G.pendingDiscardChoice.count ?? 0) === 1 ? "card" : "cards"} from ${plural(G.pendingDiscardChoice.cardIds?.length ?? 0, "option")}`, playerId: G.pendingDiscardChoice.playerId, choiceType: "discard" as const } :
+    G.pendingReturnUnrestChoice ? { title: "Pending Return Unrest", detail: `Choose ${plural(G.pendingReturnUnrestChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingReturnUnrestChoice.playerId, choiceType: "return" as const } :
+    G.pendingReturnFameChoice ? { title: "Pending Return Fame", detail: `Choose ${plural(G.pendingReturnFameChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingReturnFameChoice.playerId, choiceType: "return" as const } :
+    G.pendingPlaceOnDeckChoice ? { title: "Pending Deck Placement", detail: `Choose ${plural(G.pendingPlaceOnDeckChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingPlaceOnDeckChoice.playerId, choiceType: "deck_placement" as const } :
+    G.pendingReturnExhaustTokenChoice ? { title: "Pending Return Exhaust", detail: `Choose ${plural(G.pendingReturnExhaustTokenChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingReturnExhaustTokenChoice.playerId, choiceType: "return" as const } :
+    G.pendingFreePlayChoice ? { title: "Pending Free Play", detail: `Choose ${plural(G.pendingFreePlayChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingFreePlayChoice.playerId, choiceType: "free_play" as const } :
+    G.pendingGiveCardChoice ? { title: "Pending Give Card", detail: `${plural(G.pendingGiveCardChoice.cardIds?.length ?? 0, "card")} / ${plural(G.pendingGiveCardChoice.recipientPlayerIds?.length ?? 0, "recipient")}`, playerId: G.pendingGiveCardChoice.playerId, choiceType: "give_card" as const } :
+    G.pendingSwapChoice ? { title: "Pending Swap", detail: plural(G.pendingSwapChoice.choices?.length ?? 0, "option"), playerId: G.pendingSwapChoice.playerId, choiceType: "swap" as const } :
+    G.pendingReactiveExhaustChoice ? { title: "Pending Reactive Exhaust", detail: `Choose ${plural(G.pendingReactiveExhaustChoice.cardIds?.length ?? 0, "card")}, or skip`, playerId: G.pendingReactiveExhaustChoice.playerId, choiceType: "reactive_exhaust" as const } :
+    G.pendingUnrestAllocationChoice ? { title: "Pending Unrest Allocation", detail: plural(G.pendingUnrestAllocationChoice.availableUnrestCardIds?.length ?? 0, "Unrest"), playerId: G.pendingUnrestAllocationChoice.playerId, choiceType: "unrest_allocation" as const } :
+    G.pendingSolsticeOrderChoice ? { title: "Pending Solstice Order", detail: `Choose order for ${plural(G.pendingSolsticeOrderChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingSolsticeOrderChoice.playerId, choiceType: "order" as const } :
+    G.pendingLookOrderChoice ? { title: "Pending Look Order", detail: `Choose order for ${plural(G.pendingLookOrderChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingLookOrderChoice.playerId, choiceType: "look" as const } :
+    G.pendingLookTakeChoice ? { title: "Pending Look Take", detail: `Choose 1 card from ${plural(G.pendingLookTakeChoice.cardIds?.length ?? 0, "looked card")}`, playerId: G.pendingLookTakeChoice.playerId, choiceType: "look" as const } :
     G.pendingCleanupMarketResourceChoice ? {
       title: "Pending Cleanup Resource",
       detail: `Choose a market card for ${plural(G.pendingCleanupMarketResourceChoice.amount ?? 1, "cleanup resource")}`,
-      playerId: G.pendingCleanupMarketResourceChoice.playerId
+      playerId: G.pendingCleanupMarketResourceChoice.playerId,
+      choiceType: "cleanup_resource" as const
     } :
-    G.pendingCleanupDiscardChoice ? { title: "Pending Cleanup Discard", detail: plural(G.pendingCleanupDiscardChoice.cardIds?.length ?? 0, "card"), playerId: G.pendingCleanupDiscardChoice.playerId } :
+    G.pendingCleanupDiscardChoice ? { title: "Pending Cleanup Discard", detail: plural(G.pendingCleanupDiscardChoice.cardIds?.length ?? 0, "card"), playerId: G.pendingCleanupDiscardChoice.playerId, choiceType: "cleanup_discard" as const } :
     undefined;
   if (!pending) return undefined;
-  return pending.playerId === ctx.currentPlayer ? pending : { ...pending, detail: `${pending.detail} - waiting for player ${pending.playerId}` };
+  const view = pending.playerId === ctx.currentPlayer ? pending : { ...pending, detail: `${pending.detail} - waiting for player ${pending.playerId}` };
+  return { ...view, suppressNormalActions: true };
+}
+
+export function getCurrentTaskUiState(G: any, ctx: any): CurrentTaskUiState {
+  return getPendingUiState(G, ctx) ?? {
+    title: "Ready",
+    detail: "Select a card, use a turn action, or end the turn.",
+    suppressNormalActions: false
+  };
 }
 
 function hintLabel(action: any): string {
@@ -351,6 +395,28 @@ export function getMarketCardClickAction(G: any, ctx: any, cardId: string): { ac
 }
 
 export type ActionIntent = "ready" | "blocked" | "choice" | "neutral";
+export type RuleProvenanceCode =
+  | "normal_turn_rule"
+  | "requires_action_token"
+  | "requires_exhaust_token"
+  | "pending_choice"
+  | "free_play_effect"
+  | "resource_payment"
+  | "market_target_required"
+  | "mode_module_rule"
+  | "hidden_information";
+
+export const ruleProvenanceLabels: Record<RuleProvenanceCode, string> = {
+  normal_turn_rule: "Turn rule",
+  requires_action_token: "Action token",
+  requires_exhaust_token: "Exhaust token",
+  pending_choice: "Pending choice",
+  free_play_effect: "Free play",
+  resource_payment: "Payment",
+  market_target_required: "Market target",
+  mode_module_rule: "Mode/module",
+  hidden_information: "Hidden information"
+};
 
 export function getActionIntent(action: any): ActionIntent {
   if (!action.enabled) return "blocked";
@@ -363,8 +429,27 @@ export function getPrimaryBlockedReason(actions: any[]): string | undefined {
   return actions.find((action) => !action.enabled && action.reason)?.reason;
 }
 
+export function getActionProvenance(action: any): RuleProvenanceCode {
+  const name = String(action.action ?? "");
+  const reason = String(action.reason ?? "");
+  if (name.startsWith("resolve") || name.startsWith("skip") || /pending|waiting for player/i.test(reason)) return "pending_choice";
+  if (/trade route|solo|practice|module|mode/i.test(reason) || name === "profit") return "mode_module_rule";
+  if (/action token|action tokens|actions require/i.test(reason) || ["play", "profit"].includes(name)) return "requires_action_token";
+  if (/exhaust token|exhaust abilities/i.test(reason) || name === "exhaust") return "requires_exhaust_token";
+  if (/free play/i.test(reason)) return "free_play_effect";
+  if (/pay|cost|materials|knowledge|goods|influence|unrest/i.test(reason)) return "resource_payment";
+  if (/select .*market|market card|target/i.test(reason)) return "market_target_required";
+  if (/cleanup|choice first/i.test(reason)) return "pending_choice";
+  if (/hidden|look/i.test(reason) || name.includes("Look")) return "hidden_information";
+  return "normal_turn_rule";
+}
+
+function withActionMetadata<T extends { action: string; enabled: boolean; provenance?: RuleProvenanceCode }>(actions: T[]): T[] {
+  return actions.map((action) => ({ ...action, provenance: action.provenance ?? getActionProvenance(action) }));
+}
+
 export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx: any, uiState: { cleanupDiscardSelection?: string[] } = {}) {
-  const actions: Array<{ label:string; action:string; enabled:boolean; reason?:string; group?: string; cardId?:string; hostCardId?: string; marketCardId?: string; choiceIndex?: number; suit?: string; source?: "market" | "deck" | "discard" | "exile"; recipientPlayerId?: string; recipientPlayerIds?: string[]; cardIds?: string[]; returnOrder?: string[] }> = [];
+  const actions: Array<{ label:string; action:string; enabled:boolean; reason?:string; provenance?: RuleProvenanceCode; group?: string; cardId?:string; hostCardId?: string; marketCardId?: string; choiceIndex?: number; suit?: string; source?: "market" | "deck" | "discard" | "exile"; recipientPlayerId?: string; recipientPlayerIds?: string[]; cardIds?: string[]; returnOrder?: string[] }> = [];
   const pendingCleanupDiscard = G.pendingCleanupDiscardChoice;
   if (pendingCleanupDiscard) {
     const isCurrentPlayer = pendingCleanupDiscard.playerId === ctx.currentPlayer;
@@ -385,7 +470,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       cardIds: []
     });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve cleanup discard first" });
-    return actions;
+    return withActionMetadata(actions);
   }
   const pendingChoice = G.pendingChoice;
   if (pendingChoice) {
@@ -401,7 +486,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending choice first" });
-    return actions;
+    return withActionMetadata(actions);
   }
   const pendingDrawChoice = G.pendingDrawChoice;
   if (pendingDrawChoice) {
@@ -418,7 +503,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Draw choice first" });
-    return actions;
+    return withActionMetadata(actions);
   }
   const pendingFindChoice = G.pendingFindChoice;
   if (pendingFindChoice) {
@@ -434,7 +519,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Find choice first" });
-    return actions;
+    return withActionMetadata(actions);
   }
   const pendingAcquireChoice = G.pendingAcquireChoice;
   if (pendingAcquireChoice) {
@@ -450,7 +535,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Acquire choice first" });
-    return actions;
+    return withActionMetadata(actions);
   }
   const pendingMarketCardChoice = G.pendingMarketCardChoice;
   if (pendingMarketCardChoice) {
@@ -467,7 +552,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:`Resolve the pending ${verb} choice first` });
-    return actions;
+    return withActionMetadata(actions);
   }
   const pendingExileChoice = G.pendingExileChoice;
   if (pendingExileChoice) {
@@ -491,7 +576,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     }
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Exile choice first" });
-    return actions;
+    return withActionMetadata(actions);
   }
   const pendingBreakThroughChoice = G.pendingBreakThroughChoice;
   if (pendingBreakThroughChoice) {
@@ -507,7 +592,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Break Through choice first" });
-    return actions;
+    return withActionMetadata(actions);
   }
   const pendingGarrisonChoice = G.pendingGarrisonChoice;
   if (pendingGarrisonChoice) {
@@ -527,7 +612,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Garrison choice first" });
-    return actions;
+    return withActionMetadata(actions);
   }
   const pendingRegionChoice = G.pendingRegionChoice;
   if (pendingRegionChoice) {
@@ -543,7 +628,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Region choice first" });
-    return actions;
+    return withActionMetadata(actions);
   }
   const pendingDevelopmentChoice = G.pendingDevelopmentChoice;
   if (pendingDevelopmentChoice) {
@@ -567,7 +652,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     }
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Development choice first" });
-    return actions;
+    return withActionMetadata(actions);
   }
   const pendingShortGameDevelopmentExileChoice = G.pendingShortGameDevelopmentExileChoice;
   if (pendingShortGameDevelopmentExileChoice) {
@@ -583,7 +668,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Short Game Development removal first" });
-    return actions;
+    return withActionMetadata(actions);
   }
   const pendingTradeChoice = G.pendingTradeChoice;
   if (pendingTradeChoice) {
@@ -607,7 +692,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     }
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Trade choice first" });
-    return actions;
+    return withActionMetadata(actions);
   }
   const pendingDiscardChoice = G.pendingDiscardChoice;
   if (pendingDiscardChoice) {
@@ -623,7 +708,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Discard choice first" });
-    return actions;
+    return withActionMetadata(actions);
   }
   const pendingReturnUnrestChoice = G.pendingReturnUnrestChoice;
   if (pendingReturnUnrestChoice) {
@@ -639,7 +724,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Return Unrest choice first" });
-    return actions;
+    return withActionMetadata(actions);
   }
   const pendingReturnFameChoice = G.pendingReturnFameChoice;
   if (pendingReturnFameChoice) {
@@ -655,7 +740,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Return Fame choice first" });
-    return actions;
+    return withActionMetadata(actions);
   }
   const pendingPlaceOnDeckChoice = G.pendingPlaceOnDeckChoice;
   if (pendingPlaceOnDeckChoice) {
@@ -671,7 +756,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Place On Deck choice first" });
-    return actions;
+    return withActionMetadata(actions);
   }
   const pendingReturnExhaustTokenChoice = G.pendingReturnExhaustTokenChoice;
   if (pendingReturnExhaustTokenChoice) {
@@ -687,7 +772,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Return Exhaust choice first" });
-    return actions;
+    return withActionMetadata(actions);
   }
   const pendingFreePlayChoice = G.pendingFreePlayChoice;
   if (pendingFreePlayChoice) {
@@ -703,7 +788,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Free Play choice first" });
-    return actions;
+    return withActionMetadata(actions);
   }
   const pendingGiveCardChoice = G.pendingGiveCardChoice;
   if (pendingGiveCardChoice) {
@@ -722,7 +807,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Give Card choice first" });
-    return actions;
+    return withActionMetadata(actions);
   }
   const pendingSwapChoice = G.pendingSwapChoice;
   if (pendingSwapChoice) {
@@ -740,7 +825,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Swap choice first" });
-    return actions;
+    return withActionMetadata(actions);
   }
   const pendingReactiveExhaustChoice = G.pendingReactiveExhaustChoice;
   if (pendingReactiveExhaustChoice) {
@@ -762,7 +847,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       reason: isCurrentPlayer ? undefined : `Waiting for player ${pendingReactiveExhaustChoice.playerId}`
     });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Reactive Exhaust choice first" });
-    return actions;
+    return withActionMetadata(actions);
   }
   const pendingUnrestAllocationChoice = G.pendingUnrestAllocationChoice;
   if (pendingUnrestAllocationChoice) {
@@ -781,7 +866,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Unrest allocation first" });
-    return actions;
+    return withActionMetadata(actions);
   }
   const pendingSolsticeOrderChoice = G.pendingSolsticeOrderChoice;
   if (pendingSolsticeOrderChoice) {
@@ -797,7 +882,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Solstice order first" });
-    return actions;
+    return withActionMetadata(actions);
   }
   const pendingLookOrderChoice = G.pendingLookOrderChoice;
   if (pendingLookOrderChoice) {
@@ -813,7 +898,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Look order first" });
-    return actions;
+    return withActionMetadata(actions);
   }
   const pendingLookTakeChoice = G.pendingLookTakeChoice;
   if (pendingLookTakeChoice) {
@@ -834,7 +919,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Look take first" });
-    return actions;
+    return withActionMetadata(actions);
   }
   const pendingMarketResourcePlacement = G.pendingMarketResourcePlacementChoice;
   if (pendingMarketResourcePlacement) {
@@ -861,7 +946,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     }
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve market resource placement first" });
-    return actions;
+    return withActionMetadata(actions);
   }
   const pendingCleanupMarketResource = G.pendingCleanupMarketResourceChoice;
   if (pendingCleanupMarketResource) {
@@ -878,7 +963,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
       });
     });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve cleanup market resource first" });
-    return actions;
+    return withActionMetadata(actions);
   }
   const selectedCard = getSelectedCard(s, G);
   actions.push({
@@ -915,7 +1000,7 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
   if (!s) {
     addGlobalTurnActions();
     actions.push({ label:"End Turn", action:"endTurn", enabled:true });
-    return actions;
+    return withActionMetadata(actions);
   }
   if (s.kind === "hand_card") {
     const p = G.players?.[ctx.currentPlayer];
@@ -969,5 +1054,5 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
   addGlobalTurnActions();
   actions.push({ label:"End Turn", action:"endTurn", enabled:true });
   actions.push({ label:"Cancel", action:"cancel", enabled:true });
-  return actions;
+  return withActionMetadata(actions);
 }

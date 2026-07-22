@@ -6,10 +6,20 @@ function tileCost(card: any): number | string {
   return 0;
 }
 
-export function CardTile({ card, selected, cleanupSelected, disabled, compact, orientation = "portrait", affordability, actionHints = [], resourceTokens = [], highlighted, onSelect }: { card: any; selected?: boolean; cleanupSelected?: boolean; disabled?: boolean; compact?: boolean; orientation?: "portrait"|"landscape"; affordability?: string; actionHints?: string[]; resourceTokens?: string[]; highlighted?: boolean; onSelect?: () => void }) {
-  if (!card) return <div className="card-tile empty">Empty</div>;
+export function CardTile({ card, selected, cleanupSelected, disabled, compact, orientation = "portrait", affordability, actionHints = [], resourceTokens = [], highlighted, zoneKind, zoneRole, onSelect }: { card: any; selected?: boolean; cleanupSelected?: boolean; disabled?: boolean; compact?: boolean; orientation?: "portrait"|"landscape"; affordability?: string; actionHints?: string[]; resourceTokens?: string[]; highlighted?: boolean; zoneKind?: string; zoneRole?: string; onSelect?: () => void }) {
+  if (!card) return <div className="card-tile empty" data-card-state="empty" data-zone-kind={zoneKind} data-zone-role={zoneRole}>Empty</div>;
   const effects = (card.effects ?? []).map((e: any) => e.op ?? "effect").slice(0, compact ? 1 : 3).join(", ");
-  return <button className={`card-tile card-tile--${orientation} ${selected ? "is-selected" : ""} ${cleanupSelected ? "is-cleanup-selected" : ""} ${highlighted ? "is-valid-target" : ""} ${compact ? "compact" : ""}`} onClick={onSelect} disabled={disabled}>
+  const stateLabel = highlighted ? "valid-target" : cleanupSelected ? "cleanup-selected" : selected ? "selected" : disabled ? "blocked" : "selectable";
+  return <button
+    className={`card-tile card-tile--${orientation} ${selected ? "is-selected" : ""} ${cleanupSelected ? "is-cleanup-selected" : ""} ${highlighted ? "is-valid-target" : ""} ${compact ? "compact" : ""}`}
+    onClick={onSelect}
+    disabled={disabled}
+    data-card-state={stateLabel}
+    data-zone-kind={zoneKind}
+    data-zone-role={zoneRole}
+    aria-current={selected ? "true" : undefined}
+    aria-label={`${card.displayName} - ${stateLabel}`}
+  >
     <div className="card-tile-strip">
       <span>{card.suit ?? card.type}</span>
       <span>{card.cardType ?? card.type}</span>

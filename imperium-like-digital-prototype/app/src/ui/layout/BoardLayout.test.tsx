@@ -128,11 +128,25 @@ describe("BoardLayout", () => {
       mode: "local",
       activePlayer: "1",
       viewerPlayer: "0",
+      currentTask: {
+        title: "Ready",
+        suppressNormalActions: false
+      },
       options: {
         mode: "multiplayer",
         playerCount: 2,
         enabledExpansions: ["trade_routes"]
-      }
+      },
+      ruleUiState: expect.objectContaining({
+        enabledActions: expect.any(Array),
+        blockedActions: expect.any(Array)
+      }),
+      zoneUiState: expect.objectContaining({
+        zones: expect.arrayContaining([
+          expect.objectContaining({ role: "market", kind: "market-shared", hidden: false }),
+          expect.objectContaining({ role: "hand", kind: "own-private", hidden: false })
+        ])
+      })
     });
     expect(diagnostics.players["0"].zones.hand).toBe(1);
     expect(diagnostics.players["1"].zones.hand).toBe(1);
@@ -145,9 +159,70 @@ describe("BoardLayout", () => {
     const html = renderForViewer();
 
     expect(html).toContain("data-qa=\"playtest-diagnostics\"");
+    expect(html).toContain("data-zone-kind-count=");
+    expect(html).toContain("data-zone-kinds=");
     expect(html).toContain("Export Playtest Diagnostics");
     expect(html).toContain("Active Player");
     expect(html).toContain("Viewer Player");
+  });
+
+  it("renders stable public-safe zone hierarchy hooks", () => {
+    const html = renderForViewer();
+
+    expect(html).toContain("data-zone-kind=\"public-shared\"");
+    expect(html).toContain("data-zone-kind=\"market-shared\"");
+    expect(html).toContain("data-zone-kind=\"own-private\"");
+    expect(html).toContain("data-zone-role=\"hand\"");
+    expect(html).toContain("data-card-state=\"selectable\"");
+  });
+
+  it("renders public-safe player aid and hides module-specific aid until enabled", () => {
+    const baseHtml = renderForViewer();
+    const tradeRoutesHtml = renderForViewer({ options: { mode: "multiplayer", playerCount: 2, enabledExpansions: ["trade_routes"], enabledVariants: [] } });
+
+    expect(baseHtml).toContain("Player Aid");
+    expect(baseHtml).toContain("Turn Flow");
+    expect(baseHtml).toContain("Hidden And Public Zones");
+    expect(baseHtml).not.toContain("Trade Route aid appears");
+    expect(tradeRoutesHtml).toContain("Trade Route aid appears");
+  });
+
+  it("renders rule provenance in action buttons for pending actions", () => {
+    const html = renderToStaticMarkup(
+      <BoardLayout
+        G={baseGame({
+          pendingCleanupMarketResourceChoice: { playerId: "0", resource: "knowledge", amount: 1, cardIds: ["m1"] }
+        })}
+        ctx={{ currentPlayer: "0" }}
+        playerID="0"
+        viewerPlayerID="0"
+        moves={{}}
+      />
+    );
+
+    expect(html).toContain("Pending choice");
+    expect(html).toContain("Place cleanup resource on Market1");
+  });
+
+  it("maps one-player local active seat labels to the engine player id", () => {
+    const html = renderToStaticMarkup(
+      <BoardLayout
+        G={baseGame({
+          playOrder: ["1"],
+          seatOrder: ["0"],
+          players: {
+            "1": { ...emptyPlayer, hand: ["c1"] }
+          },
+          options: { mode: "practice", playerCount: 1, enabledExpansions: [], enabledVariants: [] }
+        })}
+        ctx={{ currentPlayer: "0" }}
+        playerID="0"
+        moves={{}}
+      />
+    );
+
+    expect(html).toContain("Player 1");
+    expect(html).not.toContain("Player 0");
   });
 
   it("uses the online player seat for pending cleanup market targets", () => {
@@ -170,6 +245,7 @@ describe("BoardLayout", () => {
       <BoardLayout
         G={baseGame({
           playOrder: ["1"],
+          seatOrder: ["0"],
           players: {
             "1": { ...emptyPlayer }
           },
@@ -210,6 +286,91 @@ describe("BoardLayout", () => {
     );
 
     expect(html).toContain("Place cleanup resource on Market1");
+    expect(html).toContain("is-valid-target");
+    expect(html).not.toContain("waiting for player 1");
+  });
+
+  it("maps the second online boardgame seat to the second engine player id", () => {
+    const html = renderToStaticMarkup(
+      <BoardLayout
+        G={baseGame({
+          playOrder: ["1", "2"],
+          seatOrder: ["0", "1"],
+          players: {
+            "1": { ...emptyPlayer, hand: ["c1"] },
+            "2": { ...emptyPlayer, hand: ["c2"] }
+          },
+          pendingCleanupMarketResourceChoice: {
+            playerId: "2",
+            resource: "knowledge",
+            amount: 1,
+            cardIds: ["m1"]
+          }
+        })}
+        ctx={{ currentPlayer: "1" }}
+        playerID="1"
+        viewerPlayerID="1"
+        moves={{}}
+      />
+    );
+
+    expect(html).toContain("Place cleanup resource on Market1");
+    expect(html).toContain("is-valid-target");
+    expect(html).toContain("Viewer Player");
+    expect(html).toContain("Player 2");
+    expect(html).not.toContain("waiting for player 2");
+  });
+
+  it.each([
+    {
+      name: "market cleanup resource",
+      pending: { pendingCleanupMarketResourceChoice: { playerId: "1", resource: "knowledge", amount: 1, cardIds: ["m1"] } },
+      text: "Place cleanup resource on Market1"
+    },
+    {
+      name: "market gain",
+      pending: { pendingMarketCardChoice: { playerId: "1", sourceCardId: "picker", op: "gain_card", cardIds: ["m1"], destination: "hand" } },
+      text: "Gain Market1"
+    },
+    {
+      name: "market acquire",
+      pending: { pendingAcquireChoice: { playerId: "1", sourceCardId: "picker", source: "market", cardIds: ["m1"], destination: "hand" } },
+      text: "Acquire Market1"
+    },
+    {
+      name: "market exile",
+      pending: { pendingExileChoice: { playerId: "1", sourceCardId: "picker", source: "market", cardIds: ["m1"] } },
+      text: "Exile Market1"
+    },
+    {
+      name: "market break through",
+      pending: { pendingBreakThroughChoice: { playerId: "1", sourceCardId: "breaker", source: "market", suit: "civilized", cardIds: ["m1"] } },
+      text: "Break Through Market1"
+    },
+    {
+      name: "one-card market resource placement",
+      pending: { pendingMarketResourcePlacementChoice: { playerId: "1", sourceCardId: "mover", resource: "materials", amount: 1, cardIds: ["m1"] } },
+      text: "Move materials to Market1"
+    }
+  ])("maps one-player local seat 0 to player 1 for pending $name targets", ({ pending, text }) => {
+    const html = renderToStaticMarkup(
+      <BoardLayout
+        G={baseGame({
+          playOrder: ["1"],
+          seatOrder: ["0"],
+          players: {
+            "1": { ...emptyPlayer, hand: ["c1"] }
+          },
+          options: { mode: "practice", playerCount: 1, enabledExpansions: [], enabledVariants: [] },
+          ...pending
+        })}
+        ctx={{ currentPlayer: "0" }}
+        playerID="0"
+        moves={{}}
+      />
+    );
+
+    expect(html).toContain(text);
     expect(html).toContain("is-valid-target");
     expect(html).not.toContain("waiting for player 1");
   });

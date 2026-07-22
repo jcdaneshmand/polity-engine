@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { writeJsonFileSync } from "./jsonFileStore";
 import type { CreateLobbyMatchInput, ListedMatch, ListedMatchStatus, LobbyAccessResult, RecordPlayerJoinInput, RecordPlayerLeaveInput } from "./lobbyTypes";
 
 type LobbyStoreOptions = {
@@ -132,10 +132,7 @@ export function createLobbyStore(options: LobbyStoreOptions = {}) {
 
   function persist(): void {
     if (!options.storageFile) return;
-    mkdirSync(dirname(options.storageFile), { recursive: true });
-    const tempFile = `${options.storageFile}.tmp`;
-    writeFileSync(tempFile, JSON.stringify(snapshot(), null, 2));
-    renameSync(tempFile, options.storageFile);
+    writeJsonFileSync(options.storageFile, snapshot());
   }
 
   function cleanupStalePlayers(match: PrivateMatchMetadata): boolean {

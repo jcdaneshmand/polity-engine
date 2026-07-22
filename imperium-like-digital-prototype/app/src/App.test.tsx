@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import App, { loadOnlineDirectory, setupConfigForStartedOnlineSession, shouldHeartbeatLobbySession, startedSessionRecordForLobby } from "./App";
+import App, { boardgameClientPropsForSession, loadOnlineDirectory, setupConfigForStartedOnlineSession, shouldHeartbeatLobbySession, startedSessionRecordForLobby } from "./App";
 import { LOCAL_GAME_SAVE_STORAGE_KEY, serializeLocalGame } from "./localGameSave";
 import type { LobbyRoomDetails, OnlineLobbySessionRecord, OnlineStartedSessionRecord } from "./onlineSession";
 
@@ -109,6 +109,23 @@ describe("App shell", () => {
     };
 
     expect(setupConfigForStartedOnlineSession(saved)).toEqual(setupConfig);
+  });
+
+  it("passes online identity props to the rendered boardgame client", () => {
+    expect(boardgameClientPropsForSession({
+      ...setupConfig,
+      id: 1,
+      kind: "online",
+      role: "player",
+      matchID: "match-1",
+      playerID: "1",
+      credentials: "seat-token",
+      serverURL: "http://localhost:8000"
+    } as any)).toEqual({
+      matchID: "match-1",
+      playerID: "1",
+      credentials: "seat-token"
+    });
   });
 
   it("converts a started lobby refresh into a started online session record", () => {

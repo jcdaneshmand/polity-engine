@@ -94,12 +94,13 @@ type CardDetailPanelProps = {
   card: any;
   pinned?: boolean;
   blockedReason?: string;
+  ruleProvenance?: string;
   onUnpin?: () => void;
   onZoom?: () => void;
   variant?: "panel" | "modal";
 };
 
-export function CardDetailPanel({ card, pinned = false, blockedReason, onUnpin, onZoom, variant = "panel" }: CardDetailPanelProps) {
+export function CardDetailPanel({ card, pinned = false, blockedReason, ruleProvenance, onUnpin, onZoom, variant = "panel" }: CardDetailPanelProps) {
   if (!card) return <div className="panel detail">Select a card.</div>;
   const effects = card.effects ?? [];
   const tags = card.tags ?? [];
@@ -116,7 +117,10 @@ export function CardDetailPanel({ card, pinned = false, blockedReason, onUnpin, 
       </div>
     </div>
     {pinned ? <div className="pinned-label">Pinned</div> : null}
-    {blockedReason ? <div className="detail-blocked-reason">{blockedReason}</div> : null}
+    {blockedReason || ruleProvenance ? <div className="detail-rule-feedback detail-blocked-reason">
+      {blockedReason ? <strong>{blockedReason}</strong> : null}
+      {ruleProvenance ? <span>{ruleProvenance}</span> : null}
+    </div> : null}
     <div className="detail-grid">
       <div><span>Cost</span><strong>{formatCardDetailResourceCost(card.cost ?? 0)}</strong></div>
       <div><span>Develop</span><strong>{formatCardDetailResourceCost(card.developmentCost ?? {})}</strong></div>

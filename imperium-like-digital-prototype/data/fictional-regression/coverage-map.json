@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-07-20",
+  "updated": "2026-07-22",
   "entries": [
     {
       "id": "legal-boundary-fixtures",
@@ -193,6 +193,19 @@
       "status": "covered",
       "evidenceTests": ["uiSelectors.test.ts", "uiSelectionModel.test.ts", "turnLoop.test.ts", "privateCardEntryNavigation.test.tsx", "BoardLayout.test.tsx"],
       "scenarioFixtures": []
+    },
+    {
+      "id": "ui-playable-rulebook-explanations",
+      "contractArea": "UI as playable rulebook: current task, blocked-action reasons, rule provenance labels, zone hierarchy, player aid, and player-expectation browser QA",
+      "status": "covered",
+      "evidenceTests": ["uiSelectionModel.test.ts", "BoardLayout.test.tsx", "CardInspectionModal.test.tsx", "local-browser-qa.test.mjs", "rulesParityCoverage.test.ts"],
+      "scenarioFixtures": ["scenarios.json"],
+      "uiExplanations": {
+        "currentTaskTitles": ["Ready", "Pending Cleanup Resource", "Pending Cleanup Discard", "Pending Acquire", "Pending Draw"],
+        "ruleProvenanceLabels": ["Turn rule", "Action token", "Exhaust token", "Pending choice", "Free play", "Payment", "Market target", "Mode/module", "Hidden information"],
+        "blockedReasonPatterns": ["Resolve cleanup market resource first", "Resolve the pending Acquire choice first", "No Action tokens available", "Cannot pay choice cost", "Select a card to pin details"],
+        "zoneKinds": ["public-shared", "market-shared", "own-private", "opponent-hidden", "pending-choice"]
+      }
     },
     {
       "id": "private-data-completeness",

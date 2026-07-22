@@ -1,4 +1,4 @@
-import { getActionIntent } from "../controller/selectionModel";
+import { getActionIntent, ruleProvenanceLabels } from "../controller/selectionModel";
 
 type ActionItem = { kind: "action"; label: string; action: any };
 type GroupItem = { kind: "group"; label: string; actions: any[] };
@@ -72,10 +72,11 @@ export function ActionMenu({ actions, onAction }: { actions: any[]; onAction: (a
       <span className="action-symbol" aria-hidden="true">{actionSymbol(a)}</span>
       <span>{a.label}</span>
     </span>
+    {a.provenance ? <span className="action-provenance">{ruleProvenanceLabels[a.provenance as keyof typeof ruleProvenanceLabels] ?? "Rule"}</span> : null}
     {!a.enabled ? <small>{compactReason(a.reason) || "Unavailable"}</small> : null}
   </button>;
 
-  return <div className="panel actions">
+  return <div className="panel actions action-menu">
     <div className="panel-title">Actions</div>
     {menuItems.map((section) => section.kind === "section" ? <section key={section.label} className="action-section">
       <div className="action-section-title">{section.label}</div>

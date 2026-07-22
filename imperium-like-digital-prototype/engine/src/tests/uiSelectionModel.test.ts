@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { getActionHintsByCardId, getActionIntent, getAvailableActionsForSelection, getMarketCardClickAction, getPendingUiState, getPrimaryBlockedReason, getSelectedCard } from "../../../app/src/ui/controller/selectionModel";
+import { getActionHintsByCardId, getActionIntent, getActionProvenance, getAvailableActionsForSelection, getCurrentTaskUiState, getMarketCardClickAction, getPendingUiState, getPrimaryBlockedReason, getSelectedCard } from "../../../app/src/ui/controller/selectionModel";
 import { compactReason, groupActionsForMenu } from "../../../app/src/ui/layout/ActionMenu";
 import { formatLogMessage } from "../../../app/src/ui/layout/GameLogPanel";
 import { marketResourceTokens } from "../../../app/src/ui/layout/MarketRow";
@@ -76,12 +76,29 @@ describe("selection model", () => {
     expect(getActionIntent({ action: "resolveChoice", enabled: true })).toBe("choice");
     expect(getActionIntent({ action: "endTurn", enabled: true })).toBe("neutral");
     expect(getActionIntent({ action: "play", enabled: false })).toBe("blocked");
+    expect(getActionProvenance({ action: "play", enabled: false, reason: "No Action tokens available" })).toBe("requires_action_token");
+    expect(getActionProvenance({ action: "resolveChoice", enabled: true })).toBe("pending_choice");
+    expect(getActionProvenance({ action: "profit", enabled: false, reason: "Trade Route needs 3 Goods" })).toBe("mode_module_rule");
   });
   it("summarizes pending choices for the board banner",()=> {
     expect(getPendingUiState({...G,pendingAcquireChoice:{playerId:"1",sourceCardId:"picker",source:"market",cardIds:["m1"],destination:"hand"}},ctx)).toEqual({
       title:"Pending Acquire",
       detail:"Choose 1 card",
-      playerId:"1"
+      playerId:"1",
+      choiceType:"acquire",
+      suppressNormalActions:true
+    });
+  });
+  it("publishes current task metadata for ready and blocking states",()=> {
+    expect(getCurrentTaskUiState(G,ctx)).toEqual({
+      title:"Ready",
+      detail:"Select a card, use a turn action, or end the turn.",
+      suppressNormalActions:false
+    });
+    expect(getCurrentTaskUiState({...G,pendingCleanupMarketResourceChoice:{playerId:"1",resource:"knowledge",amount:1,cardIds:["m1"]}},ctx)).toMatchObject({
+      title:"Pending Cleanup Resource",
+      choiceType:"cleanup_resource",
+      suppressNormalActions:true
     });
   });
   it("summarizes pending Gain/Take market card choices for the board banner",()=> {
@@ -652,8 +669,8 @@ describe("selection model", () => {
   it("pending cleanup market resource exposes eligible market cards",()=> {
     const acts=getAvailableActionsForSelection(null, {...G,pendingCleanupMarketResourceChoice:{playerId:"1",cardIds:["m1"]}}, ctx);
     expect(acts.map((a)=>a.action)).toEqual(["resolveCleanupMarketResource","endTurn"]);
-    expect(acts[0]).toMatchObject({ label:"Place cleanup resource on Market1", enabled:true, cardId:"m1" });
-    expect(acts[1].enabled).toBe(false);
+    expect(acts[0]).toMatchObject({ label:"Place cleanup resource on Market1", enabled:true, cardId:"m1", provenance:"pending_choice" });
+    expect(acts[1]).toMatchObject({ enabled:false, provenance:"pending_choice" });
   });
   it("treats supplied currentPlayer as the viewer identity for pending choices",()=> {
     const activeTurnCtx:any={currentPlayer:"2"};

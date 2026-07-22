@@ -73,7 +73,8 @@ Contact: [jcdaneshmand@gmail.com](mailto:jcdaneshmand@gmail.com).
 - [x] Local save/resume baseline for in-progress local games.
 - [x] Local game export/import baseline for portable save files.
 - [x] Undo and legal-move guardrail baseline for risky actions.
-- [x] Local playtest server and two-context browser QA loop.
+- [x] Local playtest server and browser QA loop for setup, save/resume, automated practice, solo, and two-seat online multiplayer self-play.
+- [x] Player-expectation QA artifacts with public-safe failure reports, action traces, compact UI snapshots, and screenshots.
 
 ### Planned
 
@@ -90,11 +91,25 @@ Contact: [jcdaneshmand@gmail.com](mailto:jcdaneshmand@gmail.com).
 
 | Bucket | Status | Next gate |
 | --- | --- | --- |
-| Local QA/playtest | Baseline complete | Keep `npm.cmd run qa:local-browser` and the local smoke gates green before major changes. |
-| Rules parity | Broad covered matrix with strong unit evidence | Add an auditable coverage map and richer public-safe scenarios. |
-| Playability | Locally playable with save/resume and rejoin flows | Add human playtest checklist, diagnostics, and browser QA coverage for more board states. |
-| Hosted release | Deferred | Run hosted smoke and hosted two-context browser QA against the real public origin. |
-| Private data | Final gate only | Run private preflight/import/completeness only after public-safe and hosted gates pass. |
+| Local QA/playtest | Practice, solo, two-seat online self-play, worked-turn, save/resume, invalid save, privacy marker, hierarchy, and viewport browser gates complete | Keep `npm.cmd run qa:local-browser`, `npm test`, `npm.cmd run smoke:fictional-game`, and `npm.cmd run typecheck` green before major changes. |
+| UI as playable rulebook | Current-task strip, action provenance, why-can't-I feedback, player aid, public-safe diagnostics, zone hierarchy metadata, and viewport checks are in place | Continue polishing visual hierarchy from real playtest findings; keep browser QA expectations updated. |
+| Rules parity | Broad covered matrix with strong unit evidence and playable-rulebook explanation coverage | Keep `data/fictional-regression/coverage-map.json` aligned with UI explanations, fictional scenarios, and rules-engine tests. |
+| Playability | Locally playable with save/resume, rejoin flows, deterministic worked-turn coverage, and automated player-expectation checks | Add longer whole-game stress simulations and promote high-value failures into browser QA. |
+| Hosted release | Render blueprint and local deploy preflight pass; candidate hosted origin still returns health-check 404 | Redeploy the Render service or set the correct `POLITY_HOSTED_BASE_URL`, then run `npm.cmd run smoke:hosted` and `npm.cmd run qa:hosted-browser` against the real public origin. |
+| Private data | Final gate only | Run private preflight/import/completeness only after public-safe local and hosted gates pass. |
+
+### Next Gate Roadmap
+
+The next implementation plan is tracked in `imperium-like-digital-prototype/docs/superpowers/plans/2026-07-22-next-gates.md`.
+
+The gates should close in this order:
+
+1. Finish board hierarchy polish so public zones, private zones, hidden information, selected cards, and pending choices are visually unambiguous across desktop, Steam Deck, and narrow tablet viewports.
+2. Add a guided worked-turn scenario that drives a deterministic public-safe turn through setup, selection, legal and blocked actions, pending choices, cleanup, end turn, and save/resume.
+3. Expand parity evidence so each current-task label, blocked-action reason, provenance label, and fictional scenario points back to rules-engine tests or coverage-map entries.
+4. Add hosted smoke and hosted browser QA against the deployed origin using the same player-expectation checks as local QA.
+5. Add longer gameplay stress runs with fake decks, seeded simulations, whole-game or near-whole-game loops, and artifact capture on logical expectation failures.
+6. Run the private-data final gate locally only, after all public-safe local and hosted gates are green.
 
 ## Repository Structure
 
@@ -158,6 +173,14 @@ Run TypeScript checks for the engine, app, and server:
 npm run typecheck
 ```
 
+Run the local Render/deployment preflight:
+
+```powershell
+npm.cmd run render:verify
+```
+
+This runs typecheck, server tests, and a production app build from the deployment workspace.
+
 Run the app workspace tests directly:
 
 ```powershell
@@ -182,11 +205,13 @@ Run a local playtest server with temporary storage:
 npm.cmd run playtest:local
 ```
 
-Run the local two-context browser QA gate:
+Run the local browser QA gate:
 
 ```powershell
 npm.cmd run qa:local-browser
 ```
+
+This builds the app, starts a temporary same-origin local server, checks setup/save/resume behavior, drives automated practice and solo games, and runs a proper two-seat online multiplayer self-play loop against the local lobby server. Player-expectation failures preserve a public-safe JSON report and screenshot under the temporary QA storage folder.
 
 These commands use public-safe placeholder data and do not require private CSV files or public hosting.
 

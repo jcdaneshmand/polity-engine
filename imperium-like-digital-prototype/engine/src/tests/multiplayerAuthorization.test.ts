@@ -91,7 +91,7 @@ describe("multiplayer move authorization", () => {
         state.G = {
           ...state.G,
           pendingChoice: {
-            playerId: "1",
+            playerId: "2",
             choices: [[{ op: "gain_resource", resource: "material", count: 1 }]]
           }
         };

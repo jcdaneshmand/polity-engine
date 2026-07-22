@@ -18,6 +18,34 @@ describe("playerView redaction", () => {
     expect(view.players["0"]).toBeUndefined();
   });
 
+  it("maps the second boardgame seat to the second one-based game player id", () => {
+    const G = createInitialState({ options: { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: [] } });
+    G.playOrder = ["1", "2"];
+    G.seatOrder = ["0", "1"];
+    G.players["1"].hand = ["p1_hand_secret"];
+    G.players["2"].hand = ["p2_hand_secret"];
+    G.pendingCleanupMarketResourceChoice = { playerId: "2", resource: "knowledge", amount: 1, cardIds: ["m1"] };
+
+    const view = PrototypeGame.playerView!({ G, playerID: "1" } as any);
+
+    expect(view.players["1"].hand).toEqual([]);
+    expect(view.players["2"].hand).toEqual(["p2_hand_secret"]);
+    expect(view.pendingCleanupMarketResourceChoice).toEqual(G.pendingCleanupMarketResourceChoice);
+  });
+
+  it("hides one-player local pending choices when no player seat is supplied", () => {
+    const G = createInitialState({ options: { playerCount: 1, mode: "practice", enabledExpansions: [], enabledVariants: [] } });
+    G.playOrder = ["1"];
+    G.seatOrder = ["0"];
+    G.pendingCleanupMarketResourceChoice = { playerId: "1", resource: "knowledge", amount: 1, cardIds: ["m1"] };
+
+    const spectatorView = PrototypeGame.playerView!({ G, playerID: undefined } as any);
+    const playerView = PrototypeGame.playerView!({ G, playerID: "0" } as any);
+
+    expect(spectatorView.pendingCleanupMarketResourceChoice).toBeUndefined();
+    expect(playerView.pendingCleanupMarketResourceChoice).toEqual(G.pendingCleanupMarketResourceChoice);
+  });
+
   it("hides opponent private card identities while preserving public state and counts", () => {
     const G = createInitialState({ options: { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: [] } });
     G.players["1"].hand = ["p1_hand_secret"];
@@ -83,5 +111,31 @@ describe("playerView redaction", () => {
     expect(serialized).not.toContain("p1_deck_secret");
     expect(serialized).not.toContain("p2_hand_secret");
     expect(serialized).not.toContain("p2_deck_secret");
+  });
+
+  it.each([
+    {
+      key: "pendingFreePlayChoice",
+      value: { playerId: "1", sourceCardId: "free_play_source", cardIds: ["p1_hand_secret"] }
+    },
+    {
+      key: "pendingLookTakeChoice",
+      value: { playerId: "1", source: "deck", destination: "hand", cardIds: ["p1_hand_secret"] }
+    },
+    {
+      key: "pendingMarketResourcePlacementChoice",
+      value: { playerId: "1", sourceCardId: "market_resource_source", resource: "knowledge", amount: 1, cardIds: ["market_card"] }
+    }
+  ] as const)("hides $key from spectator and non-owner views", ({ key, value }) => {
+    const G = createInitialState({ options: { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: [] } });
+    (G as any)[key] = value;
+
+    const ownerView = redactGameStateForPlayer(G, "1") as any;
+    const opponentView = redactGameStateForPlayer(G, "2") as any;
+    const spectatorView = redactGameStateForPlayer(G, undefined) as any;
+
+    expect(ownerView[key]).toEqual(value);
+    expect(opponentView[key]).toBeUndefined();
+    expect(spectatorView[key]).toBeUndefined();
   });
 });

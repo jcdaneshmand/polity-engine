@@ -10,15 +10,25 @@ import { redactGameStateForPlayer } from "./playerView";
 
 function gamePlayerIdForSeat(G: GameState, playerID?: string | null): string | undefined {
   if (playerID == null) return undefined;
-  if (G.players[playerID]) return playerID;
-  const mappedPlayerId = G.playOrder?.[Number(playerID)];
+  const seatIndex = G.seatOrder?.includes(playerID) ? Number(playerID) : Number.NaN;
+  const mappedPlayerId = Number.isInteger(seatIndex) ? G.playOrder?.[seatIndex] : undefined;
   return mappedPlayerId && G.players[mappedPlayerId] ? mappedPlayerId : playerID;
+}
+
+function gamePlayerIdForCtx(G: GameState, ctx: any): string | undefined {
+  const currentPlayer = ctx?.currentPlayer;
+  if (currentPlayer == null) return undefined;
+  const ctxOrder: string[] | undefined = Array.isArray(ctx?.playOrder) ? (ctx.playOrder as unknown[]).map(String) : undefined;
+  const isBoardgameSeatOrder = ctxOrder?.length
+    ? ctxOrder.every((playerId, index) => playerId === G.seatOrder?.[index])
+    : !G.players[currentPlayer];
+  return isBoardgameSeatOrder ? gamePlayerIdForSeat(G, currentPlayer) : currentPlayer;
 }
 
 function engineCtx(G: GameState, ctx: any): any {
   return {
     ...ctx,
-    currentPlayer: gamePlayerIdForSeat(G, ctx?.currentPlayer) ?? ctx?.currentPlayer,
+    currentPlayer: gamePlayerIdForCtx(G, ctx) ?? ctx?.currentPlayer,
     playOrder: G.playOrder ?? ctx?.playOrder
   };
 }

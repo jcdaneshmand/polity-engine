@@ -61,6 +61,7 @@
 .turn-status strong { display:block; margin-top:2px; }
 .turn-status-pending { color:#ffe0a3; font-weight:700; }
 .current-task-strip { grid-column:1 / -1; border:1px solid var(--ui-info); border-radius:6px; background:var(--ui-info-bg); padding:7px 9px; }
+.current-task-strip--blocking { border-color:var(--ui-selection); box-shadow:inset 0 0 0 1px rgba(240,195,109,.35); }
 .current-task-strip strong { display:block; color:#f3ead8; }
 .playtest-diagnostics { display:grid; gap:8px; }
 .diagnostic-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
@@ -76,7 +77,15 @@
 .detail-grid strong { display:block; margin-top:2px; overflow-wrap:anywhere; }
 .detail-tags { display:flex; flex-wrap:wrap; gap:4px; margin-top:8px; }
 .detail-tags span { border:1px solid #7a6a57; border-radius:999px; padding:2px 6px; color:#ffe0a3; background:#493a2f; font-size:.72rem; font-weight:700; }
-.detail-blocked-reason { margin-top:8px; border:1px solid var(--ui-blocked); border-radius:6px; background:var(--ui-blocked-bg); color:#ffe4dc; padding:7px 8px; font-size:.82rem; font-weight:700; }
+.action-provenance { display:inline-flex; width:max-content; max-width:100%; border:1px solid #6e5f50; border-radius:999px; background:#332d28; color:#d9c7a7; padding:1px 6px; font-size:.68rem; font-weight:700; text-transform:uppercase; }
+.detail-rule-feedback { display:flex; flex-direction:column; gap:3px; margin-top:8px; border:1px solid var(--ui-blocked); border-radius:6px; background:var(--ui-blocked-bg); color:#ffe4dc; padding:7px 8px; font-size:.82rem; }
+.detail-rule-feedback span { color:#d9c7a7; font-size:.72rem; font-weight:700; text-transform:uppercase; }
+.rule-aid-panel { display:flex; flex-direction:column; gap:7px; }
+.rule-aid-list { display:flex; flex-direction:column; gap:7px; }
+.rule-aid-item { display:grid; gap:2px; border-top:1px solid #55483d; padding-top:7px; }
+.rule-aid-item:first-child { border-top:0; padding-top:0; }
+.rule-aid-item strong { color:#ffe0a3; font-size:.84rem; }
+.rule-aid-item span { color:#e7dcc8; font-size:.78rem; line-height:1.25; }
 .detail-section-title { color:#d9c7a7; font-size:.76rem; font-weight:700; text-transform:uppercase; margin-top:10px; }
 .detail-effects { margin:5px 0 0; padding-left:18px; }
 .detail-effects li { margin-bottom:4px; line-height:1.25; }

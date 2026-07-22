@@ -46,7 +46,7 @@ npm.cmd run smoke:hosted
 
 Result: `GET /polity/accounts/health failed with 404: Not Found`.
 
-After pushing the Render Blueprint hardening commit `46b984c`, the same hosted smoke was rerun against `https://polity-engine.onrender.com` and still returned `GET /polity/accounts/health failed with 404: Not Found`. This means the public origin still needs a real Render deployment of the selected branch, or the correct deployed origin must be supplied.
+After pushing the Render Blueprint hardening commit `46b984c`, the same hosted smoke was rerun against `https://polity-engine.onrender.com` and still returned `GET /polity/accounts/health failed with 404: Not Found`. The result was checked again on 2026-07-22 with the current local gate worktree, and `npm.cmd run smoke:hosted` still returned `GET /polity/accounts/health failed with 404: Not Found`. This means the public origin still needs a real Render deployment of the selected branch, or the correct deployed origin must be supplied.
 
 ```powershell
 $env:POLITY_HOSTED_BASE_URL="https://polity-engine.onrender.com"
@@ -60,6 +60,7 @@ Result: timed out waiting for `/polity/accounts/health` with `404 Not Found`.
 After redeploying or supplying the correct public origin, run from `imperium-like-digital-prototype`:
 
 ```powershell
+npm.cmd run render:verify
 $env:POLITY_HOSTED_BASE_URL="<actual public origin>"
 npm.cmd run smoke:hosted
 npm.cmd run qa:hosted-browser

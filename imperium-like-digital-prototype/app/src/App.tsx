@@ -140,6 +140,16 @@ function gamePlayerIDForSeatID(playerID: string | undefined): string {
   return String(Number(playerID ?? "0") + 1);
 }
 
+export function boardgameClientPropsForSession(session: GameSession | null): Record<string, string> {
+  if (!session) return {};
+  if (session.kind === "local") return { playerID: "0" };
+  return {
+    matchID: session.matchID,
+    credentials: session.credentials,
+    ...(session.role === "player" ? { playerID: session.playerID } : {})
+  };
+}
+
 function isNewGameSessionConfig(value: unknown): value is NewGameSessionConfig {
   if (!value || typeof value !== "object") return false;
   const config = value as Partial<NewGameSessionConfig>;
@@ -296,7 +306,9 @@ export default function App() {
             soloBotNationId: session.soloBotNationId,
             privateData: session.privateData,
             randomSeed: String(session.id)
-          })
+          }),
+        playerView: (args: Parameters<NonNullable<typeof PrototypeGame.playerView>>[0]) =>
+          PrototypeGame.playerView!({ ...args, playerID: args.playerID ?? args.ctx?.currentPlayer ?? "0" })
       }
       : PrototypeGame;
 
@@ -349,6 +361,7 @@ export default function App() {
       board: SessionBoard,
       numPlayers: session.options.playerCount,
       debug: false,
+      ...(session.kind === "local" ? { playerID: "0" } : {}),
       ...(session.kind === "local" && session.restoredLocalGame ? {
         enhancer: createLocalGameRestoreEnhancer(session.restoredLocalGame)
       } : {}),
@@ -1256,7 +1269,7 @@ export default function App() {
           New Game
         </button>
       </div>
-      <GameClient key={session.id} />
+      <GameClient key={session.id} {...boardgameClientPropsForSession(session)} />
     </div>
   );
 }

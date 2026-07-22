@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { writeJsonFileSync } from "./jsonFileStore";
 import type {
   AccountPublicView,
   AccountPasswordResetRecord,
@@ -150,10 +150,7 @@ export function createAccountStore(options: AccountStoreOptions = {}) {
 
   function persist(): void {
     if (!options.storageFile) return;
-    mkdirSync(dirname(options.storageFile), { recursive: true });
-    const tempFile = `${options.storageFile}.tmp`;
-    writeFileSync(tempFile, JSON.stringify(snapshot(), null, 2));
-    renameSync(tempFile, options.storageFile);
+    writeJsonFileSync(options.storageFile, snapshot());
   }
 
   function isExpired(timestamp: string, ttlMs: number): boolean {

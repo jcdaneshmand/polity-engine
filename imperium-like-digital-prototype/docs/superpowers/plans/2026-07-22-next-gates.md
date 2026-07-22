@@ -164,7 +164,7 @@ Evidence note: Added `ui-playable-rulebook-explanations` to `data/fictional-regr
 - [x] Confirm hosted QA configuration uses an explicit public origin and never defaults silently to a stale deployment.
 - [x] Align hosted browser QA expectations with local player-expectation checks: setup, diagnostics, current task, enabled/blocked action metadata, save/resume where supported, and no private-debug markers.
 - [x] Add or update tests for hosted QA configuration errors and artifact redaction.
-- [ ] Run local hosted smoke first, then deployed hosted smoke, then hosted browser QA.
+- [x] Run local hosted smoke first, then deployed hosted smoke, then hosted browser QA.
 - [x] Record the tested origin, commit SHA, and command outputs in the plan evidence.
 
 **Acceptance evidence:**
@@ -175,7 +175,7 @@ npm.cmd run smoke:hosted
 npm.cmd run qa:hosted-browser
 ```
 
-Evidence note: `npm.cmd run smoke:hosted:local` passed against `http://127.0.0.1:8794`. `npm.cmd run test:local-qa-scripts` passed and confirms hosted browser QA requires `POLITY_HOSTED_BASE_URL`. The root `render.yaml` is present; `npm.cmd run render:verify` passed locally after adding the package script, covering typecheck, server tests, and production app build. The next-gates work was committed and pushed to `origin/main` at `16bfa7c`. On 2026-07-22, `POLITY_HOSTED_BASE_URL=https://polity-engine.onrender.com npm.cmd run smoke:hosted` reached the candidate host both before and after that push but failed at `/polity/accounts/health` with `404 Not Found`, so deployed `smoke:hosted` and `qa:hosted-browser` remain open pending redeploy or the correct public origin.
+Evidence note: `npm.cmd run smoke:hosted:local` passed against `http://127.0.0.1:8794`. `npm.cmd run test:local-qa-scripts` passed and confirms hosted browser QA requires `POLITY_HOSTED_BASE_URL`. The root `render.yaml` is present; `npm.cmd run render:verify` passed locally after adding the package script, covering typecheck, server tests, and production app build. The next-gates work was committed and pushed to `origin/main` at `16bfa7c`. On 2026-07-22, `POLITY_HOSTED_BASE_URL=https://polity-engine.onrender.com npm.cmd run smoke:hosted` initially failed at `/polity/accounts/health` with `404 Not Found`; after Render went live, `npm.cmd run smoke:hosted` passed and `npm.cmd run qa:hosted-browser` passed against the same origin.
 
 ---
 
@@ -229,8 +229,8 @@ Evidence note: `gameplayStress.test.ts` covers seeded practice/solo/trade-route/
 
 **Steps:**
 
-- [ ] Confirm all public-safe gates are green before running private-data checks.
-- [ ] Run private preflight and inspect errors locally.
+- [x] Confirm all public-safe gates are green before running private-data checks.
+- [x] Run private preflight and inspect errors locally.
 - [ ] Run private import-all only against ignored local files.
 - [ ] Run completeness report and summarize counts without copying private text into committed docs.
 - [ ] If private data exposes a rules mismatch, reproduce it with a public-safe fake card/scenario before changing engine behavior.
@@ -244,7 +244,7 @@ npm.cmd run private:import-all
 npm.cmd run private:completeness
 ```
 
-Evidence note:
+Evidence note: After hosted proof passed on 2026-07-22, `npm.cmd run private:preflight` was run locally. It failed before import because the expected ignored local sources are missing: `imperium_cards_private.csv`, `imperium_nations_private.csv`, `imperium_nation_rulesets_private.csv`, `imperium_nation_strategy_private.csv`, `imperium_bot_state_tables_private.csv`, and `imperium_bot_trade_routes_private.csv`. The folder currently contains templates and `.gitkeep`, so `private:import-all` and `private:completeness` remain open until those local private CSV files exist.
 
 ---
 
@@ -264,7 +264,7 @@ npm.cmd run smoke:multiplayer
 npm.cmd run qa:local-browser
 ```
 
-- [ ] Hosted tests pass against the intended deployment:
+- [x] Hosted tests pass against the intended deployment:
 
 ```powershell
 npm.cmd run smoke:hosted
@@ -275,4 +275,4 @@ npm.cmd run qa:hosted-browser
 - [x] QA artifacts are kept only where useful and ignored when they contain machine-local or private context.
 - [x] Every known failing seed or scenario is either fixed or listed as an explicit open gap.
 
-Evidence note: Public-safe local checks passed: `npm.cmd run test -w engine -- rulesParityCoverage.test.ts uiSelectionModel.test.ts gameplayStress.test.ts` (engine pretest ran 47 files / 1505 tests), `npm.cmd run test -w app` (15 files / 153 tests), `npm.cmd run test -w server` (11 files / 64 tests), `npm.cmd run typecheck`, `npm.cmd run smoke:fictional-game`, `npm.cmd run smoke:multiplayer`, `npm.cmd run smoke:hosted:local`, `npm.cmd run test:local-qa-scripts`, `npm.cmd run qa:local-browser`, and `npm.cmd run render:verify`. Deployed hosted checks remain open because the candidate URL returns `404 Not Found`; private-data final gate remains deferred until hosted proof passes.
+Evidence note: Public-safe local checks passed: `npm.cmd run test -w engine -- rulesParityCoverage.test.ts uiSelectionModel.test.ts gameplayStress.test.ts` (engine pretest ran 47 files / 1505 tests), `npm.cmd run test -w app` (15 files / 153 tests), `npm.cmd run test -w server` (11 files / 64 tests), `npm.cmd run typecheck`, `npm.cmd run smoke:fictional-game`, `npm.cmd run smoke:multiplayer`, `npm.cmd run smoke:hosted:local`, `npm.cmd run test:local-qa-scripts`, `npm.cmd run qa:local-browser`, and `npm.cmd run render:verify`. Hosted checks passed against `https://polity-engine.onrender.com`: `npm.cmd run smoke:hosted` and `npm.cmd run qa:hosted-browser`. Private-data final gate remains open because the local ignored private CSV source files are missing.

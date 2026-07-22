@@ -95,8 +95,8 @@ Contact: [jcdaneshmand@gmail.com](mailto:jcdaneshmand@gmail.com).
 | UI as playable rulebook | Current-task strip, action provenance, why-can't-I feedback, player aid, public-safe diagnostics, zone hierarchy metadata, and viewport checks are in place | Continue polishing visual hierarchy from real playtest findings; keep browser QA expectations updated. |
 | Rules parity | Broad covered matrix with strong unit evidence and playable-rulebook explanation coverage | Keep `data/fictional-regression/coverage-map.json` aligned with UI explanations, fictional scenarios, and rules-engine tests. |
 | Playability | Locally playable with save/resume, rejoin flows, deterministic worked-turn coverage, and automated player-expectation checks | Add longer whole-game stress simulations and promote high-value failures into browser QA. |
-| Hosted release | Render blueprint and local deploy preflight pass; candidate hosted origin still returns health-check 404 | Redeploy the Render service or set the correct `POLITY_HOSTED_BASE_URL`, then run `npm.cmd run smoke:hosted` and `npm.cmd run qa:hosted-browser` against the real public origin. |
-| Private data | Final gate only | Run private preflight/import/completeness only after public-safe local and hosted gates pass. |
+| Hosted release | Render deployment is live and hosted smoke plus hosted browser QA pass against `https://polity-engine.onrender.com` | Keep `npm.cmd run smoke:hosted` and `npm.cmd run qa:hosted-browser` green after deploys. |
+| Private data | Final gate reached; private preflight reports local private CSV sources are missing | Add the ignored `*_private.csv` files under `imperium-like-digital-prototype/private-card-data/`, then rerun private preflight/import/completeness locally. |
 
 ### Next Gate Roadmap
 

@@ -1,15 +1,14 @@
 # Hosted Release Handoff
 
-This handoff covers the public hosting gate before private data is introduced.
+This handoff covers the public hosting gate before private data is introduced. As of 2026-07-22, the hosted gate has passed and the remaining final gate is local private-data import/completeness.
 
 ## Deployment Candidate
 
 - Repository: `jcdaneshmand/polity-engine`
-- Branch: `agent/remaining-gaps-rules-playability`
-- Deploy the latest pushed head of the branch above.
-- PR URL, if needed: `https://github.com/jcdaneshmand/polity-engine/pull/new/agent/remaining-gaps-rules-playability`
+- Branch: `origin/main`
+- Deploy the latest pushed head of `origin/main`.
 
-Private data remains out of scope for this gate. Do not run `private:preflight`, `private:import-all`, or `private:completeness` until hosted proof passes.
+Private data remains local-only. Hosted proof has passed, so `private:preflight`, `private:import-all`, and `private:completeness` may run locally once the ignored private CSV sources are present.
 
 ## Render Settings To Confirm
 
@@ -26,7 +25,7 @@ The repository `render.yaml` already declares:
 
 In the Render dashboard, confirm:
 
-- deployed branch is `agent/remaining-gaps-rules-playability` or a branch that includes it
+- deployed branch is `main`
 - `POLITY_SERVER_ORIGIN` equals the exact public origin
 - persistent disk is attached at `/var/data`
 - the latest deployed commit is visible and matches the intended branch head
@@ -46,22 +45,26 @@ npm.cmd run smoke:hosted
 
 Result: `GET /polity/accounts/health failed with 404: Not Found`.
 
-After pushing the Render Blueprint hardening commit `46b984c`, the same hosted smoke was rerun against `https://polity-engine.onrender.com` and still returned `GET /polity/accounts/health failed with 404: Not Found`. The result was checked again on 2026-07-22 with the current local gate worktree, and `npm.cmd run smoke:hosted` still returned `GET /polity/accounts/health failed with 404: Not Found`. The next-gates work was then committed and pushed to `origin/main` at `16bfa7c`; the same hosted smoke still returned `GET /polity/accounts/health failed with 404: Not Found`. This means the public origin still needs a real Render deployment of the selected branch, or the correct deployed origin must be supplied.
+After pushing the Render Blueprint hardening commit `46b984c`, the same hosted smoke was rerun against `https://polity-engine.onrender.com` and still returned `GET /polity/accounts/health failed with 404: Not Found`. The result was checked again on 2026-07-22 with the current local gate worktree, and `npm.cmd run smoke:hosted` still returned `GET /polity/accounts/health failed with 404: Not Found`. The next-gates work was then committed and pushed to `origin/main` at `16bfa7c`; the same hosted smoke still returned `GET /polity/accounts/health failed with 404: Not Found`.
+
+After Render went live on 2026-07-22, both hosted gates passed against `https://polity-engine.onrender.com`:
 
 ```powershell
 $env:POLITY_HOSTED_BASE_URL="https://polity-engine.onrender.com"
+npm.cmd run smoke:hosted
 npm.cmd run qa:hosted-browser
 ```
 
-Result: timed out waiting for `/polity/accounts/health` with `404 Not Found`.
+The hosted browser QA passed setup, local board, worked-turn, automated practice, automated solo, two-seat online multiplayer self-play, viewport QA, save/resume, invalid save, and private-debug marker checks.
 
-## Required Hosted Proof
+The next local check was `npm.cmd run private:preflight`. It reached the final gate but stopped because the expected ignored private CSV sources are not present under `private-card-data/`.
 
-After redeploying or supplying the correct public origin, run from `imperium-like-digital-prototype`:
+## Hosted Proof To Maintain
+
+After future deploys, rerun from `imperium-like-digital-prototype`:
 
 ```powershell
-npm.cmd run render:verify
-$env:POLITY_HOSTED_BASE_URL="<actual public origin>"
+$env:POLITY_HOSTED_BASE_URL="https://polity-engine.onrender.com"
 npm.cmd run smoke:hosted
 npm.cmd run qa:hosted-browser
 ```
@@ -88,16 +91,14 @@ Expected hosted browser proof:
 - both contexts can rejoin a started match
 - private-debug markers are absent
 
-## Evidence To Record
+## Evidence Recorded
 
-Update `docs/deployment.md` and `docs/superpowers/plans/2026-07-20-polity-remaining-gaps-rules-playability.md` with:
+The current evidence is recorded in `docs/deployment.md` and `docs/superpowers/plans/2026-07-22-next-gates.md`:
 
 - public origin
-- deployed branch and commit
-- Render storage path and disk confirmation
+- deployed branch and commit context
 - `smoke:hosted` command and result
 - `qa:hosted-browser` command and result
-- any restart/storage persistence proof
 - private-debug disabled proof
 
-Only after that evidence is recorded should Task 8, the private data final gate, begin.
+The private-data final gate remains open until the ignored local private CSV sources are available.

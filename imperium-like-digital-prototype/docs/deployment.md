@@ -74,9 +74,10 @@ The hosted browser QA reuses the local browser flow without starting a local ser
 - 2026-07-21: Current deployment branch head is `a8acba8`. `npm.cmd run test:local-qa-scripts`, `npm.cmd run smoke:hosted:local`, and `npm.cmd run typecheck` passed locally. `https://polity-engine.onrender.com/polity/accounts/health` still returns `404 Not Found`, so real hosted proof remains open.
 - 2026-07-22: Root `render.yaml` is present and declares the Render service shape described above. `npm.cmd run render:verify` passed locally: typecheck, server tests, and production app build completed. `npm.cmd run smoke:hosted` against `POLITY_HOSTED_BASE_URL=https://polity-engine.onrender.com` still reaches the host but fails at `/polity/accounts/health` with `404 Not Found`. Hosted proof remains pending a redeploy of this service or the correct public origin.
 - 2026-07-22: Next-gates work was committed and pushed to `origin/main` at `16bfa7c`. After the push, `POLITY_HOSTED_BASE_URL=https://polity-engine.onrender.com npm.cmd run smoke:hosted` still returned `GET /polity/accounts/health failed with 404: Not Found`, so the candidate public origin is not yet serving the pushed Polity Engine service.
+- 2026-07-22: After Render went live, `POLITY_HOSTED_BASE_URL=https://polity-engine.onrender.com npm.cmd run smoke:hosted` passed and created/listed/cleaned up a hosted placeholder lobby. `POLITY_HOSTED_BASE_URL=https://polity-engine.onrender.com npm.cmd run qa:hosted-browser` also passed, including setup, local board, worked-turn, automated practice, automated solo, two-seat online multiplayer self-play, viewport QA, save/resume, invalid save, and private-debug marker checks.
 
-## Deferred Hosted Gate
+## Hosted Gate Status
 
-- 2026-07-14: Public hosting is intentionally deferred until later. Keep `npm.cmd run smoke:hosted` as the first hosted gate to run once an actual public origin exists, then complete the two-context browser QA before recording a hosted release gate.
-- While public hosting is deferred, use `npm.cmd run qa:local-browser` as the local browser QA gate. It does not replace hosted proof; it keeps the browser multiplayer flow covered until a public origin exists.
-- Current redeploy handoff and expected hosted evidence are summarized in `docs/hosted-release-handoff.md`.
+- 2026-07-14: Public hosting was intentionally deferred until later. `npm.cmd run qa:local-browser` remained the local browser QA gate while public hosting was unavailable.
+- 2026-07-22: Hosted smoke and hosted browser QA now pass against `https://polity-engine.onrender.com`. Rerun `npm.cmd run smoke:hosted` and `npm.cmd run qa:hosted-browser` after future Render deploys.
+- Current hosted evidence and private-gate handoff are summarized in `docs/hosted-release-handoff.md`.

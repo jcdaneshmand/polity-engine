@@ -25,6 +25,8 @@ type OnlineGamesProps = {
   onRejoin: (record: OnlineSessionRecord) => void;
   onForgetSession: (record: OnlineSessionRecord) => void;
   onCloseSession?: (record: OnlineSessionRecord) => void;
+  onAdminCloseLobby?: (lobbyID: string) => void | Promise<void>;
+  onAdminCloseMatch?: (matchID: string) => void | Promise<void>;
   onSendChat?: (text: string) => void | Promise<void>;
   onClearAllGames?: () => void | Promise<void>;
   onRegisterAccount?: (input: { email: string; username: string; password: string }) => void | Promise<void>;
@@ -104,6 +106,8 @@ export default function OnlineGames({
   onRejoin,
   onForgetSession,
   onCloseSession,
+  onAdminCloseLobby,
+  onAdminCloseMatch,
   onSendChat,
   onClearAllGames,
   onRegisterAccount = () => undefined,
@@ -314,6 +318,9 @@ export default function OnlineGames({
                     >
                       {savedLobbySession ? "Rejoin Lobby" : "Join Lobby"}
                     </button>
+                    {account?.role === "admin" && onAdminCloseLobby ? (
+                      <button type="button" onClick={() => void onAdminCloseLobby(lobby.lobbyID)}>Close Lobby</button>
+                    ) : null}
                   </div>
                 </article>
               );
@@ -358,6 +365,9 @@ export default function OnlineGames({
                     >
                       Spectate
                     </button>
+                    {account?.role === "admin" && onAdminCloseMatch ? (
+                      <button type="button" onClick={() => void onAdminCloseMatch(match.matchID)}>End Game</button>
+                    ) : null}
                   </div>
                 </article>
               );

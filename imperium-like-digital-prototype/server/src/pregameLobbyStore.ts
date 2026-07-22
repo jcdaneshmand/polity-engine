@@ -456,6 +456,12 @@ export function createPregameLobbyStore(options: PregameLobbyStoreOptions = {}) 
       return lobbyIDs.length;
     },
 
+    closeLobbyForAdmin(lobbyID: string): { ok: true } | { ok: false; reason: "lobby_not_found" } {
+      if (!lobbies.has(lobbyID)) return { ok: false, reason: "lobby_not_found" };
+      deleteLobby(lobbyID);
+      return { ok: true };
+    },
+
     beginStarting(lobbyID: string, lobbyCredentials: string): { ok: true; roomName: string; setupData: LobbySetupData; privateDataFingerprint: string; passwordVerifier?: string; spectatingAllowed: boolean; seats: Array<{ seatID: string; displayName: string; selectedNationID: string }> } | { ok: false; reason: string } {
       const lobby = lobbies.get(lobbyID);
       if (!lobby) return { ok: false, reason: "lobby_not_found" };

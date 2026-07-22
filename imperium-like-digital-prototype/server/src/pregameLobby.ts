@@ -97,9 +97,21 @@ function finalizedSetup(baseSetup: LobbySetupData, seats: Array<{ seatID: string
   };
 }
 
+async function leaveBoardgameSeats(boardgameApi: BoardgameApi, matches: Array<{ matchID: string; occupiedSeats: Array<{ playerID: string; playerCredentials: string }> }>): Promise<void> {
+  for (const match of matches) {
+    for (const seat of match.occupiedSeats) {
+      await boardgameApi.leaveMatch?.({
+        matchID: match.matchID,
+        playerID: seat.playerID,
+        playerCredentials: seat.playerCredentials
+      }).catch(() => undefined);
+    }
+  }
+}
+
 export function createPregameLobbyMiddleware(options: PregameLobbyOptions) {
   return async (ctx: KoaLikeContext, next: KoaLikeNext): Promise<void> => {
-    if (!ctx.path.startsWith("/polity/lobby/rooms") && ctx.path !== "/polity/lobby/chat" && ctx.path !== "/polity/lobby/admin/clear") {
+    if (!ctx.path.startsWith("/polity/lobby/rooms") && ctx.path !== "/polity/lobby/chat" && !ctx.path.startsWith("/polity/lobby/admin")) {
       await next();
       return;
     }
@@ -111,20 +123,53 @@ export function createPregameLobbyMiddleware(options: PregameLobbyOptions) {
         return;
       }
       const drainedMatches = options.matchStore?.drainMatchesForAdmin() ?? [];
-      for (const match of drainedMatches) {
-        for (const seat of match.occupiedSeats) {
-          await options.boardgameApi.leaveMatch?.({
-            matchID: match.matchID,
-            playerID: seat.playerID,
-            playerCredentials: seat.playerCredentials
-          }).catch(() => undefined);
-        }
-      }
+      await leaveBoardgameSeats(options.boardgameApi, drainedMatches);
       ctx.body = {
         ok: true,
         lobbiesCleared: options.store.clearLobbies(),
         matchesCleared: drainedMatches.length
       };
+      return;
+    }
+
+    if (ctx.method === "POST" && ctx.path === "/polity/lobby/admin/close-lobby") {
+      const admin = requireConfiguredAdmin(ctx, options.accountStore);
+      if (!admin.ok) {
+        setError(ctx, admin.status, admin.reason);
+        return;
+      }
+      const body = await readJSONBody(ctx);
+      if (!isRecord(body) || !stringValue(body.lobbyID)) {
+        setError(ctx, 400, "invalid_request");
+        return;
+      }
+      const result = options.store.closeLobbyForAdmin(stringValue(body.lobbyID) as string);
+      if (!result.ok) {
+        setError(ctx, accessStatus(result.reason), result.reason);
+        return;
+      }
+      ctx.body = { ok: true };
+      return;
+    }
+
+    if (ctx.method === "POST" && ctx.path === "/polity/lobby/admin/close-match") {
+      const admin = requireConfiguredAdmin(ctx, options.accountStore);
+      if (!admin.ok) {
+        setError(ctx, admin.status, admin.reason);
+        return;
+      }
+      const body = await readJSONBody(ctx);
+      if (!isRecord(body) || !stringValue(body.matchID)) {
+        setError(ctx, 400, "invalid_request");
+        return;
+      }
+      const drained = options.matchStore?.drainMatchForAdmin(stringValue(body.matchID) as string);
+      if (!drained) {
+        setError(ctx, 404, "match_not_found");
+        return;
+      }
+      await leaveBoardgameSeats(options.boardgameApi, [drained]);
+      ctx.body = { ok: true };
       return;
     }
 

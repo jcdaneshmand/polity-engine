@@ -445,4 +445,54 @@ describe("OnlineGames", () => {
     expect(hostHtml).toContain("Close Match");
     expect(guestHtml).not.toContain("Close Match");
   });
+
+  it("shows targeted close controls for admins on listed lobbies and games", () => {
+    const adminHtml = renderToStaticMarkup(
+      <OnlineGames
+        setupConfig={config}
+        privateDataFingerprint="placeholder"
+        savedSessions={[]}
+        lobbies={[baseLobby]}
+        matches={[baseMatch]}
+        account={account}
+        statusMessage=""
+        onBackToSetup={() => undefined}
+        onRefresh={() => undefined}
+        onHost={() => undefined}
+        onJoinLobby={() => undefined}
+        onJoin={() => undefined}
+        onSpectate={() => undefined}
+        onRejoin={() => undefined}
+        onForgetSession={() => undefined}
+        onAdminCloseLobby={() => undefined}
+        onAdminCloseMatch={() => undefined}
+      />
+    );
+    const playerHtml = renderToStaticMarkup(
+      <OnlineGames
+        setupConfig={config}
+        privateDataFingerprint="placeholder"
+        savedSessions={[]}
+        lobbies={[baseLobby]}
+        matches={[baseMatch]}
+        account={{ ...account, role: "player" }}
+        statusMessage=""
+        onBackToSetup={() => undefined}
+        onRefresh={() => undefined}
+        onHost={() => undefined}
+        onJoinLobby={() => undefined}
+        onJoin={() => undefined}
+        onSpectate={() => undefined}
+        onRejoin={() => undefined}
+        onForgetSession={() => undefined}
+        onAdminCloseLobby={() => undefined}
+        onAdminCloseMatch={() => undefined}
+      />
+    );
+
+    expect(adminHtml).toContain("Close Lobby");
+    expect(adminHtml).toContain("End Game");
+    expect(playerHtml).not.toContain("Close Lobby");
+    expect(playerHtml).not.toContain("End Game");
+  });
 });

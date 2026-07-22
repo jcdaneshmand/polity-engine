@@ -312,4 +312,49 @@ describe("pregame lobby middleware", () => {
     expect(store.listLobbies()).toEqual([]);
     expect(matchStore.listMatches()).toEqual([]);
   });
+
+  it("lets admin close one pregame lobby or listed running match", async () => {
+    const store = createPregameLobbyStore({ now: () => "2026-06-05T10:00:00.000Z", createID: () => "id", createCredential: () => "cred" });
+    const matchStore = createLobbyStore({ now: () => "2026-06-05T10:00:00.000Z" });
+    const accounts = accountStore();
+    const leftMatches: Array<{ matchID: string; playerID: string; playerCredentials: string }> = [];
+    const admin = accounts.createAccount({ email: "admin@example.com", username: "Admin", password: "secret123" });
+    const player = accounts.createAccount({ email: "player@example.com", username: "Player", password: "secret123" });
+    if (!admin.ok || !player.ok) throw new Error("account create failed");
+    const middleware = createPregameLobbyMiddleware({
+      store,
+      matchStore,
+      accountStore: accounts,
+      boardgameApi: {
+        createMatch: async () => ({ matchID: "match-1" }),
+        joinMatch: async () => ({ playerCredentials: "player-token" }),
+        leaveMatch: async (input) => { leftMatches.push(input); }
+      }
+    });
+    await middleware(context("POST", "/polity/lobby/rooms", { playerCount: 2, setupData: setupData(), privateDataFingerprint: "placeholder", hostName: "Host" }), async () => undefined);
+    matchStore.createMatchMetadata({
+      matchID: "match-1",
+      roomName: "Started",
+      playerCount: 2,
+      setupData: setupData(),
+      privateDataFingerprint: "placeholder",
+      occupiedSeats: [{ playerID: "0", playerName: "Host", isConnected: true, playerCredentials: "token-0" }]
+    });
+
+    const blockedLobby = context("POST", "/polity/lobby/admin/close-lobby", { lobbyID: "id" }, player.token);
+    await middleware(blockedLobby, async () => undefined);
+    expect(blockedLobby.status).toBe(403);
+    expect(blockedLobby.body).toEqual({ error: "not_admin" });
+
+    const closeLobby = context("POST", "/polity/lobby/admin/close-lobby", { lobbyID: "id" }, admin.token);
+    await middleware(closeLobby, async () => undefined);
+    expect(closeLobby.body).toEqual({ ok: true });
+    expect(store.listLobbies()).toEqual([]);
+
+    const closeMatch = context("POST", "/polity/lobby/admin/close-match", { matchID: "match-1" }, admin.token);
+    await middleware(closeMatch, async () => undefined);
+    expect(closeMatch.body).toEqual({ ok: true });
+    expect(leftMatches).toEqual([{ matchID: "match-1", playerID: "0", playerCredentials: "token-0" }]);
+    expect(matchStore.listMatches()).toEqual([]);
+  });
 });

@@ -7,7 +7,7 @@ import { ACCOUNT_SESSION_STORAGE_KEY, parseAccountSessionRecord, serializeAccoun
 import AboutPage from "./AboutPage";
 import Board from "./Board";
 import { createLocalGameExport, createLocalGameRestoreEnhancer, importLocalGameExport, loadSavedLocalGameRecord, LOCAL_GAME_SAVE_STORAGE_KEY, serializeLocalGame, type SavedLocalGameEnvelope, type SavedLocalGameRecord } from "./localGameSave";
-import { changeAccountPassword, clearAllOnlineGames, closePolityOnlineMatch, completePasswordReset, computePrivateDataFingerprint, createLobbyRoom, heartbeatLobbyRoom, heartbeatPolityOnlineMatch, joinLobbyRoom, joinPolityOnlineMatch, leaveLobbyRoom, leavePolityOnlineMatch, listLobbyChat, listLobbyRooms, listOnlineChat, listOnlineMatches, loadCurrentAccount, ONLINE_SESSION_STORAGE_KEY, parseOnlineSessionRecord, recordAccountGameResult, registerAccount, rejoinLobbyRoom, requestPasswordReset, resolveMultiplayerServerURL, selectLobbyNation, sendLobbyChat, sendOnlineChat, serializeOnlineSessionRecord, setLobbyReady, signInAccount, signOutAccount, spectateOnlineMatch, startAccountGameHistory, startLobbyGame, updateLobbySetup, type AccountGameResultInput, type AccountHistoryStartInput, type ChatMessage, type ListedLobby, type ListedMatch, type LobbyRoomDetails, type OnlineLobbySessionRecord, type OnlineSessionRecord, type OnlineStartedSessionRecord } from "./onlineSession";
+import { adminCloseLobby, adminCloseMatch, changeAccountPassword, clearAllOnlineGames, closePolityOnlineMatch, completePasswordReset, computePrivateDataFingerprint, createLobbyRoom, heartbeatLobbyRoom, heartbeatPolityOnlineMatch, joinLobbyRoom, joinPolityOnlineMatch, leaveLobbyRoom, leavePolityOnlineMatch, listLobbyChat, listLobbyRooms, listOnlineChat, listOnlineMatches, loadCurrentAccount, ONLINE_SESSION_STORAGE_KEY, parseOnlineSessionRecord, recordAccountGameResult, registerAccount, rejoinLobbyRoom, requestPasswordReset, resolveMultiplayerServerURL, selectLobbyNation, sendLobbyChat, sendOnlineChat, serializeOnlineSessionRecord, setLobbyReady, signInAccount, signOutAccount, spectateOnlineMatch, startAccountGameHistory, startLobbyGame, updateLobbySetup, type AccountGameResultInput, type AccountHistoryStartInput, type ChatMessage, type ListedLobby, type ListedMatch, type LobbyRoomDetails, type OnlineLobbySessionRecord, type OnlineSessionRecord, type OnlineStartedSessionRecord } from "./onlineSession";
 import PrivateCardEntry from "./ui/privateData/PrivateCardEntry";
 import LobbyRoom from "./ui/online/LobbyRoom";
 import OnlineGames from "./ui/online/OnlineGames";
@@ -969,6 +969,39 @@ export default function App() {
     }
   };
 
+  const closeListedLobbyAsAdmin = async (lobbyID: string) => {
+    if (!accountSession || accountSession.account.role !== "admin") {
+      setOnlineStatus("Admin account required.");
+      return;
+    }
+    setOnlineStatus(`Closing lobby ${lobbyID}...`);
+    try {
+      await adminCloseLobby({ serverURL: multiplayerServerURL, lobbyID, accountToken: accountSession.token });
+      if (currentLobbySession?.lobbyID === lobbyID) forgetOnlineSession();
+      setLobbyChatMessages([]);
+      await refreshOnlineMatches();
+      setOnlineStatus(`Closed lobby ${lobbyID}.`);
+    } catch (error) {
+      setOnlineStatus(error instanceof Error ? error.message : "Could not close lobby.");
+    }
+  };
+
+  const closeListedMatchAsAdmin = async (matchID: string) => {
+    if (!accountSession || accountSession.account.role !== "admin") {
+      setOnlineStatus("Admin account required.");
+      return;
+    }
+    setOnlineStatus(`Ending game ${matchID}...`);
+    try {
+      await adminCloseMatch({ serverURL: multiplayerServerURL, matchID, accountToken: accountSession.token });
+      if (savedOnlineSession?.kind !== "lobby" && savedOnlineSession?.matchID === matchID) forgetOnlineSession();
+      await refreshOnlineMatches();
+      setOnlineStatus(`Ended game ${matchID}.`);
+    } catch (error) {
+      setOnlineStatus(error instanceof Error ? error.message : "Could not end game.");
+    }
+  };
+
   const registerCurrentAccount = async (input: { email: string; username: string; password: string }) => {
     setAccountStatus("Creating account...");
     try {
@@ -1176,6 +1209,8 @@ export default function App() {
             onRejoin={() => void rejoinOnlineGame()}
             onForgetSession={() => forgetOnlineSession()}
             onCloseSession={(record) => void closeSavedOnlineMatch(record)}
+            onAdminCloseLobby={(lobbyID) => void closeListedLobbyAsAdmin(lobbyID)}
+            onAdminCloseMatch={(matchID) => void closeListedMatchAsAdmin(matchID)}
             onSendChat={sendOnlineLoungeMessage}
             onClearAllGames={() => void clearAllListedOnlineGames()}
             onRegisterAccount={(input) => void registerCurrentAccount(input)}

@@ -159,6 +159,25 @@ describe("lobby store", () => {
     expect(store.listMatches()).toEqual([]);
   });
 
+  it("drains one listed game for targeted admin cleanup", () => {
+    const store = createLobbyStore({ now: () => "2026-06-05T01:00:00.000Z" });
+    store.createMatchMetadata({
+      matchID: "match-1",
+      roomName: "One",
+      playerCount: 2,
+      setupData: {},
+      privateDataFingerprint: "placeholder",
+      occupiedSeats: [{ playerID: "0", playerName: "Host", playerCredentials: "token-0", isConnected: true }]
+    });
+    store.createMatchMetadata({ matchID: "match-2", roomName: "Two", playerCount: 2, setupData: {}, privateDataFingerprint: "placeholder" });
+
+    expect(store.drainMatchForAdmin("match-1")).toEqual({
+      matchID: "match-1",
+      occupiedSeats: [{ playerID: "0", playerCredentials: "token-0" }]
+    });
+    expect(store.listMatches().map((match) => match.matchID)).toEqual(["match-2"]);
+  });
+
   it("finds an existing player seat for the same client in one match", () => {
     const store = createLobbyStore({ now: () => "2026-06-05T01:00:00.000Z" });
     store.createMatchMetadata({ matchID: "match-1", roomName: "Open", playerCount: 2, setupData: {}, privateDataFingerprint: "placeholder" });

@@ -559,6 +559,24 @@ export async function clearAllOnlineGames(args: { serverURL: string; accountToke
   );
 }
 
+export async function adminCloseLobby(args: { serverURL: string; lobbyID: string; accountToken?: string; fetcher?: Fetcher }): Promise<{ ok: true }> {
+  return postLobbyJSON<{ ok: true }>(
+    lobbyURL(args.serverURL, "/polity/lobby/admin/close-lobby"),
+    { lobbyID: args.lobbyID },
+    args.fetcher ?? fetch,
+    args.accountToken
+  );
+}
+
+export async function adminCloseMatch(args: { serverURL: string; matchID: string; accountToken?: string; fetcher?: Fetcher }): Promise<{ ok: true }> {
+  return postLobbyJSON<{ ok: true }>(
+    lobbyURL(args.serverURL, "/polity/lobby/admin/close-match"),
+    { matchID: args.matchID },
+    args.fetcher ?? fetch,
+    args.accountToken
+  );
+}
+
 export async function updateLobbySetup(args: {
   serverURL: string;
   lobbyID: string;

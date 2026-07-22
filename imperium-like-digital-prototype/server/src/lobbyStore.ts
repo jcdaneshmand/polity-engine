@@ -274,6 +274,21 @@ export function createLobbyStore(options: LobbyStoreOptions = {}) {
       return drained;
     },
 
+    drainMatchForAdmin(matchID: string): AdminDrainedMatch | undefined {
+      const match = matches.get(matchID);
+      if (!match) return undefined;
+      const drained = {
+        matchID: match.matchID,
+        occupiedSeats: Array.from(match.occupiedSeats.values()).map((seat) => ({
+          playerID: seat.playerID,
+          playerCredentials: seat.playerCredentials
+        }))
+      };
+      matches.delete(matchID);
+      persist();
+      return drained;
+    },
+
     markMatchInProgress(matchID: string): ListedMatch | undefined {
       const match = matches.get(matchID);
       if (!match) return undefined;

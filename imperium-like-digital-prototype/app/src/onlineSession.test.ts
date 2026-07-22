@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildJoinURL, changeAccountPassword, clearAllOnlineGames, closePolityOnlineMatch, completePasswordReset, computePrivateDataFingerprint, createLobbyRoom, createOnlineMatch, createPolityOnlineMatch, heartbeatLobbyRoom, heartbeatPolityOnlineMatch, joinLobbyRoom, joinOnlineMatch, joinPolityOnlineMatch, leaveLobbyRoom, leavePolityOnlineMatch, listAccountHistory, listLobbyChat, listLobbyRooms, listOnlineChat, listOnlineMatches, loadCurrentAccount, ONLINE_SESSION_STORAGE_KEY, parseJoinURL, parseOnlineSessionRecord, recordAccountGameResult, registerAccount, rejoinLobbyRoom, requestPasswordReset, resolveMultiplayerServerURL, selectLobbyNation, sendLobbyChat, sendOnlineChat, serializeOnlineSessionRecord, setLobbyReady, signInAccount, signOutAccount, sortListedMatches, spectateOnlineMatch, startAccountGameHistory, startLobbyGame, updateLobbySetup } from "./onlineSession";
+import { adminCloseLobby, adminCloseMatch, buildJoinURL, changeAccountPassword, clearAllOnlineGames, closePolityOnlineMatch, completePasswordReset, computePrivateDataFingerprint, createLobbyRoom, createOnlineMatch, createPolityOnlineMatch, heartbeatLobbyRoom, heartbeatPolityOnlineMatch, joinLobbyRoom, joinOnlineMatch, joinPolityOnlineMatch, leaveLobbyRoom, leavePolityOnlineMatch, listAccountHistory, listLobbyChat, listLobbyRooms, listOnlineChat, listOnlineMatches, loadCurrentAccount, ONLINE_SESSION_STORAGE_KEY, parseJoinURL, parseOnlineSessionRecord, recordAccountGameResult, registerAccount, rejoinLobbyRoom, requestPasswordReset, resolveMultiplayerServerURL, selectLobbyNation, sendLobbyChat, sendOnlineChat, serializeOnlineSessionRecord, setLobbyReady, signInAccount, signOutAccount, sortListedMatches, spectateOnlineMatch, startAccountGameHistory, startLobbyGame, updateLobbySetup } from "./onlineSession";
 
 function jsonResponse(body: unknown): Response {
   return {
@@ -229,6 +229,22 @@ describe("online session utilities", () => {
 
     expect(calls).toEqual([
       { url: "http://localhost:8000/polity/lobby/admin/clear", body: {}, authorization: "Bearer token-1" }
+    ]);
+  });
+
+  it("uses targeted admin APIs to close one lobby or running match", async () => {
+    const calls: Array<{ url: string; body?: unknown; authorization?: string | null }> = [];
+    const fetcher = async (url: string, init?: RequestInit) => {
+      calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined, authorization: init?.headers instanceof Headers ? init.headers.get("authorization") : (init?.headers as Record<string, string> | undefined)?.authorization });
+      return jsonResponse({ ok: true });
+    };
+
+    await expect(adminCloseLobby({ serverURL: "http://localhost:8000", lobbyID: "lobby-1", accountToken: "token-1", fetcher })).resolves.toEqual({ ok: true });
+    await expect(adminCloseMatch({ serverURL: "http://localhost:8000", matchID: "match-1", accountToken: "token-1", fetcher })).resolves.toEqual({ ok: true });
+
+    expect(calls).toEqual([
+      { url: "http://localhost:8000/polity/lobby/admin/close-lobby", body: { lobbyID: "lobby-1" }, authorization: "Bearer token-1" },
+      { url: "http://localhost:8000/polity/lobby/admin/close-match", body: { matchID: "match-1" }, authorization: "Bearer token-1" }
     ]);
   });
 

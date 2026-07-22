@@ -71,6 +71,10 @@ export function evaluatePlayerExpectations(snapshot) {
   const activePlayerVisible = snapshot.activePlayerVisible !== false;
   const viewerPlayerVisible = snapshot.viewerPlayerVisible !== false;
   const diagnosticsVisible = snapshot.diagnosticsVisible !== false;
+  const currentTaskPanelVisible = snapshot.currentTaskPanelVisible !== false;
+  const gameLogVisible = snapshot.gameLogVisible !== false;
+  const playerAidVisible = snapshot.playerAidVisible !== false;
+  const bugReportButtonVisible = snapshot.bugReportButtonVisible !== false;
   const currentTaskTitle = String(snapshot.currentTaskTitle ?? "");
   const enabledActionCount = Number(snapshot.enabledActionCount ?? 0);
   const blockedActionCount = Number(snapshot.blockedActionCount ?? 0);
@@ -83,6 +87,10 @@ export function evaluatePlayerExpectations(snapshot) {
   if (!activePlayerVisible) issues.push("The active player status is not visible.");
   if (!viewerPlayerVisible) issues.push("The viewer player status is not visible.");
   if (!diagnosticsVisible) issues.push("Playtest diagnostics are not visible.");
+  if (!currentTaskPanelVisible) issues.push("The current-task panel is not visible.");
+  if (!gameLogVisible) issues.push("The game log is not visible.");
+  if (!playerAidVisible) issues.push("The player aid is not visible.");
+  if (!bugReportButtonVisible) issues.push("The bug-report summary button is not visible.");
   if (!currentTaskTitle) issues.push("Playtest diagnostics do not expose current-task metadata.");
   if (enabledActionCount + blockedActionCount === 0) issues.push("Playtest diagnostics do not expose rule action metadata.");
   if (zoneKindCount === 0 || !zoneKinds.includes("public-shared") || !zoneKinds.includes("market-shared") || !zoneKinds.includes("own-private")) {
@@ -128,6 +136,10 @@ export function summarizePlayerExpectationSnapshot(snapshot) {
     activePlayerVisible: snapshot.activePlayerVisible !== false,
     viewerPlayerVisible: snapshot.viewerPlayerVisible !== false,
     diagnosticsVisible: snapshot.diagnosticsVisible !== false,
+    currentTaskPanelVisible: snapshot.currentTaskPanelVisible !== false,
+    gameLogVisible: snapshot.gameLogVisible !== false,
+    playerAidVisible: snapshot.playerAidVisible !== false,
+    bugReportButtonVisible: snapshot.bugReportButtonVisible !== false,
     currentTaskTitle: snapshot.currentTaskTitle,
     enabledActionCount: Number(snapshot.enabledActionCount ?? 0),
     blockedActionCount: Number(snapshot.blockedActionCount ?? 0),
@@ -163,6 +175,10 @@ export function evaluateMultiplayerObserverExpectations(snapshot) {
   if (snapshot.activePlayerVisible === false) issues.push("The active player status is not visible.");
   if (snapshot.viewerPlayerVisible === false) issues.push("The viewer player status is not visible.");
   if (snapshot.diagnosticsVisible === false) issues.push("Playtest diagnostics are not visible.");
+  if (snapshot.currentTaskPanelVisible === false) issues.push("The current-task panel is not visible.");
+  if (snapshot.gameLogVisible === false) issues.push("The game log is not visible.");
+  if (snapshot.playerAidVisible === false) issues.push("The player aid is not visible.");
+  if (snapshot.bugReportButtonVisible === false) issues.push("The bug-report summary button is not visible.");
   if (!snapshot.currentTaskTitle) issues.push("Playtest diagnostics do not expose current-task metadata.");
   if (Number(snapshot.enabledActionCount ?? 0) + Number(snapshot.blockedActionCount ?? 0) === 0) issues.push("Playtest diagnostics do not expose rule action metadata.");
   if (Number(snapshot.zoneKindCount ?? 0) === 0) issues.push("Playtest diagnostics do not expose board zone hierarchy metadata.");
@@ -361,6 +377,10 @@ async function playerExpectationSnapshot(page, mode) {
   const activePlayerVisible = bodyText.includes("ACTIVE PLAYER");
   const viewerPlayerVisible = bodyText.includes("VIEWER PLAYER");
   const diagnosticsVisible = await page.locator('[data-qa="playtest-diagnostics"]').isVisible().catch(() => false);
+  const currentTaskPanelVisible = await page.locator('[data-qa="current-task-panel"]').isVisible().catch(() => false);
+  const gameLogVisible = await page.locator('[data-qa="game-log"]').isVisible().catch(() => false);
+  const playerAidVisible = await page.locator('[data-qa="player-aid"]').isVisible().catch(() => false);
+  const bugReportButtonVisible = await page.getByRole("button", { name: /Copy Bug Report Summary/i }).isVisible().catch(() => false);
   const activePlayer = extractDiagnosticPlayer(bodyText, "ACTIVE PLAYER");
   const viewerPlayer = extractDiagnosticPlayer(bodyText, "VIEWER PLAYER");
   const diagnostics = page.locator('[data-qa="playtest-diagnostics"]');
@@ -379,6 +399,10 @@ async function playerExpectationSnapshot(page, mode) {
     activePlayerVisible,
     viewerPlayerVisible,
     diagnosticsVisible,
+    currentTaskPanelVisible,
+    gameLogVisible,
+    playerAidVisible,
+    bugReportButtonVisible,
     activePlayer,
     viewerPlayer,
     currentTaskTitle,
@@ -813,7 +837,8 @@ async function assertViewportQA(baseURL, browser, artifactRoot) {
       const body = document.body;
       if (body.scrollWidth > window.innerWidth + 2) issues.push(`horizontal overflow ${body.scrollWidth}/${window.innerWidth}`);
       for (const selector of [
-        ".current-task-strip",
+        '[data-qa="current-task-panel"]',
+        '[data-qa="game-log"]',
         ".rule-aid-panel",
         '[data-qa="playtest-diagnostics"]',
         '[data-zone-kind="public-shared"]',
@@ -828,6 +853,12 @@ async function assertViewportQA(baseURL, browser, artifactRoot) {
       const buttons = Array.from(document.querySelectorAll("button"));
       const overflowingButtons = buttons.filter((button) => button.scrollWidth > button.clientWidth + 2);
       if (overflowingButtons.length > 0) issues.push(`${overflowingButtons.length} button(s) have clipped labels`);
+      const actionText = document.querySelector(".action-menu")?.textContent ?? "";
+      if (!actionText.includes("Available Actions")) issues.push("Action menu is missing Available Actions.");
+      if (!actionText.includes("Unavailable")) issues.push("Action menu is missing Unavailable actions.");
+      const playerAid = document.querySelector('[data-qa="player-aid"]');
+      if (playerAid?.getAttribute("data-expanded") !== "true") issues.push("Player aid default expanded state is missing.");
+      if (!document.body.textContent?.includes("Copy Bug Report Summary")) issues.push("Bug report summary helper is missing.");
       return issues;
     });
 

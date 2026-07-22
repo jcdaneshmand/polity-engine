@@ -39,8 +39,8 @@ export const ruleAidItems: RuleAidItem[] = [
   },
   {
     id: "trade-routes",
-    title: "Trade Routes",
-    body: "Trade Route aid appears only when the module is enabled; completed routes can unlock Profit actions.",
+    title: "Trade Module",
+    body: "Trade-module aid appears only when the module is enabled; completed trade cards can unlock Profit actions.",
     when: ({ G }) => (G?.options?.enabledExpansions ?? []).includes("trade_routes")
   },
   {

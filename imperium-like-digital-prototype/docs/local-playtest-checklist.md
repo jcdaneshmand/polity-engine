@@ -14,8 +14,8 @@ Use this checklist before private data is introduced. Keep every finding public-
 
 1. Choose Multiplayer, 2 players, Classics Commons, no private data.
 2. Start the game.
-3. Confirm the board shell renders, the active player is visible, the viewer player is visible, and the diagnostics export button is present.
-4. Select a hand card and a market card; confirm legal actions and blocked reasons are understandable.
+3. Confirm the board shell renders, the current-task panel is visible, the active player is visible, the viewer player is visible, the game log is visible, and the diagnostics export and bug-report summary buttons are present.
+4. Select a hand card and a market card; confirm enabled actions are grouped ahead of unavailable actions and blocked reasons are understandable.
 
 ### Host, Join, Ready, Start, Rejoin
 
@@ -47,6 +47,7 @@ Use this checklist before private data is introduced. Keep every finding public-
 2. Confirm Undo is disabled before any move and explains why.
 3. Make one legal move, then confirm Undo is available when no hidden information is unresolved.
 4. Select an unavailable action and record the blocked reason shown by the UI.
+5. Confirm the copied bug-report summary includes the current task, last event, and recent public log without hidden card IDs.
 
 ### Campaign End And Next Setup
 
@@ -73,6 +74,7 @@ For every playtest bug, record:
 - active player and viewer player
 - exact action attempted
 - visible blocked reason or error message
+- copied bug-report summary from the diagnostics panel
 - exported `polity-playtest-diagnostics-*.json`
 - screenshot when layout or readability is involved
 

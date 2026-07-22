@@ -19,6 +19,7 @@ function sentenceWords(value: string): string {
 }
 
 function cardName(cardId: string): string {
+  if (cardId.startsWith("[") && cardId.endsWith("]")) return cardId;
   return titleWords(cardId.replace(/^test_action_/, "").replace(/^test_/, ""));
 }
 
@@ -89,5 +90,23 @@ export function GameLogPanel({ entries }: { entries: any[] }) {
     });
   }, [panel, entries.length, entries.at(-1)?.message]);
 
-  return <div className="panel log-panel" ref={setPanel}>{entries.length===0 ? <div>No log entries.</div> : entries.map((e,i)=><div key={i}><span className="log-prefix">Round {e.round} - {formatPlayerId(String(e.playerId))}</span><span>{formatLogMessage(String(e.message))}</span></div>)}</div>;
+  return (
+    <section className="panel log-panel" ref={setPanel} aria-label="Game log" data-qa="game-log">
+      <div className="panel-title">Game Log</div>
+      {entries.length === 0
+        ? <div>No log entries.</div>
+        : entries.map((e, i) => (
+          <div key={i}>
+            <span className="log-prefix">Round {e.round} - {formatPlayerId(String(e.playerId))}</span>
+            <span>{formatLogMessage(String(e.message))}</span>
+          </div>
+        ))}
+    </section>
+  );
+}
+
+export function summarizeLastLogEntry(entries: any[]): string | undefined {
+  const entry = entries.at(-1);
+  if (!entry) return undefined;
+  return formatLogMessage(String(entry.message ?? ""));
 }

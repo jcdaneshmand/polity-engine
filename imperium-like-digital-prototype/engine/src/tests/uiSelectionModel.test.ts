@@ -55,16 +55,21 @@ describe("selection model", () => {
     expect(revolt).toMatchObject({ label:"Revolt", enabled:false, reason:"No Unrest in hand" });
   });
   it("menu grouping preserves Innovate above Revolt",()=> {
-    const menuItems=groupActionsForMenu(getAvailableActionsForSelection(null,G,ctx));
-    const turnSection=menuItems.find((item)=>item.label==="Turn");
-    expect(turnSection?.kind).toBe("section");
-    if (turnSection?.kind !== "section") throw new Error("Turn section missing");
-    const labels=turnSection.items.map((item:any)=>item.label);
-    expect(labels.indexOf("Innovate")).toBeLessThan(labels.indexOf("Revolt"));
+    const withUnrest = {
+      ...G,
+      cardDb: { ...G.cardDb, u1:{id:"u1",displayName:"Unrest",type:"unrest",cardType:"unrest",suit:"unrest"} },
+      players:{"1":{...G.players["1"],hand:["c1","u1"]}}
+    };
+    const menuItems=groupActionsForMenu(getAvailableActionsForSelection(null,withUnrest,ctx));
+    const availableSection=menuItems.find((item)=>item.label==="Available Actions");
+    expect(availableSection?.kind).toBe("section");
+    if (availableSection?.kind !== "section") throw new Error("Available Actions section missing");
+    const labels=availableSection.items.map((item:any)=>item.label);
+    expect(labels.indexOf("Innovate")).toBeLessThan(labels.findIndex((label: string) => label.startsWith("Revolt")));
   });
   it("action menu groups actions into sections",()=> {
     const menuItems=groupActionsForMenu(getAvailableActionsForSelection({kind:"hand_card",id:"c1"},G,ctx));
-    expect(menuItems.map((item)=>item.label)).toEqual(["Card","Turn"]);
+    expect(menuItems.map((item)=>item.label)).toEqual(["Available Actions","Unavailable"]);
   });
   it("compacts disabled reasons for menu display",()=> {
     expect(compactReason("Innovate requires starting from an Activate turn")).toBe("Needs Activate turn");

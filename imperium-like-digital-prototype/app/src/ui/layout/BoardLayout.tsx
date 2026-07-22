@@ -5,7 +5,7 @@ import { MarketRow } from "./MarketRow";
 import { PlayerArea } from "./PlayerArea";
 import { CardDetailPanel, CardInspectionModal } from "./CardDetailPanel";
 import { ActionMenu } from "./ActionMenu";
-import { GameLogPanel } from "./GameLogPanel";
+import { formatLogMessage, GameLogPanel, summarizeLastLogEntry } from "./GameLogPanel";
 import { BotRow } from "./BotRow";
 import { ZoneDetailPanel } from "./ZoneDetailPanel";
 import { TurnStatusBar } from "./TurnStatusBar";
@@ -126,6 +126,7 @@ export type PlaytestDiagnostics = {
   };
   pendingAction?: string;
   currentTask?: CurrentTaskUiState;
+  lastOutcome?: string;
   ruleUiState: {
     enabledActions: string[];
     blockedActions: Array<{ label: string; reason: string; provenance?: string }>;
@@ -196,6 +197,59 @@ function buildZoneUiState(G: any, viewerId: string, selection?: Selection | null
   };
 }
 
+export function buildLastOutcomeSummary(G: any, currentTask?: CurrentTaskUiState): string | undefined {
+  if (currentTask?.suppressNormalActions) return `Required: ${currentTask.detail}`;
+  const lastLog = summarizeLastLogEntry(getRecentLogEntries(G, 20));
+  if (!lastLog) return undefined;
+  return lastLog;
+}
+
+export function buildBugReportSummary(diagnostics: PlaytestDiagnostics): string {
+  const lines = [
+    "Polity Engine bug report",
+    `App version: ${diagnostics.appVersion}`,
+    `Mode: ${diagnostics.options.mode ?? "unknown"} (${diagnostics.mode})`,
+    `Players: ${diagnostics.options.playerCount ?? "unknown"}`,
+    `Active player: ${diagnostics.activePlayer}`,
+    `Viewer player: ${diagnostics.viewerPlayer}`,
+    `Current task: ${diagnostics.currentTask ? `${diagnostics.currentTask.title} - ${diagnostics.currentTask.detail}` : "unknown"}`,
+    `Pending action: ${diagnostics.pendingAction ?? "none"}`,
+    `Last event: ${diagnostics.lastOutcome ?? "none"}`,
+    "Recent public log:",
+    ...diagnostics.recentPublicLog.slice(-5).map((entry) => `- ${entry.round === undefined ? "Round ?" : `Round ${entry.round}`} ${entry.playerId ?? "system"}: ${formatLogMessage(entry.message)}`),
+    "",
+    "Please attach the exported playtest diagnostics JSON and describe what you expected to happen."
+  ];
+  return lines.join("\n");
+}
+
+function CurrentTaskPanel({ task }: { task: CurrentTaskUiState }) {
+  return (
+    <section
+      className={`panel current-task-panel${task.suppressNormalActions ? " current-task-panel--blocking" : ""}`}
+      data-qa="current-task-panel"
+      data-task-title={task.title}
+      data-task-choice-type={task.choiceType ?? ""}
+      data-task-blocking={task.suppressNormalActions ? "true" : "false"}
+      aria-label="Current required action"
+    >
+      <div className="eyebrow">{task.suppressNormalActions ? "Required Now" : "Current Task"}</div>
+      <strong>{task.title}</strong>
+      <span>{task.detail}</span>
+    </section>
+  );
+}
+
+function LastEventPanel({ outcome }: { outcome?: string }) {
+  if (!outcome) return null;
+  return (
+    <section className="panel last-event-panel" data-qa="last-event-panel" aria-label="Last event">
+      <div className="eyebrow">Last Event</div>
+      <span>{outcome}</span>
+    </section>
+  );
+}
+
 export function buildPlaytestDiagnostics({
   G,
   ctx,
@@ -223,6 +277,11 @@ export function buildPlaytestDiagnostics({
 }): PlaytestDiagnostics {
   const knownCardIds = Object.keys(G?.cardDb ?? {});
   const resolvedCurrentTask = currentTask ?? getCurrentTaskUiState(G, { ...ctx, currentPlayer: viewerId });
+  const recentPublicLog = getRecentLogEntries(G, 20).map((entry: any) => ({
+    round: typeof entry?.round === "number" ? entry.round : undefined,
+    playerId: entry?.playerId === undefined ? undefined : String(entry.playerId),
+    message: redactKnownCardIds(String(entry?.message ?? ""), knownCardIds)
+  }));
   return {
     schemaVersion: 1,
     generatedAtIso: now.toISOString(),
@@ -239,6 +298,9 @@ export function buildPlaytestDiagnostics({
     },
     pendingAction,
     currentTask: resolvedCurrentTask,
+    lastOutcome: resolvedCurrentTask.suppressNormalActions
+      ? `Required: ${resolvedCurrentTask.detail}`
+      : (recentPublicLog.at(-1) ? formatLogMessage(recentPublicLog.at(-1)?.message ?? "") : undefined),
     ruleUiState: {
       enabledActions: actions.filter((action) => action.enabled).map((action) => String(action.label ?? action.action)),
       blockedActions: actions
@@ -259,11 +321,7 @@ export function buildPlaytestDiagnostics({
         resources: { ...((player as any)?.resources ?? {}) }
       }
     ])),
-    recentPublicLog: getRecentLogEntries(G, 20).map((entry: any) => ({
-      round: typeof entry?.round === "number" ? entry.round : undefined,
-      playerId: entry?.playerId === undefined ? undefined : String(entry.playerId),
-      message: redactKnownCardIds(String(entry?.message ?? ""), knownCardIds)
-    }))
+    recentPublicLog
   };
 }
 
@@ -300,6 +358,8 @@ export default function BoardLayout({
   const [detailCardId, setDetailCardId] = useState<string | null>(null);
   const [zoomCardId, setZoomCardId] = useState<string | null>(null);
   const [summaryDismissed, setSummaryDismissed] = useState(false);
+  const [bugReportText, setBugReportText] = useState<string | null>(null);
+  const [bugReportStatus, setBugReportStatus] = useState<string | null>(null);
   const [cleanupDiscardSlots, setCleanupDiscardSlots] = useState<number[]>([]);
   const viewerId = viewerPlayerId(G, ctx, viewerPlayerID, playerID);
   const activePlayerId = mapViewerPlayerId(G, ctx?.currentPlayer) ?? String(ctx?.currentPlayer ?? "");
@@ -346,6 +406,7 @@ export default function BoardLayout({
     selection,
     appVersion: (import.meta as any).env?.VITE_GIT_COMMIT ?? "local-dev"
   }), [G, ctx, activePlayerId, viewerId, isMultiplayer, pending?.detail, currentTask, actions, selectedCard?.id, selection]);
+  const lastOutcome = diagnostics.lastOutcome;
   const handActionHintsByCardId = useMemo(() => {
     const hints = getActionHintsByCardId(actions, "hand");
     if (!G.pendingCleanupDiscardChoice) return hints;
@@ -391,6 +452,17 @@ export default function BoardLayout({
 
   const onAction = (action: any) => dispatchBoardAction({ action, moves, setDetailCardId, setSelection });
 
+  const copyBugReportSummary = async () => {
+    const summary = buildBugReportSummary(diagnostics);
+    setBugReportText(summary);
+    try {
+      await navigator.clipboard.writeText(summary);
+      setBugReportStatus("Bug report summary copied.");
+    } catch {
+      setBugReportStatus("Copy failed. Summary is shown below.");
+    }
+  };
+
   const onMarketCardClick = (id: string) => {
     const directAction = getMarketCardClickAction(G, uiCtx, id);
     if (directAction) {
@@ -425,11 +497,9 @@ export default function BoardLayout({
       <div className="panel hints">{CONTROLLER_HINTS.map((h)=> <div key={h}>{h}</div>)}</div>
     </div>
     <div className="right">
+      <CurrentTaskPanel task={currentTask} />
+      <LastEventPanel outcome={lastOutcome} />
       {lookedZone ? <ZoneDetailPanel title={`Looked ${lookedZone.source}`} cardIds={lookedZone.cardIds} hidden={lookedZone.hidden} count={lookedZone.count} cardDb={G.cardDb ?? {}} zoneKind="own-private" zoneRole={`looked:${lookedZone.source}`} /> : null}
-      {pending ? <div className="panel choice-banner is-secondary">
-        <div className="eyebrow">{pending.title}</div>
-        <strong>{pending.detail}</strong>
-      </div> : null}
       {selection?.kind === "player_zone"
         ? <ZoneDetailPanel title={playerZoneLabels[selection.id] ?? selection.id} cardIds={selectedZone?.cardIds ?? []} hidden={selectedZone?.hidden} count={selectedZone?.count} cardDb={G.cardDb ?? {}} zoneKind={selectedZone?.hidden ? "opponent-hidden" : "own-private"} zoneRole={selection.id} />
         : selection?.kind === "pile"
@@ -439,6 +509,7 @@ export default function BoardLayout({
           : <CardDetailPanel
             card={visibleDetailCard}
             pinned={!!detailCardId}
+            selected={!!selectedCard}
             blockedReason={selectedCard ? primaryBlockedReason : undefined}
             ruleProvenance={selectedCard && primaryBlockedAction?.provenance ? ruleProvenanceLabels[primaryBlockedAction.provenance as keyof typeof ruleProvenanceLabels] : undefined}
             onUnpin={() => setDetailCardId(null)}
@@ -487,10 +558,20 @@ export default function BoardLayout({
             <span>Export Playtest Diagnostics</span>
           </span>
         </button>
+        <button className="action-button" type="button" onClick={() => void copyBugReportSummary()}>
+          <span className="action-button-main">
+            <span className="action-symbol" aria-hidden="true">BUG</span>
+            <span>Copy Bug Report Summary</span>
+          </span>
+        </button>
+        {bugReportStatus ? <div className="diagnostic-status">{bugReportStatus}</div> : null}
+        {bugReportText && bugReportStatus?.startsWith("Copy failed") ? (
+          <textarea className="bug-report-fallback" readOnly value={bugReportText} aria-label="Bug report summary" />
+        ) : null}
       </section>
       <ActionMenu actions={actions} onAction={onAction} />
-      <RuleAidPanel G={G} pending={pending} selectedCard={selectedCard} />
       <GameLogPanel entries={getRecentLogEntries(G, 20)} />
+      <RuleAidPanel G={G} pending={pending} selectedCard={selectedCard} />
     </div>
     <CardInspectionModal card={zoomCard} onClose={() => setZoomCardId(null)} />
     {G.gameover && !summaryDismissed ? (

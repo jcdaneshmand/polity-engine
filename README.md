@@ -71,7 +71,7 @@ Contact: [jcdaneshmand@gmail.com](mailto:jcdaneshmand@gmail.com).
 - [x] Card, nation, ruleset, strategy, and bot-table validation/reporting tools.
 - [x] Solo bot support driven by imported bot tables.
 - [x] Solo campaign setup, continuation, end-game update flow, and campaign sheet export.
-- [x] Board UI for core bookkeeping, public/shared zones, player zones, card inspection, logs, and keyboard-oriented controls.
+- [x] Board UI for core bookkeeping, public/shared zones, player zones, card inspection, protected game log, sticky current-task guidance, grouped actions, diagnostics, and keyboard-oriented controls.
 - [x] Fictional placeholder/demo data and schema examples only.
 - [x] Public-safe fictional scenario smoke coverage.
 - [x] Local save/resume baseline for in-progress local games.
@@ -87,7 +87,7 @@ Contact: [jcdaneshmand@gmail.com](mailto:jcdaneshmand@gmail.com).
 - [ ] Extensive local testing with privately entered real card data to improve rules-engine coverage, without committing or distributing that data.
 - [ ] Broader scenario-level rules parity coverage for remaining edge cases and card-specific effect patterns.
 - [ ] Undo/legal-move polish for additional edge cases found through playtesting.
-- [ ] More complete Steam Deck/controller-oriented UI polish.
+- [ ] More complete Steam Deck/controller-oriented UI polish and final visual QA for the latest board right-rail changes.
 - [ ] Import/export polish for clearer errors, private-data fingerprint mismatch recovery, and cross-version migration.
 - [ ] Production-ready multiplayer hosting proof, hardening, and operational runbook.
 
@@ -96,15 +96,15 @@ Contact: [jcdaneshmand@gmail.com](mailto:jcdaneshmand@gmail.com).
 | Bucket | Status | Next gate |
 | --- | --- | --- |
 | Local QA/playtest | Practice, solo, two-seat online self-play, worked-turn, save/resume, invalid save, privacy marker, hierarchy, and viewport browser gates complete | Keep `npm.cmd run qa:local-browser`, `npm test`, `npm.cmd run smoke:fictional-game`, and `npm.cmd run typecheck` green before major changes. |
-| UI as playable rulebook | Current-task strip, action provenance, why-can't-I feedback, player aid, public-safe diagnostics, zone hierarchy metadata, and viewport checks are in place | Continue polishing visual hierarchy from real playtest findings; keep browser QA expectations updated. |
+| UI as playable rulebook | Current-task panel, action provenance, enabled/unavailable action grouping, why-can't-I feedback, collapsible player aid, protected game log, last-event feedback, public-safe diagnostics, bug-report summary helper, zone hierarchy metadata, and viewport checks are in place | Finish visual/browser QA for the board UI playability pass and keep expectation checks updated around current task, actions, log, aid, and diagnostics. |
 | Rules parity | Broad covered matrix with strong unit evidence and playable-rulebook explanation coverage | Keep `data/fictional-regression/coverage-map.json` aligned with UI explanations, fictional scenarios, and rules-engine tests. |
-| Playability | Locally playable with save/resume, rejoin flows, deterministic worked-turn coverage, automated player-expectation checks, seeded stress coverage, and admin controls for closing lobbies or ending listed running games | Promote future high-value playtest failures into browser QA and keep targeted admin cleanup covered. |
-| Hosted release | Render deployment is live; commit-pinned hosted smoke passed against `https://polity-engine.onrender.com` at `95eada1`, and admin targeted close/end controls were deployed and live-tested | Keep `npm.cmd run smoke:hosted` with `POLITY_EXPECTED_COMMIT`, `npm.cmd run qa:hosted-browser`, and admin close/end smoke checks green after deploys. |
+| Playability | Locally playable with save/resume, rejoin flows, deterministic worked-turn coverage, automated player-expectation checks, seeded stress coverage, admin controls, and a copied bug-report summary path for playtest failures | Promote future high-value playtest failures into browser QA and keep targeted admin cleanup covered. |
+| Hosted release | Render deployment is live and uses commit-pinned hosted smoke as release proof after deploys | Keep `npm.cmd run smoke:hosted` with `POLITY_EXPECTED_COMMIT`, `npm.cmd run qa:hosted-browser`, and admin close/end smoke checks green after deploys. |
 | Private data | Final gate reached; private preflight reports local private CSV sources are missing | Add the ignored `*_private.csv` files under `imperium-like-digital-prototype/private-card-data/`, then rerun private preflight/import/completeness locally. |
 
 ### Next Gate Roadmap
 
-The next implementation plan is tracked in `imperium-like-digital-prototype/docs/superpowers/plans/2026-07-22-next-gates.md`.
+The release-gate plan is tracked in `imperium-like-digital-prototype/docs/superpowers/plans/2026-07-22-next-gates.md`. The current board UI playability pass is tracked in `imperium-like-digital-prototype/docs/superpowers/plans/2026-07-22-board-ui-playability-fixes.md`.
 
 The gates should close in this order:
 

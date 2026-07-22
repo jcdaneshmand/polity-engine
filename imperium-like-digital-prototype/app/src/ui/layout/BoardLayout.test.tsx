@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import BoardLayout, { buildPlaytestDiagnostics, dispatchBoardAction, getLocalUndoAvailability } from "./BoardLayout";
+import BoardLayout, { buildBugReportSummary, buildLastOutcomeSummary, buildPlaytestDiagnostics, dispatchBoardAction, getLocalUndoAvailability } from "./BoardLayout";
 
 const emptyPlayer = {
   hand: [],
@@ -162,8 +162,21 @@ describe("BoardLayout", () => {
     expect(html).toContain("data-zone-kind-count=");
     expect(html).toContain("data-zone-kinds=");
     expect(html).toContain("Export Playtest Diagnostics");
+    expect(html).toContain("Copy Bug Report Summary");
     expect(html).toContain("Active Player");
     expect(html).toContain("Viewer Player");
+  });
+
+  it("renders a sticky current-task panel with QA metadata", () => {
+    const html = renderForViewer({
+      pendingCleanupMarketResourceChoice: { playerId: "0", resource: "knowledge", amount: 1, cardIds: ["m1"] }
+    });
+
+    expect(html).toContain('data-qa="current-task-panel"');
+    expect(html).toContain('data-task-choice-type="cleanup_resource"');
+    expect(html).toContain('data-task-blocking="true"');
+    expect(html).toContain("Required Now");
+    expect(html).toContain("Choose a market card for 1 cleanup resource");
   });
 
   it("renders stable public-safe zone hierarchy hooks", () => {
@@ -174,6 +187,7 @@ describe("BoardLayout", () => {
     expect(html).toContain("data-zone-kind=\"own-private\"");
     expect(html).toContain("data-zone-role=\"hand\"");
     expect(html).toContain("data-card-state=\"selectable\"");
+    expect(html).toContain("Your zone");
   });
 
   it("renders public-safe player aid and hides module-specific aid until enabled", () => {
@@ -181,10 +195,96 @@ describe("BoardLayout", () => {
     const tradeRoutesHtml = renderForViewer({ options: { mode: "multiplayer", playerCount: 2, enabledExpansions: ["trade_routes"], enabledVariants: [] } });
 
     expect(baseHtml).toContain("Player Aid");
+    expect(baseHtml).toContain('data-qa="player-aid"');
+    expect(baseHtml).toContain('data-expanded="true"');
     expect(baseHtml).toContain("Turn Flow");
     expect(baseHtml).toContain("Hidden And Public Zones");
-    expect(baseHtml).not.toContain("Trade Route aid appears");
-    expect(tradeRoutesHtml).toContain("Trade Route aid appears");
+    expect(baseHtml).not.toContain("Trade-module aid appears");
+    expect(tradeRoutesHtml).toContain("Trade-module aid appears");
+  });
+
+  it("keeps the game log ahead of the player aid in the right rail", () => {
+    const html = renderForViewer({
+      log: [
+        { round: 1, playerId: "setup", message: "MarketInitialized(slots=1)" }
+      ]
+    });
+
+    expect(html).toContain('aria-label="Game log"');
+    expect(html.indexOf("Game Log")).toBeLessThan(html.indexOf("Player Aid"));
+  });
+
+  it("renders available actions before unavailable actions", () => {
+    const html = renderForViewer();
+
+    expect(html).toContain("Available Actions");
+    expect(html).toContain("Unavailable");
+    expect(html.indexOf("Available Actions")).toBeLessThan(html.indexOf("Unavailable"));
+    expect(html).toContain("No Unrest in hand");
+  });
+
+  it("renders the last event banner and includes public-safe last outcome diagnostics", () => {
+    const G = baseGame({
+      log: [
+        { round: 1, playerId: "setup", message: "MarketInitialized(slots=1)" }
+      ]
+    });
+    const html = renderToStaticMarkup(
+      <BoardLayout
+        G={G}
+        ctx={{ currentPlayer: "0" }}
+        playerID="0"
+        viewerPlayerID="0"
+        moves={{}}
+      />
+    );
+    const diagnostics = buildPlaytestDiagnostics({
+      G,
+      ctx: { currentPlayer: "0" },
+      viewerId: "0",
+      mode: "local"
+    });
+
+    expect(html).toContain('data-qa="last-event-panel"');
+    expect(html).toContain("Market initialized with 1 card.");
+    expect(buildLastOutcomeSummary(G)).toBe("Market initialized with 1 card.");
+    expect(diagnostics.lastOutcome).toBe("Market initialized with 1 card.");
+  });
+
+  it("builds a public-safe bug report summary from diagnostics", () => {
+    const diagnostics = buildPlaytestDiagnostics({
+      G: baseGame({
+        log: [
+          { round: 1, playerId: "0", message: "TurnPhase(action_execution): playCard(c1)" }
+        ]
+      }),
+      ctx: { currentPlayer: "0" },
+      viewerId: "0",
+      mode: "local",
+      appVersion: "test-commit"
+    });
+    const summary = buildBugReportSummary(diagnostics);
+
+    expect(summary).toContain("Polity Engine bug report");
+    expect(summary).toContain("App version: test-commit");
+    expect(summary).toContain("Current task: Ready - Select a card, use a turn action, or end the turn.");
+    expect(summary).toContain("Please attach the exported playtest diagnostics JSON");
+    expect(summary).not.toContain("c1");
+    expect(summary).toContain("[card]");
+  });
+
+  it("marks selected card detail state", () => {
+    const html = renderToStaticMarkup(
+      <BoardLayout
+        G={baseGame()}
+        ctx={{ currentPlayer: "0" }}
+        playerID="0"
+        viewerPlayerID="0"
+        moves={{}}
+      />
+    );
+
+    expect(html).toContain("Select a card.");
   });
 
   it("renders rule provenance in action buttons for pending actions", () => {

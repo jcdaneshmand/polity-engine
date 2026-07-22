@@ -5,10 +5,14 @@ type GroupItem = { kind: "group"; label: string; actions: any[] };
 type SectionItem = { kind: "section"; label: string; items: Array<ActionItem | GroupItem> };
 type MenuItem = ActionItem | GroupItem | SectionItem;
 
+function isRequiredChoice(action: any): boolean {
+  return String(action.action).startsWith("resolve") || String(action.action).startsWith("skip");
+}
+
 function sectionForAction(action: any): string {
-  if (String(action.action).startsWith("resolve") || String(action.action).startsWith("skip")) return "Choice";
-  if (["innovate", "revolt", "endTurn"].includes(action.action)) return "Turn";
-  return "Card";
+  if (isRequiredChoice(action)) return "Required Choices";
+  if (action.enabled) return "Available Actions";
+  return "Unavailable";
 }
 
 export function compactReason(reason?: string): string | undefined {
@@ -35,7 +39,12 @@ export function groupActionsForMenu(actions: any[]): MenuItem[] {
     }
     return section;
   };
-  actions.forEach((action) => {
+  const orderedActions = [
+    ...actions.filter((action) => isRequiredChoice(action)),
+    ...actions.filter((action) => !isRequiredChoice(action) && action.enabled),
+    ...actions.filter((action) => !isRequiredChoice(action) && !action.enabled)
+  ];
+  orderedActions.forEach((action) => {
     const section = getSection(sectionForAction(action));
     if (!action.group) {
       section.items.push({ kind: "action", label: action.label, action });
@@ -67,6 +76,7 @@ function actionSymbol(action: any): string {
 
 export function ActionMenu({ actions, onAction }: { actions: any[]; onAction: (a:any)=>void }) {
   const menuItems = groupActionsForMenu(actions);
+  const hasEnabledActions = actions.some((action) => action.enabled);
   const renderButton = (a: any) => <button key={a.label} className={`action-button action-button--${getActionIntent(a)}`} disabled={!a.enabled} title={a.reason || ""} onClick={()=>onAction(a)}>
     <span className="action-button-main">
       <span className="action-symbol" aria-hidden="true">{actionSymbol(a)}</span>
@@ -78,11 +88,13 @@ export function ActionMenu({ actions, onAction }: { actions: any[]; onAction: (a
 
   return <div className="panel actions action-menu">
     <div className="panel-title">Actions</div>
+    {actions.length === 0 ? <div className="action-empty">Select a card or zone to see actions.</div> : null}
     {menuItems.map((section) => section.kind === "section" ? <section key={section.label} className="action-section">
       <div className="action-section-title">{section.label}</div>
+      {section.label === "Available Actions" && section.items.length === 0 ? <div className="action-empty">No available actions.</div> : null}
       {section.items.map((item) => item.kind === "action"
         ? renderButton(item.action)
-        : <details key={item.label} className="action-group">
+        : <details key={item.label} className="action-group" open={section.label !== "Unavailable" || !hasEnabledActions}>
           <summary>{item.label}</summary>
           <div className="action-group-items">
             {item.actions.map(renderButton)}

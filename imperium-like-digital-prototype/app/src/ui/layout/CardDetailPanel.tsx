@@ -93,6 +93,7 @@ function formatVp(vp: any): string {
 type CardDetailPanelProps = {
   card: any;
   pinned?: boolean;
+  selected?: boolean;
   blockedReason?: string;
   ruleProvenance?: string;
   onUnpin?: () => void;
@@ -100,7 +101,7 @@ type CardDetailPanelProps = {
   variant?: "panel" | "modal";
 };
 
-export function CardDetailPanel({ card, pinned = false, blockedReason, ruleProvenance, onUnpin, onZoom, variant = "panel" }: CardDetailPanelProps) {
+export function CardDetailPanel({ card, pinned = false, selected = false, blockedReason, ruleProvenance, onUnpin, onZoom, variant = "panel" }: CardDetailPanelProps) {
   if (!card) return <div className="panel detail">Select a card.</div>;
   const effects = card.effects ?? [];
   const tags = card.tags ?? [];
@@ -116,7 +117,11 @@ export function CardDetailPanel({ card, pinned = false, blockedReason, ruleProve
         {pinned ? <button className="unpin-button" type="button" onClick={onUnpin}>Unpin</button> : null}
       </div>
     </div>
-    {pinned ? <div className="pinned-label">Pinned</div> : null}
+    <div className="detail-state-row">
+      {selected ? <div className="pinned-label">Selected</div> : null}
+      {pinned ? <div className="pinned-label">Pinned</div> : null}
+      {variant === "modal" ? <div className="pinned-label">Zoom</div> : null}
+    </div>
     {blockedReason || ruleProvenance ? <div className="detail-rule-feedback detail-blocked-reason">
       {blockedReason ? <strong>{blockedReason}</strong> : null}
       {ruleProvenance ? <span>{ruleProvenance}</span> : null}

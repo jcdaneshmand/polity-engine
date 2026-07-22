@@ -1,4 +1,3 @@
-import { parseCsvFile } from "./csvParser";
 import type { NationRulesetImportReport, PrivateNationRulesetCsvRow } from "./nationRulesetCsvTypes";
 import { normalizeNationRuleset } from "./normalizeNationRuleset";
 import { validateNationRuleset } from "../../engine/src/nations/nationRulesetValidation";
@@ -33,12 +32,4 @@ export function validatePrivateNationRulesetsRows(rows: PrivateNationRulesetCsvR
     if ((r.implemented||"").toLowerCase()==="true" && (r.tested||"").toLowerCase()!=="true") errors.push({level:"warning",row,field:"tested",message:"implemented=true but tested=false"});
   });
   return { errors, counts:{ rows:rows.length, fatal:errors.filter(e=>e.level==='fatal').length, warnings:errors.filter(e=>e.level==='warning').length } };
-}
-if (require.main === module) {
-  const args = Object.fromEntries(process.argv.slice(2).reduce((acc,v,i,a)=>v.startsWith("--")?[...acc,[v.slice(2),a[i+1]]]:acc,[] as any));
-  const input = (args.input as string) || "private-card-data/nation-ruleset-template.csv";
-  const rows = parseCsvFile(input) as PrivateNationRulesetCsvRow[];
-  const report = validatePrivateNationRulesetsRows(rows);
-  console.log(JSON.stringify(report, null, 2));
-  if (report.counts.fatal > 0) process.exitCode = 1;
 }

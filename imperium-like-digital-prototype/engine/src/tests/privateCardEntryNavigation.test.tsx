@@ -43,9 +43,22 @@ describe("private card entry navigation", () => {
     const source = fs.readFileSync(path.resolve(import.meta.dirname, "../../../app/src/ui/privateData/PrivateCardEntry.tsx"), "utf8");
 
     expect(source).toContain("validatePrivateCardsRows");
+    expect(source).toContain("validatePrivateNationsRows");
+    expect(source).toContain("validatePrivateNationRulesetsRows");
     expect(source).toContain("polity.privateEntry.autosave.v1");
     expect(source).toContain("beforeunload");
     expect(source).toContain("Draft autosaved");
+    expect(source).toContain("Clear Autosave Snapshot");
+  });
+
+  it("shows card batch progress and an edit queue in the transcription tool", () => {
+    const html = renderToStaticMarkup(<PrivateCardEntry onBack={() => {}} />);
+
+    expect(html).toContain("Card Batch Progress");
+    expect(html).toContain("Missing Required");
+    expect(html).toContain("Duplicate IDs");
+    expect(html).toContain("Find / Edit Cards");
+    expect(html).toContain("Search existing rows");
   });
 
   it("offers every runtime card type in the private card entry selector", () => {

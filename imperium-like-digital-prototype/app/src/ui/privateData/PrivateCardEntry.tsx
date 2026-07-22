@@ -3,8 +3,10 @@ import Papa from "papaparse";
 import type { PrivateCardCsvRow } from "../../../../tools/card-import/cardCsvTypes";
 import { validatePrivateCardsRows } from "../../../../tools/card-import/validatePrivateCards";
 import type { PrivateNationCsvRow } from "../../../../tools/card-import/nationCsvTypes";
+import { validatePrivateNationsRows } from "../../../../tools/card-import/validatePrivateNations";
 import type { NationRulesetTag } from "../../../../engine/src/nations/nationRulesetTypes";
 import type { PrivateNationRulesetCsvRow } from "../../../../tools/card-import/nationRulesetCsvTypes";
+import { validatePrivateNationRulesetsRows } from "../../../../tools/card-import/validatePrivateNationRulesets";
 import type { PrivateBotStateTableCsvRow } from "../../../../tools/card-import/botStateTableCsvTypes";
 import type { PrivateBotTradeRoutesTableCsvRow } from "../../../../tools/card-import/botTradeRoutesTableCsvTypes";
 import { validatePrivateBotStateTableRows, validatePrivateBotTradeRoutesTableRows } from "../../../../tools/card-import/botTableValidation";
@@ -247,88 +249,22 @@ function validateRows(rows: PrivateCardCsvRow[]): ValidationMessage[] {
   }));
 }
 
-function isIntegerOrBlank(value: string | undefined): boolean {
-  return !value?.trim() || /^\d+$/.test(value.trim());
+function mapImportMessages(errors: Array<{ level: "fatal" | "warning"; row?: number; field: string; message: string }>): ValidationMessage[] {
+  return errors.map((error) => ({
+    level: error.level,
+    row: error.row,
+    field: error.field,
+    message: error.row ? `Row ${error.row}: ${error.message}` : error.message
+  }));
 }
 
-function isBoolean(value: string | undefined): boolean {
-  return ["true", "false"].includes((value || "").trim().toLowerCase());
-}
-
-function validateNationRows(rows: PrivateNationCsvRow[]): ValidationMessage[] {
-  const messages: ValidationMessage[] = [];
-  const seen = new Set<string>();
-  rows.forEach((row, index) => {
-    const rowNumber = index + 2;
-    const nationId = row.nation_id?.trim();
-    if (!nationId) messages.push({ level: "fatal", field: "nation_id", message: `Row ${rowNumber}: required field missing` });
-    if (nationId && seen.has(nationId)) messages.push({ level: "fatal", field: "nation_id", message: `Row ${rowNumber}: duplicate nation_id` });
-    if (nationId) seen.add(nationId);
-    if (!row.public_placeholder_name?.trim()) messages.push({ level: "fatal", field: "public_placeholder_name", message: `Row ${rowNumber}: required field missing` });
-    for (const field of ["complexity", "action_tokens_base", "exhaust_tokens_base"]) {
-      if (!isIntegerOrBlank(row[field])) messages.push({ level: "fatal", field, message: `Row ${rowNumber}: must be a non-negative integer or blank` });
-    }
-    for (const field of ["implemented", "tested"]) {
-      if (!isBoolean(row[field])) messages.push({ level: "fatal", field, message: `Row ${rowNumber}: must be true or false` });
-    }
-    for (const field of ["special_setup_json", "passive_rules_json"]) {
-      if (row[field]?.trim()) {
-        try {
-          if (!Array.isArray(JSON.parse(row[field]))) messages.push({ level: "fatal", field, message: `Row ${rowNumber}: must parse to an array` });
-        } catch {
-          messages.push({ level: "fatal", field, message: `Row ${rowNumber}: invalid JSON` });
-        }
-      }
-    }
-    if (row.nation_name_private?.trim() && row.nation_name_private.trim() === row.public_placeholder_name?.trim()) {
-      messages.push({ level: "warning", field: "public_placeholder_name", message: `Row ${rowNumber}: placeholder matches private name` });
-    }
-  });
-  return messages;
-}
-
-function validateJsonArrayField(rowNumber: number, field: string, value: string | undefined, messages: ValidationMessage[]) {
-  if (!value?.trim()) return;
-  try {
-    if (!Array.isArray(JSON.parse(value))) messages.push({ level: "fatal", field, message: `Row ${rowNumber}: must parse to an array` });
-  } catch {
-    messages.push({ level: "fatal", field, message: `Row ${rowNumber}: invalid JSON` });
-  }
+function validateNationRows(rows: PrivateNationCsvRow[], cardRows: PrivateCardCsvRow[]): ValidationMessage[] {
+  const knownCardIds = new Set(cardRows.map((row) => row.card_id?.trim()).filter((cardId): cardId is string => Boolean(cardId)));
+  return mapImportMessages(validatePrivateNationsRows(rows, knownCardIds, knownCardIds.size === 0).errors);
 }
 
 function validateNationRulesetRows(rows: PrivateNationRulesetCsvRow[]): ValidationMessage[] {
-  const messages: ValidationMessage[] = [];
-  const seen = new Set<string>();
-  rows.forEach((row, index) => {
-    const rowNumber = index + 2;
-    const nationId = row.nation_id?.trim();
-    if (!nationId) messages.push({ level: "fatal", field: "nation_id", message: `Row ${rowNumber}: required field missing` });
-    if (nationId && seen.has(nationId)) messages.push({ level: "fatal", field: "nation_id", message: `Row ${rowNumber}: duplicate nation_id` });
-    if (nationId) seen.add(nationId);
-    if (!row.public_placeholder_name?.trim()) messages.push({ level: "fatal", field: "public_placeholder_name", message: `Row ${rowNumber}: required field missing` });
-    for (const tag of (row.ruleset_tags || "").split("|").map((value) => value.trim()).filter(Boolean)) {
-      if (!nationRulesetTagOptions.includes(tag as NationRulesetTag)) messages.push({ level: "fatal", field: "ruleset_tags", message: `Row ${rowNumber}: unsupported tag ${tag}` });
-    }
-    for (const field of [
-      "setup_overrides_json",
-      "zone_overrides_json",
-      "state_overrides_json",
-      "reshuffle_overrides_json",
-      "cleanup_overrides_json",
-      "solstice_overrides_json",
-      "scoring_overrides_json",
-      "collapse_overrides_json",
-      "bot_overrides_json",
-      "short_game_overrides_json",
-      "hook_rules_json"
-    ]) {
-      validateJsonArrayField(rowNumber, field, row[field], messages);
-    }
-    for (const field of ["implemented", "tested"]) {
-      if (!isBoolean(row[field])) messages.push({ level: "fatal", field, message: `Row ${rowNumber}: must be true or false` });
-    }
-  });
-  return messages;
+  return mapImportMessages(validatePrivateNationRulesetsRows(rows).errors);
 }
 
 function downloadCsv(filename: string, content: string) {
@@ -388,6 +324,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
   const [formDraftDirty, setFormDraftDirty] = useState(restoredSnapshot?.formDraftDirty ?? false);
   const [suitSelectElement, setSuitSelectElement] = useState<HTMLSelectElement | null>(null);
   const [autosaveReady, setAutosaveReady] = useState(false);
+  const [cardSearch, setCardSearch] = useState("");
 
   const selectedProfile = useMemo(() => profileFromSelection(profileId, nationId), [profileId, nationId]);
   const isNationBatch = profileId === "nation-custom";
@@ -406,10 +343,37 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
     return [...ids].sort();
   }, [allNationDeckProgress, currentNationDeckProgress, rows]);
   const validation = useMemo(() => validateRows(rows), [rows]);
-  const nationValidation = useMemo(() => validateNationRows(nationRows), [nationRows]);
+  const nationValidation = useMemo(() => validateNationRows(nationRows, rows), [nationRows, rows]);
   const rulesetValidation = useMemo(() => validateNationRulesetRows(rulesetRows), [rulesetRows]);
   const botStateReport = useMemo(() => validatePrivateBotStateTableRows(botStateRows), [botStateRows]);
   const botTradeReport = useMemo(() => validatePrivateBotTradeRoutesTableRows(botTradeRows), [botTradeRows]);
+  const cardBatchProgress = useMemo(() => {
+    const requiredFields: Array<keyof PrivateCardCsvRow> = ["card_id", "public_placeholder_name", "suit", "card_type", "starting_location", "vp_mode", "implemented", "tested"];
+    const idCounts = new Map<string, number>();
+    rows.forEach((row) => {
+      const id = row.card_id?.trim();
+      if (id) idCounts.set(id, (idCounts.get(id) ?? 0) + 1);
+    });
+    const missingRequiredRows = rows.filter((row) => requiredFields.some((field) => !row[field]?.trim())).length;
+    const duplicateIds = [...idCounts.entries()].filter(([, count]) => count > 1).map(([id]) => id);
+    const completedRows = rows.filter((row) => row.implemented?.trim().toLowerCase() === "true" && row.tested?.trim().toLowerCase() === "true").length;
+    const implementedRows = rows.filter((row) => row.implemented?.trim().toLowerCase() === "true").length;
+    const lastSavedRows = rows.slice(-5).reverse();
+    return { completedRows, duplicateIds, implementedRows, lastSavedRows, missingRequiredRows, totalRows: rows.length };
+  }, [rows]);
+  const cardSearchResults = useMemo(() => {
+    const query = cardSearch.trim().toLowerCase();
+    const visibleRows = query
+      ? rows.filter((row) => [
+        row.card_id,
+        row.public_placeholder_name,
+        row.card_name_private,
+        row.set_or_nation,
+        row.tags
+      ].some((value) => value?.toLowerCase().includes(query)))
+      : rows.slice(-12).reverse();
+    return visibleRows.slice(0, 20);
+  }, [cardSearch, rows]);
   const fatalCount = validation.filter((message) => message.level === "fatal").length;
   const warningCount = validation.filter((message) => message.level === "warning").length;
   const nationFatalCount = nationValidation.filter((message) => message.level === "fatal").length;
@@ -568,6 +532,14 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
 
   const resetDraftForProfile = (profile: CardEntryBatchProfile, availableRows = rows) => {
     setDraft(createAutoNumberedDraft(profile, availableRows));
+  };
+
+  const loadCardRow = (row: PrivateCardCsvRow) => {
+    setDraft(csvRowToDraft(row));
+    setPreviousDraft(csvRowToDraft(row));
+    setEntryMode("cards");
+    setFormDraftDirty(false);
+    setStatus(`Loaded ${row.card_id || "card"} for editing.`);
   };
 
   const changeProfile = (nextProfileId: string) => {
@@ -831,7 +803,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
       publicPlaceholderName: nationName
     });
     const nextRows = appendOrReplaceNationRow(nationRows, row);
-    const messages = validateNationRows(nextRows);
+    const messages = validateNationRows(nextRows, rows);
     const firstFatal = messages.find((message) => message.level === "fatal");
     if (firstFatal) {
       setNationStatus(`${firstFatal.field}: ${firstFatal.message}`);
@@ -992,6 +964,11 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
     setFormDraftDirty(true);
   };
 
+  const discardAutosavedDraft = () => {
+    clearPrivateEntryDraftSnapshot();
+    setStatus("Cleared the browser autosave snapshot.");
+  };
+
   const hasUnsavedPrivateEntryWork = cardDirty || nationDirty || rulesetDirty || botStateDirty || botTradeDirty || formDraftDirty;
 
   useEffect(() => {
@@ -1148,6 +1125,15 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
               </span>
             </div>
 
+            <div className="private-entry-autosave-panel">
+              <span>
+                {restoredSnapshot
+                  ? `Recovered browser draft from ${new Date(restoredSnapshot.savedAt).toLocaleString()}.`
+                  : "Browser draft protection is on for unsaved transcription work."}
+              </span>
+              <button type="button" onClick={discardAutosavedDraft}>Clear Autosave Snapshot</button>
+            </div>
+
             <div className="private-entry-shortcuts">
               <span>Ctrl+Enter save card</span>
               <span>Alt+S suit</span>
@@ -1182,6 +1168,57 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
                 File
                 <input value={fileName} onChange={(event: { target: HTMLInputElement }) => setFileName(event.target.value)} />
               </label>
+            </div>
+
+            <div className="private-entry-card-workbench">
+              <aside className="private-entry-card-progress" aria-label="Card batch progress">
+                <h2>Card Batch Progress</h2>
+                <dl>
+                  <div><dt>Rows</dt><dd>{cardBatchProgress.totalRows}</dd></div>
+                  <div><dt>Implemented</dt><dd>{cardBatchProgress.implementedRows}</dd></div>
+                  <div><dt>Tested</dt><dd>{cardBatchProgress.completedRows}</dd></div>
+                  <div><dt>Missing Required</dt><dd>{cardBatchProgress.missingRequiredRows}</dd></div>
+                  <div><dt>Duplicate IDs</dt><dd>{cardBatchProgress.duplicateIds.length}</dd></div>
+                </dl>
+                {cardBatchProgress.duplicateIds.length > 0 ? <p>Duplicates: {cardBatchProgress.duplicateIds.join(", ")}</p> : null}
+                <h3>Last Saved</h3>
+                {cardBatchProgress.lastSavedRows.length > 0 ? (
+                  <ol>
+                    {cardBatchProgress.lastSavedRows.map((row) => (
+                      <li key={`last-${row.card_id}-${row.public_placeholder_name}`}>
+                        <button type="button" onClick={() => loadCardRow(row)}>
+                          {row.card_id || "No ID"} · {row.public_placeholder_name || row.card_name_private || "Unnamed"}
+                        </button>
+                      </li>
+                    ))}
+                  </ol>
+                ) : <p>No saved cards yet.</p>}
+              </aside>
+
+              <section className="private-entry-card-search" aria-labelledby="private-card-search-title">
+                <div className="private-entry-progress-heading">
+                  <h2 id="private-card-search-title">Find / Edit Cards</h2>
+                  <span>{cardSearchResults.length} shown</span>
+                </div>
+                <label>
+                  Search existing rows
+                  <input value={cardSearch} onChange={(event: { target: HTMLInputElement }) => setCardSearch(event.target.value)} placeholder="ID, placeholder, actual name, tag..." />
+                </label>
+                {cardSearchResults.length > 0 ? (
+                  <div className="private-entry-card-results">
+                    {cardSearchResults.map((row) => (
+                      <article key={`${row.card_id}-${row.public_placeholder_name}-${row.card_name_private}`}>
+                        <div>
+                          <strong>{row.card_id || "No ID"}</strong>
+                          <span>{row.public_placeholder_name || row.card_name_private || "Unnamed card"}</span>
+                          <small>{[row.suit, row.card_type, row.implemented === "true" ? "implemented" : "", row.tested === "true" ? "tested" : ""].filter(Boolean).join(" / ")}</small>
+                        </div>
+                        <button type="button" onClick={() => loadCardRow(row)}>Edit</button>
+                      </article>
+                    ))}
+                  </div>
+                ) : <p className="private-entry-help">No rows match that search.</p>}
+              </section>
             </div>
           </>
         ) : null}

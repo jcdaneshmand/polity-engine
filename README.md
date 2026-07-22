@@ -67,7 +67,7 @@ Contact: [jcdaneshmand@gmail.com](mailto:jcdaneshmand@gmail.com).
 - [x] Expansion and variant option plumbing, including the `trade_routes` expansion module.
 - [x] Local private data import for cards, nations, nation rulesets, nation strategy profiles, bot state tables, and bot Trade Routes tables.
 - [x] Browser upload support for local private JSON/CSV data.
-- [x] Card and Nation Transcription Tool for browser-based entry of cards, nation definitions, nation rulesets, bot state tables, and bot Trade Routes tables.
+- [x] Card and Nation Transcription Tool for browser-based entry of cards, nation definitions, nation rulesets, bot state tables, and bot Trade Routes tables, with shared import validation, browser draft protection, batch progress, and card search/edit queue.
 - [x] Card, nation, ruleset, strategy, and bot-table validation/reporting tools.
 - [x] Solo bot support driven by imported bot tables.
 - [x] Solo campaign setup, continuation, end-game update flow, and campaign sheet export.
@@ -100,7 +100,7 @@ Contact: [jcdaneshmand@gmail.com](mailto:jcdaneshmand@gmail.com).
 | Rules parity | Broad covered matrix with strong unit evidence and playable-rulebook explanation coverage | Keep `data/fictional-regression/coverage-map.json` aligned with UI explanations, fictional scenarios, and rules-engine tests. |
 | Playability | Locally playable with save/resume, rejoin flows, deterministic worked-turn coverage, automated player-expectation checks, seeded stress coverage, admin controls, and a copied bug-report summary path for playtest failures | Promote future high-value playtest failures into browser QA and keep targeted admin cleanup covered. |
 | Hosted release | Render deployment is live and uses commit-pinned hosted smoke as release proof after deploys | Keep `npm.cmd run smoke:hosted` with `POLITY_EXPECTED_COMMIT`, `npm.cmd run qa:hosted-browser`, and admin close/end smoke checks green after deploys. |
-| Private data | Final gate reached; private preflight reports local private CSV sources are missing | Add the ignored `*_private.csv` files under `imperium-like-digital-prototype/private-card-data/`, then rerun private preflight/import/completeness locally. |
+| Private data | Final gate reached; transcription UI now reuses real card/nation/ruleset validators and includes browser draft protection, batch progress, and card search/edit; private preflight reports local private CSV sources are missing | Add the ignored `*_private.csv` files under `imperium-like-digital-prototype/private-card-data/`, then rerun private preflight/import/completeness locally. |
 
 ### Next Gate Roadmap
 
@@ -261,6 +261,8 @@ The intended workflow is local and private:
 6. Use the app for rules automation, bookkeeping, setup support, and solo/table assistance.
 
 Private CSVs are for local use. The repository should only contain schemas, tools, engine code, documentation, and fictional demo data.
+
+The transcription tool is designed for longer local entry sessions: card, nation, and ruleset rows validate through the same import validators used by the CLI/import pipeline; unsaved browser work is autosaved with unload protection; and card batches include progress counts, duplicate/missing-required visibility, recent saved rows, and a search/edit queue.
 
 ## CSV Import and Export Workflow
 

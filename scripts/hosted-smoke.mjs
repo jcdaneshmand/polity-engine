@@ -33,7 +33,8 @@ async function get(path) {
 }
 
 async function getJSON(path) {
-  return await (await get(path)).json();
+  const response = await get(path);
+  return await readJSON(response, `GET ${path}`);
 }
 
 async function postJSON(path, body) {
@@ -45,7 +46,18 @@ async function postJSON(path, body) {
   if (!response.ok) {
     throw new Error(`POST ${path} failed with ${response.status}: ${await response.text()}`);
   }
-  return await response.json();
+  return await readJSON(response, `POST ${path}`);
+}
+
+async function readJSON(response, label) {
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    const contentType = response.headers.get("content-type") ?? "unknown";
+    const preview = text.replace(/\s+/g, " ").trim().slice(0, 160) || "<empty response>";
+    throw new Error(`${label} returned non-JSON content (${contentType}): ${preview}`);
+  }
 }
 
 function privateDebugMarkers(content) {

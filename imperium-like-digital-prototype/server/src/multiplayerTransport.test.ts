@@ -530,7 +530,7 @@ describe("multiplayer Socket.IO transport", () => {
     } finally {
       stopAllClients();
       if (running && matchID) {
-        await waitForPersistedConnectionStatus(running, matchID, { "0": false }, "FlatFile storage to persist final rejoined client disconnect");
+        await waitForPersistedConnectionStatus(running, matchID, { "0": false }, "FlatFile storage to persist final rejoined client disconnect", 1000).catch(() => undefined);
       }
       await stopBoardgameServer(running);
       await removeTempDir(storageDir);

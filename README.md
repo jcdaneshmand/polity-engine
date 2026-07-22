@@ -95,7 +95,7 @@ Contact: [jcdaneshmand@gmail.com](mailto:jcdaneshmand@gmail.com).
 | UI as playable rulebook | Current-task strip, action provenance, why-can't-I feedback, player aid, public-safe diagnostics, zone hierarchy metadata, and viewport checks are in place | Continue polishing visual hierarchy from real playtest findings; keep browser QA expectations updated. |
 | Rules parity | Broad covered matrix with strong unit evidence and playable-rulebook explanation coverage | Keep `data/fictional-regression/coverage-map.json` aligned with UI explanations, fictional scenarios, and rules-engine tests. |
 | Playability | Locally playable with save/resume, rejoin flows, deterministic worked-turn coverage, and automated player-expectation checks | Add longer whole-game stress simulations and promote high-value failures into browser QA. |
-| Hosted release | Render deployment is live and hosted smoke plus hosted browser QA pass against `https://polity-engine.onrender.com` | Keep `npm.cmd run smoke:hosted` and `npm.cmd run qa:hosted-browser` green after deploys. |
+| Hosted release | Render deployment is live; commit-pinned hosted smoke passed against `https://polity-engine.onrender.com` at `9088980`, after API deploy showed auto-deploy had not advanced past an older Blueprint sync commit | Keep `npm.cmd run smoke:hosted` with `POLITY_EXPECTED_COMMIT` and `npm.cmd run qa:hosted-browser` green after deploys. |
 | Private data | Final gate reached; private preflight reports local private CSV sources are missing | Add the ignored `*_private.csv` files under `imperium-like-digital-prototype/private-card-data/`, then rerun private preflight/import/completeness locally. |
 
 ### Next Gate Roadmap

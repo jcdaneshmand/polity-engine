@@ -29,6 +29,7 @@ In the Render dashboard, confirm:
 - `POLITY_SERVER_ORIGIN` equals the exact public origin
 - persistent disk is attached at `/var/data`
 - the latest deployed commit is visible and matches the intended branch head
+- after commit `9088980`, `/polity/accounts/version` returns JSON with the live build commit
 
 Render does not support disks on free web services. Keep the disk and use a disk-compatible paid service plan for release proof; removing the disk would make restart/storage persistence evidence weaker and should be treated as a temporary demo-only configuration.
 
@@ -57,6 +58,8 @@ npm.cmd run qa:hosted-browser
 
 The hosted browser QA passed setup, local board, worked-turn, automated practice, automated solo, two-seat online multiplayer self-play, viewport QA, save/resume, invalid save, and private-debug marker checks.
 
+After the admin account endpoint commit `a0ff800` and hosted commit-verification commit `9088980`, the Render deploy list showed the live service was still on commit `69566d6` from a `blueprint_sync` trigger, despite service-level auto-deploy being enabled for commits. A Render API deploy was started for `9088980f439eabbdd5cecf9acfc11f4bfdc00a8f`; it reached `live`, and `POLITY_EXPECTED_COMMIT=9088980 npm.cmd run smoke:hosted` then passed with `liveCommit` reporting the full `9088980f439eabbdd5cecf9acfc11f4bfdc00a8f` SHA.
+
 The next local check was `npm.cmd run private:preflight`. It reached the final gate but stopped because the expected ignored private CSV sources are not present under `private-card-data/`.
 
 ## Hosted Proof To Maintain
@@ -65,6 +68,7 @@ After future deploys, rerun from `imperium-like-digital-prototype`:
 
 ```powershell
 $env:POLITY_HOSTED_BASE_URL="https://polity-engine.onrender.com"
+$env:POLITY_EXPECTED_COMMIT="<short-or-full-git-sha>"
 npm.cmd run smoke:hosted
 npm.cmd run qa:hosted-browser
 ```
@@ -72,6 +76,7 @@ npm.cmd run qa:hosted-browser
 Expected hosted smoke proof:
 
 - account health endpoint returns `ok=true`
+- account version endpoint returns JSON and matches `POLITY_EXPECTED_COMMIT` when set
 - React app shell loads
 - lobby listing returns an array
 - placeholder lobby can be created and listed
@@ -97,6 +102,7 @@ The current evidence is recorded in `docs/deployment.md` and `docs/superpowers/p
 
 - public origin
 - deployed branch and commit context
+- commit-pinned hosted smoke proof
 - `smoke:hosted` command and result
 - `qa:hosted-browser` command and result
 - private-debug disabled proof

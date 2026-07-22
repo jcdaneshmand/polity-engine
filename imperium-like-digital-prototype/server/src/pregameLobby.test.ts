@@ -264,6 +264,7 @@ describe("pregame lobby middleware", () => {
     const store = createPregameLobbyStore({ now: () => "2026-06-05T10:00:00.000Z", createID: () => "id", createCredential: () => "cred" });
     const matchStore = createLobbyStore({ now: () => "2026-06-05T10:00:00.000Z" });
     const accounts = accountStore();
+    const leftMatches: Array<{ matchID: string; playerID: string; playerCredentials: string }> = [];
     const admin = accounts.createAccount({ email: "admin@example.com", username: "Admin", password: "secret123" });
     const player = accounts.createAccount({ email: "player@example.com", username: "Player", password: "secret123" });
     if (!admin.ok || !player.ok) throw new Error("account create failed");
@@ -273,11 +274,22 @@ describe("pregame lobby middleware", () => {
       accountStore: accounts,
       boardgameApi: {
         createMatch: async () => ({ matchID: "match-1" }),
-        joinMatch: async () => ({ playerCredentials: "player-token" })
+        joinMatch: async () => ({ playerCredentials: "player-token" }),
+        leaveMatch: async (input) => { leftMatches.push(input); }
       }
     });
     await middleware(context("POST", "/polity/lobby/rooms", { playerCount: 2, setupData: setupData(), privateDataFingerprint: "placeholder", hostName: "Host" }), async () => undefined);
-    matchStore.createMatchMetadata({ matchID: "match-1", roomName: "Started", playerCount: 2, setupData: setupData(), privateDataFingerprint: "placeholder" });
+    matchStore.createMatchMetadata({
+      matchID: "match-1",
+      roomName: "Started",
+      playerCount: 2,
+      setupData: setupData(),
+      privateDataFingerprint: "placeholder",
+      occupiedSeats: [
+        { playerID: "0", playerName: "Host", isConnected: true, playerCredentials: "token-0" },
+        { playerID: "1", playerName: "Guest", isConnected: true, playerCredentials: "token-1" }
+      ]
+    });
 
     const guestClear = context("POST", "/polity/lobby/admin/clear", {});
     await middleware(guestClear, async () => undefined);
@@ -293,6 +305,10 @@ describe("pregame lobby middleware", () => {
     await middleware(clear, async () => undefined);
 
     expect(clear.body).toEqual({ ok: true, lobbiesCleared: 1, matchesCleared: 1 });
+    expect(leftMatches).toEqual([
+      { matchID: "match-1", playerID: "0", playerCredentials: "token-0" },
+      { matchID: "match-1", playerID: "1", playerCredentials: "token-1" }
+    ]);
     expect(store.listLobbies()).toEqual([]);
     expect(matchStore.listMatches()).toEqual([]);
   });

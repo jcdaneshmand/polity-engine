@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { writeJsonFileSync } from "./jsonFileStore";
-import type { CreateLobbyMatchInput, ListedMatch, ListedMatchStatus, LobbyAccessResult, RecordPlayerJoinInput, RecordPlayerLeaveInput } from "./lobbyTypes";
+import type { AdminDrainedMatch, CreateLobbyMatchInput, ListedMatch, ListedMatchStatus, LobbyAccessResult, RecordPlayerJoinInput, RecordPlayerLeaveInput } from "./lobbyTypes";
 
 type LobbyStoreOptions = {
   now?: () => string;
@@ -259,6 +259,19 @@ export function createLobbyStore(options: LobbyStoreOptions = {}) {
       matches.clear();
       persist();
       return count;
+    },
+
+    drainMatchesForAdmin(): AdminDrainedMatch[] {
+      const drained = Array.from(matches.values()).map((match) => ({
+        matchID: match.matchID,
+        occupiedSeats: Array.from(match.occupiedSeats.values()).map((seat) => ({
+          playerID: seat.playerID,
+          playerCredentials: seat.playerCredentials
+        }))
+      }));
+      matches.clear();
+      persist();
+      return drained;
     },
 
     markMatchInProgress(matchID: string): ListedMatch | undefined {

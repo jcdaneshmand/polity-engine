@@ -16,6 +16,7 @@ type KoaLikeNext = () => Promise<void>;
 type BoardgameApi = {
   createMatch: (input: { numPlayers: number; setupData: unknown }) => Promise<{ matchID: string }>;
   joinMatch: (input: { matchID: string; playerID: string; playerName: string }) => Promise<{ playerCredentials: string }>;
+  leaveMatch?: (input: { matchID: string; playerID: string; playerCredentials: string }) => Promise<void>;
 };
 
 type PolityLobbyOptions = {
@@ -278,6 +279,14 @@ export function createBoardgameHttpApi(serverURL: string): BoardgameApi {
       });
       if (!response.ok) throw new Error(`join_match_failed:${response.status}`);
       return await response.json() as { playerCredentials: string };
+    },
+    async leaveMatch(input) {
+      const response = await fetch(`${baseURL}/games/polity-engine/${encodeURIComponent(input.matchID)}/leave`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ playerID: input.playerID, credentials: input.playerCredentials })
+      });
+      if (!response.ok && response.status !== 404) throw new Error(`leave_match_failed:${response.status}`);
     }
   };
 }

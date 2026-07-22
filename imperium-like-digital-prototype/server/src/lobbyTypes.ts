@@ -28,6 +28,16 @@ export type ListedMatch = {
   };
 };
 
+export type AdminMatchSeat = {
+  playerID: string;
+  playerCredentials: string;
+};
+
+export type AdminDrainedMatch = {
+  matchID: string;
+  occupiedSeats: AdminMatchSeat[];
+};
+
 export type LobbyAccessFailureReason =
   | "match_not_found"
   | "missing_password"

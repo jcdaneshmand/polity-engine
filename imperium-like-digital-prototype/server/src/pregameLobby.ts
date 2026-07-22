@@ -19,6 +19,7 @@ type KoaLikeNext = () => Promise<void>;
 type BoardgameApi = {
   createMatch: (input: { numPlayers: number; setupData: unknown }) => Promise<{ matchID: string }>;
   joinMatch: (input: { matchID: string; playerID: string; playerName: string }) => Promise<{ playerCredentials: string }>;
+  leaveMatch?: (input: { matchID: string; playerID: string; playerCredentials: string }) => Promise<void>;
 };
 
 type PregameLobbyOptions = {
@@ -109,10 +110,20 @@ export function createPregameLobbyMiddleware(options: PregameLobbyOptions) {
         setError(ctx, admin.status, admin.reason);
         return;
       }
+      const drainedMatches = options.matchStore?.drainMatchesForAdmin() ?? [];
+      for (const match of drainedMatches) {
+        for (const seat of match.occupiedSeats) {
+          await options.boardgameApi.leaveMatch?.({
+            matchID: match.matchID,
+            playerID: seat.playerID,
+            playerCredentials: seat.playerCredentials
+          }).catch(() => undefined);
+        }
+      }
       ctx.body = {
         ok: true,
         lobbiesCleared: options.store.clearLobbies(),
-        matchesCleared: options.matchStore?.clearMatches() ?? 0
+        matchesCleared: drainedMatches.length
       };
       return;
     }

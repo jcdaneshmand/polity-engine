@@ -3,6 +3,9 @@ dist
 .vite
 coverage
 *.log
+.env
+.env.*
+!.env.example
 reference/
 *.pdf
 official-card-data/

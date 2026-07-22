@@ -63,6 +63,25 @@ npm.cmd run qa:hosted-browser
 
 The hosted browser QA reuses the local browser flow without starting a local server. It checks setup status, starts a placeholder game, verifies board diagnostics, covers local save/resume UI, verifies corrupt-save handling, then hosts/joins/starts/rejoins a placeholder online match against the public origin.
 
+## Render Sync Hook
+
+The live Render service can be redeployed from a local secret hook without committing the hook URL:
+
+```powershell
+$env:POLITY_RENDER_SYNC_URL="<secret Render sync/deploy hook URL>"
+npm.cmd run render:sync
+```
+
+The helper reads `POLITY_RENDER_SYNC_URL`, or `RENDER_DEPLOY_HOOK_URL` as a fallback, and redacts the `key` query parameter from its output. Do not commit the hook URL, paste it into docs, or put it in a tracked shell script. If the URL is exposed, regenerate the hook in Render.
+
+After the sync starts and Render finishes deploying, rerun:
+
+```powershell
+$env:POLITY_HOSTED_BASE_URL="https://polity-engine.onrender.com"
+npm.cmd run smoke:hosted
+npm.cmd run qa:hosted-browser
+```
+
 ## Local Release Gate
 
 - 2026-06-24: `npm.cmd run typecheck`, `npm.cmd run test -w app`, `npm.cmd run test -w server`, and `npm.cmd run smoke:multiplayer` passed from `imperium-like-digital-prototype` before hosted deployment.

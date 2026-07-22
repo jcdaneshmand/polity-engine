@@ -501,20 +501,18 @@ export default function NewGameSetup({
 
         {localPlaytestStatus ? (
           <fieldset
-            className="setup-section setup-section--wide"
+            className="setup-section setup-section--wide local-playtest-status"
             data-qa="local-playtest-status"
             data-data-mode={localPlaytestDataMode}
             data-saved-game={localPlaytestStatus.savedGameAvailable ? "available" : "none"}
             data-hosting={localPlaytestStatus.hostedDeferred ? "deferred" : "active"}
           >
-            <legend>Local Playtest</legend>
-            <p className="setup-help">
-              {localPlaytestDataMode === "placeholder" ? "Placeholder data" : "Private data loaded"}
-              {" - "}
-              {localPlaytestStatus.savedGameAvailable ? "Saved local game available" : "No saved local game"}
-              {" - "}
-              {localPlaytestStatus.hostedDeferred ? "Public hosting deferred" : "Public hosting active"}
-            </p>
+            <legend>Playtest Status</legend>
+            <div className="local-playtest-status__chips">
+              <span>{localPlaytestDataMode === "placeholder" ? "Demo data" : "Private data loaded"}</span>
+              <span>{localPlaytestStatus.savedGameAvailable ? "Local save ready" : "No local save"}</span>
+              <span>{localPlaytestStatus.hostedDeferred ? "Hosted playtest pending" : "Hosted playtest live"}</span>
+            </div>
           </fieldset>
         ) : null}
 

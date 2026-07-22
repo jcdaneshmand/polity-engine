@@ -5,7 +5,7 @@ Use this checklist before private data is introduced. Keep every finding public-
 ## Setup
 
 - Start from a clean local server with `npm.cmd run playtest:local`.
-- Confirm the setup screen shows `Local Playtest`, `Placeholder data`, saved-game status, and `Public hosting deferred`.
+- Confirm the setup screen shows compact `Playtest Status` chips for demo/private data, saved-game status, and hosted playtest state.
 - Keep public hosting proof separate; this checklist is only for local playability.
 
 ## Manual Scripts

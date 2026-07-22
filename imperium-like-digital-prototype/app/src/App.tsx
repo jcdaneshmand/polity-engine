@@ -1276,7 +1276,7 @@ export default function App() {
           localPlaytestStatus={{
             dataMode: "placeholder",
             savedGameAvailable: savedLocalGame.kind === "valid",
-            hostedDeferred: true
+            hostedDeferred: false
           }}
         />
         {savedLocalGame.kind !== "none" ? (

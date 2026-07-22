@@ -24,19 +24,19 @@ describe("NewGameSetup summary", () => {
         localPlaytestStatus={{
           dataMode: "placeholder",
           savedGameAvailable: true,
-          hostedDeferred: true
+          hostedDeferred: false
         }}
       />
     );
 
-    expect(html).toContain("Local Playtest");
+    expect(html).toContain("Playtest Status");
     expect(html).toContain("data-qa=\"local-playtest-status\"");
     expect(html).toContain("data-data-mode=\"placeholder\"");
     expect(html).toContain("data-saved-game=\"available\"");
-    expect(html).toContain("data-hosting=\"deferred\"");
-    expect(html).toContain("Placeholder data");
-    expect(html).toContain("Saved local game available");
-    expect(html).toContain("Public hosting deferred");
+    expect(html).toContain("data-hosting=\"active\"");
+    expect(html).toContain("Demo data");
+    expect(html).toContain("Local save ready");
+    expect(html).toContain("Hosted playtest live");
   });
 
   it("can render as a lobby setup editor with an existing config", () => {

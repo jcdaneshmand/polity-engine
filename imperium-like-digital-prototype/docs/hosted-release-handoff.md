@@ -29,7 +29,7 @@ In the Render dashboard, confirm:
 - `POLITY_SERVER_ORIGIN` equals the exact public origin
 - persistent disk is attached at `/var/data`
 - the latest deployed commit is visible and matches the intended branch head
-- after commit `4549d1d`, `/polity/accounts/version` returns JSON with the live build commit
+- after commit `57158b8`, `/polity/accounts/version` returns JSON with the live build commit
 
 Render does not support disks on free web services. Keep the disk and use a disk-compatible paid service plan for release proof; removing the disk would make restart/storage persistence evidence weaker and should be treated as a temporary demo-only configuration.
 
@@ -58,7 +58,7 @@ npm.cmd run qa:hosted-browser
 
 The hosted browser QA passed setup, local board, worked-turn, automated practice, automated solo, two-seat online multiplayer self-play, viewport QA, save/resume, invalid save, and private-debug marker checks.
 
-After the admin account endpoint commit `a0ff800` and hosted commit-verification commit `9088980`, the Render deploy list showed the live service was still on commit `69566d6` from a `blueprint_sync` trigger, despite service-level auto-deploy being enabled for commits. A Render API deploy was started for `9088980f439eabbdd5cecf9acfc11f4bfdc00a8f`; it reached `live`, and `POLITY_EXPECTED_COMMIT=9088980 npm.cmd run smoke:hosted` then passed with `liveCommit` reporting the full `9088980f439eabbdd5cecf9acfc11f4bfdc00a8f` SHA. The follow-up evidence commit `4549d1d4e093cc1030ee34b5f27c7a8833ddd74f` was then pushed, deployed through the Render API, reached `live`, and passed `POLITY_EXPECTED_COMMIT=4549d1d npm.cmd run smoke:hosted`.
+After the admin account endpoint commit `a0ff800` and hosted commit-verification commit `9088980`, the Render deploy list showed the live service was still on commit `69566d6` from a `blueprint_sync` trigger, despite service-level auto-deploy being enabled for commits. A Render API deploy was started for `9088980f439eabbdd5cecf9acfc11f4bfdc00a8f`; it reached `live`, and `POLITY_EXPECTED_COMMIT=9088980 npm.cmd run smoke:hosted` then passed with `liveCommit` reporting the full `9088980f439eabbdd5cecf9acfc11f4bfdc00a8f` SHA. Follow-up API deploys for `4549d1d4e093cc1030ee34b5f27c7a8833ddd74f` and `57158b87ac5f3ab5f528519234fe2a9408e2faba` reached `live`; `POLITY_EXPECTED_COMMIT=57158b8 npm.cmd run smoke:hosted` passed and reported the full `57158b87ac5f3ab5f528519234fe2a9408e2faba` SHA.
 
 The next local check was `npm.cmd run private:preflight`. It reached the final gate but stopped because the expected ignored private CSV sources are not present under `private-card-data/`.
 

@@ -267,6 +267,18 @@ export function createAccountStore(options: AccountStoreOptions = {}) {
       return { ok: true, ...sessionForAccount(account) };
     },
 
+    createAccountWithRole(input: AccountCreateInput & { role: AccountRecord["role"] }): { ok: true; account: AccountPublicView; token: string } | { ok: false; reason: AccountFailureReason } {
+      const email = input.email.trim().toLowerCase();
+      const username = input.username.trim();
+      if (!email || !username || input.password.length < MIN_PASSWORD_LENGTH) return { ok: false, reason: "invalid_account" };
+      if (findByEmail(email)) return { ok: false, reason: "email_taken" };
+      if (findByUsername(username)) return { ok: false, reason: "username_taken" };
+      const account = accountWithPassword(input, input.role);
+      if ("reason" in account) return { ok: false, reason: account.reason };
+      accounts.set(account.id, account);
+      return { ok: true, ...sessionForAccount(account) };
+    },
+
     ensureDefaultAdmin(input: AccountCreateInput): { ok: true; account: AccountPublicView } | { ok: false; reason: AccountFailureReason } {
       const existing = findByEmail(input.email) ?? findByUsername(input.username);
       if (existing) {

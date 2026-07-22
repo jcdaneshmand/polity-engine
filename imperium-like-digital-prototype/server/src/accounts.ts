@@ -161,6 +161,33 @@ export function createAccountMiddleware(options: AccountMiddlewareOptions) {
       return;
     }
 
+    if (ctx.method === "POST" && ctx.path === "/polity/accounts/admin/create") {
+      const admin = requireAdmin(ctx, options.store);
+      if (!admin.ok) {
+        setError(ctx, admin.status, admin.reason);
+        return;
+      }
+      const body = await readJSONBody(ctx);
+      const role = isRecord(body) ? stringValue(body.role) ?? "player" : undefined;
+      if (!isRecord(body) || !stringValue(body.email) || !stringValue(body.username) || !stringValue(body.password) || role !== "player" && role !== "admin") {
+        setError(ctx, 400, "invalid_request");
+        return;
+      }
+      const created = options.store.createAccountWithRole({
+        email: stringValue(body.email) as string,
+        username: stringValue(body.username) as string,
+        password: stringValue(body.password) as string,
+        role
+      });
+      if (!created.ok) {
+        setError(ctx, accountErrorStatus(created.reason), created.reason);
+        return;
+      }
+      ctx.status = 201;
+      ctx.body = { account: created.account, token: created.token };
+      return;
+    }
+
     if (ctx.method === "POST" && ctx.path === "/polity/accounts/sign-in") {
       const body = await readJSONBody(ctx);
       if (!isRecord(body) || !stringValue(body.login) || !stringValue(body.password)) {

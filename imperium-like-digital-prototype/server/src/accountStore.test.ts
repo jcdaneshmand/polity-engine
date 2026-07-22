@@ -30,6 +30,23 @@ describe("account store", () => {
     });
   });
 
+  it("lets an admin path create accounts with an explicit role", () => {
+    const store = accountStore();
+
+    const created = store.createAccountWithRole({ email: "mod@example.com", username: "Mod", password: "secret123", role: "admin" });
+
+    expect(created).toEqual({
+      ok: true,
+      account: expect.objectContaining({ email: "mod@example.com", username: "Mod", role: "admin" }),
+      token: expect.stringMatching(/^token-\d+$/)
+    });
+    expect(store.signIn({ login: "mod", password: "secret123" })).toEqual({
+      ok: true,
+      account: expect.objectContaining({ username: "Mod", role: "admin" }),
+      token: expect.stringMatching(/^token-\d+$/)
+    });
+  });
+
   it("ensures a default admin account exists", () => {
     const store = accountStore();
 

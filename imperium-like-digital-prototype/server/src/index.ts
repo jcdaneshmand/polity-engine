@@ -33,7 +33,7 @@ const server = Server({
   ...(db ? { db } : {})
 });
 
-server.app.use(createAccountMiddleware({ store: accountStore }));
+server.app.use(createAccountMiddleware({ store: accountStore, buildCommit: config.buildCommit }));
 server.app.use(createPregameLobbyMiddleware({
   store: pregameLobbyStore,
   boardgameApi,

@@ -10,7 +10,8 @@ describe("server config", () => {
       boardgameStorageDir: undefined,
       accountStorageFile: undefined,
       lobbyStorageFile: undefined,
-      pregameLobbyStorageFile: undefined
+      pregameLobbyStorageFile: undefined,
+      buildCommit: undefined
     });
   });
 
@@ -26,8 +27,14 @@ describe("server config", () => {
       boardgameStorageDir: "tmp/multiplayer/boardgame",
       accountStorageFile: "tmp/multiplayer/accounts.json",
       lobbyStorageFile: "tmp/multiplayer/lobby-matches.json",
-      pregameLobbyStorageFile: "tmp/multiplayer/pregame-lobbies.json"
+      pregameLobbyStorageFile: "tmp/multiplayer/pregame-lobbies.json",
+      buildCommit: undefined
     });
+  });
+
+  it("exposes build commit metadata from deployment env", () => {
+    expect(buildServerConfig({ RENDER_GIT_COMMIT: "abc123" }).buildCommit).toBe("abc123");
+    expect(buildServerConfig({ POLITY_BUILD_COMMIT: "override", RENDER_GIT_COMMIT: "abc123" }).buildCommit).toBe("override");
   });
 
   it("uses hosted platform PORT when the Polity-specific port is not set", () => {

@@ -1,4 +1,4 @@
-export type ServerEnvironment = Partial<Record<"PORT" | "POLITY_SERVER_PORT" | "POLITY_SERVER_ORIGIN" | "POLITY_STORAGE_PATH", string>>;
+export type ServerEnvironment = Partial<Record<"PORT" | "POLITY_SERVER_PORT" | "POLITY_SERVER_ORIGIN" | "POLITY_STORAGE_PATH" | "POLITY_BUILD_COMMIT" | "RENDER_GIT_COMMIT" | "RENDER_COMMIT" | "COMMIT_SHA" | "GIT_COMMIT", string>>;
 
 export type ServerConfig = {
   port: number;
@@ -8,6 +8,7 @@ export type ServerConfig = {
   accountStorageFile?: string;
   lobbyStorageFile?: string;
   pregameLobbyStorageFile?: string;
+  buildCommit?: string;
 };
 
 const LOCALHOST_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
@@ -39,6 +40,7 @@ export function buildServerConfig(env: ServerEnvironment): ServerConfig {
     boardgameStorageDir: normalizedStorageDir ? `${normalizedStorageDir}/boardgame` : undefined,
     accountStorageFile: normalizedStorageDir ? `${normalizedStorageDir}/accounts.json` : undefined,
     lobbyStorageFile: normalizedStorageDir ? `${normalizedStorageDir}/lobby-matches.json` : undefined,
-    pregameLobbyStorageFile: normalizedStorageDir ? `${normalizedStorageDir}/pregame-lobbies.json` : undefined
+    pregameLobbyStorageFile: normalizedStorageDir ? `${normalizedStorageDir}/pregame-lobbies.json` : undefined,
+    buildCommit: env.POLITY_BUILD_COMMIT?.trim() || env.RENDER_GIT_COMMIT?.trim() || env.RENDER_COMMIT?.trim() || env.COMMIT_SHA?.trim() || env.GIT_COMMIT?.trim() || undefined
   };
 }

@@ -15,6 +15,7 @@ type KoaLikeNext = () => Promise<void>;
 
 type AccountMiddlewareOptions = {
   store: AccountStore;
+  buildCommit?: string;
 };
 
 type AuthResult =
@@ -139,6 +140,14 @@ export function createAccountMiddleware(options: AccountMiddlewareOptions) {
 
     if (ctx.method === "GET" && ctx.path === "/polity/accounts/health") {
       ctx.body = { ok: true };
+      return;
+    }
+
+    if (ctx.method === "GET" && ctx.path === "/polity/accounts/version") {
+      ctx.body = {
+        ok: true,
+        buildCommit: options.buildCommit ?? null
+      };
       return;
     }
 

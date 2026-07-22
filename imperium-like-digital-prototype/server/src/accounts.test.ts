@@ -33,12 +33,15 @@ function store() {
 describe("account middleware", () => {
   it("reports account route health for dev-full compatibility checks", async () => {
     const accountStore = store();
-    const middleware = createAccountMiddleware({ store: accountStore });
+    const middleware = createAccountMiddleware({ store: accountStore, buildCommit: "abc123" });
     const health = context("GET", "/polity/accounts/health");
+    const version = context("GET", "/polity/accounts/version");
 
     await middleware(health, async () => undefined);
+    await middleware(version, async () => undefined);
 
     expect(health.body).toEqual({ ok: true });
+    expect(version.body).toEqual({ ok: true, buildCommit: "abc123" });
   });
 
   it("registers accounts and restores the current session", async () => {

@@ -26,10 +26,12 @@ function childEnv(config, overrides = {}) {
     if (process.platform === "win32" && key !== "Path" && key.toLowerCase() === "path") continue;
     env[key] = value;
   }
+  const expectedCommit = env.POLITY_EXPECTED_COMMIT?.trim();
   return {
     ...env,
     POLITY_SERVER_PORT: String(config.port),
     POLITY_STORAGE_PATH: config.storagePath,
+    ...(expectedCommit && !env.POLITY_BUILD_COMMIT ? { POLITY_BUILD_COMMIT: expectedCommit } : {}),
     VITE_SHOW_PRIVATE_CARD_DEBUG: "false",
     ...overrides
   };

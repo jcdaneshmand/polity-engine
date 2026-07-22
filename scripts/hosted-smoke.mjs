@@ -6,6 +6,7 @@ if (!rawBaseURL) {
 }
 
 const baseURL = rawBaseURL.replace(/\/+$/, "");
+const expectedCommit = process.env.POLITY_EXPECTED_COMMIT?.trim();
 
 function setupData() {
   return {
@@ -80,6 +81,12 @@ async function main() {
   let createdSmokeLobby;
   const health = await getJSON("/polity/accounts/health");
   if (health?.ok !== true) throw new Error("Account health endpoint did not return ok=true.");
+  const version = await getJSON("/polity/accounts/version");
+  if (version?.ok !== true) throw new Error("Account version endpoint did not return ok=true.");
+  const liveCommit = typeof version.buildCommit === "string" && version.buildCommit.length > 0 ? version.buildCommit : undefined;
+  if (expectedCommit && (!liveCommit || !liveCommit.startsWith(expectedCommit))) {
+    throw new Error(`Hosted app is not serving expected commit ${expectedCommit}; live commit is ${liveCommit ?? "unknown"}.`);
+  }
 
   const appHtml = await (await get("/")).text();
   if (!appHtml.includes('<div id="root">')) {
@@ -115,6 +122,7 @@ async function main() {
       ok: true,
       smoke: "hosted",
       baseURL,
+      liveCommit: liveCommit ?? null,
       lobbyID: createdSmokeLobby.lobbyID
     }, null, 2));
   } finally {

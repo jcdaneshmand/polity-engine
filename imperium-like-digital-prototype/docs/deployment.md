@@ -11,6 +11,7 @@ Polity Engine can serve the built React app, the lobby HTTP API, and the Socket.
 - Expose the service port through `PORT` or `POLITY_SERVER_PORT`.
 - Set `POLITY_SERVER_ORIGIN` to the exact public app origin, such as `https://polity-engine.example.com`.
 - Set `POLITY_STORAGE_PATH` to a persistent disk path.
+- Render normally exposes commit metadata automatically. If a host does not, set `POLITY_BUILD_COMMIT` to the deployed commit SHA so hosted smoke can prove the app is serving the intended revision.
 
 ## Storage Layout
 
@@ -44,7 +45,15 @@ $env:POLITY_HOSTED_BASE_URL="https://polity-engine.onrender.com"
 npm.cmd run smoke:hosted
 ```
 
-The hosted smoke checks account health, the React app shell, lobby room listing, placeholder/fictional lobby creation, and absence of private-debug markers in the served app shell. After verifying the placeholder lobby appears in the room listing, it calls the lobby leave endpoint for cleanup.
+For deployment proof after a push, also pin the expected commit:
+
+```powershell
+$env:POLITY_HOSTED_BASE_URL="https://polity-engine.onrender.com"
+$env:POLITY_EXPECTED_COMMIT="<short-or-full-git-sha>"
+npm.cmd run smoke:hosted
+```
+
+The hosted smoke checks account health, deployment commit identity, the React app shell, lobby room listing, placeholder/fictional lobby creation, and absence of private-debug markers in the served app shell. After verifying the placeholder lobby appears in the room listing, it calls the lobby leave endpoint for cleanup.
 
 Before Render is available, run the same hosted smoke script against a temporary local server:
 
@@ -78,6 +87,7 @@ After the sync starts and Render finishes deploying, rerun:
 
 ```powershell
 $env:POLITY_HOSTED_BASE_URL="https://polity-engine.onrender.com"
+$env:POLITY_EXPECTED_COMMIT="<short-or-full-git-sha>"
 npm.cmd run smoke:hosted
 npm.cmd run qa:hosted-browser
 ```
@@ -94,7 +104,8 @@ npm.cmd run qa:hosted-browser
 - 2026-07-22: Root `render.yaml` is present and declares the Render service shape described above. `npm.cmd run render:verify` passed locally: typecheck, server tests, and production app build completed. `npm.cmd run smoke:hosted` against `POLITY_HOSTED_BASE_URL=https://polity-engine.onrender.com` still reaches the host but fails at `/polity/accounts/health` with `404 Not Found`. Hosted proof remains pending a redeploy of this service or the correct public origin.
 - 2026-07-22: Next-gates work was committed and pushed to `origin/main` at `16bfa7c`. After the push, `POLITY_HOSTED_BASE_URL=https://polity-engine.onrender.com npm.cmd run smoke:hosted` still returned `GET /polity/accounts/health failed with 404: Not Found`, so the candidate public origin is not yet serving the pushed Polity Engine service.
 - 2026-07-22: After Render went live, `POLITY_HOSTED_BASE_URL=https://polity-engine.onrender.com npm.cmd run smoke:hosted` passed and created/listed/cleaned up a hosted placeholder lobby. `POLITY_HOSTED_BASE_URL=https://polity-engine.onrender.com npm.cmd run qa:hosted-browser` also passed, including setup, local board, worked-turn, automated practice, automated solo, two-seat online multiplayer self-play, viewport QA, save/resume, invalid save, and private-debug marker checks.
-- 2026-07-22: Added `npm.cmd run render:sync` as a redacted local helper for the Render sync/deploy hook. The helper was run with `POLITY_RENDER_SYNC_URL` set locally and Render returned `201 Created`; `POLITY_HOSTED_BASE_URL=https://polity-engine.onrender.com npm.cmd run smoke:hosted` passed immediately afterward.
+- 2026-07-22: Added `npm.cmd run render:sync` as a redacted local helper for the Render sync/deploy hook. The helper was run with `POLITY_RENDER_SYNC_URL` set locally and Render returned `201 Created`; `POLITY_HOSTED_BASE_URL=https://polity-engine.onrender.com npm.cmd run smoke:hosted` passed immediately afterward. A later route check showed the new admin-creation endpoint still returned `404 Not Found`, so this evidence only proved the host was healthy, not that the latest commit had deployed.
+- 2026-07-22: Added `/polity/accounts/version`, deployment commit config, and `POLITY_EXPECTED_COMMIT` support in hosted smoke so future checks fail when the public app is alive but still serving an older commit.
 
 ## Hosted Gate Status
 

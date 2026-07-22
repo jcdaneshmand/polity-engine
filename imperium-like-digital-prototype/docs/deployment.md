@@ -11,6 +11,7 @@ Polity Engine can serve the built React app, the lobby HTTP API, and the Socket.
 - Expose the service port through `PORT` or `POLITY_SERVER_PORT`.
 - Set `POLITY_SERVER_ORIGIN` to the exact public app origin, such as `https://polity-engine.example.com`.
 - Set `POLITY_STORAGE_PATH` to a persistent disk path.
+- Optional: set `VITE_PAYPAL_SUPPORT_URL` to override the default PayPal hosting-support link.
 - Render normally exposes commit metadata automatically. If a host does not, set `POLITY_BUILD_COMMIT` to the deployed commit SHA so hosted smoke can prove the app is serving the intended revision.
 
 ## Storage Layout
@@ -28,7 +29,7 @@ Do not point `POLITY_STORAGE_PATH` at a public static directory.
 
 The repository root includes `render.yaml`. It defines one disk-compatible Node web service rooted at `imperium-like-digital-prototype`, a persistent disk mounted at `/var/data`, `POLITY_STORAGE_PATH=/var/data/polity-engine`, and a health check at `/polity/accounts/health`. Render does not support disks on free web services, so this service must use a paid plan such as `starter` for release proof.
 
-Before creating a public deployment, set `POLITY_SERVER_ORIGIN` in Render to the deployed URL. Leave `VITE_SHOW_PRIVATE_CARD_DEBUG` unset or `false` for public builds.
+Before creating a public deployment, set `POLITY_SERVER_ORIGIN` in Render to the deployed URL. The app shows a default PayPal hosting-support link for `jcdaneshmand@gmail.com`; set `VITE_PAYPAL_SUPPORT_URL` only if that link needs to be overridden. Leave `VITE_SHOW_PRIVATE_CARD_DEBUG` unset or `false` for public builds.
 
 ## Post-Deploy Checks
 

@@ -6,6 +6,10 @@ The app is data-driven: users can upload their own local card data, nation data,
 
 Polity Engine does not include official Osprey Games assets or datasets. It provides the scaffolding for a rules engine and import workflow, while user-created data stays local and private.
 
+## Live App
+
+Try the live app at [polity-engine.onrender.com](https://polity-engine.onrender.com).
+
 ## Important Disclaimer
 
 - This is an unofficial fan-made project.

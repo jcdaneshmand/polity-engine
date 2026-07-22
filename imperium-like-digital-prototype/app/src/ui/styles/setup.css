@@ -377,6 +377,25 @@
   color: #ffe0a3;
 }
 
+.about-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.about-support-link {
+  border: 1px solid var(--ui-selection);
+  border-radius: 6px;
+  background: #6a5138;
+  color: #f3ead8;
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 12px;
+  text-decoration: none;
+}
+
 .about-panel button {
   min-height: 38px;
   border: 1px solid #7a6a57;
@@ -458,13 +477,24 @@
   padding: 10px 16px;
 }
 
+.app-home-bar-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.app-home-bar a,
 .app-home-bar button {
   background: #f6efe4;
   border: 1px solid #c9bba8;
   border-radius: 4px;
   color: #1f1b18;
   cursor: pointer;
+  line-height: 1.2;
   padding: 7px 10px;
+  text-decoration: none;
 }
 
 .online-games-panel {

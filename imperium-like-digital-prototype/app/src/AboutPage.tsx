@@ -1,8 +1,9 @@
 type AboutPageProps = {
   onBack: () => void;
+  supportUrl?: string;
 };
 
-export default function AboutPage({ onBack }: AboutPageProps) {
+export default function AboutPage({ onBack, supportUrl }: AboutPageProps) {
   return (
     <main className="about-screen">
       <section className="about-panel" aria-labelledby="about-title">
@@ -20,9 +21,25 @@ export default function AboutPage({ onBack }: AboutPageProps) {
         <p>
           Contact: <a href="mailto:jcdaneshmand@gmail.com">jcdaneshmand@gmail.com</a>
         </p>
-        <button type="button" onClick={onBack}>
-          Back
-        </button>
+        {supportUrl ? (
+          <p>
+            If you enjoy having the service live, you can help cover hosting costs with{" "}
+            <a href={supportUrl} target="_blank" rel="noreferrer">
+              $7.25/month on PayPal
+            </a>
+            .
+          </p>
+        ) : null}
+        <div className="about-actions">
+          {supportUrl ? (
+            <a className="about-support-link" href={supportUrl} target="_blank" rel="noreferrer">
+              Support hosting: $7.25/month
+            </a>
+          ) : null}
+          <button type="button" onClick={onBack}>
+            Back
+          </button>
+        </div>
       </section>
     </main>
   );

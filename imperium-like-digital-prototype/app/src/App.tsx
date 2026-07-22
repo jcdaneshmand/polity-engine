@@ -32,6 +32,10 @@ type HomeView = "setup" | "private-data" | "about" | "online" | "lobby" | "lobby
 
 const ONLINE_CLIENT_STORAGE_KEY = "polity-engine.onlineClientID.v1";
 const ONLINE_HEARTBEAT_MS = 5_000;
+const DEFAULT_PAYPAL_SUPPORT_URL = "https://www.paypal.com/donate/?business=jcdaneshmand%40gmail.com&amount=7.25&currency_code=USD&item_name=Polity%20Engine%20hosting%20support";
+const PAYPAL_SUPPORT_URL = typeof import.meta.env.VITE_PAYPAL_SUPPORT_URL === "string"
+  ? import.meta.env.VITE_PAYPAL_SUPPORT_URL.trim() || DEFAULT_PAYPAL_SUPPORT_URL
+  : DEFAULT_PAYPAL_SUPPORT_URL;
 
 export async function loadOnlineDirectory(args: {
   listLobbies: () => Promise<ListedLobby[]>;
@@ -1088,11 +1092,18 @@ export default function App() {
         <div className="app-home" data-theme="default">
           <div className="app-home-bar">
             <strong>Polity Engine</strong>
-            <button type="button" onClick={() => setHomeView("setup")}>
-              Setup
-            </button>
+            <div className="app-home-bar-actions">
+              {PAYPAL_SUPPORT_URL ? (
+                <a href={PAYPAL_SUPPORT_URL} target="_blank" rel="noreferrer">
+                  $7.25/month hosting
+                </a>
+              ) : null}
+              <button type="button" onClick={() => setHomeView("setup")}>
+                Setup
+              </button>
+            </div>
           </div>
-          <AboutPage onBack={() => setHomeView("setup")} />
+          <AboutPage onBack={() => setHomeView("setup")} supportUrl={PAYPAL_SUPPORT_URL} />
         </div>
       );
     }
@@ -1182,9 +1193,16 @@ export default function App() {
       <div className="app-home" data-theme="default">
         <div className="app-home-bar">
           <strong>Polity Engine</strong>
-          <button type="button" onClick={() => setHomeView("about")}>
-            About
-          </button>
+          <div className="app-home-bar-actions">
+            {PAYPAL_SUPPORT_URL ? (
+              <a href={PAYPAL_SUPPORT_URL} target="_blank" rel="noreferrer">
+                $7.25/month hosting
+              </a>
+            ) : null}
+            <button type="button" onClick={() => setHomeView("about")}>
+              About
+            </button>
+          </div>
         </div>
         <NewGameSetup
           initialCampaignProgress={pendingCampaignProgress}

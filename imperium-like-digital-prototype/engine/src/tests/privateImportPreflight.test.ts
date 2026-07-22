@@ -58,6 +58,8 @@ describe("private import preflight", () => {
       expect(result.stderr).toContain("Missing private import sources");
       expect(result.stderr).toContain("imperium_bot_state_tables_private.csv");
       expect(result.stderr).toContain("imperium_bot_trade_routes_private.csv");
+      expect(result.stderr).toContain("copy from private-card-data/bot-state-table-template.csv");
+      expect(result.stderr).toContain("copy from private-card-data/bot-trade-routes-table-template.csv");
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }

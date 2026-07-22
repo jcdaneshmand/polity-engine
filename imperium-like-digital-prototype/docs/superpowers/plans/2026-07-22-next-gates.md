@@ -244,7 +244,7 @@ npm.cmd run private:import-all
 npm.cmd run private:completeness
 ```
 
-Evidence note: After hosted proof passed on 2026-07-22, `npm.cmd run private:preflight` was run locally. It failed before import because the expected ignored local sources are missing: `imperium_cards_private.csv`, `imperium_nations_private.csv`, `imperium_nation_rulesets_private.csv`, `imperium_nation_strategy_private.csv`, `imperium_bot_state_tables_private.csv`, and `imperium_bot_trade_routes_private.csv`. The folder currently contains templates and `.gitkeep`, so `private:import-all` and `private:completeness` remain open until those local private CSV files exist.
+Evidence note: After hosted proof passed on 2026-07-22, `npm.cmd run private:preflight` was run locally. It failed before import because the expected ignored local sources are missing: `imperium_cards_private.csv`, `imperium_nations_private.csv`, `imperium_nation_rulesets_private.csv`, `imperium_nation_strategy_private.csv`, `imperium_bot_state_tables_private.csv`, and `imperium_bot_trade_routes_private.csv`. The folder currently contains templates and `.gitkeep`, so `private:import-all` and `private:completeness` remain open until those local private CSV files exist. The preflight output now names the matching template for each missing private source, and `privateImportPreflight.test.ts` covers those hints.
 
 ---
 

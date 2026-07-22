@@ -95,25 +95,31 @@ Contact: [jcdaneshmand@gmail.com](mailto:jcdaneshmand@gmail.com).
 
 | Bucket | Status | Next gate |
 | --- | --- | --- |
-| Local QA/playtest | Practice, solo, two-seat online self-play, worked-turn, save/resume, invalid save, privacy marker, hierarchy, and viewport browser gates complete | Keep `npm.cmd run qa:local-browser`, `npm test`, `npm.cmd run smoke:fictional-game`, and `npm.cmd run typecheck` green before major changes. |
-| UI as playable rulebook | Current-task panel, action provenance, enabled/unavailable action grouping, why-can't-I feedback, collapsible player aid, protected game log, last-event feedback, public-safe diagnostics, bug-report summary helper, zone hierarchy metadata, and viewport checks are in place | Finish visual/browser QA for the board UI playability pass and keep expectation checks updated around current task, actions, log, aid, and diagnostics. |
-| Rules parity | Broad covered matrix with strong unit evidence and playable-rulebook explanation coverage | Keep `data/fictional-regression/coverage-map.json` aligned with UI explanations, fictional scenarios, and rules-engine tests. |
-| Playability | Locally playable with save/resume, rejoin flows, deterministic worked-turn coverage, automated player-expectation checks, seeded stress coverage, admin controls, and a copied bug-report summary path for playtest failures | Promote future high-value playtest failures into browser QA and keep targeted admin cleanup covered. |
-| Hosted release | Render deployment is live and uses commit-pinned hosted smoke as release proof after deploys | Keep `npm.cmd run smoke:hosted` with `POLITY_EXPECTED_COMMIT`, `npm.cmd run qa:hosted-browser`, and admin close/end smoke checks green after deploys. |
-| Private data | Final gate reached; transcription UI now reuses real card/nation/ruleset validators and includes browser draft protection, batch progress, and card search/edit; private preflight reports local private CSV sources are missing | Add the ignored `*_private.csv` files under `imperium-like-digital-prototype/private-card-data/`, then rerun private preflight/import/completeness locally. |
+| Local QA/playtest | Closed for the public-safe baseline: practice, solo, two-seat online self-play, worked-turn, save/resume, invalid save, privacy marker, hierarchy, viewport, and diagnostics gates are covered | Keep `npm.cmd run qa:local-browser`, `npm test`, `npm.cmd run smoke:fictional-game`, and `npm.cmd run typecheck` green before major changes; promote any real playtest failure into a scripted regression. |
+| UI as playable rulebook | Closed for the current board pass: current-task panel, action provenance, enabled/unavailable action grouping, why-can't-I feedback, collapsible player aid, protected game log, last-event feedback, public-safe diagnostics, bug-report summary helper, zone hierarchy metadata, and viewport checks are in place | Maintain the expectation checks around current task, actions, log, aid, diagnostics, and zone/card state metadata while future UI work lands. |
+| Rules parity | Closed for current public-safe explanations: selector explanations and provenance labels are mapped to coverage evidence | Keep `data/fictional-regression/coverage-map.json`, `rulesParityCoverage.test.ts`, and parity docs aligned whenever new UI explanations or rule-facing action labels are added. |
+| Playability | Public-safe playability gate is closed locally and hosted: save/resume, rejoin flows, deterministic worked-turn coverage, automated player-expectation checks, seeded stress coverage, admin close/end controls, and copied bug-report summaries are in place | Keep admin cleanup, lobby/game close, support messaging, and bug-report diagnostics covered as online playtest usage expands. |
+| Hosted release | Render deployment is live; latest deploys use commit-pinned hosted smoke as release proof, with hosted browser QA available for deeper checks | After each pushed release, run `npm.cmd run smoke:hosted` with `POLITY_EXPECTED_COMMIT`; run `npm.cmd run qa:hosted-browser` after UI/gameplay changes and before broader playtest invites. |
+| Private data | Remaining final gate: transcription UI now reuses real card/nation/ruleset validators and includes browser draft protection, batch progress, and card search/edit, but local ignored private CSV source files are still missing | Add the ignored `*_private.csv` files under `imperium-like-digital-prototype/private-card-data/`, then rerun private preflight/import/completeness locally without committing private data. |
 
 ### Next Gate Roadmap
 
 The release-gate plan is tracked in `imperium-like-digital-prototype/docs/superpowers/plans/2026-07-22-next-gates.md`. The current board UI playability pass is tracked in `imperium-like-digital-prototype/docs/superpowers/plans/2026-07-22-board-ui-playability-fixes.md`.
 
-The gates should close in this order:
+Closed public-safe gates:
 
-1. Finish board hierarchy polish so public zones, private zones, hidden information, selected cards, and pending choices are visually unambiguous across desktop, Steam Deck, and narrow tablet viewports.
-2. Add a guided worked-turn scenario that drives a deterministic public-safe turn through setup, selection, legal and blocked actions, pending choices, cleanup, end turn, and save/resume.
-3. Expand parity evidence so each current-task label, blocked-action reason, provenance label, and fictional scenario points back to rules-engine tests or coverage-map entries.
-4. Add hosted smoke and hosted browser QA against the deployed origin using the same player-expectation checks as local QA.
-5. Add longer gameplay stress runs with fake decks, seeded simulations, whole-game or near-whole-game loops, and artifact capture on logical expectation failures.
-6. Run the private-data final gate locally only, after all public-safe local and hosted gates are green.
+1. Board hierarchy and playable-rulebook UI clarity.
+2. Guided worked-turn scenario and player-expectation browser QA.
+3. Parity evidence map for UI explanations and provenance labels.
+4. Hosted smoke and hosted browser QA plumbing.
+5. Longer public-safe gameplay stress runs.
+6. Transcription workstation baseline with shared validators, draft protection, batch progress, and search/edit.
+
+Remaining gates should close in this order:
+
+1. Run the private-data final gate locally only: add ignored private CSV inputs, run preflight/import/completeness, and convert any rules mismatch into a public-safe fake-card regression before changing engine behavior.
+2. Keep hosted release proof current after every deploy: commit-pinned hosted smoke every time, hosted browser QA after gameplay/UI changes, and admin close/end checks after online-session changes.
+3. Harden production operations: document support/admin/runbook flows, backup expectations for persistent Render storage, recovery steps for stuck lobbies/games, and the release checklist for playtest invites.
 
 ## Repository Structure
 

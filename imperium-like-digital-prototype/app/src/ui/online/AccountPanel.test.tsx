@@ -125,6 +125,11 @@ describe("AccountPanel", () => {
       />
     );
 
+    expect(html).toContain('class="account-stats"');
+    expect(html).toContain('class="account-stat-record"');
+    expect(html).toContain('class="account-stat-label"');
+    expect(html).toContain('class="account-stat-score"');
+    expect(html).toContain('class="account-stat-games"');
     expect(html).toContain("Solo Standard");
     expect(html).toContain("2-1");
     expect(html).toContain("Campaign");

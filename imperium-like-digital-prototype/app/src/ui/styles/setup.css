@@ -111,6 +111,46 @@
   font-size: 1rem;
 }
 
+.account-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+}
+
+.account-stat-record {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  align-items: baseline;
+  min-width: 0;
+  border: 1px solid #6e5f50;
+  border-radius: 6px;
+  background: #27231f;
+  padding: 8px;
+}
+
+.account-stat-label {
+  min-width: 0;
+  overflow: hidden;
+  color: #d9c7a7;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.account-stat-score {
+  color: #f3ead8;
+  font-size: 0.95rem;
+}
+
+.account-stat-games {
+  grid-column: 1 / -1;
+  color: #b8a98f;
+  font-size: 0.75rem;
+}
+
 .setup-section {
   min-width: 0;
   margin: 0;

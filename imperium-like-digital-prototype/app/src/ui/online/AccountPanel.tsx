@@ -23,10 +23,10 @@ function titleWords(value: string): string {
 
 function statRecord(label: string, stats: { gamesPlayed: number; wins: number; losses: number; unfinished: number }) {
   return (
-    <div key={label}>
-      <span>{label}</span>
-      <strong>{stats.wins}-{stats.losses}</strong>
-      <small>{stats.gamesPlayed} played{stats.unfinished ? ` / ${stats.unfinished} unfinished` : ""}</small>
+    <div className="account-stat-record" key={label}>
+      <span className="account-stat-label">{label}</span>
+      <strong className="account-stat-score">{stats.wins}-{stats.losses}</strong>
+      <small className="account-stat-games">{stats.gamesPlayed} played{stats.unfinished ? ` / ${stats.unfinished} unfinished` : ""}</small>
     </div>
   );
 }
@@ -66,7 +66,7 @@ export default function AccountPanel({ account, passwordResetToken, statusMessag
           </label>
           <button type="button" disabled={!currentPassword || changedPassword.length < 4} onClick={() => void onChangePassword({ currentPassword, password: changedPassword })}>Change Password</button>
         </div>
-        <div className="summary-stats">
+        <div className="account-stats" aria-label="Account game stats">
           {statRecord("Solo Standard", account.stats.solo.standard)}
           {statRecord("Campaign", account.stats.solo.campaign)}
           {statRecord("Practice", account.stats.solo.practice)}

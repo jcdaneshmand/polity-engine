@@ -175,7 +175,7 @@ npm.cmd run smoke:hosted
 npm.cmd run qa:hosted-browser
 ```
 
-Evidence note: `npm.cmd run smoke:hosted:local` passed against `http://127.0.0.1:8794`. `npm.cmd run test:local-qa-scripts` passed and confirms hosted browser QA requires `POLITY_HOSTED_BASE_URL`. The root `render.yaml` is present; `npm.cmd run render:verify` passed locally after adding the package script, covering typecheck, server tests, and production app build. On 2026-07-22, `POLITY_HOSTED_BASE_URL=https://polity-engine.onrender.com npm.cmd run smoke:hosted` reached the candidate host but failed at `/polity/accounts/health` with `404 Not Found`, so deployed `smoke:hosted` and `qa:hosted-browser` remain open pending redeploy or the correct public origin.
+Evidence note: `npm.cmd run smoke:hosted:local` passed against `http://127.0.0.1:8794`. `npm.cmd run test:local-qa-scripts` passed and confirms hosted browser QA requires `POLITY_HOSTED_BASE_URL`. The root `render.yaml` is present; `npm.cmd run render:verify` passed locally after adding the package script, covering typecheck, server tests, and production app build. The next-gates work was committed and pushed to `origin/main` at `16bfa7c`. On 2026-07-22, `POLITY_HOSTED_BASE_URL=https://polity-engine.onrender.com npm.cmd run smoke:hosted` reached the candidate host both before and after that push but failed at `/polity/accounts/health` with `404 Not Found`, so deployed `smoke:hosted` and `qa:hosted-browser` remain open pending redeploy or the correct public origin.
 
 ---
 

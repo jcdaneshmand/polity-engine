@@ -3,7 +3,7 @@ import type { CardEntryBatchProfile } from "./cardEntryTypes";
 export const commonsBatchProfiles: CardEntryBatchProfile[] = [
   {
     id: "commons-classics",
-    label: "Commons > Classics",
+    label: "Commons > Classical",
     kind: "commons",
     ownership: "commons",
     setOrNation: "classics",
@@ -13,7 +13,7 @@ export const commonsBatchProfiles: CardEntryBatchProfile[] = [
   },
   {
     id: "commons-legends",
-    label: "Commons > Legends",
+    label: "Commons > Legendary",
     kind: "commons",
     ownership: "commons",
     setOrNation: "legends",
@@ -23,7 +23,7 @@ export const commonsBatchProfiles: CardEntryBatchProfile[] = [
   },
   {
     id: "commons-horizons",
-    label: "Commons > Horizons",
+    label: "Commons > Horizontal",
     kind: "commons",
     ownership: "commons",
     setOrNation: "horizons",
@@ -33,7 +33,7 @@ export const commonsBatchProfiles: CardEntryBatchProfile[] = [
   },
   {
     id: "commons-trade-routes",
-    label: "Commons > Trade Routes",
+    label: "Commons > Trade Module",
     kind: "commons",
     ownership: "commons",
     setOrNation: "trade_routes",

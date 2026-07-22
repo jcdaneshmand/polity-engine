@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { AccountPublicView } from "../../accountSession";
 import type { ChatMessage, ListedLobby, ListedMatch, OnlineSessionRecord } from "../../onlineSession";
-import type { NewGameSessionConfig } from "../setup/NewGameSetup";
+import { formatCommonsSetLabel, type NewGameSessionConfig } from "../setup/NewGameSetup";
 import AccountPanel from "./AccountPanel";
 
 type OnlineGamesProps = {
@@ -249,7 +249,7 @@ export default function OnlineGames({
             </label>
             <div className="online-card">
               <strong>{setupConfig.options.playerCount} players</strong>
-              <span>{setupConfig.options.commonsSetId ?? "classics"}</span>
+              <span>{formatCommonsSetLabel(setupConfig.options.commonsSetId ?? "classics")}</span>
               <small>{privateDataFingerprint === "placeholder" ? "Placeholder data" : "Private data loaded"}</small>
             </div>
             <button className="primary-action" type="button" onClick={submitHost}>Host Game</button>

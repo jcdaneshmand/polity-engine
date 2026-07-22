@@ -1129,7 +1129,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
           <button type="button" className={entryMode === "cards" ? "is-active" : ""} onClick={() => changeEntryMode("cards")}>Cards</button>
           <button type="button" className={entryMode === "nations" ? "is-active" : ""} onClick={() => changeEntryMode("nations")}>Nations</button>
           <button type="button" className={entryMode === "bot-state" ? "is-active" : ""} onClick={() => changeEntryMode("bot-state")}>Bot State</button>
-          <button type="button" className={entryMode === "bot-trade" ? "is-active" : ""} onClick={() => changeEntryMode("bot-trade")}>Bot Trade Routes</button>
+          <button type="button" className={entryMode === "bot-trade" ? "is-active" : ""} onClick={() => changeEntryMode("bot-trade")}>Bot Trade Module</button>
         </div>
 
         {entryMode === "cards" || entryMode === "nations" ? (
@@ -1513,7 +1513,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
           <section className="private-entry-nation-panel" aria-labelledby="private-bot-trade-title">
             <div className="private-entry-subheading">
               <div>
-                <h2 id="private-bot-trade-title">Bot Trade Routes CSV</h2>
+                <h2 id="private-bot-trade-title">Bot Trade Module CSV</h2>
                 <p>Build route and end-of-turn rows for AI trade route behavior.</p>
               </div>
               <div className="private-entry-actions">

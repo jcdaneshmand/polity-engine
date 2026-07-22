@@ -7,7 +7,7 @@ import { ACCOUNT_SESSION_STORAGE_KEY, parseAccountSessionRecord, serializeAccoun
 import AboutPage from "./AboutPage";
 import Board from "./Board";
 import { createLocalGameExport, createLocalGameRestoreEnhancer, importLocalGameExport, loadSavedLocalGameRecord, LOCAL_GAME_SAVE_STORAGE_KEY, serializeLocalGame, type SavedLocalGameEnvelope, type SavedLocalGameRecord } from "./localGameSave";
-import { adminCloseLobby, adminCloseMatch, changeAccountPassword, clearAllOnlineGames, closePolityOnlineMatch, completePasswordReset, computePrivateDataFingerprint, createLobbyRoom, heartbeatLobbyRoom, heartbeatPolityOnlineMatch, joinLobbyRoom, joinPolityOnlineMatch, leaveLobbyRoom, leavePolityOnlineMatch, listLobbyChat, listLobbyRooms, listOnlineChat, listOnlineMatches, loadCurrentAccount, ONLINE_SESSION_STORAGE_KEY, parseOnlineSessionRecord, recordAccountGameResult, registerAccount, rejoinLobbyRoom, requestPasswordReset, resolveMultiplayerServerURL, selectLobbyNation, sendLobbyChat, sendOnlineChat, serializeOnlineSessionRecord, setLobbyReady, signInAccount, signOutAccount, spectateOnlineMatch, startAccountGameHistory, startLobbyGame, updateLobbySetup, type AccountGameResultInput, type AccountHistoryStartInput, type ChatMessage, type ListedLobby, type ListedMatch, type LobbyRoomDetails, type OnlineLobbySessionRecord, type OnlineSessionRecord, type OnlineStartedSessionRecord } from "./onlineSession";
+import { adminCloseLobby, adminCloseMatch, changeAccountPassword, clearAllOnlineGames, closePolityOnlineMatch, completePasswordReset, computePrivateDataFingerprint, createLobbyRoom, heartbeatLobbyRoom, heartbeatPolityOnlineMatch, joinLobbyRoom, joinPolityOnlineMatch, leaveLobbyRoom, leavePolityOnlineMatch, listLobbyChat, listLobbyRooms, listOnlineChat, listOnlineMatches, loadCurrentAccount, loadMonthlySupportStatus, markMonthlySupportCovered, ONLINE_SESSION_STORAGE_KEY, parseOnlineSessionRecord, recordAccountGameResult, registerAccount, rejoinLobbyRoom, requestPasswordReset, resolveMultiplayerServerURL, selectLobbyNation, sendLobbyChat, sendOnlineChat, serializeOnlineSessionRecord, setLobbyReady, signInAccount, signOutAccount, spectateOnlineMatch, startAccountGameHistory, startLobbyGame, updateLobbySetup, type AccountGameResultInput, type AccountHistoryStartInput, type ChatMessage, type ListedLobby, type ListedMatch, type LobbyRoomDetails, type MonthlySupportStatus, type OnlineLobbySessionRecord, type OnlineSessionRecord, type OnlineStartedSessionRecord } from "./onlineSession";
 import PrivateCardEntry from "./ui/privateData/PrivateCardEntry";
 import LobbyRoom from "./ui/online/LobbyRoom";
 import OnlineGames from "./ui/online/OnlineGames";
@@ -293,10 +293,26 @@ export default function App() {
   const [currentLobby, setCurrentLobby] = useState<LobbyRoomDetails | undefined>(undefined);
   const [currentLobbySession, setCurrentLobbySession] = useState<OnlineLobbySessionRecord | undefined>(isLobbySessionRecord(savedOnlineSession) ? savedOnlineSession : undefined);
   const [onlineStatus, setOnlineStatus] = useState("");
+  const [monthlySupportStatus, setMonthlySupportStatus] = useState<MonthlySupportStatus | undefined>(undefined);
+  const [monthlySupportMessage, setMonthlySupportMessage] = useState<string | undefined>(undefined);
   const multiplayerServerURL = resolveMultiplayerServerURL({
     configuredURL: typeof import.meta.env.VITE_MULTIPLAYER_SERVER_URL === "string" ? import.meta.env.VITE_MULTIPLAYER_SERVER_URL : undefined,
     windowOrigin: typeof window === "undefined" ? undefined : window.location.origin
   });
+
+  useEffect(() => {
+    let cancelled = false;
+    loadMonthlySupportStatus({ serverURL: multiplayerServerURL })
+      .then((status) => {
+        if (!cancelled) setMonthlySupportStatus(status);
+      })
+      .catch(() => {
+        if (!cancelled) setMonthlySupportMessage("Hosting tracker is unavailable right now.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [multiplayerServerURL]);
 
   const GameClient = useMemo(() => {
     if (!session) return null;
@@ -1098,6 +1114,17 @@ export default function App() {
     await signOutAccount({ serverURL: multiplayerServerURL, accountToken: token }).catch(() => undefined);
   };
 
+  const markCurrentMonthCovered = async () => {
+    setMonthlySupportMessage(undefined);
+    try {
+      const status = await markMonthlySupportCovered({ serverURL: multiplayerServerURL });
+      setMonthlySupportStatus(status);
+      setMonthlySupportMessage("Thank you. This month's hosting cost is marked covered.");
+    } catch {
+      setMonthlySupportMessage("Could not update the hosting tracker. Please try again later.");
+    }
+  };
+
   const leaveCurrentGame = () => {
     if (session?.kind === "online" && session.role === "player") {
       void leavePolityOnlineMatch({
@@ -1131,7 +1158,13 @@ export default function App() {
               </button>
             </div>
           </div>
-          <AboutPage onBack={() => setHomeView("setup")} supportUrl={PAYPAL_SUPPORT_URL} />
+          <AboutPage
+            onBack={() => setHomeView("setup")}
+            supportUrl={PAYPAL_SUPPORT_URL}
+            monthlySupportStatus={monthlySupportStatus}
+            monthlySupportMessage={monthlySupportMessage}
+            onMarkMonthlySupportCovered={markCurrentMonthCovered}
+          />
         </div>
       );
     }

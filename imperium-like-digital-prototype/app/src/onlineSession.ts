@@ -43,6 +43,12 @@ export type ChatMessage = {
   createdAt: string;
 };
 
+export type MonthlySupportStatus = {
+  month: string;
+  isCovered: boolean;
+  coveredAt?: string;
+};
+
 export type ListedMatch = {
   matchID: string;
   roomName: string;
@@ -431,6 +437,21 @@ export async function recordAccountGameResult(args: { serverURL: string; account
     args.result,
     args.fetcher ?? fetch,
     args.accountToken
+  );
+}
+
+export async function loadMonthlySupportStatus(args: { serverURL: string; fetcher?: Fetcher }): Promise<MonthlySupportStatus> {
+  return getLobbyJSON<MonthlySupportStatus>(
+    lobbyURL(args.serverURL, "/polity/support/monthly"),
+    args.fetcher ?? fetch
+  );
+}
+
+export async function markMonthlySupportCovered(args: { serverURL: string; fetcher?: Fetcher }): Promise<MonthlySupportStatus> {
+  return postLobbyJSON<MonthlySupportStatus>(
+    lobbyURL(args.serverURL, "/polity/support/monthly/mark-covered"),
+    {},
+    args.fetcher ?? fetch
   );
 }
 

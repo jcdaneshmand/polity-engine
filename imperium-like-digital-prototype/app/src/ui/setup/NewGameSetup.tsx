@@ -50,12 +50,12 @@ const modes: Array<{ id: GameMode; label: string }> = [
   { id: "practice", label: "Practice" }
 ];
 
-const expansions: Array<{ id: ExpansionId; label: string }> = [{ id: "trade_routes", label: "Trade Routes" }];
+const expansions: Array<{ id: ExpansionId; label: string }> = [{ id: "trade_routes", label: "Trade Module" }];
 
 const commonsSets: Array<{ id: CommonsSetId; label: string }> = [
-  { id: "classics", label: "Classics" },
-  { id: "legends", label: "Legends" },
-  { id: "horizons", label: "Horizons" },
+  { id: "classics", label: "Classical" },
+  { id: "legends", label: "Legendary" },
+  { id: "horizons", label: "Horizontal" },
   { id: "custom", label: "Custom" }
 ];
 
@@ -125,6 +125,18 @@ function toggleItem<T extends string>(items: T[], item: T): T[] {
 
 function labelFor<T extends string>(items: Array<{ id: T; label: string }>, id: T): string {
   return items.find((item) => item.id === id)?.label ?? id;
+}
+
+export function formatCommonsSetLabel(id: string): string {
+  return commonsSets.find((item) => item.id === id)?.label ?? id;
+}
+
+export function formatExpansionLabel(id: string): string {
+  return expansions.find((item) => item.id === id)?.label ?? id;
+}
+
+export function formatVariantLabel(id: string): string {
+  return variants.find((item) => item.id === id)?.label ?? id;
 }
 
 function isCampaignMode(value: unknown): value is CampaignMode {
@@ -766,11 +778,12 @@ export default function NewGameSetup({
           </fieldset>
         </section> : null}
         <p className="setup-attribution">
-          Imperium: Classics, Imperium: Legends, and Imperium: Horizons are owned by Osprey Games. Visit the{" "}
+          Polity Engine is an unofficial fan-made companion built as a love letter to the tabletop game that inspired it.
+          It helps players learn and enjoy the physical game, and it requires players to use content they own; visit the{" "}
           <a href="https://www.ospreypublishing.com/uk/discover/osprey-games/imperium/" target="_blank" rel="noreferrer">
-            official Osprey Imperium page
+            publisher's official game page
           </a>
-          . Polity Engine is an open-source, free, non-commercial fan project; view the{" "}
+          . Polity Engine is open-source, free, and non-commercial; view the{" "}
           <a href="https://github.com/jcdaneshmand/polity-engine" target="_blank" rel="noreferrer">
             GitHub repository
           </a>

@@ -436,6 +436,15 @@
   text-decoration: none;
 }
 
+.about-support-status {
+  border-left: 3px solid var(--ui-selection);
+  padding-left: 12px;
+}
+
+.about-support-status p {
+  margin: 8px 0;
+}
+
 .about-panel button {
   min-height: 38px;
   border: 1px solid #7a6a57;

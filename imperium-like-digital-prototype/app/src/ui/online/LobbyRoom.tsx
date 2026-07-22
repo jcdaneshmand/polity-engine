@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ChatMessage, LobbyRoomDetails } from "../../onlineSession";
-import { getNationOptions, type NewGameSessionConfig } from "../setup/NewGameSetup";
+import { formatCommonsSetLabel, formatExpansionLabel, formatVariantLabel, getNationOptions, type NewGameSessionConfig } from "../setup/NewGameSetup";
 
 type LobbyRoomProps = {
   lobby: LobbyRoomDetails;
@@ -27,8 +27,8 @@ function selectedNationLabel(nationID: string | undefined, nations: Array<{ id: 
   return nations.find((nation) => nation.id === nationID)?.label ?? nationID;
 }
 
-function formatSummaryList(values: string[]): string {
-  return values.length ? values.join(", ") : "None";
+function formatSummaryList<T extends string>(values: T[], formatter: (value: T) => string = (value) => value): string {
+  return values.length ? values.map(formatter).join(", ") : "None";
 }
 
 export async function readyWithSelectedNation(args: {
@@ -117,9 +117,9 @@ export default function LobbyRoom({
           <div className="online-card-grid">
             <article className="online-card">
               <strong>{lobby.playerCount} players</strong>
-              <span>Commons: {lobby.setupSummary.commonsSetId}</span>
-              <small>Expansions: {formatSummaryList(lobby.setupSummary.enabledExpansions)}</small>
-              <small>Variants: {formatSummaryList(lobby.setupSummary.enabledVariants)}</small>
+              <span>Commons: {formatCommonsSetLabel(lobby.setupSummary.commonsSetId)}</span>
+              <small>Expansions: {formatSummaryList(lobby.setupSummary.enabledExpansions, formatExpansionLabel)}</small>
+              <small>Variants: {formatSummaryList(lobby.setupSummary.enabledVariants, formatVariantLabel)}</small>
               <small>Nations: {formatSummaryList(lobby.setupSummary.nationLabels)}</small>
             </article>
           </div>

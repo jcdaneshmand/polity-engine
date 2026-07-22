@@ -71,8 +71,8 @@ describe("NewGameSetup summary", () => {
     expect(html).toContain("Update Lobby");
     expect(html).toContain("Back");
     expect(html).toContain("<strong>3</strong>");
-    expect(html).toContain("<strong>Legends</strong>");
-    expect(html).toContain("Trade Routes");
+    expect(html).toContain("<strong>Legendary</strong>");
+    expect(html).toContain("Trade Module");
     expect(html).toContain("Quick Setup");
     expect(html).not.toContain(">Solo</button>");
     expect(html).not.toContain(">Practice</button>");

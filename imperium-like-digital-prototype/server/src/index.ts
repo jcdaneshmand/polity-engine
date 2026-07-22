@@ -11,6 +11,8 @@ import { createPregameLobbyMiddleware } from "./pregameLobby";
 import { createPregameLobbyStore } from "./pregameLobbyStore";
 import { buildServerConfig } from "./serverConfig";
 import { createStaticAppMiddleware } from "./staticApp";
+import { createSupportMiddleware } from "./support";
+import { createSupportStore } from "./supportStore";
 
 const config = buildServerConfig(process.env);
 const currentDir = dirname(fileURLToPath(import.meta.url));
@@ -24,6 +26,7 @@ accountStore.ensureDefaultAdmin({
 });
 const lobbyStore = createLobbyStore({ storageFile: config.lobbyStorageFile });
 const pregameLobbyStore = createPregameLobbyStore({ storageFile: config.pregameLobbyStorageFile });
+const supportStore = createSupportStore({ storageFile: config.supportStorageFile });
 const boardgameApi = createBoardgameHttpApi(`http://127.0.0.1:${config.port}`);
 const server = Server({
   games: [PrototypeGame],
@@ -44,6 +47,7 @@ server.app.use(createPolityLobbyMiddleware({
   store: lobbyStore,
   boardgameApi
 }));
+server.app.use(createSupportMiddleware({ store: supportStore }));
 server.app.use(createStaticAppMiddleware(join(currentDir, "../../app/dist")));
 
 const runningServers = await server.run(config.port, () => {

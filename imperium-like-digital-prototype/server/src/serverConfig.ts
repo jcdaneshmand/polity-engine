@@ -8,6 +8,7 @@ export type ServerConfig = {
   accountStorageFile?: string;
   lobbyStorageFile?: string;
   pregameLobbyStorageFile?: string;
+  supportStorageFile?: string;
   buildCommit?: string;
 };
 
@@ -41,6 +42,7 @@ export function buildServerConfig(env: ServerEnvironment): ServerConfig {
     accountStorageFile: normalizedStorageDir ? `${normalizedStorageDir}/accounts.json` : undefined,
     lobbyStorageFile: normalizedStorageDir ? `${normalizedStorageDir}/lobby-matches.json` : undefined,
     pregameLobbyStorageFile: normalizedStorageDir ? `${normalizedStorageDir}/pregame-lobbies.json` : undefined,
+    supportStorageFile: normalizedStorageDir ? `${normalizedStorageDir}/support.json` : undefined,
     buildCommit: env.POLITY_BUILD_COMMIT?.trim() || env.RENDER_GIT_COMMIT?.trim() || env.RENDER_COMMIT?.trim() || env.COMMIT_SHA?.trim() || env.GIT_COMMIT?.trim() || undefined
   };
 }

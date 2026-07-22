@@ -67,7 +67,7 @@ export const playerCountOptions: Array<{ value: CardEntryDraft["playerCountRequi
 ];
 export const expansionRequirementOptions = [
   { value: "", label: "None" },
-  { value: "trade_routes", label: "Trade Routes" }
+  { value: "trade_routes", label: "Trade Module" }
 ];
 export const vpModeOptions = ["none", "fixed", "variable", "negative", "conditional"];
 export const variableVpFormulaOptions: Array<{ value: VariableVpFormula; label: string }> = [

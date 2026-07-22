@@ -11,6 +11,7 @@ describe("server config", () => {
       accountStorageFile: undefined,
       lobbyStorageFile: undefined,
       pregameLobbyStorageFile: undefined,
+      supportStorageFile: undefined,
       buildCommit: undefined
     });
   });
@@ -28,6 +29,7 @@ describe("server config", () => {
       accountStorageFile: "tmp/multiplayer/accounts.json",
       lobbyStorageFile: "tmp/multiplayer/lobby-matches.json",
       pregameLobbyStorageFile: "tmp/multiplayer/pregame-lobbies.json",
+      supportStorageFile: "tmp/multiplayer/support.json",
       buildCommit: undefined
     });
   });

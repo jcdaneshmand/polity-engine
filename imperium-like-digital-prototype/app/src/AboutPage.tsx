@@ -21,15 +21,14 @@ export default function AboutPage({ onBack, supportUrl }: AboutPageProps) {
         <p>
           Contact: <a href="mailto:jcdaneshmand@gmail.com">jcdaneshmand@gmail.com</a>
         </p>
-        {supportUrl ? (
-          <p>
-            If you enjoy having the service live, you can help cover hosting costs with{" "}
-            <a href={supportUrl} target="_blank" rel="noreferrer">
-              $7.25/month on PayPal
-            </a>
-            .
-          </p>
-        ) : null}
+        <p>
+          This service is still in active development, and bugs may be encountered. If you find one, please submit a{" "}
+          <a href="https://github.com/jcdaneshmand/polity-engine/issues/new" target="_blank" rel="noreferrer">
+            GitHub issue
+          </a>{" "}
+          or email <a href="mailto:jcdaneshmand@gmail.com">jcdaneshmand@gmail.com</a> with the exported playtest
+          diagnostics file and a bug description.
+        </p>
         <div className="about-actions">
           {supportUrl ? (
             <a className="about-support-link" href={supportUrl} target="_blank" rel="noreferrer">

@@ -1224,11 +1224,6 @@ export default function App() {
         <div className="app-home-bar">
           <strong>Polity Engine</strong>
           <div className="app-home-bar-actions">
-            {PAYPAL_SUPPORT_URL ? (
-              <a href={PAYPAL_SUPPORT_URL} target="_blank" rel="noreferrer">
-                $7.25/month hosting
-              </a>
-            ) : null}
             <button type="button" onClick={() => setHomeView("about")}>
               About
             </button>

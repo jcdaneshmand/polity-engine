@@ -12,6 +12,11 @@ describe("AboutPage", () => {
     expect(html).toContain("Game system designed by Nigel Buckle and Dávid Turczi.");
     expect(html).toContain("Implemented by Jonah Daneshmand, Ph.D.");
     expect(html).toContain('href="https://github.com/jcdaneshmand/polity-engine"');
+    expect(html).toContain("This service is still in active development");
+    expect(html).toContain("email");
+    expect(html).toContain("exported playtest diagnostics file");
+    expect(html).toContain("bug description");
+    expect(html).toContain('href="https://github.com/jcdaneshmand/polity-engine/issues/new"');
     expect(html).not.toContain("Support hosting");
   });
 
@@ -23,10 +28,11 @@ describe("AboutPage", () => {
       />
     );
 
-    expect(html).toContain("If you enjoy having the service live");
-    expect(html).toContain("$7.25/month on PayPal");
     expect(html).toContain("Support hosting: $7.25/month");
     expect(html).toContain("business=jcdaneshmand%40gmail.com");
     expect(html).toContain("amount=7.25");
+    expect(html).not.toContain("If you enjoy having the service live");
+    expect(html).not.toContain("$7.25/month on PayPal");
+    expect(html.match(/Support hosting: \$7\.25\/month/g)).toHaveLength(1);
   });
 });

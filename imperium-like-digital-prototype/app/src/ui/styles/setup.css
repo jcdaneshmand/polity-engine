@@ -1,7 +1,8 @@
 .setup-screen {
   min-height: 100vh;
+  min-height: 100dvh;
   box-sizing: border-box;
-  padding: 18px;
+  padding: max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
   --ui-selection: #f0c36d;
   --ui-ready: #9fca7b;
   --ui-info: #83bdd6;
@@ -418,8 +419,9 @@
 
 .about-screen {
   min-height: calc(100vh - 49px);
+  min-height: calc(100dvh - 49px);
   box-sizing: border-box;
-  padding: 18px;
+  padding: max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
   color: #f3ead8;
   background: linear-gradient(#2d2a28, #1f1d1b);
 }
@@ -504,7 +506,7 @@
 .game-shell-bar {
   box-sizing: border-box;
   border-bottom: 1px solid #6e5f50;
-  padding: 8px 12px;
+  padding: max(8px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left));
   color: #f3ead8;
   background: #312c28;
 }
@@ -536,6 +538,36 @@
     flex-direction: column;
     gap: 2px;
   }
+
+  .game-shell-bar span {
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 480px) {
+  .setup-screen,
+  .about-screen {
+    padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+  }
+
+  .setup-panel,
+  .about-panel {
+    padding: 12px;
+  }
+
+  .setup-heading h1,
+  .about-panel h1 {
+    font-size: 1.45rem;
+  }
+
+  .local-playtest-status {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .local-playtest-status__chips {
+    justify-content: flex-start;
+  }
 }
 
 @media (min-width: 900px) {
@@ -543,6 +575,12 @@
     position: sticky;
     top: 10px;
     z-index: 2;
+  }
+}
+@media (orientation: landscape) and (max-height: 520px) {
+  .game-shell-bar {
+    padding-top: 6px;
+    padding-bottom: 6px;
   }
 }
 .app-home-bar {

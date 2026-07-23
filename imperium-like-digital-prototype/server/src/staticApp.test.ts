@@ -10,6 +10,7 @@ describe("static app middleware", () => {
     try {
       await writeFile(join(dir, "index.html"), "<html>app</html>");
       await writeFile(join(dir, "asset.txt"), "asset");
+      await writeFile(join(dir, "sitemap.xml"), "<urlset></urlset>");
       const middleware = createStaticAppMiddleware(dir);
       const next = async () => undefined;
 
@@ -17,6 +18,11 @@ describe("static app middleware", () => {
       await middleware(assetCtx, next);
       expect(assetCtx.type).toBe("text/plain");
       expect(assetCtx.body.toString()).toBe("asset");
+
+      const sitemapCtx: any = { path: "/sitemap.xml", method: "GET", set: () => undefined };
+      await middleware(sitemapCtx, next);
+      expect(sitemapCtx.type).toBe("application/xml");
+      expect(sitemapCtx.body.toString()).toBe("<urlset></urlset>");
 
       const routeCtx: any = { path: "/multiplayer/room", method: "GET", set: () => undefined };
       await middleware(routeCtx, next);

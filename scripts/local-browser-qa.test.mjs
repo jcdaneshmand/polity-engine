@@ -46,7 +46,7 @@ test("redactBrowserQAResult does not include credentials", () => {
     automatedMultiplayerSelfPlayChecked: true,
     automatedMultiplayerSelfPlay: { steps: 8 },
     viewportQaChecked: true,
-    viewportQa: ["desktop", "steam-deck", "narrow-tablet"],
+    viewportQa: ["desktop", "steam-deck", "narrow-tablet", "iphone-portrait", "iphone-landscape"],
     saveResumeChecked: true,
     invalidSaveChecked: true,
     noPrivateDebugMarkers: true,
@@ -66,7 +66,7 @@ test("redactBrowserQAResult does not include credentials", () => {
     automatedMultiplayerSelfPlayChecked: true,
     automatedMultiplayerSelfPlay: { steps: 8 },
     viewportQaChecked: true,
-    viewportQa: ["desktop", "steam-deck", "narrow-tablet"],
+    viewportQa: ["desktop", "steam-deck", "narrow-tablet", "iphone-portrait", "iphone-landscape"],
     saveResumeChecked: true,
     invalidSaveChecked: true,
     noPrivateDebugMarkers: true

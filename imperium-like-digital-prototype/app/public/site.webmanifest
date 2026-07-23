@@ -1,0 +1,9 @@
+{
+  "name": "Polity Engine",
+  "short_name": "Polity",
+  "description": "Open-source digital companion for Imperium-style table play.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f1e6",
+  "theme_color": "#2f3f4f"
+}

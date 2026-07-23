@@ -3,6 +3,6 @@
 @import "./ui/styles/setup.css";
 @import "./ui/styles/privateData.css";
 
-html, body, #root { margin: 0; height: 100%; }
+html, body, #root { margin: 0; height: 100%; width: 100%; overflow-x: hidden; }
 body { font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif; background:#1c1a18; }
 button { font: inherit; }

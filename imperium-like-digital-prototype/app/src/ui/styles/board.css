@@ -1,4 +1,4 @@
-.board-layout { --gap:8px; --pad:8px; --market-card-h:132px; --hand-card-h:140px; --tile-pad:6px; --ui-selection:#f0c36d; --ui-selection-bg:#4b3b2b; --ui-ready:#9fca7b; --ui-ready-bg:#2f4635; --ui-blocked:#dc8a74; --ui-blocked-bg:#4b302c; --ui-info:#83bdd6; --ui-info-bg:#263f49; --ui-surface:#3b342f; --ui-surface-raised:#4a4038; display:grid; grid-template-columns: minmax(0, 1fr) clamp(300px,22vw,360px); gap:var(--gap); padding:var(--pad); color:#f3ead8; background:linear-gradient(#2d2a28,#1f1d1b); height:100%; overflow:hidden; box-sizing:border-box; }
+.board-layout { --gap:8px; --pad:8px; --market-card-h:132px; --hand-card-h:140px; --tile-pad:6px; --ui-selection:#f0c36d; --ui-selection-bg:#4b3b2b; --ui-ready:#9fca7b; --ui-ready-bg:#2f4635; --ui-blocked:#dc8a74; --ui-blocked-bg:#4b302c; --ui-info:#83bdd6; --ui-info-bg:#263f49; --ui-surface:#3b342f; --ui-surface-raised:#4a4038; display:grid; grid-template-columns: minmax(0, 1fr) clamp(300px,22vw,360px); gap:var(--gap); padding:max(var(--pad), env(safe-area-inset-top)) max(var(--pad), env(safe-area-inset-right)) max(var(--pad), env(safe-area-inset-bottom)) max(var(--pad), env(safe-area-inset-left)); color:#f3ead8; background:linear-gradient(#2d2a28,#1f1d1b); height:100%; overflow:hidden; box-sizing:border-box; }
 [data-theme="high-contrast"] .board-layout { --ui-selection:#ffd166; --ui-ready:#8cff98; --ui-info:#80d8ff; --ui-blocked:#ff8a80; }
 .left,.right { display:flex; flex-direction:column; gap:var(--gap); min-height:0; min-width:0; }
 .left { overflow:auto; scrollbar-gutter:stable; }
@@ -218,6 +218,21 @@
   .end-game-heading { flex-direction:column; }
   .end-game-heading button { width:100%; }
 }
+@media (max-width: 520px) {
+  .board-layout { --market-card-h:118px; --hand-card-h:128px; --gap:6px; --pad:6px; }
+  .pile-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .market-row { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .hand-row { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .zone-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .bot-piles,.bot-slots { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .bot-header { align-items:flex-start; flex-direction:column; gap:4px; }
+  .card-tile .title { font-size:.88rem; }
+  .card-tile .meta,.card-tile .summary { font-size:.74rem; }
+  .detail-grid,.diagnostic-grid { grid-template-columns:1fr; }
+  .card-inspection-backdrop,.end-game-backdrop { padding:max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); }
+  .card-inspection-modal,.end-game-summary { max-height:calc(100dvh - 20px); }
+  .card-inspection-modal .detail-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
 @media (max-height: 760px) {
   .board-layout { --market-card-h:112px; --hand-card-h:124px; --gap:6px; --pad:6px; --tile-pad:5px; }
   .pile-tile,.actions button { min-height:36px; }
@@ -229,4 +244,13 @@
 @media (max-height: 640px) {
   .board-layout { --market-card-h:96px; --hand-card-h:108px; }
   .card-tile .meta:nth-of-type(2),.market-row .card-tile .summary { display:none; }
+}
+@media (orientation: landscape) and (max-height: 520px) {
+  .board-layout { grid-template-rows:minmax(0,1fr) minmax(118px,34vh); --market-card-h:92px; --hand-card-h:100px; --gap:5px; --pad:5px; }
+  .right { grid-template-columns:repeat(4,minmax(180px,1fr)); }
+  .current-task-panel strong { font-size:.9rem; }
+  .current-task-panel span,.last-event-panel span { font-size:.78rem; }
+  .rule-aid-panel { max-height:118px; }
+  .log-panel { max-height:96px; }
+  .turn-status { grid-template-columns: repeat(5,minmax(0,1fr)); }
 }

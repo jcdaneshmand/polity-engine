@@ -334,7 +334,7 @@ async function assertLocalSetupAndBoard(baseURL, browser) {
   const dataMode = await status.getAttribute("data-data-mode");
   const hosting = await status.getAttribute("data-hosting");
   if (dataMode !== "placeholder") throw new Error(`Expected placeholder setup data mode, received ${dataMode ?? "missing"}.`);
-  if (hosting !== "deferred") throw new Error(`Expected public hosting to be marked deferred, received ${hosting ?? "missing"}.`);
+  if (hosting !== "active") throw new Error(`Expected public hosting to be marked active, received ${hosting ?? "missing"}.`);
   await assertNoPrivateDebugMarkers(page);
 
   await page.getByRole("button", { name: "Start Game" }).click();
@@ -819,7 +819,9 @@ async function assertViewportQA(baseURL, browser, artifactRoot) {
   const viewports = [
     { label: "desktop", width: 1440, height: 900 },
     { label: "steam-deck", width: 1280, height: 800 },
-    { label: "narrow-tablet", width: 760, height: 900 }
+    { label: "narrow-tablet", width: 760, height: 900 },
+    { label: "iphone-portrait", width: 390, height: 844 },
+    { label: "iphone-landscape", width: 844, height: 390 }
   ];
   const checked = [];
 

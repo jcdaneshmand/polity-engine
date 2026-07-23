@@ -18,7 +18,9 @@ const CONTENT_TYPES: Record<string, string> = {
   ".js": "text/javascript",
   ".json": "application/json",
   ".svg": "image/svg+xml",
-  ".txt": "text/plain"
+  ".txt": "text/plain",
+  ".webmanifest": "application/manifest+json",
+  ".xml": "application/xml"
 };
 
 function safeResolve(rootDir: string, requestPath: string): string | undefined {

@@ -7,7 +7,7 @@ Private card and nation data stays local and gitignored.
 - Keep public repo limited to schemas, validators, and tooling.
 
 ## Card data workflow
-1. Copy `private-card-data/card-data-template.csv` to a local private CSV (for example `private-card-data/imperium_cards_private.csv`).
+1. Run `npm run private:status` whenever you want a non-failing public-safe snapshot of the local private workspace. It reports filenames, row counts, check statuses, and the next action without copying private row contents. If required ignored files are missing, run `npm run private:scaffold` to create local CSV work files from the committed template headers, or manually copy `private-card-data/card-data-template.csv` to `private-card-data/imperium_cards_private.csv`. Header-only files are just workspaces; `private:preflight` requires at least one data row in each required private CSV and rejects headers that drift from the committed templates before import.
 2. Enter private fields locally (`card_name_private`, `raw_effect_text_private`) and keep `public_placeholder_name` safe for demos.
 3. Validate:
    - `npm run cards:validate -- --input private-card-data/imperium_cards_private.csv`
@@ -49,7 +49,9 @@ Validate/import nations:
 - `npm run nations:import -- --cards generated-private/cards.normalized.json --input private-card-data/imperium_nations_private.csv --output generated-private/nations.normalized.json --report generated-private/nation-import-report.json`
 
 Combined:
-- `npm run private:import-all`
+- `npm run private:gate`
+
+For diagnosis, `private:status` is the friendly progress check and `private:gate` is the strict proof. The status/preflight JSON reports include public-safe `recommendedCommands` and `nextStep` fields alongside filenames, output paths, row counts, and check statuses. `private:completeness` also calls out scaffolded header-only CSV files before rows exist so the local workspace does not look like an unexplained `0/0 complete` report. `private:gate` is equivalent to the public-safe preflight report, `private:import-all` (which includes `private:completeness`), and generated-artifact freshness verification. It fails fast before import if any required ignored private CSV is missing, header-only, or out of sync with its committed template header.
 
 ## CSV and JSON schemas
 The setup screen accepts either generated normalized JSON or raw private CSV files. Keep official names/text in local-only files and use public placeholder fields for screenshots, demos, or shared reports.

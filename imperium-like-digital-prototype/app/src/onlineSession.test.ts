@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { adminCloseLobby, adminCloseMatch, buildJoinURL, changeAccountPassword, clearAllOnlineGames, closePolityOnlineMatch, completePasswordReset, computePrivateDataFingerprint, createLobbyRoom, createOnlineMatch, createPolityOnlineMatch, heartbeatLobbyRoom, heartbeatPolityOnlineMatch, joinLobbyRoom, joinOnlineMatch, joinPolityOnlineMatch, leaveLobbyRoom, leavePolityOnlineMatch, listAccountHistory, listLobbyChat, listLobbyRooms, listOnlineChat, listOnlineMatches, loadCurrentAccount, ONLINE_SESSION_STORAGE_KEY, parseJoinURL, parseOnlineSessionRecord, recordAccountGameResult, registerAccount, rejoinLobbyRoom, requestPasswordReset, resolveMultiplayerServerURL, selectLobbyNation, sendLobbyChat, sendOnlineChat, serializeOnlineSessionRecord, setLobbyReady, signInAccount, signOutAccount, sortListedMatches, spectateOnlineMatch, startAccountGameHistory, startLobbyGame, updateLobbySetup } from "./onlineSession";
+import { adminCloseLobby, adminCloseMatch, buildJoinURL, changeAccountPassword, clearAllOnlineGames, closePolityOnlineMatch, completePasswordReset, computePrivateDataFingerprint, createLobbyRoom, createOnlineMatch, createPolityOnlineMatch, heartbeatLobbyRoom, heartbeatPolityOnlineMatch, joinLobbyRoom, joinOnlineMatch, joinPolityOnlineMatch, leaveLobbyRoom, leavePolityOnlineMatch, listAccountHistory, listLobbyChat, listLobbyRooms, listOnlineChat, listOnlineMatches, loadCurrentAccount, loadMonthlySupportStatus, markMonthlySupportCovered, ONLINE_SESSION_STORAGE_KEY, parseJoinURL, parseOnlineSessionRecord, recordAccountGameResult, registerAccount, rejoinLobbyRoom, requestPasswordReset, resolveMultiplayerServerURL, selectLobbyNation, sendLobbyChat, sendOnlineChat, serializeOnlineSessionRecord, setLobbyReady, signInAccount, signOutAccount, sortListedMatches, spectateOnlineMatch, startAccountGameHistory, startLobbyGame, updateLobbySetup } from "./onlineSession";
 
 function jsonResponse(body: unknown): Response {
   return {
@@ -248,6 +248,29 @@ describe("online session utilities", () => {
     ]);
   });
 
+  it("reads support status publicly and marks coverage with an admin bearer token", async () => {
+    const calls: Array<{ url: string; body?: unknown; authorization?: string | null; method?: string }> = [];
+    const fetcher = async (url: string, init?: RequestInit) => {
+      calls.push({
+        url,
+        body: init?.body ? JSON.parse(String(init.body)) : undefined,
+        authorization: init?.headers instanceof Headers ? init.headers.get("authorization") : (init?.headers as Record<string, string> | undefined)?.authorization,
+        method: init?.method
+      });
+      return jsonResponse({ month: "2026-07", isCovered: true, coveredAt: "2026-07-23T00:00:00.000Z" });
+    };
+
+    await expect(loadMonthlySupportStatus({ serverURL: "http://localhost:8000", fetcher }))
+      .resolves.toEqual({ month: "2026-07", isCovered: true, coveredAt: "2026-07-23T00:00:00.000Z" });
+    await expect(markMonthlySupportCovered({ serverURL: "http://localhost:8000", accountToken: "token-1", fetcher }))
+      .resolves.toEqual({ month: "2026-07", isCovered: true, coveredAt: "2026-07-23T00:00:00.000Z" });
+
+    expect(calls).toEqual([
+      { url: "http://localhost:8000/polity/support/monthly", body: undefined, authorization: undefined, method: undefined },
+      { url: "http://localhost:8000/polity/support/monthly/mark-covered", body: {}, authorization: "Bearer token-1", method: "POST" }
+    ]);
+  });
+
   it("uses account APIs with bearer tokens", async () => {
     const calls: Array<{ url: string; body?: unknown; authorization?: string | null; method?: string }> = [];
     const account = {
@@ -386,6 +409,18 @@ describe("online session utilities", () => {
       text: "Hello",
       fetcher
     })).rejects.toThrow("Lobby not found.");
+  });
+
+  it("reports private-data mismatch errors with recovery guidance", async () => {
+    const fetcher = async () => errorResponse(409, { error: "private_data_mismatch" });
+
+    await expect(joinLobbyRoom({
+      serverURL: "http://localhost:8000",
+      lobbyID: "lobby-private",
+      displayName: "Guest",
+      privateDataFingerprint: "private:wrong",
+      fetcher
+    })).rejects.toThrow("Import the same private data bundle as the host");
   });
 
   it("sorts listed matches by joinability before spectation and full games", () => {

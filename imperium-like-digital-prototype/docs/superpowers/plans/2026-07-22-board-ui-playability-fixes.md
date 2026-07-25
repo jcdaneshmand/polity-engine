@@ -20,7 +20,7 @@
 - [x] Public-safe diagnostics never include hidden deck order, opponent hand IDs, private raw card text, private generated data, credentials, or account tokens.
 - [x] Visual priority follows gameplay priority: blocking prompts first, enabled actions second, recent outcomes third, reference material after that.
 - [x] Responsive checks include desktop, Steam Deck-sized, and narrow/tablet layouts.
-- [ ] README gap snapshot or this plan is updated when a gate meaningfully changes status.
+- [x] README gap snapshot or this plan is updated when a gate meaningfully changes status.
 
 ---
 
@@ -42,8 +42,9 @@
 - [x] Add a visible `Game Log` panel title and stable `data-qa="game-log"` hook.
 - [x] Add a regression test asserting the log appears before player aid in rendered markup.
 - [x] Give player aid an internal scroll limit so it cannot consume the right rail.
-- [x] Verify visually at local desktop and Steam Deck-sized viewport.
-- [ ] Consider a collapsible player-aid control if the rail still feels crowded after visual QA.
+- [x] Verify visually at local desktop, Steam Deck-sized, tablet, and phone viewports.
+- [x] Add browser QA geometry checks so the player aid cannot overlap or appear above the game log in responsive right-rail layouts.
+- [x] Consider a collapsible player-aid control if the rail still feels crowded after visual QA.
 
 **Acceptance evidence:**
 
@@ -51,6 +52,8 @@
 npm.cmd run test -w app -- BoardLayout.test.tsx
 npm.cmd run build -w app
 ```
+
+Evidence note: Gate 5 implemented the collapsible/contextual player aid, and local browser QA now asserts the player aid default state plus log/player-aid geometry so the aid cannot hide or precede the game log in responsive right-rail layouts.
 
 ---
 
@@ -135,14 +138,14 @@ npm.cmd run typecheck -w app
 
 **Steps:**
 
-- [ ] Inventory existing log messages for end-turn, cleanup, trigger, bot, and next-player transitions.
+- [x] Inventory existing log messages for end-turn, cleanup, trigger, bot, and next-player transitions.
 - [x] Add a selector that derives a public-safe `lastOutcome` summary from the latest log entries and pending/current task.
 - [x] Render a compact `Last Event` banner near the current-task/action area.
 - [x] When an end turn creates a pending cleanup choice, show `End Turn -> Cleanup choice pending`.
 - [x] When cleanup completes, show draw-up and next-player text if the log contains enough data.
 - [x] When bot/autoplay resolves, show a concise public-safe outcome without hidden card leakage.
 - [x] Add diagnostics fields for last outcome and last N public-safe log summaries.
-- [ ] Add regression tests for the cleanup-resource bug class: end turn creates choice, choice resolves, cleanup proceeds.
+- [x] Add regression tests for the cleanup-resource bug class: end turn creates choice, choice resolves, cleanup proceeds.
 
 **Acceptance evidence:**
 
@@ -151,6 +154,8 @@ npm.cmd run test -w engine
 npm.cmd run test -w app -- BoardLayout.test.tsx
 npm.cmd run qa:local-browser
 ```
+
+Evidence note: Current public log inventory covers cleanup choice (`CleanupMarketResourceChoicePending`), market resource placement/resolution (`MarketResourceAdded`, `MarketResourceMoved`, `MarketResourcePlacementPending`, `MarketResourcePlacementResolved`), invalid move summaries, draw/setup/market initialization summaries, and bot/public turn outcomes used by `formatLogMessage`, `buildLastOutcomeSummary`, and the diagnostics last-log summaries. `turnLoop.test.ts` now covers the cleanup-resource bug class directly: end turn waits for the cleanup market resource choice, resolving that choice resumes the boardgame end-turn event, structured market slots stay in sync, and nation cleanup resource overrides are honored. Local browser QA also requires automated practice/worked-turn runs to reach and resolve cleanup market resource placement.
 
 ---
 
@@ -236,8 +241,8 @@ npm.cmd run qa:local-browser
 - [x] Make `Pin`, `Unpin`, and `Zoom` actions visually consistent with other tool controls.
 - [x] Keep blocked reason and provenance visible when a selected card cannot act.
 - [x] Ensure the zoom modal preserves readable card hierarchy and does not hide close controls on short viewports.
-- [ ] Add keyboard escape behavior for modal close if not already present.
-- [ ] Add tests for selected card detail, pinned card detail, blocked selected card detail, and modal accessibility.
+- [x] Add keyboard escape behavior for modal close if not already present.
+- [x] Add tests for selected card detail, pinned card detail, blocked selected card detail, and modal accessibility.
 
 **Acceptance evidence:**
 
@@ -245,6 +250,8 @@ npm.cmd run qa:local-browser
 npm.cmd run test -w app -- BoardLayout.test.tsx CardInspectionModal.test.tsx
 npm.cmd run typecheck -w app
 ```
+
+Evidence note: Card detail panels now expose stable `data-qa="card-detail-panel"` metadata for empty, preview, selected, pinned, blocked, and zoomed states, including public-safe card id, selected/pinned flags, blocked-reason presence, and rule provenance. The zoom modal exposes `data-qa="card-inspection-modal"`, `aria-labelledby`, an accessible close button label, and Escape-close behavior through the shared close-key helper. Verification passed: `npm.cmd run test -w app -- CardInspectionModal.test.tsx BoardLayout.test.tsx` (67 tests) and `npm.cmd run typecheck -w app`.
 
 ---
 
@@ -268,7 +275,7 @@ npm.cmd run typecheck -w app
 - [x] Use clipboard API when available and show a fallback text area if copy fails.
 - [x] Add tests for summary content and redaction boundaries.
 - [x] Update local playtest checklist to ask for both diagnostics JSON and copied bug report summary.
-- [ ] Consider adding `mailto:` helper later, but keep the first implementation local/browser-safe.
+- [x] Add a browser-safe `mailto:` helper for emailing a redacted bug report summary while reminding players to attach exported diagnostics.
 
 **Acceptance evidence:**
 
@@ -276,6 +283,8 @@ npm.cmd run typecheck -w app
 npm.cmd run test -w app -- BoardLayout.test.tsx
 npm.cmd run qa:local-browser
 ```
+
+Evidence note: The diagnostics panel now includes an `Email Bug Report` mailto helper built from the same public-safe redacted bug report summary as the copy button, with explicit fields for bug description, expected result, actual result, and an attachment reminder for exported diagnostics JSON. Browser QA snapshots now assert the email helper is visible and uses a `mailto:` URL without storing the mail body, and QA helper tests cover both local player and multiplayer observer failures when the email helper disappears. Verification passed: `npm.cmd run test -w app -- BoardLayout.test.tsx`, `npm.cmd run typecheck -w app`, and `node --test scripts/local-browser-qa.test.mjs`.
 
 ---
 
@@ -292,7 +301,7 @@ npm.cmd run qa:local-browser
 
 **Steps:**
 
-- [x] Extend local browser QA to assert current-task visibility, game-log visibility, action group order, player-aid collapse state, zone badges, and diagnostics bug-report helper.
+- [x] Extend local browser QA to assert current-task visibility, game-log visibility, action group order, player-aid collapse state, log/player-aid geometry, zone badges, and diagnostics copy/email bug-report helpers.
 - [x] Add a screenshot/artifact on failures involving overlap, offscreen panels, or missing current task.
 - [x] Run the automated player-expectation agent through solo, practice, and two-seat multiplayer self-play after each UI gate.
 - [x] Add a manual checklist path that starts a normal local game and confirms the UI answers: `What do I do?`, `Why can't I do that?`, `What just happened?`, and `How do I report a bug?`

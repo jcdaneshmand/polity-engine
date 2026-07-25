@@ -32,12 +32,14 @@ const sources = [
   ["bot-trade", botTradePath],
 ] as const;
 const missingSources = sources.filter(([, sourcePath]) => !fs.existsSync(sourcePath));
+const sourceRows = new Map(sources.map(([label, sourcePath]) => [label, optionalRows(sourcePath)]));
+const headerOnlySources = sources.filter(([label, sourcePath]) => fs.existsSync(sourcePath) && (sourceRows.get(label)?.length ?? 0) === 0);
 
-const nations = optionalRows(nationPath).map((row) => normalizeNation(row as any));
-const rulesets = optionalRows(rulesetPath).map((row) => normalizeNationRuleset(row as any));
-const strategies = optionalRows(strategyPath).map((row) => normalizeNationStrategy(row as any));
-const botStateTables = normalizeBotStateTables(optionalRows(botTablesPath) as any);
-const botTradeRoutesTables = normalizeBotTradeRoutesTables(optionalRows(botTradePath) as any);
+const nations = (sourceRows.get("nations") ?? []).map((row) => normalizeNation(row as any));
+const rulesets = (sourceRows.get("rulesets") ?? []).map((row) => normalizeNationRuleset(row as any));
+const strategies = (sourceRows.get("strategy") ?? []).map((row) => normalizeNationStrategy(row as any));
+const botStateTables = normalizeBotStateTables((sourceRows.get("bot-tables") ?? []) as any);
+const botTradeRoutesTables = normalizeBotTradeRoutesTables((sourceRows.get("bot-trade") ?? []) as any);
 
 if (nations.length === 0) {
   const ids = new Set<string>();
@@ -73,5 +75,10 @@ const report = buildPrivateDataCompletenessReport({
 if (missingSources.length > 0) {
   process.stdout.write("Missing private data sources:\n");
   for (const [label, sourcePath] of missingSources) process.stdout.write(`- ${label}: ${sourcePath}\n`);
+}
+if (headerOnlySources.length > 0) {
+  process.stdout.write("Header-only private data sources need rows:\n");
+  for (const [label, sourcePath] of headerOnlySources) process.stdout.write(`- ${label}: ${sourcePath}\n`);
+  process.stdout.write("Next step: enter at least one private data row in each header-only CSV, then run `npm.cmd run private:status`.\n");
 }
 process.stdout.write(formatPrivateDataCompletenessReport(report));

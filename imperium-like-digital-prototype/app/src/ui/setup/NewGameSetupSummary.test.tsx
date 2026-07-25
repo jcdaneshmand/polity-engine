@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import NewGameSetup, { buildCampaignGameOptions, getLaunchPlayerIds, getPlayerCountSelectionUpdate, parseCampaignSheetText } from "./NewGameSetup";
+import NewGameSetup, { buildCampaignGameOptions, getLaunchPlayerIds, getPlayerCountSelectionUpdate, getPrivateDataSetupState, parseCampaignSheetText, PrivateDataReadinessList } from "./NewGameSetup";
+import { buildPrivateDataDryRunReport } from "./privateDataImport";
 
 describe("NewGameSetup summary", () => {
   it("shows a scan-friendly launch summary before starting a game", () => {
@@ -34,9 +35,177 @@ describe("NewGameSetup summary", () => {
     expect(html).toContain("data-data-mode=\"placeholder\"");
     expect(html).toContain("data-saved-game=\"available\"");
     expect(html).toContain("data-hosting=\"active\"");
+    expect(html).toContain("data-next-gate=\"private-data-entry\"");
+    expect(html).toContain("data-next-command=\"private:status\"");
+    expect(html).toContain("Hosted playtest live");
+    expect(html).toContain("Run npm run private:status while entering CSVs; import private data when ready.");
+    expect(html).toContain("data-qa=\"local-playtest-next-gate\"");
     expect(html).toContain("Demo data");
     expect(html).toContain("Local save ready");
-    expect(html).toContain("Hosted playtest live");
+  });
+
+  it("exposes private-data setup diagnostics for an empty setup", () => {
+    const html = renderToStaticMarkup(<NewGameSetup onStart={() => undefined} />);
+
+    expect(html).toContain("data-qa=\"private-data-setup\"");
+    expect(html).toContain("data-private-data-state=\"empty\"");
+    expect(html).toContain("data-private-data-loaded=\"false\"");
+    expect(html).toContain("data-private-data-confirmed=\"false\"");
+    expect(html).toContain("data-private-data-preview-status=\"none\"");
+    expect(html).toContain("data-private-data-next-command=\"private:status\"");
+    expect(html).toContain("Run npm run private:status during transcription for a public-safe local workspace check");
+  });
+
+  it("exposes private-data setup diagnostics for confirmed initial private data", () => {
+    const html = renderToStaticMarkup(
+      <NewGameSetup
+        onStart={() => undefined}
+        initialConfig={{
+          options: {
+            playerCount: 1,
+            mode: "solo",
+            commonsSetId: "classics",
+            enabledExpansions: [],
+            enabledVariants: []
+          },
+          playerNationIds: { "1": "nation-1" },
+          privateData: {
+            cards: [{
+              id: "card-1",
+              displayName: "Card 1",
+              suit: "civilized",
+              type: "action",
+              cardType: "action",
+              cost: 0,
+              vp: { mode: "none", value: null },
+              effects: []
+            } as any]
+          }
+        }}
+      />
+    );
+
+    expect(html).toContain("data-private-data-state=\"confirmed\"");
+    expect(html).toContain("data-private-data-loaded=\"true\"");
+    expect(html).toContain("data-private-data-confirmed=\"true\"");
+    expect(html).toContain("data-private-data-next-command=\"private:status private:gate\"");
+  });
+
+  it("classifies private-data upload setup states", () => {
+    expect(getPrivateDataSetupState({
+      hasLoadedPrivateData: false,
+      hasFatalPreview: false,
+      privateDataConfirmed: false
+    })).toBe("empty");
+    expect(getPrivateDataSetupState({
+      hasLoadedPrivateData: true,
+      hasFatalPreview: false,
+      privateDataConfirmed: false
+    })).toBe("preview-pending");
+    expect(getPrivateDataSetupState({
+      hasLoadedPrivateData: true,
+      hasFatalPreview: true,
+      privateDataConfirmed: false
+    })).toBe("preview-fatal");
+    expect(getPrivateDataSetupState({
+      hasLoadedPrivateData: true,
+      hasFatalPreview: true,
+      privateDataConfirmed: true
+    })).toBe("confirmed");
+  });
+
+  it("renders stable private-data readiness item metadata", () => {
+    const report = buildPrivateDataDryRunReport(
+      {
+        cards: [{
+          id: "card-1",
+          displayName: "Card 1",
+          suit: "civilized",
+          type: "action",
+          cardType: "action",
+          cost: 0,
+          vp: { mode: "none", value: null },
+          effects: []
+        } as any],
+        nations: [{
+          id: "nation-1",
+          displayName: "Nation 1",
+          requiredExpansions: [],
+          excludedExpansions: [],
+          powerCardIds: ["missing-card"],
+          stateCardIds: [],
+          startingDeckCardIds: [],
+          nationDeckCardIds: [],
+          developmentCardIds: [],
+          setupRules: [],
+          passiveRules: [],
+          actionTokensBase: 3,
+          exhaustTokensBase: 5,
+          implemented: true,
+          tested: true
+        } as any]
+      },
+      {
+        cards: [{
+          card_id: "card-1",
+          public_placeholder_name: "Card 1",
+          suit: "civilized",
+          card_type: "action",
+          starting_location: "draw_deck",
+          vp_mode: "none",
+          implemented: "true",
+          tested: "true"
+        }],
+        nations: [{
+          nation_id: "nation-1",
+          public_placeholder_name: "Nation 1",
+          complexity: "1",
+          power_card_ids: "missing-card",
+          state_card_ids: "",
+          starting_deck_card_ids: "",
+          nation_deck_card_ids: "",
+          development_card_ids: "",
+          special_setup_json: "[]",
+          passive_rules_json: "[]",
+          action_tokens_base: "3",
+          exhaust_tokens_base: "5",
+          implemented: "true",
+          tested: "true"
+        }]
+      }
+    );
+    const html = renderToStaticMarkup(<PrivateDataReadinessList checks={report.readinessChecks} />);
+
+    expect(report.readinessChecks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "references", status: "blocked" })
+      ])
+    );
+    expect(html).toContain("data-qa=\"private-data-readiness-item\"");
+    expect(html).toContain("data-readiness-id=\"references\"");
+    expect(html).toContain("data-readiness-status=\"blocked\"");
+    expect(html).toContain("Card References");
+  });
+
+  it("points private-data setups at the local private gate", () => {
+    const html = renderToStaticMarkup(
+      <NewGameSetup
+        onStart={() => undefined}
+        localPlaytestStatus={{
+          dataMode: "private",
+          savedGameAvailable: false,
+          hostedDeferred: true
+        }}
+      />
+    );
+
+    expect(html).toContain("data-data-mode=\"private\"");
+    expect(html).toContain("data-saved-game=\"none\"");
+    expect(html).toContain("data-hosting=\"deferred\"");
+    expect(html).toContain("data-next-gate=\"private-gate\"");
+    expect(html).toContain("data-next-command=\"private:status private:gate\"");
+    expect(html).toContain("Local testing ready");
+    expect(html).toContain("Run npm run private:status, then npm run private:gate locally.");
   });
 
   it("can render as a lobby setup editor with an existing config", () => {

@@ -478,7 +478,7 @@ export default function App() {
   const startImportedLocalGame = (envelope: SavedLocalGameEnvelope) => {
     const config = setupConfigForSavedLocalGame(envelope);
     if (!config) {
-      setSavedLocalGame({ kind: "corrupt" });
+      setSavedLocalGame({ kind: "corrupt", reason: "Local game export does not contain setup data that can be resumed." });
       return;
     }
     setPendingCampaignProgress(undefined);
@@ -519,6 +519,20 @@ export default function App() {
         setOnlineStatus("Could not read local game export.");
       });
   };
+
+  const renderImportSavedLocalGameControl = () => (
+    <label className="file-action">
+      <span>Import Saved Game</span>
+      <input
+        type="file"
+        accept=".json,application/json"
+        onChange={(event: { currentTarget: HTMLInputElement }) => {
+          importSavedLocalGame(event.currentTarget.files?.[0]);
+          event.currentTarget.value = "";
+        }}
+      />
+    </label>
+  );
 
   const startOnlineSession = (config: NewGameSessionConfig, record: OnlineStartedSessionRecord) => {
     const savedRecord: OnlineStartedSessionRecord = { ...record, setupData: record.setupData ?? config };
@@ -1116,8 +1130,12 @@ export default function App() {
 
   const markCurrentMonthCovered = async () => {
     setMonthlySupportMessage(undefined);
+    if (!accountSession || accountSession.account.role !== "admin") {
+      setMonthlySupportMessage("Only admins can update the hosting tracker.");
+      return;
+    }
     try {
-      const status = await markMonthlySupportCovered({ serverURL: multiplayerServerURL });
+      const status = await markMonthlySupportCovered({ serverURL: multiplayerServerURL, accountToken: accountSession.token });
       setMonthlySupportStatus(status);
       setMonthlySupportMessage("Thank you. This month's hosting cost is marked covered.");
     } catch {
@@ -1280,7 +1298,15 @@ export default function App() {
           }}
         />
         {savedLocalGame.kind !== "none" ? (
-          <section className="setup-section setup-section--wide" aria-label="Saved local game">
+          <section
+            className="setup-section setup-section--wide"
+            aria-label="Saved local game"
+            data-qa="saved-local-game-status"
+            data-save-state={savedLocalGame.kind}
+            data-save-source={savedLocalGame.kind === "valid" ? savedLocalGame.envelope.metadata.dataSource : "unknown"}
+            data-save-mode={savedLocalGame.kind === "valid" ? savedLocalGame.envelope.metadata.mode : "unknown"}
+            data-save-round={savedLocalGame.kind === "valid" ? String(savedLocalGame.envelope.metadata.round ?? "unknown") : "unknown"}
+          >
             {savedLocalGame.kind === "valid" ? (
               <>
                 <p className="setup-help">
@@ -1295,17 +1321,7 @@ export default function App() {
                   <button type="button" onClick={exportSavedLocalGame}>
                     Export Saved Game
                   </button>
-                  <label className="file-action">
-                    <span>Import Saved Game</span>
-                    <input
-                      type="file"
-                      accept=".json,application/json"
-                      onChange={(event: { currentTarget: HTMLInputElement }) => {
-                        importSavedLocalGame(event.currentTarget.files?.[0]);
-                        event.currentTarget.value = "";
-                      }}
-                    />
-                  </label>
+                  {renderImportSavedLocalGameControl()}
                   <button type="button" onClick={discardSavedLocalGame}>
                     Discard Saved Game
                   </button>
@@ -1313,8 +1329,9 @@ export default function App() {
               </>
             ) : (
               <>
-                <p className="setup-help">Saved local game could not be loaded.</p>
+                <p className="setup-help">Saved local game could not be loaded. {savedLocalGame.reason}</p>
                 <div className="private-data-actions">
+                  {renderImportSavedLocalGameControl()}
                   <button type="button" onClick={discardSavedLocalGame}>
                     Discard Saved Game
                   </button>
@@ -1322,7 +1339,22 @@ export default function App() {
               </>
             )}
           </section>
-        ) : null}
+        ) : (
+          <section
+            className="setup-section setup-section--wide"
+            aria-label="Recover saved local game"
+            data-qa="saved-local-game-status"
+            data-save-state="none"
+            data-save-source="none"
+            data-save-mode="none"
+            data-save-round="none"
+          >
+            <p className="setup-help">Import a portable local save file to resume on this device.</p>
+            <div className="private-data-actions">
+              {renderImportSavedLocalGameControl()}
+            </div>
+          </section>
+        )}
         {onlineStatus ? <p className="setup-help">{onlineStatus}</p> : null}
       </div>
     );

@@ -42,8 +42,8 @@ function playerLabel(playerID: string | undefined): string {
   return `Player ${Number(playerID) + 1}`;
 }
 
-function privateDataStatus(match: ListedMatch, privateDataFingerprint: string): "compatible" | "missing" | "server_check" {
-  if (match.privateDataLabel === "placeholder") return "compatible";
+function privateDataStatus(record: { privateDataLabel: "placeholder" | "private_data_required" }, privateDataFingerprint: string): "compatible" | "missing" | "server_check" {
+  if (record.privateDataLabel === "placeholder") return "compatible";
   return privateDataFingerprint === "placeholder" ? "missing" : "server_check";
 }
 
@@ -282,7 +282,8 @@ export default function OnlineGames({
               const password = matchPasswords[lobby.lobbyID] ?? "";
               const savedLobbySession = findSavedLobbySession(savedSessions, lobby.lobbyID);
               const needsPassword = lobby.isLocked && !password.trim();
-              const blockedByData = lobby.privateDataLabel === "private_data_required" && privateDataFingerprint === "placeholder";
+              const dataStatus = privateDataStatus(lobby, privateDataFingerprint);
+              const blockedByData = dataStatus === "missing";
               const canJoinLobby = Boolean(savedLobbySession) || lobby.availableSeats.length > 0 && !needsPassword && !blockedByData;
               return (
                 <article className="online-match-row" key={lobby.lobbyID}>
@@ -291,7 +292,8 @@ export default function OnlineGames({
                     <span>Lobby - {lobby.status === "locked" ? "Ready to start" : "Waiting"} - {lobby.occupiedSeats.length}/{lobby.playerCount} seats</span>
                     <small>{lobby.occupiedSeats.length ? lobby.occupiedSeats.map((seat) => `${seat.displayName}: ${seat.ready ? "ready" : "not ready"}`).join(", ") : "No seats occupied"}</small>
                     <small>{lobby.privateDataLabel === "private_data_required" ? "Private data required" : "Placeholder data"}</small>
-                    {blockedByData ? <small className="online-warning">Import matching private data to enter</small> : null}
+                    {dataStatus === "missing" ? <small className="online-warning">Import matching private data to enter. Use the same local private CSV bundle as the host.</small> : null}
+                    {dataStatus === "server_check" ? <small>Server will verify exact private data before entry</small> : null}
                   </div>
                   <div className="online-match-actions">
                     {lobby.isLocked ? (
@@ -339,7 +341,7 @@ export default function OnlineGames({
                     <span>{statusLabel(match.status)} - {match.isLocked ? "Locked" : "Open"} - {match.occupiedSeats.length}/{match.playerCount} seats</span>
                     <small>{formatSeatList(match)}</small>
                     <small>{match.privateDataLabel === "private_data_required" ? "Private data required" : "Placeholder data"}</small>
-                    {dataStatus === "missing" ? <small className="online-warning">Import matching private data to enter</small> : null}
+                    {dataStatus === "missing" ? <small className="online-warning">Import matching private data to enter. Use the same local private CSV bundle as the host.</small> : null}
                     {dataStatus === "server_check" ? <small>Server will verify exact private data before entry</small> : null}
                   </div>
                   <div className="online-match-actions">

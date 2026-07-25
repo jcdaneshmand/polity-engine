@@ -112,6 +112,11 @@ export function getLocalUndoAvailability({
 
 export type PlaytestDiagnostics = {
   schemaVersion: 1;
+  privacy: {
+    classification: "public-safe";
+    redactionMarker: "[private]";
+    note: string;
+  };
   generatedAtIso: string;
   appVersion: string;
   mode: "local" | "online";
@@ -140,8 +145,34 @@ export type PlaytestDiagnostics = {
   recentPublicLog: Array<{ round?: number; playerId?: string; message: string }>;
 };
 
-function redactKnownCardIds(message: string, cardIds: string[]): string {
-  return cardIds.reduce((current, cardId) => current.split(cardId).join("[card]"), message);
+function privateDiagnosticTokens(G: any): string[] {
+  const tokens = new Set<string>();
+  Object.entries(G?.cardDb ?? {}).forEach(([cardId, card]: [string, any]) => {
+    if (cardId.trim()) tokens.add(cardId);
+    [
+      card?.privateName,
+      card?.rawEffectTextPrivate,
+      card?.card_name_private,
+      card?.raw_effect_text_private,
+      card?.private_effect_text,
+      card?.private_notes
+    ].forEach((value) => {
+      if (typeof value === "string" && value.trim()) tokens.add(value.trim());
+    });
+  });
+  return Array.from(tokens).sort((a, b) => b.length - a.length);
+}
+
+function sanitizeDiagnosticText(message: string, tokens: string[]): string {
+  return tokens.reduce((current, token) => current.split(token).join("[private]"), message);
+}
+
+function sanitizeCurrentTask(task: CurrentTaskUiState, tokens: string[]): CurrentTaskUiState {
+  return {
+    ...task,
+    title: sanitizeDiagnosticText(task.title, tokens),
+    detail: sanitizeDiagnosticText(task.detail, tokens)
+  };
 }
 
 function buildZoneUiState(G: any, viewerId: string, selection?: Selection | null) {
@@ -208,6 +239,7 @@ export function buildBugReportSummary(diagnostics: PlaytestDiagnostics): string 
   const lines = [
     "Polity Engine bug report",
     `App version: ${diagnostics.appVersion}`,
+    `Privacy: ${diagnostics.privacy.classification}; private values are shown as ${diagnostics.privacy.redactionMarker}`,
     `Mode: ${diagnostics.options.mode ?? "unknown"} (${diagnostics.mode})`,
     `Players: ${diagnostics.options.playerCount ?? "unknown"}`,
     `Active player: ${diagnostics.activePlayer}`,
@@ -221,6 +253,24 @@ export function buildBugReportSummary(diagnostics: PlaytestDiagnostics): string 
     "Please attach the exported playtest diagnostics JSON and describe what you expected to happen."
   ];
   return lines.join("\n");
+}
+
+const BUG_REPORT_EMAIL = "jcdaneshmand@gmail.com";
+
+export function buildBugReportMailto(diagnostics: PlaytestDiagnostics): string {
+  const subject = `Polity Engine playtest bug report - ${diagnostics.appVersion}`;
+  const body = [
+    buildBugReportSummary(diagnostics),
+    "",
+    "Bug description:",
+    "",
+    "Expected:",
+    "",
+    "Actual:",
+    "",
+    "Attachment reminder: attach the exported playtest diagnostics JSON before sending."
+  ].join("\n");
+  return `mailto:${BUG_REPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
 function CurrentTaskPanel({ task }: { task: CurrentTaskUiState }) {
@@ -275,15 +325,20 @@ export function buildPlaytestDiagnostics({
   appVersion?: string;
   now?: Date;
 }): PlaytestDiagnostics {
-  const knownCardIds = Object.keys(G?.cardDb ?? {});
-  const resolvedCurrentTask = currentTask ?? getCurrentTaskUiState(G, { ...ctx, currentPlayer: viewerId });
+  const diagnosticTokens = privateDiagnosticTokens(G);
+  const resolvedCurrentTask = sanitizeCurrentTask(currentTask ?? getCurrentTaskUiState(G, { ...ctx, currentPlayer: viewerId }), diagnosticTokens);
   const recentPublicLog = getRecentLogEntries(G, 20).map((entry: any) => ({
     round: typeof entry?.round === "number" ? entry.round : undefined,
     playerId: entry?.playerId === undefined ? undefined : String(entry.playerId),
-    message: redactKnownCardIds(String(entry?.message ?? ""), knownCardIds)
+    message: sanitizeDiagnosticText(String(entry?.message ?? ""), diagnosticTokens)
   }));
   return {
     schemaVersion: 1,
+    privacy: {
+      classification: "public-safe",
+      redactionMarker: "[private]",
+      note: "Known private card ids, private names, private effect text, and private notes are redacted from this diagnostic artifact."
+    },
     generatedAtIso: now.toISOString(),
     appVersion,
     mode,
@@ -296,21 +351,21 @@ export function buildPlaytestDiagnostics({
       enabledExpansions: Array.isArray(G?.options?.enabledExpansions) ? G.options.enabledExpansions : [],
       enabledVariants: Array.isArray(G?.options?.enabledVariants) ? G.options.enabledVariants : []
     },
-    pendingAction,
+    pendingAction: pendingAction === undefined ? undefined : sanitizeDiagnosticText(pendingAction, diagnosticTokens),
     currentTask: resolvedCurrentTask,
     lastOutcome: resolvedCurrentTask.suppressNormalActions
       ? `Required: ${resolvedCurrentTask.detail}`
       : (recentPublicLog.at(-1) ? formatLogMessage(recentPublicLog.at(-1)?.message ?? "") : undefined),
     ruleUiState: {
-      enabledActions: actions.filter((action) => action.enabled).map((action) => String(action.label ?? action.action)),
+      enabledActions: actions.filter((action) => action.enabled).map((action) => sanitizeDiagnosticText(String(action.label ?? action.action), diagnosticTokens)),
       blockedActions: actions
         .filter((action) => !action.enabled)
         .map((action) => ({
-          label: String(action.label ?? action.action),
-          reason: String(action.reason ?? "Unavailable"),
+          label: sanitizeDiagnosticText(String(action.label ?? action.action), diagnosticTokens),
+          reason: sanitizeDiagnosticText(String(action.reason ?? "Unavailable"), diagnosticTokens),
           ...(action.provenance ? { provenance: ruleProvenanceLabels[action.provenance as keyof typeof ruleProvenanceLabels] ?? String(action.provenance) } : {})
         })),
-      ...(selectedCardId && G?.cardDb?.[selectedCardId] ? { selectedPublicCardId: selectedCardId } : {})
+      ...(selectedCardId && G?.cardDb?.[selectedCardId] ? { selectedPublicCardId: "[private]" } : {})
     },
     zoneUiState: buildZoneUiState(G, viewerId, selection),
     sharedPiles: Object.fromEntries(getSharedPiles(G).map((pile) => [pile.id, pile.count])),
@@ -540,6 +595,8 @@ export default function BoardLayout({
         data-blocked-action-count={diagnostics.ruleUiState.blockedActions.length}
         data-zone-kind-count={diagnostics.zoneUiState.zones.length}
         data-zone-kinds={Array.from(new Set(diagnostics.zoneUiState.zones.map((zone) => zone.kind))).join(" ")}
+        data-privacy-classification={diagnostics.privacy.classification}
+        data-redaction-marker={diagnostics.privacy.redactionMarker}
         aria-label="Playtest diagnostics"
       >
         <div className="diagnostic-grid">
@@ -564,6 +621,13 @@ export default function BoardLayout({
             <span>Copy Bug Report Summary</span>
           </span>
         </button>
+        <a className="action-button diagnostic-mailto" href={buildBugReportMailto(diagnostics)} data-qa="email-bug-report">
+          <span className="action-button-main">
+            <span className="action-symbol" aria-hidden="true">MAIL</span>
+            <span>Email Bug Report</span>
+          </span>
+          <small>Attach exported diagnostics JSON before sending.</small>
+        </a>
         {bugReportStatus ? <div className="diagnostic-status">{bugReportStatus}</div> : null}
         {bugReportText && bugReportStatus?.startsWith("Copy failed") ? (
           <textarea className="bug-report-fallback" readOnly value={bugReportText} aria-label="Bug report summary" />

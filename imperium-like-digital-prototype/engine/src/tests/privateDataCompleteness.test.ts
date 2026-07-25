@@ -276,10 +276,52 @@ describe("private data completeness report", () => {
     }
   });
 
-  it("prints the missing card source when checking default private data inputs", () => {
-    const output = runTool("reportPrivateDataCompleteness.ts");
+  it("prints the missing card source for an explicit missing cards input", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "polity-completeness-missing-cards-"));
+    try {
+      const missingCards = path.join(tmp, "missing-cards.csv");
+      const output = runTool("reportPrivateDataCompleteness.ts", ["--cards", missingCards]);
 
-    expect(output).toContain("Missing private data sources:");
-    expect(output).toContain("- cards: private-card-data/imperium_cards_private.csv");
+      expect(output).toContain("Missing private data sources:");
+      expect(output).toContain(`- cards: ${missingCards}`);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("prints public-safe guidance when private source files exist but only have headers", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "polity-completeness-empty-"));
+    try {
+      const cards = path.join(tmp, "cards.csv");
+      const nations = path.join(tmp, "nations.csv");
+      const rulesets = path.join(tmp, "rulesets.csv");
+      const strategies = path.join(tmp, "strategy.csv");
+      const botTables = path.join(tmp, "bot-tables.csv");
+      const botTrade = path.join(tmp, "bot-trade.csv");
+
+      fs.writeFileSync(cards, "card_id,source_box\n");
+      fs.writeFileSync(nations, "nation_id,source_box\n");
+      fs.writeFileSync(rulesets, "nation_id,nation_name_private\n");
+      fs.writeFileSync(strategies, "nation_id,nation_name_private\n");
+      fs.writeFileSync(botTables, "table_id,bot_nation_id\n");
+      fs.writeFileSync(botTrade, "table_id,row_type\n");
+
+      const output = runTool("reportPrivateDataCompleteness.ts", [
+        "--cards", cards,
+        "--nations", nations,
+        "--rulesets", rulesets,
+        "--strategy", strategies,
+        "--bot-tables", botTables,
+        "--bot-trade", botTrade
+      ]);
+
+      expect(output).toContain("Header-only private data sources need rows:");
+      expect(output).toContain(`- cards: ${cards}`);
+      expect(output).toContain(`- bot-trade: ${botTrade}`);
+      expect(output).toContain("Next step: enter at least one private data row in each header-only CSV");
+      expect(output).toContain("Private Data Completeness: 0/0 complete");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });

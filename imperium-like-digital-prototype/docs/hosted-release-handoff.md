@@ -1,6 +1,6 @@
 # Hosted Release Handoff
 
-This handoff covers the public hosting gate before private data is introduced. As of 2026-07-22, the hosted gate has passed and the remaining final gate is local private-data import/completeness.
+This handoff covers the public hosting gate before private data is introduced. As of 2026-07-22, the hosted gate has passed and the remaining final gate is local `private:gate` proof.
 
 ## Deployment Candidate
 
@@ -8,7 +8,7 @@ This handoff covers the public hosting gate before private data is introduced. A
 - Branch: `origin/main`
 - Deploy the latest pushed head of `origin/main`.
 
-Private data remains local-only. Hosted proof has passed, so `private:preflight`, `private:import-all`, and `private:completeness` may run locally once the ignored private CSV sources are present.
+Private data remains local-only. Hosted proof has passed, so `npm.cmd run private:gate` may run locally once the ignored private CSV sources are present with current headers and at least one row each.
 
 ## Render Settings To Confirm
 
@@ -60,7 +60,7 @@ The hosted browser QA passed setup, local board, worked-turn, automated practice
 
 After the admin account endpoint commit `a0ff800` and hosted commit-verification commit `9088980`, the Render deploy list showed the live service was still on commit `69566d6` from a `blueprint_sync` trigger, despite service-level auto-deploy being enabled for commits. A Render API deploy was started for `9088980f439eabbdd5cecf9acfc11f4bfdc00a8f`; it reached `live`, and `POLITY_EXPECTED_COMMIT=9088980 npm.cmd run smoke:hosted` then passed with `liveCommit` reporting the full `9088980f439eabbdd5cecf9acfc11f4bfdc00a8f` SHA. Follow-up API deploys for `4549d1d4e093cc1030ee34b5f27c7a8833ddd74f` and `57158b87ac5f3ab5f528519234fe2a9408e2faba` reached `live`; `POLITY_EXPECTED_COMMIT=57158b8 npm.cmd run smoke:hosted` passed and reported the full `57158b87ac5f3ab5f528519234fe2a9408e2faba` SHA.
 
-The next local check was `npm.cmd run private:preflight`. It reached the final gate but stopped because the expected ignored private CSV sources are not present under `private-card-data/`.
+The next local check was `npm.cmd run private:gate`. It reached the final gate but stopped during its public-safe preflight report because the expected ignored private CSV sources are not present under `private-card-data/`.
 
 ## Hosted Proof To Maintain
 

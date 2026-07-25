@@ -86,6 +86,28 @@ describe("local game save envelope", () => {
     }))).toBeNull();
   });
 
+  it("rejects normalized private names and CSV-style private transcription fields", () => {
+    const states = [
+      { G: { cardDb: { fixture_card: { id: "fixture_card", privateName: "Private Card Name" } } } },
+      { G: { cardRows: [{ card_id: "fixture_card", card_name_private: "Private CSV Name" }] } },
+      { G: { botTables: [{ table_id: "fixture_bot", private_effect_text: "Private bot instruction" }] } },
+      { G: { rulesets: [{ nationId: "fixture_nation", private_notes: "Private nation note" }] } }
+    ];
+
+    for (const state of states) {
+      expect(() => serializeLocalGame({
+        privateDataFingerprint: "fictional-fixture-fingerprint",
+        state
+      })).toThrow("private fields");
+      expect(parseSavedLocalGame(JSON.stringify({
+        version: 1,
+        savedAtIso: "2026-07-14T05:00:00.000Z",
+        privateDataFingerprint: "fictional-fixture-fingerprint",
+        state
+      }))).toBeNull();
+    }
+  });
+
   it("creates public-safe metadata from a boardgame state", () => {
     const metadata = createLocalSaveMetadata({
       slotName: "Trade Routes check",
@@ -162,7 +184,18 @@ describe("local game save envelope", () => {
   it("reports corrupt saved storage for a visible recovery path", () => {
     expect(loadSavedLocalGameRecord({
       getItem: () => "{not json"
-    })).toEqual({ kind: "corrupt" });
+    })).toEqual({ kind: "corrupt", reason: "Local game export is not valid JSON." });
+  });
+
+  it("reports unsupported saved storage versions with a visible reason", () => {
+    expect(loadSavedLocalGameRecord({
+      getItem: () => JSON.stringify({
+        version: 99,
+        savedAtIso: "2026-07-14T05:00:00.000Z",
+        privateDataFingerprint: "fictional-fixture-fingerprint",
+        state: {}
+      })
+    })).toEqual({ kind: "corrupt", reason: "Unsupported local game export version." });
   });
 
   it("restores a saved state through a Redux enhancer", () => {

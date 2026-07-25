@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { isPrivateCardDebugEnabled } from "../debug/privateCardDebug";
 import { resourceLabel } from "./resourceDisplay";
 
@@ -84,6 +85,10 @@ export function formatCardDetailEffect(effect: any): string {
   }
 }
 
+export function isCardInspectionCloseKey(key: string): boolean {
+  return key === "Escape";
+}
+
 function formatVp(vp: any): string {
   if (!vp || vp.mode === "none" || vp.value == null) return "None";
   if (vp.mode === "fixed") return `${vp.value}`;
@@ -102,11 +107,21 @@ type CardDetailPanelProps = {
 };
 
 export function CardDetailPanel({ card, pinned = false, selected = false, blockedReason, ruleProvenance, onUnpin, onZoom, variant = "panel" }: CardDetailPanelProps) {
-  if (!card) return <div className="panel detail">Select a card.</div>;
+  if (!card) return <div className="panel detail card-detail-panel card-detail-panel--empty" data-qa="card-detail-panel" data-detail-state="empty">Select a card.</div>;
   const effects = card.effects ?? [];
   const tags = card.tags ?? [];
+  const detailState = variant === "modal" ? "zoomed" : pinned ? "pinned" : selected ? "selected" : "preview";
 
-  return <div className={`panel detail card-detail-panel card-detail-panel--${variant}`}>
+  return <div
+    className={`panel detail card-detail-panel card-detail-panel--${variant}`}
+    data-qa="card-detail-panel"
+    data-card-id={card.id ?? ""}
+    data-detail-state={detailState}
+    data-selected={selected ? "true" : "false"}
+    data-pinned={pinned ? "true" : "false"}
+    data-has-blocked-reason={blockedReason ? "true" : "false"}
+    data-rule-provenance={ruleProvenance ?? ""}
+  >
     <div className="detail-heading">
       <div>
         <h3>{card.displayName}</h3>
@@ -143,14 +158,25 @@ export function CardDetailPanel({ card, pinned = false, selected = false, blocke
 }
 
 export function CardInspectionModal({ card, onClose }: { card: any; onClose: () => void }) {
+  useEffect(() => {
+    if (!card) return undefined;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!isCardInspectionCloseKey(event.key)) return;
+      event.preventDefault();
+      onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [card, onClose]);
+
   if (!card) return null;
 
   return (
-    <div className="card-inspection-backdrop">
-      <div className="card-inspection-modal" role="dialog" aria-modal="true" aria-label={`${card.displayName} card inspection`}>
+    <div className="card-inspection-backdrop" data-qa="card-inspection-backdrop">
+      <div className="card-inspection-modal" role="dialog" aria-modal="true" aria-labelledby="card-inspection-title" data-qa="card-inspection-modal" data-card-id={card.id ?? ""}>
         <div className="card-inspection-toolbar">
-          <strong>{card.displayName}</strong>
-          <button type="button" onClick={onClose}>Close</button>
+          <strong id="card-inspection-title">{card.displayName}</strong>
+          <button type="button" onClick={onClose} aria-label="Close card inspection">Close</button>
         </div>
         <CardDetailPanel card={card} variant="modal" />
       </div>

@@ -2,12 +2,15 @@
 
 Polity Engine can serve the built React app, the lobby HTTP API, and the Socket.IO boardgame transport from one Node web service.
 
+For live playtest operations, admin cleanup, bug intake, and release closeout, see `production-playtest-runbook.md`.
+
 ## Required Runtime Shape
 
 - Build from `imperium-like-digital-prototype`.
 - Run `npm ci`, `npm run build -w app`, and `npm run typecheck` before deployment.
 - Start with `npm run start`.
-- Optional local deployment verifier: `npm.cmd run render:verify`.
+- Public-safe local pre-private verifier: `npm.cmd run verify:pre-private`.
+- Optional Render build-shape verifier: `npm.cmd run render:verify`.
 - Expose the service port through `PORT` or `POLITY_SERVER_PORT`.
 - Set `POLITY_SERVER_ORIGIN` to the exact public app origin, such as `https://polity-engine.example.com`.
 - Set `POLITY_STORAGE_PATH` to a persistent disk path.
@@ -95,6 +98,14 @@ npm.cmd run qa:hosted-browser
 ```
 
 ## Local Release Gate
+
+- Current public-safe pre-private gate:
+
+```powershell
+npm.cmd run verify:pre-private
+```
+
+This chains local QA script tests, workspace typecheck, app tests, server tests, fictional-game smoke, multiplayer smoke, and local browser QA. It does not read ignored private CSV rows.
 
 - 2026-06-24: `npm.cmd run typecheck`, `npm.cmd run test -w app`, `npm.cmd run test -w server`, and `npm.cmd run smoke:multiplayer` passed from `imperium-like-digital-prototype` before hosted deployment.
 - 2026-07-14: `npm.cmd run typecheck`, `npm.cmd run test -w app`, `npm.cmd run test -w server`, `npm.cmd run test -w engine`, `npm.cmd run smoke:fictional-game`, and `npm.cmd run smoke:multiplayer` passed from `imperium-like-digital-prototype` before hosted proof. `POLITY_HOSTED_BASE_URL=http://127.0.0.1:8794 npm.cmd run smoke:hosted` passed against a local production-style server. `POLITY_HOSTED_BASE_URL=https://polity-engine.onrender.com npm.cmd run smoke:hosted` reached the host but `/polity/accounts/health` returned 404 on repeated attempts, so hosted proof is pending the actual deployed service origin or redeployment.

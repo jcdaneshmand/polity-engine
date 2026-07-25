@@ -47,7 +47,7 @@ server.app.use(createPolityLobbyMiddleware({
   store: lobbyStore,
   boardgameApi
 }));
-server.app.use(createSupportMiddleware({ store: supportStore }));
+server.app.use(createSupportMiddleware({ store: supportStore, accountStore }));
 server.app.use(createStaticAppMiddleware(join(currentDir, "../../app/dist")));
 
 const runningServers = await server.run(config.port, () => {

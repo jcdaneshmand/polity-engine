@@ -1,8 +1,11 @@
+import { requireAdmin } from "./accounts";
+import type { AccountStore } from "./accountStore";
 import type { SupportStore } from "./supportStore";
 
 type KoaLikeContext = {
   method: string;
   path: string;
+  headers?: Record<string, string | string[] | undefined>;
   status?: number;
   body?: unknown;
 };
@@ -11,6 +14,7 @@ type KoaLikeNext = () => Promise<void>;
 
 type SupportMiddlewareOptions = {
   store: SupportStore;
+  accountStore: AccountStore;
 };
 
 export function createSupportMiddleware(options: SupportMiddlewareOptions) {
@@ -26,6 +30,12 @@ export function createSupportMiddleware(options: SupportMiddlewareOptions) {
     }
 
     if (ctx.method === "POST" && ctx.path === "/polity/support/monthly/mark-covered") {
+      const admin = requireAdmin(ctx, options.accountStore);
+      if (!admin.ok) {
+        ctx.status = admin.status;
+        ctx.body = { error: admin.reason };
+        return;
+      }
       ctx.body = options.store.markCurrentMonthCovered();
       return;
     }

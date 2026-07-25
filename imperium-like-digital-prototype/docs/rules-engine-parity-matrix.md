@@ -23,7 +23,7 @@ Status values:
 | Rules parity | Matrix rows are broadly covered and now linked to an auditable coverage map; remaining risk is richer runtime scenario evidence rather than known public runtime gaps | Expand public-safe runtime scenarios for the planned probe buckets in `data/fictional-regression/scenarios.json`. |
 | Playability | Core local play, online lobby, rejoin, save/resume, and import/export baselines exist | Add a human playtest checklist, public-safe diagnostics, and broader browser QA against setup and board states. |
 | Hosted release | Deferred | Prove the actual public origin with hosted smoke and hosted two-context browser QA. |
-| Private data | Final gate only | Run local private preflight/import/completeness only after public-safe and hosted gates pass; convert any runtime discovery to public-safe fixtures first. |
+| Private data | Final gate only | Run local `private:gate` only after public-safe and hosted gates pass; convert any runtime discovery to public-safe fixtures first. |
 
 ## Matrix
 
@@ -56,7 +56,7 @@ Status values:
 | 5 | Campaign result/progression metadata | covered | `campaign.test.ts`, `setupPipeline.test.ts`, `scoring.test.ts`, `commonsSelection.test.ts`, `commonsSetup.test.ts`, and `gameOptions.test.ts` cover win/loss progression, reward/return choices, loss resource carryover, setup application, Supreme Ruler normalization/extras, and gameover campaign outcome snapshots from scoring and Collapse. |
 | 6 | UI move availability, hidden-info selectors, and public move map | covered | `uiSelectors.test.ts`, `uiSelectionModel.test.ts`, `turnLoop.test.ts`, and `privateCardEntryNavigation.test.tsx` cover owner-visible/hidden zones, looked-card privacy, pending-choice banners/actions, action availability, direct Market Acquire/region move suppression, and published pending-choice resolver moves. |
 | 6 | UI as playable rulebook explanations | covered | `uiSelectionModel.test.ts`, `BoardLayout.test.tsx`, `local-browser-qa.test.mjs`, and `rulesParityCoverage.test.ts` tie current-task labels, blocked-action reasons, rule provenance labels, zone hierarchy metadata, and player-expectation browser QA to public-safe evidence in `data/fictional-regression/coverage-map.json`. |
-| 6 | Private data completeness | private-data-only | Excluded from runtime parity; local-only tracker and completeness scripts remain the path for transcription. |
+| 6 | Private data completeness | private-data-only | Excluded from runtime parity; local `private:gate`, tracker, and completeness reports remain the path for transcription. |
 
 ## Current Runtime Parity Backlog
 

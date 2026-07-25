@@ -6,7 +6,7 @@ import { loadBotStateTables } from "../../../../engine/src/solo/botStateTableLoa
 import type { PrivateDataBundle } from "../../../../engine/src/setup/privateDataBundle";
 import type { AccountPublicView } from "../../accountSession";
 import { getBotNationSetupOptions } from "./botNationOptions";
-import { getPrivateDataReadyMessage, getPrivateDataRecordCounts, hasPrivateData, importPrivateDataFiles, type PrivateDataFileStatus } from "./privateDataImport";
+import { buildPrivateDataDryRunDownload, buildPrivateDataDryRunIssueSummary, getPrivateDataReadyMessage, getPrivateDataRecordCounts, hasPrivateData, importPrivateDataFiles, type PrivateDataDryRunReport, type PrivateDataFileStatus } from "./privateDataImport";
 
 export type NewGameSessionConfig = {
   options: GameOptions;
@@ -20,6 +20,8 @@ export type LocalPlaytestStatus = {
   savedGameAvailable: boolean;
   hostedDeferred: boolean;
 };
+
+export type PrivateDataSetupState = "empty" | "preview-fatal" | "preview-pending" | "confirmed";
 
 type NewGameSetupProps = {
   onStart: (config: NewGameSessionConfig) => void;
@@ -137,6 +139,36 @@ export function formatExpansionLabel(id: string): string {
 
 export function formatVariantLabel(id: string): string {
   return variants.find((item) => item.id === id)?.label ?? id;
+}
+
+export function getPrivateDataSetupState(args: {
+  hasLoadedPrivateData: boolean;
+  hasFatalPreview: boolean;
+  privateDataConfirmed: boolean;
+}): PrivateDataSetupState {
+  if (args.privateDataConfirmed) return "confirmed";
+  if (args.hasFatalPreview) return "preview-fatal";
+  if (args.hasLoadedPrivateData) return "preview-pending";
+  return "empty";
+}
+
+export function PrivateDataReadinessList({ checks }: { checks: PrivateDataDryRunReport["readinessChecks"] }) {
+  return (
+    <div className="private-data-readiness" data-qa="private-data-readiness">
+      {checks.map((check) => (
+        <div
+          key={check.id}
+          className={`private-data-readiness__item private-data-readiness__item--${check.status}`}
+          data-qa="private-data-readiness-item"
+          data-readiness-id={check.id}
+          data-readiness-status={check.status}
+        >
+          <strong>{check.label}</strong>
+          <span>{check.detail}</span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function isCampaignMode(value: unknown): value is CampaignMode {
@@ -271,6 +303,8 @@ export default function NewGameSetup({
   const [privateData, setPrivateData] = useState<PrivateDataBundle>(initialConfig?.privateData ?? {});
   const [privateDataConfirmed, setPrivateDataConfirmed] = useState(Boolean(initialConfig?.privateData));
   const [privateFileStatuses, setPrivateFileStatuses] = useState<PrivateDataFileStatus[]>([]);
+  const [privateDryRunReport, setPrivateDryRunReport] = useState<PrivateDataDryRunReport | null>(null);
+  const [privatePreviewStatus, setPrivatePreviewStatus] = useState("");
   const [onlineLogin, setOnlineLogin] = useState("");
   const [onlinePassword, setOnlinePassword] = useState("");
   const [resetEmail, setResetEmail] = useState("");
@@ -287,6 +321,13 @@ export default function NewGameSetup({
   const confirmedPrivateData = privateDataConfirmed ? privateData : undefined;
   const privateDataCounts = useMemo(() => getPrivateDataRecordCounts(privateData), [privateData]);
   const hasLoadedPrivateData = privateDataCounts.length > 0;
+  const privateDataHasFatalPreview = (privateDryRunReport?.fatal ?? 0) > 0;
+  const privateDataIsConfirmed = privateDataConfirmed && hasPrivateData(privateData);
+  const privateDataSetupState = getPrivateDataSetupState({
+    hasLoadedPrivateData,
+    hasFatalPreview: privateDataHasFatalPreview,
+    privateDataConfirmed: privateDataIsConfirmed
+  });
   const privateDataReadyMessage = getPrivateDataReadyMessage(privateDataCounts);
   const availableNations = useMemo(
     () => getNationOptions(enabledExpansions, confirmedPrivateData),
@@ -304,10 +345,17 @@ export default function NewGameSetup({
     ...enabledExpansions.map((expansion) => labelFor(expansions, expansion)),
     ...enabledVariants.map((variant) => labelFor(variants, variant))
   ].join(", ") || "Core rules";
-  const privateDataSummary = privateDataConfirmed && hasPrivateData(privateData) ? privateDataReadyMessage : "Placeholder data";
-  const localPlaytestDataMode = privateDataConfirmed && hasPrivateData(privateData)
+  const privateDataSummary = privateDataIsConfirmed ? privateDataReadyMessage : "Placeholder data";
+  const localPlaytestDataMode = privateDataIsConfirmed
     ? "private"
     : localPlaytestStatus?.dataMode ?? "placeholder";
+  const localPlaytestNextCommand = localPlaytestDataMode === "private" ? "private:status private:gate" : "private:status";
+  const localPlaytestNextGate = localPlaytestDataMode === "private"
+    ? "Run npm run private:status, then npm run private:gate locally."
+    : "Run npm run private:status while entering CSVs; import private data when ready.";
+  const localPlaytestReadiness = localPlaytestStatus?.hostedDeferred
+    ? "Local testing ready"
+    : "Hosted playtest live";
   const effectiveCampaignMode = mode === "solo" ? campaignMode : "none";
   const selectedPlayerOneNationId = playerNationIds["1"] ?? DEFAULT_NATION_ID;
   const launchCampaignOptions = buildCampaignGameOptions({
@@ -439,6 +487,8 @@ export default function NewGameSetup({
     setPrivateData(result.privateData);
     setPrivateDataConfirmed(false);
     setPrivateFileStatuses(result.files);
+    setPrivateDryRunReport(result.dryRunReport);
+    setPrivatePreviewStatus("");
     const fallbackNations = getNationOptions(enabledExpansions);
     const fallbackNationIds = new Set(fallbackNations.map((nation) => nation.id));
     setPlayerNationIds((current) =>
@@ -450,6 +500,29 @@ export default function NewGameSetup({
       )
     );
     setSoloBotNationId((nationId) => nationId === "random" || fallbackNationIds.has(nationId) ? nationId : "random");
+  };
+
+  const copyPrivateDataPreviewSummary = async () => {
+    if (!privateDryRunReport) return;
+    const summary = buildPrivateDataDryRunIssueSummary(privateDryRunReport);
+    try {
+      await navigator.clipboard.writeText(summary);
+      setPrivatePreviewStatus("Import preview summary copied.");
+    } catch {
+      setPrivatePreviewStatus("Copy failed. Download the validation report instead.");
+    }
+  };
+
+  const downloadPrivateDataPreviewReport = () => {
+    if (!privateDryRunReport || typeof document === "undefined" || typeof URL === "undefined" || typeof Blob === "undefined") return;
+    const content = JSON.stringify(buildPrivateDataDryRunDownload(privateDryRunReport), null, 2);
+    const url = URL.createObjectURL(new Blob([content], { type: "application/json;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `polity-private-data-import-preview-${privateDryRunReport.generatedAtIso.replace(/[:.]/g, "-")}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setPrivatePreviewStatus("Import preview validation report downloaded.");
   };
 
   return (
@@ -506,8 +579,14 @@ export default function NewGameSetup({
             data-data-mode={localPlaytestDataMode}
             data-saved-game={localPlaytestStatus.savedGameAvailable ? "available" : "none"}
             data-hosting={localPlaytestStatus.hostedDeferred ? "deferred" : "active"}
+            data-next-gate={localPlaytestDataMode === "private" ? "private-gate" : "private-data-entry"}
+            data-next-command={localPlaytestNextCommand}
           >
             <legend>Playtest Status</legend>
+            <div className="local-playtest-status__summary">
+              <strong>{localPlaytestReadiness}</strong>
+              <span data-qa="local-playtest-next-gate">{localPlaytestNextGate}</span>
+            </div>
             <div className="local-playtest-status__chips">
               <span>{localPlaytestDataMode === "placeholder" ? "Demo data" : "Private data loaded"}</span>
               <span>{localPlaytestStatus.savedGameAvailable ? "Local save ready" : "No local save"}</span>
@@ -716,10 +795,19 @@ export default function NewGameSetup({
 
         <section className="setup-stage" aria-labelledby="setup-stage-data">
           <h2 id="setup-stage-data">Private Data</h2>
-          <fieldset className="setup-section setup-section--wide">
+          <fieldset
+            className="setup-section setup-section--wide"
+            data-qa="private-data-setup"
+            data-private-data-state={privateDataSetupState}
+            data-private-data-loaded={hasLoadedPrivateData ? "true" : "false"}
+            data-private-data-confirmed={privateDataIsConfirmed ? "true" : "false"}
+            data-private-data-preview-status={privateDryRunReport?.status ?? "none"}
+            data-private-data-next-command={privateDataIsConfirmed ? "private:status private:gate" : "private:status"}
+          >
             <legend>Private Data</legend>
             <p className="setup-help">
               Upload generated JSON files such as cards.normalized.json and nations.normalized.json, or raw private CSV files such as imperium_cards_private.csv and imperium_nations_private.csv. Optional files include nation rulesets, nation strategy, bot state tables, and bot trade route tables.
+              Run npm run private:status during transcription for a public-safe local workspace check; run npm run private:gate after imported private data is confirmed.
               {" "}
               <a href="https://github.com/jcdaneshmand/polity-engine/blob/main/imperium-like-digital-prototype/docs/private-card-data-workflow.md#csv-and-json-schemas" target="_blank" rel="noreferrer">
                 View the private data schema reference
@@ -734,10 +822,57 @@ export default function NewGameSetup({
               <button type="button" onClick={onOpenCardEntry}>
                 Card and Nation Transcription Tool
               </button>
-              <button className="primary-action" type="button" disabled={!hasLoadedPrivateData} onClick={() => applyPrivateDataToSetup(privateData)}>
+              <button className="primary-action" type="button" disabled={!hasLoadedPrivateData || privateDataHasFatalPreview} onClick={() => applyPrivateDataToSetup(privateData)}>
                 Use This Private Data
               </button>
             </div>
+            {privateDryRunReport ? (
+              <section
+                className={`private-data-preview private-data-preview--${privateDryRunReport.status}`}
+                data-qa="private-data-dry-run"
+                data-preview-status={privateDryRunReport.status}
+                data-preview-fatal={privateDryRunReport.fatal}
+                data-preview-warnings={privateDryRunReport.warnings}
+                aria-label="Private data dry-run preview"
+              >
+                <div>
+                  <span className="setup-preview-kicker">Import Preview</span>
+                  <strong>
+                    {privateDryRunReport.status === "fatal"
+                      ? `${privateDryRunReport.fatal} fatal issue${privateDryRunReport.fatal === 1 ? "" : "s"} must be fixed`
+                      : privateDryRunReport.status === "warning"
+                        ? `${privateDryRunReport.warnings} warning${privateDryRunReport.warnings === 1 ? "" : "s"} before private playtest`
+                        : privateDryRunReport.status === "ready"
+                          ? "Private data preview is ready"
+                          : "No usable private data records found"}
+                  </strong>
+                </div>
+                <div className="private-data-preview__metrics">
+                  <span>{privateDryRunReport.counts.map((item) => `${item.count} ${item.label}`).join(" / ") || "0 records"}</span>
+                  <span>{privateDryRunReport.coverage.implemented} implemented / {privateDryRunReport.coverage.tested} tested</span>
+                </div>
+                <PrivateDataReadinessList checks={privateDryRunReport.readinessChecks} />
+                <div className="private-data-preview__actions">
+                  <button type="button" onClick={() => void copyPrivateDataPreviewSummary()}>
+                    Copy Preview Summary
+                  </button>
+                  <button type="button" onClick={downloadPrivateDataPreviewReport}>
+                    Download Validation Report
+                  </button>
+                </div>
+                {privatePreviewStatus ? <span className="private-data-preview__status">{privatePreviewStatus}</span> : null}
+                {privateDryRunReport.messages.length ? (
+                  <ul>
+                    {privateDryRunReport.messages.slice(0, 6).map((message, index) => (
+                      <li key={`${message.scope}-${message.row ?? "bundle"}-${message.field ?? "field"}-${index}`} className={message.level === "fatal" ? "is-error" : ""}>
+                        <strong>{message.scope}</strong>
+                        <span>{message.field ? `${message.field}: ` : ""}{message.message}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </section>
+            ) : null}
             {hasLoadedPrivateData ? (
               <div className={`private-data-ready ${privateDataConfirmed ? "is-confirmed" : ""}`}>
                 <strong>{privateDataConfirmed ? "Private data will be used when you start the game." : privateDataReadyMessage}</strong>

@@ -23,7 +23,7 @@ export type SavedLocalGameEnvelope = {
 export type SavedLocalGameRecord =
   | { kind: "none" }
   | { kind: "valid"; envelope: SavedLocalGameEnvelope }
-  | { kind: "corrupt" };
+  | { kind: "corrupt"; reason: string };
 
 export type ImportedLocalGameExport =
   | { kind: "valid"; envelope: SavedLocalGameEnvelope }
@@ -36,7 +36,14 @@ type ParseSavedLocalGameResult =
   | { kind: "invalid"; reason: string };
 
 const PRIVATE_FIELD_NAMES = new Set([
+  "card_name_private",
+  "private_effect_text",
+  "private_notes",
+  "private_trigger_label",
+  "privateName",
+  "privateEffectText",
   "rawEffectTextPrivate",
+  "raw_effect_text_private",
   "officialName",
   "officialText",
   "officialRulesText"
@@ -214,8 +221,8 @@ export function loadSavedLocalGameRecord(storage: StorageReader | undefined): Sa
   if (!storage) return { kind: "none" };
   const raw = storage.getItem(LOCAL_GAME_SAVE_STORAGE_KEY);
   if (!raw) return { kind: "none" };
-  const envelope = parseSavedLocalGame(raw);
-  return envelope ? { kind: "valid", envelope } : { kind: "corrupt" };
+  const parsed = parseSavedLocalGameDetailed(raw);
+  return parsed.kind === "valid" ? { kind: "valid", envelope: parsed.envelope } : { kind: "corrupt", reason: parsed.reason };
 }
 
 export function createLocalGameRestoreEnhancer(envelope: SavedLocalGameEnvelope | undefined) {

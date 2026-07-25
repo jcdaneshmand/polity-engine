@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import BoardLayout, { buildBugReportSummary, buildLastOutcomeSummary, buildPlaytestDiagnostics, dispatchBoardAction, getLocalUndoAvailability } from "./BoardLayout";
+import BoardLayout, { buildBugReportMailto, buildBugReportSummary, buildLastOutcomeSummary, buildPlaytestDiagnostics, dispatchBoardAction, getLocalUndoAvailability } from "./BoardLayout";
 
 const emptyPlayer = {
   hand: [],
@@ -125,6 +125,11 @@ describe("BoardLayout", () => {
 
     expect(diagnostics).toMatchObject({
       schemaVersion: 1,
+      privacy: {
+        classification: "public-safe",
+        redactionMarker: "[private]",
+        note: expect.stringContaining("redacted")
+      },
       mode: "local",
       activePlayer: "1",
       viewerPlayer: "0",
@@ -155,14 +160,66 @@ describe("BoardLayout", () => {
     expect(JSON.stringify(diagnostics)).not.toContain("opponent-secret");
   });
 
+  it("sanitizes private card tokens across diagnostics fields", () => {
+    const diagnostics = buildPlaytestDiagnostics({
+      G: baseGame({
+        cardDb: {
+          private_card_id: {
+            id: "private_card_id",
+            displayName: "Public Placeholder",
+            privateName: "Actual Private Card",
+            rawEffectTextPrivate: "Private effect text",
+            cost: 0,
+            suit: "civilized",
+            cardType: "action",
+            effects: []
+          }
+        },
+        log: [
+          { round: 1, playerId: "0", message: "Resolved private_card_id for Actual Private Card" }
+        ]
+      }),
+      ctx: { currentPlayer: "0" },
+      viewerId: "0",
+      mode: "local",
+      pendingAction: "Resolve Actual Private Card",
+      currentTask: {
+        title: "Use private_card_id",
+        detail: "Choose Actual Private Card after Private effect text",
+        suppressNormalActions: true
+      },
+      actions: [
+        { enabled: true, label: "Play Actual Private Card" },
+        { enabled: false, label: "Exhaust private_card_id", reason: "Requires Private effect text" }
+      ],
+      selectedCardId: "private_card_id"
+    });
+    const serialized = JSON.stringify(diagnostics);
+
+    expect(serialized).not.toContain("private_card_id");
+    expect(serialized).not.toContain("Actual Private Card");
+    expect(serialized).not.toContain("Private effect text");
+    expect(serialized).toContain("[private]");
+    expect(diagnostics.ruleUiState.selectedPublicCardId).toBe("[private]");
+    expect(diagnostics.currentTask?.detail).toContain("[private]");
+    expect(diagnostics.pendingAction).toContain("[private]");
+    expect(diagnostics.ruleUiState.enabledActions[0]).toContain("[private]");
+    expect(diagnostics.ruleUiState.blockedActions[0].reason).toContain("[private]");
+  });
+
   it("renders a playtest diagnostics export affordance", () => {
     const html = renderForViewer();
 
     expect(html).toContain("data-qa=\"playtest-diagnostics\"");
     expect(html).toContain("data-zone-kind-count=");
     expect(html).toContain("data-zone-kinds=");
+    expect(html).toContain("data-privacy-classification=\"public-safe\"");
+    expect(html).toContain("data-redaction-marker=\"[private]\"");
     expect(html).toContain("Export Playtest Diagnostics");
     expect(html).toContain("Copy Bug Report Summary");
+    expect(html).toContain('data-qa="email-bug-report"');
+    expect(html).toContain("Email Bug Report");
+    expect(html).toContain("Attach exported diagnostics JSON before sending.");
     expect(html).toContain("Active Player");
     expect(html).toContain("Viewer Player");
   });
@@ -267,13 +324,58 @@ describe("BoardLayout", () => {
 
     expect(summary).toContain("Polity Engine bug report");
     expect(summary).toContain("App version: test-commit");
+    expect(summary).toContain("Privacy: public-safe; private values are shown as [private]");
     expect(summary).toContain("Current task: Ready - Select a card, use a turn action, or end the turn.");
     expect(summary).toContain("Please attach the exported playtest diagnostics JSON");
     expect(summary).not.toContain("c1");
-    expect(summary).toContain("[card]");
+    expect(summary).toContain("[private]");
   });
 
-  it("marks selected card detail state", () => {
+  it("builds a public-safe mailto bug report helper", () => {
+    const diagnostics = buildPlaytestDiagnostics({
+      G: baseGame({
+        cardDb: {
+          private_card_id: {
+            id: "private_card_id",
+            displayName: "Public Placeholder",
+            privateName: "Actual Private Card",
+            rawEffectTextPrivate: "Private effect text",
+            cost: 0,
+            suit: "civilized",
+            cardType: "action",
+            effects: []
+          }
+        },
+        log: [
+          { round: 1, playerId: "0", message: "Resolved private_card_id for Actual Private Card" }
+        ]
+      }),
+      ctx: { currentPlayer: "0" },
+      viewerId: "0",
+      mode: "local",
+      appVersion: "test-commit",
+      currentTask: {
+        title: "Inspect private_card_id",
+        detail: "Expected Actual Private Card",
+        suppressNormalActions: true
+      }
+    });
+    const href = buildBugReportMailto(diagnostics);
+    const decoded = decodeURIComponent(href);
+
+    expect(href).toMatch(/^mailto:jcdaneshmand@gmail\.com\?/);
+    expect(decoded).toContain("subject=Polity Engine playtest bug report - test-commit");
+    expect(decoded).toContain("Bug description:");
+    expect(decoded).toContain("Expected:");
+    expect(decoded).toContain("Actual:");
+    expect(decoded).toContain("Attachment reminder: attach the exported playtest diagnostics JSON before sending.");
+    expect(decoded).toContain("[private]");
+    expect(decoded).not.toContain("private_card_id");
+    expect(decoded).not.toContain("Actual Private Card");
+    expect(decoded).not.toContain("Private effect text");
+  });
+
+  it("renders the board card detail panel with empty-state QA metadata before selection", () => {
     const html = renderToStaticMarkup(
       <BoardLayout
         G={baseGame()}
@@ -284,6 +386,8 @@ describe("BoardLayout", () => {
       />
     );
 
+    expect(html).toContain('data-qa="card-detail-panel"');
+    expect(html).toContain('data-detail-state="empty"');
     expect(html).toContain("Select a card.");
   });
 

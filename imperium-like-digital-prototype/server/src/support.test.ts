@@ -2,18 +2,20 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
+import { createAccountStore } from "./accountStore";
 import { createSupportMiddleware } from "./support";
 import { createSupportStore } from "./supportStore";
 
 type TestContext = {
   method: string;
   path: string;
+  headers?: Record<string, string>;
   status?: number;
   body?: unknown;
 };
 
-function context(method: string, path: string): TestContext {
-  return { method, path };
+function context(method: string, path: string, token?: string): TestContext {
+  return { method, path, ...(token ? { headers: { authorization: `Bearer ${token}` } } : {}) };
 }
 
 describe("support store", () => {
@@ -48,17 +50,30 @@ describe("support store", () => {
 });
 
 describe("support middleware", () => {
-  it("serves and updates the monthly support status", async () => {
+  it("serves the monthly support status publicly and requires admin to update it", async () => {
+    const accountStore = createAccountStore();
+    const admin = accountStore.createAccount({ email: "admin@example.com", username: "Admin", password: "secret123" });
+    const player = accountStore.createAccount({ email: "player@example.com", username: "Player", password: "secret123" });
+    if (!admin.ok || !player.ok) throw new Error("account setup failed");
     const middleware = createSupportMiddleware({
-      store: createSupportStore({ now: () => "2026-07-22T12:00:00.000Z" })
+      store: createSupportStore({ now: () => "2026-07-22T12:00:00.000Z" }),
+      accountStore
     });
     const status = context("GET", "/polity/support/monthly");
-    const mark = context("POST", "/polity/support/monthly/mark-covered");
+    const missing = context("POST", "/polity/support/monthly/mark-covered");
+    const blocked = context("POST", "/polity/support/monthly/mark-covered", player.token);
+    const mark = context("POST", "/polity/support/monthly/mark-covered", admin.token);
 
     await middleware(status, async () => undefined);
+    await middleware(missing, async () => undefined);
+    await middleware(blocked, async () => undefined);
     await middleware(mark, async () => undefined);
 
     expect(status.body).toEqual({ month: "2026-07", isCovered: false });
+    expect(missing.status).toBe(401);
+    expect(missing.body).toEqual({ error: "missing_session" });
+    expect(blocked.status).toBe(403);
+    expect(blocked.body).toEqual({ error: "not_admin" });
     expect(mark.body).toEqual({ month: "2026-07", isCovered: true, coveredAt: "2026-07-22T12:00:00.000Z" });
   });
 });

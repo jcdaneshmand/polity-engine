@@ -1,7 +1,8 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { mkdir, rm, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const requireFromWorkspace = createRequire(new URL("../imperium-like-digital-prototype/package.json", import.meta.url));
@@ -45,6 +46,8 @@ export function redactBrowserQAResult(result) {
     lobbyID: result.lobbyID,
     matchID: result.matchID,
     setupStatusChecked: result.setupStatusChecked,
+    privateUploadPreviewChecked: result.privateUploadPreviewChecked,
+    privateUploadPreview: result.privateUploadPreview,
     localBoardChecked: result.localBoardChecked,
     automatedLocalGameplayChecked: result.automatedLocalGameplayChecked,
     automatedLocalGameplayModes: result.automatedLocalGameplayModes,
@@ -75,11 +78,15 @@ export function evaluatePlayerExpectations(snapshot) {
   const gameLogVisible = snapshot.gameLogVisible !== false;
   const playerAidVisible = snapshot.playerAidVisible !== false;
   const bugReportButtonVisible = snapshot.bugReportButtonVisible !== false;
+  const bugReportEmailVisible = snapshot.bugReportEmailVisible !== false;
+  const bugReportEmailMailto = snapshot.bugReportEmailMailto !== false;
   const currentTaskTitle = String(snapshot.currentTaskTitle ?? "");
   const enabledActionCount = Number(snapshot.enabledActionCount ?? 0);
   const blockedActionCount = Number(snapshot.blockedActionCount ?? 0);
   const zoneKindCount = Number(snapshot.zoneKindCount ?? 0);
   const zoneKinds = String(snapshot.zoneKinds ?? "");
+  const privacyClassification = String(snapshot.privacyClassification ?? "");
+  const redactionMarker = String(snapshot.redactionMarker ?? "");
   const bodyText = String(snapshot.bodyText ?? "");
   const mode = snapshot.mode;
 
@@ -91,11 +98,15 @@ export function evaluatePlayerExpectations(snapshot) {
   if (!gameLogVisible) issues.push("The game log is not visible.");
   if (!playerAidVisible) issues.push("The player aid is not visible.");
   if (!bugReportButtonVisible) issues.push("The bug-report summary button is not visible.");
+  if (!bugReportEmailVisible) issues.push("The email bug-report helper is not visible.");
+  if (!bugReportEmailMailto) issues.push("The email bug-report helper is not a mailto link.");
   if (!currentTaskTitle) issues.push("Playtest diagnostics do not expose current-task metadata.");
   if (enabledActionCount + blockedActionCount === 0) issues.push("Playtest diagnostics do not expose rule action metadata.");
   if (zoneKindCount === 0 || !zoneKinds.includes("public-shared") || !zoneKinds.includes("market-shared") || !zoneKinds.includes("own-private")) {
     issues.push("Playtest diagnostics do not expose board zone hierarchy metadata.");
   }
+  if (privacyClassification !== "public-safe") issues.push("Playtest diagnostics do not expose public-safe privacy metadata.");
+  if (redactionMarker !== "[private]") issues.push("Playtest diagnostics do not expose the private redaction marker.");
   if (disabledActionWithoutReasonCount > 0) issues.push(`${disabledActionWithoutReasonCount} disabled action button(s) have no visible or tooltip reason.`);
   if (pending && bodyText.includes("No pending choice")) issues.push(`${pending} is visible while the UI also says there is no pending choice.`);
   if (pending && /waiting for player/i.test(bodyText)) issues.push(`${pending} is waiting for another player in the active player's local view.`);
@@ -111,9 +122,125 @@ export function evaluatePlayerExpectations(snapshot) {
   return issues;
 }
 
-function compactText(text, length = 3000) {
-  const normalized = String(text ?? "").replace(/\s+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
-  return normalized.length > length ? `${normalized.slice(0, length)}...` : normalized;
+export function evaluateSetupRecoveryExpectations(snapshot) {
+  const issues = [];
+  const saveState = String(snapshot.saveState ?? "");
+  const saveSource = String(snapshot.saveSource ?? "");
+  const saveMode = String(snapshot.saveMode ?? "");
+  const saveRound = String(snapshot.saveRound ?? "");
+  const importVisible = snapshot.importVisible !== false;
+  const resumeVisible = snapshot.resumeVisible === true;
+  const exportVisible = snapshot.exportVisible === true;
+  const discardVisible = snapshot.discardVisible === true;
+  const corruptReasonVisible = snapshot.corruptReasonVisible === true;
+
+  if (!snapshot.statusVisible) issues.push("Saved-game recovery status metadata is not visible.");
+  if (!["none", "valid", "corrupt"].includes(saveState)) issues.push(`Saved-game recovery exposes an unexpected save state: ${saveState || "missing"}.`);
+  if (!importVisible) issues.push("Saved-game recovery does not expose Import Saved Game.");
+
+  if (saveState === "none") {
+    if (saveSource !== "none" || saveMode !== "none" || saveRound !== "none") {
+      issues.push("Empty saved-game recovery metadata must use none source/mode/round values.");
+    }
+  } else if (saveState === "valid") {
+    if (!resumeVisible) issues.push("Valid saved-game recovery does not expose Resume Saved Game.");
+    if (!exportVisible) issues.push("Valid saved-game recovery does not expose Export Saved Game.");
+    if (!discardVisible) issues.push("Valid saved-game recovery does not expose Discard Saved Game.");
+    if (!saveSource || saveSource === "unknown") issues.push("Valid saved-game recovery does not expose a concrete save source.");
+    if (!saveMode || saveMode === "unknown") issues.push("Valid saved-game recovery does not expose a concrete save mode.");
+    if (!saveRound || saveRound === "unknown") issues.push("Valid saved-game recovery does not expose a concrete save round.");
+  } else if (saveState === "corrupt") {
+    if (!discardVisible) issues.push("Corrupt saved-game recovery does not expose Discard Saved Game.");
+    if (!corruptReasonVisible) issues.push("Corrupt saved-game recovery does not show a public-safe failure reason.");
+    if (saveSource !== "unknown" || saveMode !== "unknown" || saveRound !== "unknown") {
+      issues.push("Corrupt saved-game recovery metadata must use unknown source/mode/round values.");
+    }
+  }
+
+  return issues;
+}
+
+export function evaluateLocalPlaytestStatusExpectations(snapshot) {
+  const issues = [];
+  const dataMode = String(snapshot.dataMode ?? "");
+  const hosting = String(snapshot.hosting ?? "");
+  const nextGate = String(snapshot.nextGate ?? "");
+  const nextCommand = String(snapshot.nextCommand ?? "");
+  const nextGateText = String(snapshot.nextGateText ?? "");
+
+  if (!snapshot.statusVisible) issues.push("Local playtest status is not visible.");
+  if (!["placeholder", "private"].includes(dataMode)) issues.push(`Local playtest status exposes an unexpected data mode: ${dataMode || "missing"}.`);
+  if (!["active", "deferred"].includes(hosting)) issues.push(`Local playtest status exposes an unexpected hosting state: ${hosting || "missing"}.`);
+  if (!["private-data-entry", "private-gate"].includes(nextGate)) issues.push(`Local playtest status exposes an unexpected next gate: ${nextGate || "missing"}.`);
+  if (dataMode === "placeholder" && nextGate !== "private-data-entry") issues.push("Placeholder setup should point players at private data entry.");
+  if (dataMode === "private" && nextGate !== "private-gate") issues.push("Private-data setup should point players at private:gate.");
+  if (!nextCommand.includes("private:status")) issues.push("Local playtest status should point players at private:status before stricter private checks.");
+  if (dataMode === "private" && !nextCommand.includes("private:gate")) issues.push("Private-data setup should include private:gate as the strict local proof command.");
+  if (!nextGateText.trim()) issues.push("Local playtest status does not explain the next gate.");
+  if (!nextGateText.includes("private:status")) issues.push("Local playtest status text does not explain the private:status progress check.");
+
+  return issues;
+}
+
+export function evaluatePrivateDataSetupExpectations(snapshot) {
+  const issues = [];
+  const state = String(snapshot.state ?? "");
+  const loaded = String(snapshot.loaded ?? "");
+  const confirmed = String(snapshot.confirmed ?? "");
+  const previewStatus = String(snapshot.previewStatus ?? "");
+  const nextCommand = String(snapshot.nextCommand ?? "");
+  const readinessIds = Array.isArray(snapshot.readinessIds) ? snapshot.readinessIds.map(String) : [];
+  const readinessStatuses = Array.isArray(snapshot.readinessStatuses) ? snapshot.readinessStatuses.map(String) : [];
+
+  if (!snapshot.visible) issues.push("Private-data setup diagnostics are not visible.");
+  if (!["empty", "preview-fatal", "preview-pending", "confirmed"].includes(state)) issues.push(`Private-data setup exposes an unexpected state: ${state || "missing"}.`);
+  if (!["true", "false"].includes(loaded)) issues.push(`Private-data setup exposes an unexpected loaded flag: ${loaded || "missing"}.`);
+  if (!["true", "false"].includes(confirmed)) issues.push(`Private-data setup exposes an unexpected confirmed flag: ${confirmed || "missing"}.`);
+  if (!["none", "empty", "fatal", "warning", "ready"].includes(previewStatus)) issues.push(`Private-data setup exposes an unexpected preview status: ${previewStatus || "missing"}.`);
+  if (!nextCommand.includes("private:status")) issues.push("Private-data setup should expose private:status as the next public-safe workspace check.");
+  if (readinessStatuses.some((status) => !["ready", "warning", "blocked"].includes(status))) {
+    issues.push("Private-data setup exposes an unexpected readiness status.");
+  }
+
+  if (state === "empty") {
+    if (loaded !== "false") issues.push("Empty private-data setup should not report loaded data.");
+    if (confirmed !== "false") issues.push("Empty private-data setup should not report confirmed data.");
+    if (previewStatus !== "none") issues.push("Empty private-data setup should not report a preview status.");
+    if (readinessIds.length > 0) issues.push("Empty private-data setup should not show dry-run readiness checks.");
+  } else if (state === "confirmed") {
+    if (loaded !== "true") issues.push("Confirmed private-data setup should report loaded data.");
+    if (confirmed !== "true") issues.push("Confirmed private-data setup should report confirmed data.");
+    if (!nextCommand.includes("private:gate")) issues.push("Confirmed private-data setup should expose private:gate as the strict local proof command.");
+  } else {
+    if (loaded !== "true") issues.push("Preview private-data setup should report loaded data.");
+    if (confirmed !== "false") issues.push("Preview private-data setup should not report confirmed data.");
+    if (!readinessIds.includes("references")) issues.push("Private-data dry-run preview is missing the card-reference readiness check.");
+  }
+
+  return issues;
+}
+
+function rectsOverlap(first, second) {
+  if (!first || !second) return false;
+  return first.left < second.right
+    && first.right > second.left
+    && first.top < second.bottom
+    && first.bottom > second.top;
+}
+
+export function evaluateRightRailLayoutExpectations(snapshot) {
+  const issues = [];
+  const logRect = snapshot.gameLogRect;
+  const aidRect = snapshot.playerAidRect;
+  if (!logRect || logRect.width <= 0 || logRect.height <= 0) issues.push("Game log geometry is not visible.");
+  if (!aidRect || aidRect.width <= 0 || aidRect.height <= 0) issues.push("Player aid geometry is not visible.");
+  if (!logRect || !aidRect) return issues;
+  if (snapshot.gameLogDomIndex >= 0 && snapshot.playerAidDomIndex >= 0 && snapshot.gameLogDomIndex > snapshot.playerAidDomIndex) {
+    issues.push("Game log appears after the player aid in right-rail DOM order.");
+  }
+  if (aidRect.top < logRect.top - 1) issues.push("Player aid is positioned above the game log.");
+  if (rectsOverlap(logRect, aidRect)) issues.push("Player aid overlaps the game log.");
+  return issues;
 }
 
 function slugifyLabel(label) {
@@ -140,12 +267,17 @@ export function summarizePlayerExpectationSnapshot(snapshot) {
     gameLogVisible: snapshot.gameLogVisible !== false,
     playerAidVisible: snapshot.playerAidVisible !== false,
     bugReportButtonVisible: snapshot.bugReportButtonVisible !== false,
+    bugReportEmailVisible: snapshot.bugReportEmailVisible !== false,
+    bugReportEmailMailto: snapshot.bugReportEmailMailto !== false,
     currentTaskTitle: snapshot.currentTaskTitle,
     enabledActionCount: Number(snapshot.enabledActionCount ?? 0),
     blockedActionCount: Number(snapshot.blockedActionCount ?? 0),
     zoneKindCount: Number(snapshot.zoneKindCount ?? 0),
     zoneKinds: snapshot.zoneKinds,
-    bodyExcerpt: compactText(snapshot.bodyText)
+    privacyClassification: snapshot.privacyClassification,
+    redactionMarker: snapshot.redactionMarker,
+    visibleTextPolicy: "omitted-public-safe",
+    bodyTextLength: String(snapshot.bodyText ?? "").length
   };
 }
 
@@ -179,9 +311,13 @@ export function evaluateMultiplayerObserverExpectations(snapshot) {
   if (snapshot.gameLogVisible === false) issues.push("The game log is not visible.");
   if (snapshot.playerAidVisible === false) issues.push("The player aid is not visible.");
   if (snapshot.bugReportButtonVisible === false) issues.push("The bug-report summary button is not visible.");
+  if (snapshot.bugReportEmailVisible === false) issues.push("The email bug-report helper is not visible.");
+  if (snapshot.bugReportEmailMailto === false) issues.push("The email bug-report helper is not a mailto link.");
   if (!snapshot.currentTaskTitle) issues.push("Playtest diagnostics do not expose current-task metadata.");
   if (Number(snapshot.enabledActionCount ?? 0) + Number(snapshot.blockedActionCount ?? 0) === 0) issues.push("Playtest diagnostics do not expose rule action metadata.");
   if (Number(snapshot.zoneKindCount ?? 0) === 0) issues.push("Playtest diagnostics do not expose board zone hierarchy metadata.");
+  if (snapshot.privacyClassification !== "public-safe") issues.push("Playtest diagnostics do not expose public-safe privacy metadata.");
+  if (snapshot.redactionMarker !== "[private]") issues.push("Playtest diagnostics do not expose the private redaction marker.");
   if (Number(snapshot.disabledActionWithoutReasonCount ?? 0) > 0) issues.push(`${snapshot.disabledActionWithoutReasonCount} disabled action button(s) have no visible or tooltip reason.`);
   return issues;
 }
@@ -324,6 +460,125 @@ async function assertNoPrivateDebugMarkers(page) {
   }
 }
 
+async function setupRecoverySnapshot(page) {
+  const status = page.locator('[data-qa="saved-local-game-status"]');
+  const statusVisible = await status.isVisible().catch(() => false);
+  const bodyText = await page.locator("body").innerText();
+  return {
+    statusVisible,
+    saveState: await status.getAttribute("data-save-state").catch(() => undefined),
+    saveSource: await status.getAttribute("data-save-source").catch(() => undefined),
+    saveMode: await status.getAttribute("data-save-mode").catch(() => undefined),
+    saveRound: await status.getAttribute("data-save-round").catch(() => undefined),
+    importVisible: await page.getByText("Import Saved Game").isVisible().catch(() => false),
+    resumeVisible: await page.getByRole("button", { name: "Resume Saved Game" }).isVisible().catch(() => false),
+    exportVisible: await page.getByRole("button", { name: "Export Saved Game" }).isVisible().catch(() => false),
+    discardVisible: await page.getByRole("button", { name: "Discard Saved Game" }).isVisible().catch(() => false),
+    corruptReasonVisible: /Saved local game could not be loaded\.\s+\S/.test(bodyText)
+  };
+}
+
+async function assertSetupRecoveryExpectations(page, label) {
+  const snapshot = await setupRecoverySnapshot(page);
+  const issues = evaluateSetupRecoveryExpectations(snapshot);
+  if (issues.length > 0) throw new Error(`Setup recovery expectation failed at ${label}.\n- ${issues.join("\n- ")}`);
+  return snapshot;
+}
+
+async function privateDataSetupSnapshot(page) {
+  const setup = page.locator('[data-qa="private-data-setup"]');
+  const readinessItems = page.locator('[data-qa="private-data-readiness-item"]');
+  return {
+    visible: await setup.isVisible().catch(() => false),
+    state: await setup.getAttribute("data-private-data-state").catch(() => undefined),
+    loaded: await setup.getAttribute("data-private-data-loaded").catch(() => undefined),
+    confirmed: await setup.getAttribute("data-private-data-confirmed").catch(() => undefined),
+    previewStatus: await setup.getAttribute("data-private-data-preview-status").catch(() => undefined),
+    nextCommand: await setup.getAttribute("data-private-data-next-command").catch(() => undefined),
+    readinessIds: await readinessItems.evaluateAll((items) => items.map((item) => item.getAttribute("data-readiness-id") ?? "")).catch(() => []),
+    readinessStatuses: await readinessItems.evaluateAll((items) => items.map((item) => item.getAttribute("data-readiness-status") ?? "")).catch(() => [])
+  };
+}
+
+async function assertPrivateDataSetupExpectations(page, label) {
+  const snapshot = await privateDataSetupSnapshot(page);
+  const issues = evaluatePrivateDataSetupExpectations(snapshot);
+  if (issues.length > 0) throw new Error(`Private-data setup expectation failed at ${label}.\n- ${issues.join("\n- ")}`);
+  return snapshot;
+}
+
+async function assertFatalPrivateUploadPreview(page) {
+  const uploadDir = await mkdtemp(join(tmpdir(), "polity-private-upload-"));
+  try {
+    const uploadPath = join(uploadDir, "imperium_cards_private.csv");
+    await writeFile(uploadPath, [
+      "card_id,public_placeholder_name,suit,card_type,starting_location,vp_mode,implemented,tested",
+      "bad-card,Bad Card,not_a_suit,action,draw_deck,none,true,false"
+    ].join("\n"), "utf8");
+
+    await page.getByLabel("Upload JSON or CSV files").setInputFiles(uploadPath);
+    const preview = page.locator('[data-qa="private-data-dry-run"]');
+    await preview.waitFor();
+    const setupSnapshot = await assertPrivateDataSetupExpectations(page, "fatal private upload preview");
+    if (setupSnapshot.state !== "preview-fatal") throw new Error(`Expected fatal private-data preview state, received ${setupSnapshot.state ?? "missing"}.`);
+    if (setupSnapshot.previewStatus !== "fatal") throw new Error(`Expected fatal private-data preview status, received ${setupSnapshot.previewStatus ?? "missing"}.`);
+    const applyButton = page.getByRole("button", { name: "Use This Private Data" });
+    if (await applyButton.isEnabled()) throw new Error("Fatal private-data preview should disable Use This Private Data.");
+    const status = page.locator('[data-qa="local-playtest-status"]');
+    const dataMode = await status.getAttribute("data-data-mode");
+    if (dataMode !== "placeholder") throw new Error(`Fatal unconfirmed private upload changed setup data mode to ${dataMode ?? "missing"}.`);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+}
+
+async function assertApplyablePrivateUploadPreview(page) {
+  const uploadDir = await mkdtemp(join(tmpdir(), "polity-private-upload-ready-"));
+  try {
+    const cardsPath = join(uploadDir, "imperium_cards_private.csv");
+    const nationsPath = join(uploadDir, "imperium_nations_private.csv");
+    await writeFile(cardsPath, [
+      "card_id,public_placeholder_name,suit,card_type,starting_location,vp_mode,implemented,tested",
+      "qa-card-1,QA Card 1,civilized,action,draw_deck,none,true,true",
+      "qa-card-2,QA Card 2,region,action,draw_deck,none,true,true"
+    ].join("\n"), "utf8");
+    await writeFile(nationsPath, [
+      "nation_id,public_placeholder_name,complexity,power_card_ids,state_card_ids,starting_deck_card_ids,nation_deck_card_ids,development_card_ids,special_setup_json,passive_rules_json,action_tokens_base,exhaust_tokens_base,implemented,tested",
+      "qa-nation-1,QA Nation 1,1,qa-card-1,qa-card-2,qa-card-1|qa-card-2,qa-card-1,qa-card-2,[],[],3,5,true,true"
+    ].join("\n"), "utf8");
+
+    await page.getByLabel("Upload JSON or CSV files").setInputFiles([cardsPath, nationsPath]);
+    const preview = page.locator('[data-qa="private-data-dry-run"]');
+    await preview.waitFor();
+    const previewStatus = await preview.getAttribute("data-preview-status");
+    if (previewStatus === "fatal") throw new Error("Applyable private-data preview unexpectedly reported fatal issues.");
+    const pendingSnapshot = await assertPrivateDataSetupExpectations(page, "applyable private upload preview");
+    if (pendingSnapshot.state !== "preview-pending") throw new Error(`Expected pending private-data preview state, received ${pendingSnapshot.state ?? "missing"}.`);
+    if (!["warning", "ready"].includes(String(pendingSnapshot.previewStatus))) throw new Error(`Expected warning or ready private-data preview status, received ${pendingSnapshot.previewStatus ?? "missing"}.`);
+
+    const applyButton = page.getByRole("button", { name: "Use This Private Data" });
+    if (!(await applyButton.isEnabled())) throw new Error("Applyable private-data preview should enable Use This Private Data.");
+    await applyButton.click();
+    const confirmedSnapshot = await assertPrivateDataSetupExpectations(page, "confirmed private upload preview");
+    if (confirmedSnapshot.state !== "confirmed") throw new Error(`Expected confirmed private-data setup state, received ${confirmedSnapshot.state ?? "missing"}.`);
+    const status = page.locator('[data-qa="local-playtest-status"]');
+    const statusSnapshot = {
+      statusVisible: await status.isVisible().catch(() => false),
+      dataMode: await status.getAttribute("data-data-mode").catch(() => undefined),
+      hosting: await status.getAttribute("data-hosting").catch(() => undefined),
+      nextGate: await status.getAttribute("data-next-gate").catch(() => undefined),
+      nextCommand: await status.getAttribute("data-next-command").catch(() => undefined),
+      nextGateText: await page.locator('[data-qa="local-playtest-next-gate"]').innerText().catch(() => "")
+    };
+    const issues = evaluateLocalPlaytestStatusExpectations(statusSnapshot);
+    if (issues.length > 0) throw new Error(`Private upload status expectation failed.\n- ${issues.join("\n- ")}`);
+    if (statusSnapshot.dataMode !== "private") throw new Error(`Confirmed private upload should switch setup data mode to private, received ${statusSnapshot.dataMode ?? "missing"}.`);
+    if (statusSnapshot.nextGate !== "private-gate") throw new Error(`Confirmed private upload should point at private:gate, received ${statusSnapshot.nextGate ?? "missing"}.`);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+}
+
 async function assertLocalSetupAndBoard(baseURL, browser) {
   const context = await browser.newContext();
   const page = await context.newPage();
@@ -331,10 +586,30 @@ async function assertLocalSetupAndBoard(baseURL, browser) {
   await page.getByText("Polity Engine").first().waitFor();
   const status = page.locator('[data-qa="local-playtest-status"]');
   await status.waitFor();
+  const statusSnapshot = {
+    statusVisible: await status.isVisible().catch(() => false),
+    dataMode: await status.getAttribute("data-data-mode").catch(() => undefined),
+    hosting: await status.getAttribute("data-hosting").catch(() => undefined),
+    nextGate: await status.getAttribute("data-next-gate").catch(() => undefined),
+    nextCommand: await status.getAttribute("data-next-command").catch(() => undefined),
+    nextGateText: await page.locator('[data-qa="local-playtest-next-gate"]').innerText().catch(() => "")
+  };
+  const statusIssues = evaluateLocalPlaytestStatusExpectations(statusSnapshot);
+  if (statusIssues.length > 0) throw new Error(`Local playtest status expectation failed.\n- ${statusIssues.join("\n- ")}`);
+  const privateDataSetupSnapshot = await assertPrivateDataSetupExpectations(page, "initial setup");
+  if (privateDataSetupSnapshot.state !== "empty") throw new Error(`Expected empty private-data setup state, received ${privateDataSetupSnapshot.state ?? "missing"}.`);
   const dataMode = await status.getAttribute("data-data-mode");
   const hosting = await status.getAttribute("data-hosting");
   if (dataMode !== "placeholder") throw new Error(`Expected placeholder setup data mode, received ${dataMode ?? "missing"}.`);
   if (hosting !== "active") throw new Error(`Expected public hosting to be marked active, received ${hosting ?? "missing"}.`);
+  await assertSetupRecoveryExpectations(page, "initial setup");
+  await assertFatalPrivateUploadPreview(page);
+  await page.reload();
+  await page.getByText("Polity Engine").first().waitFor();
+  await assertPrivateDataSetupExpectations(page, "reloaded after fatal private upload preview");
+  await assertApplyablePrivateUploadPreview(page);
+  await page.reload();
+  await page.getByText("Polity Engine").first().waitFor();
   await assertNoPrivateDebugMarkers(page);
 
   await page.getByRole("button", { name: "Start Game" }).click();
@@ -347,6 +622,7 @@ async function assertLocalSetupAndBoard(baseURL, browser) {
   await page.waitForFunction(() => Boolean(localStorage.getItem("polity-engine.localGame.v1")));
   await page.getByRole("button", { name: "New Game" }).click();
   await page.getByText("Autosave").waitFor();
+  await assertSetupRecoveryExpectations(page, "valid autosave");
   await page.getByRole("button", { name: "Export Saved Game" }).waitFor();
   await page.getByText("Import Saved Game").waitFor();
   await page.getByRole("button", { name: "Resume Saved Game" }).click();
@@ -357,7 +633,14 @@ async function assertLocalSetupAndBoard(baseURL, browser) {
   });
   await page.reload();
   await page.getByText("Saved local game could not be loaded").waitFor();
+  await assertSetupRecoveryExpectations(page, "corrupt autosave");
   await context.close();
+  return {
+    privateUploadPreview: {
+      fatal: "blocked",
+      applyable: "confirmed"
+    }
+  };
 }
 
 async function visiblePendingTitle(page) {
@@ -381,6 +664,10 @@ async function playerExpectationSnapshot(page, mode) {
   const gameLogVisible = await page.locator('[data-qa="game-log"]').isVisible().catch(() => false);
   const playerAidVisible = await page.locator('[data-qa="player-aid"]').isVisible().catch(() => false);
   const bugReportButtonVisible = await page.getByRole("button", { name: /Copy Bug Report Summary/i }).isVisible().catch(() => false);
+  const bugReportEmail = page.locator('[data-qa="email-bug-report"]');
+  const bugReportEmailVisible = await bugReportEmail.isVisible().catch(() => false);
+  const bugReportEmailHref = await bugReportEmail.getAttribute("href").catch(() => "");
+  const bugReportEmailMailto = typeof bugReportEmailHref === "string" && bugReportEmailHref.startsWith("mailto:");
   const activePlayer = extractDiagnosticPlayer(bodyText, "ACTIVE PLAYER");
   const viewerPlayer = extractDiagnosticPlayer(bodyText, "VIEWER PLAYER");
   const diagnostics = page.locator('[data-qa="playtest-diagnostics"]');
@@ -389,6 +676,8 @@ async function playerExpectationSnapshot(page, mode) {
   const blockedActionCount = Number(await diagnostics.getAttribute("data-blocked-action-count").catch(() => "0") ?? 0);
   const zoneKindCount = Number(await diagnostics.getAttribute("data-zone-kind-count").catch(() => "0") ?? 0);
   const zoneKinds = await diagnostics.getAttribute("data-zone-kinds").catch(() => "");
+  const privacyClassification = await diagnostics.getAttribute("data-privacy-classification").catch(() => "");
+  const redactionMarker = await diagnostics.getAttribute("data-redaction-marker").catch(() => "");
   return {
     pendingTitle,
     enabledChoiceCount,
@@ -403,6 +692,8 @@ async function playerExpectationSnapshot(page, mode) {
     gameLogVisible,
     playerAidVisible,
     bugReportButtonVisible,
+    bugReportEmailVisible,
+    bugReportEmailMailto,
     activePlayer,
     viewerPlayer,
     currentTaskTitle,
@@ -410,6 +701,8 @@ async function playerExpectationSnapshot(page, mode) {
     blockedActionCount,
     zoneKindCount,
     zoneKinds,
+    privacyClassification,
+    redactionMarker,
     mode,
     bodyText
   };
@@ -834,7 +1127,7 @@ async function assertViewportQA(baseURL, browser, artifactRoot) {
     await page.locator(".board-layout").waitFor();
     await assertPlayerExpectations(page, [], `viewport ${viewport.label}`, "viewport", artifactRoot);
 
-    const layoutIssues = await page.evaluate(() => {
+    const layoutSnapshot = await page.evaluate(() => {
       const issues = [];
       const body = document.body;
       if (body.scrollWidth > window.innerWidth + 2) issues.push(`horizontal overflow ${body.scrollWidth}/${window.innerWidth}`);
@@ -860,9 +1153,28 @@ async function assertViewportQA(baseURL, browser, artifactRoot) {
       if (!actionText.includes("Unavailable")) issues.push("Action menu is missing Unavailable actions.");
       const playerAid = document.querySelector('[data-qa="player-aid"]');
       if (playerAid?.getAttribute("data-expanded") !== "true") issues.push("Player aid default expanded state is missing.");
+      const rightRailChildren = Array.from(document.querySelectorAll(".right > *"));
+      const gameLog = document.querySelector('[data-qa="game-log"]');
+      const toRect = (element) => {
+        const rect = element?.getBoundingClientRect();
+        return rect ? { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left, width: rect.width, height: rect.height } : undefined;
+      };
       if (!document.body.textContent?.includes("Copy Bug Report Summary")) issues.push("Bug report summary helper is missing.");
-      return issues;
+      const emailBugReport = document.querySelector('[data-qa="email-bug-report"]');
+      if (!emailBugReport) issues.push("Email bug report helper is missing.");
+      if (emailBugReport && !String(emailBugReport.getAttribute("href") ?? "").startsWith("mailto:")) issues.push("Email bug report helper is not a mailto link.");
+      return {
+        issues,
+        gameLogRect: toRect(gameLog),
+        playerAidRect: toRect(playerAid),
+        gameLogDomIndex: rightRailChildren.indexOf(gameLog),
+        playerAidDomIndex: rightRailChildren.indexOf(playerAid)
+      };
     });
+    const layoutIssues = [
+      ...layoutSnapshot.issues,
+      ...evaluateRightRailLayoutExpectations(layoutSnapshot)
+    ];
 
     if (layoutIssues.length > 0) {
       const snapshot = await playerExpectationSnapshot(page, "viewport");
@@ -927,7 +1239,7 @@ export async function runBrowserQA(config = buildBrowserQAConfig()) {
     });
 
     browser = await chromium.launch({ headless: config.headless });
-    await assertLocalSetupAndBoard(config.baseURL, browser);
+    const setupBoardResult = await assertLocalSetupAndBoard(config.baseURL, browser);
     const workedTurnTrace = await assertWorkedTurnScenario(config.baseURL, browser, config.storagePath);
     const practiceTrace = await assertAutomatedLocalGameplay(config.baseURL, browser, { mode: "practice", steps: 48, artifactRoot: config.storagePath });
     const soloTrace = await assertAutomatedLocalGameplay(config.baseURL, browser, { mode: "solo", steps: 48, artifactRoot: config.storagePath });
@@ -994,6 +1306,8 @@ export async function runBrowserQA(config = buildBrowserQAConfig()) {
       lobbyID: lobby.lobbyID,
       matchID: started.matchID,
       setupStatusChecked: true,
+      privateUploadPreviewChecked: true,
+      privateUploadPreview: setupBoardResult.privateUploadPreview,
       localBoardChecked: true,
       automatedLocalGameplayChecked: true,
       automatedLocalGameplayModes: {

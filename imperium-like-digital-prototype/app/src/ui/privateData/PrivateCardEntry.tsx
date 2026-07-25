@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Papa from "papaparse";
 import type { PrivateCardCsvRow } from "../../../../tools/card-import/cardCsvTypes";
 import { validatePrivateCardsRows } from "../../../../tools/card-import/validatePrivateCards";
@@ -108,8 +108,94 @@ type ValidationMessage = {
 };
 
 type PrivateEntryMode = "cards" | "nations" | "bot-state" | "bot-trade";
+type CardFieldElement = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+
+export type PrivateEntryExportGuidance = {
+  nextCommand: "private:status private:gate";
+  summary: string;
+  detail: string;
+};
 
 const privateEntryDraftStorageKey = "polity.privateEntry.autosave.v1";
+const cardCsvFieldToDraftField: Partial<Record<keyof PrivateCardCsvRow | string, keyof CardEntryDraft>> = {
+  card_id: "cardId",
+  source_box: "sourceBox",
+  set_or_nation: "setOrNation",
+  card_name_private: "privateName",
+  public_placeholder_name: "publicPlaceholderName",
+  suit: "suit",
+  suit_icons: "suitIcons",
+  state_action_tokens: "stateActionTokens",
+  state_exhaust_tokens: "stateExhaustTokens",
+  state_hand_size: "stateHandSize",
+  card_type: "cardType",
+  state_requirement: "stateRequirement",
+  cost_materials: "costMaterials",
+  cost_population: "costPopulation",
+  cost_progress: "costProgress",
+  cost_goods: "costGoods",
+  development_cost_materials: "developmentCostMaterials",
+  development_cost_population: "developmentCostPopulation",
+  development_cost_progress: "developmentCostProgress",
+  development_cost_goods: "developmentCostGoods",
+  vp_mode: "vpMode",
+  vp_value: "vpValue",
+  vp_details_json: "vpDetailsJson",
+  starting_location: "startingLocation",
+  player_count_requirement: "playerCountRequirement",
+  raw_effect_text_private: "rawEffectTextPrivate",
+  effect_ops_json: "effectOpsJson",
+  tags: "tags",
+  notes: "notes",
+  implemented: "implemented",
+  tested: "tested",
+  required_expansions: "requiredExpansions",
+  excluded_expansions: "excludedExpansions",
+  allowed_modes: "allowedModes",
+  disallowed_modes: "disallowedModes",
+  ownership: "ownership",
+  commons_set_id: "commonsSetId",
+  setup_banner_suit: "setupBannerSuit",
+  commons_group: "commonsGroup",
+  replacement_for_card_id: "replacementForCardId",
+  replacement_group_id: "replacementGroupId",
+  conflicts_with_nation_ids: "conflictsWithNationIds",
+  delayable_in_lowered_aggression: "delayableInLoweredAggression",
+  market_eligible: "marketEligible",
+  small_deck_eligible: "smallDeckEligible",
+  main_deck_eligible: "mainDeckEligible",
+  unrest_pile_eligible: "unrestPileEligible",
+  fame_deck_eligible: "fameDeckEligible"
+};
+
+export function buildPrivateEntryExportGuidance(args: {
+  cardRows: number;
+  nationRows: number;
+  rulesetRows: number;
+  botStateRows: number;
+  botTradeRows: number;
+  dirty: boolean;
+  fatalCount: number;
+}): PrivateEntryExportGuidance {
+  const rows = [
+    `${args.cardRows} card`,
+    `${args.nationRows} nation`,
+    `${args.rulesetRows} ruleset`,
+    `${args.botStateRows} bot state`,
+    `${args.botTradeRows} bot trade`
+  ].map((label) => label.startsWith("1 ") ? `${label} row` : `${label} rows`);
+  const summary = args.dirty
+    ? "Save or download changed CSVs before checking the local private-data workspace."
+    : "Saved CSVs can be checked with the local private-data status command.";
+  const detail = args.fatalCount > 0
+    ? `${args.fatalCount} fatal validator issue${args.fatalCount === 1 ? "" : "s"} remain here; fix those before private:status can become ready.`
+    : `Run npm run private:status after exporting CSVs, then run npm run private:gate once all required local files have rows. Current public-safe row counts: ${rows.join(", ")}.`;
+  return {
+    nextCommand: "private:status private:gate",
+    summary,
+    detail
+  };
+}
 
 type PrivateEntryDraftSnapshot = {
   entryMode: PrivateEntryMode;
@@ -322,9 +408,10 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
   const [botTradeDirty, setBotTradeDirty] = useState(restoredSnapshot?.botTradeDirty ?? false);
   const [botTradeNationId, setBotTradeNationId] = useState(restoredSnapshot?.botTradeNationId ?? "");
   const [formDraftDirty, setFormDraftDirty] = useState(restoredSnapshot?.formDraftDirty ?? false);
-  const [suitSelectElement, setSuitSelectElement] = useState<HTMLSelectElement | null>(null);
   const [autosaveReady, setAutosaveReady] = useState(false);
   const [cardSearch, setCardSearch] = useState("");
+  const [cardSaveErrors, setCardSaveErrors] = useState<ValidationMessage[]>([]);
+  const cardFieldElements = useRef<Partial<Record<keyof CardEntryDraft, CardFieldElement | null>>>({});
 
   const selectedProfile = useMemo(() => profileFromSelection(profileId, nationId), [profileId, nationId]);
   const isNationBatch = profileId === "nation-custom";
@@ -393,10 +480,50 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
   const botTradeNationOptions = selectedBotTradeNationId && !botNationOptions.some((option) => option.id === selectedBotTradeNationId)
     ? [{ id: selectedBotTradeNationId, label: `${selectedBotTradeNationId} (not loaded)` }, ...botNationOptions]
     : botNationOptions;
+  const cardFieldError = (field: keyof CardEntryDraft) => cardSaveErrors.find((message) => cardCsvFieldToDraftField[message.field] === field);
+  const cardFieldErrorClass = (field: keyof CardEntryDraft, className = "") => `${className} ${cardFieldError(field) ? "is-field-error" : ""}`.trim();
+  const setCardFieldElement = (field: keyof CardEntryDraft) => (element: CardFieldElement | null) => {
+    cardFieldElements.current[field] = element;
+  };
+  const renderCardFieldError = (field: keyof CardEntryDraft) => {
+    const error = cardFieldError(field);
+    if (!error) return null;
+    return (
+      <span className="private-entry-field-error" id={`private-card-field-error-${field}`}>
+        {error.message.replace(/^Row \d+:\s*/, "")}
+      </span>
+    );
+  };
+  const focusCardSaveError = (message: ValidationMessage | undefined) => {
+    const field = message ? cardCsvFieldToDraftField[message.field] : undefined;
+    focusCardField(field);
+  };
+  const focusCardField = (field: keyof CardEntryDraft | undefined) => {
+    const element = field ? cardFieldElements.current[field] : undefined;
+    if (!element) return;
+    window.setTimeout(() => {
+      element.focus();
+      element.scrollIntoView({ block: "center", behavior: "smooth" });
+    }, 0);
+  };
+  const focusNextRequiredBlank = () => {
+    const requiredFields: Array<keyof CardEntryDraft> = ["publicPlaceholderName", "suit", "cardType", "startingLocation", "vpMode", "implemented", "tested"];
+    const nextField = requiredFields.find((field) => String(draft[field] ?? "").trim().length === 0);
+    if (nextField) {
+      focusCardField(nextField);
+      setStatus(`Focused next required blank: ${nextField}.`);
+      return;
+    }
+    setStatus("No required blanks on the current card.");
+  };
+  const toggleCardBooleanDraftField = (field: "implemented" | "tested") => {
+    updateDraft(field, draft[field] === "true" ? "false" : "true");
+  };
 
   const updateDraft = (field: keyof CardEntryDraft, value: string) => {
     setDraft((current) => ({ ...current, [field]: value }));
     setFormDraftDirty(true);
+    setCardSaveErrors((current) => current.filter((message) => cardCsvFieldToDraftField[message.field] !== field));
   };
 
   const updateNationDraft = (field: keyof NationEntryDraft, value: string) => {
@@ -767,11 +894,19 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
       ? rows.map((existing) => (existing.card_id?.trim() === row.card_id.trim() ? row : existing))
       : [...rows, row];
     const messages = validateRows(nextRows);
+    const savedRowNumber = nextRows.findIndex((existing) => existing.card_id?.trim() === row.card_id.trim()) + 2;
+    const currentRowFatalMessages = messages.filter((message) => message.level === "fatal" && message.row === savedRowNumber);
     const firstFatal = messages.find((message) => message.level === "fatal");
     if (firstFatal) {
-      setStatus(`${firstFatal.field}: ${firstFatal.message}`);
+      setCardSaveErrors(currentRowFatalMessages);
+      const firstCurrentFatal = currentRowFatalMessages[0];
+      setStatus(firstCurrentFatal
+        ? `Fix ${firstCurrentFatal.field} on this card: ${firstCurrentFatal.message}`
+        : `${firstFatal.field}: ${firstFatal.message}`);
+      focusCardSaveError(firstCurrentFatal);
       return;
     }
+    setCardSaveErrors([]);
     setRows(nextRows);
     setCardDirty(true);
     setFormDraftDirty(false);
@@ -970,6 +1105,15 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
   };
 
   const hasUnsavedPrivateEntryWork = cardDirty || nationDirty || rulesetDirty || botStateDirty || botTradeDirty || formDraftDirty;
+  const exportGuidance = buildPrivateEntryExportGuidance({
+    cardRows: rows.length,
+    nationRows: nationRows.length,
+    rulesetRows: rulesetRows.length,
+    botStateRows: botStateRows.length,
+    botTradeRows: botTradeRows.length,
+    dirty: hasUnsavedPrivateEntryWork,
+    fatalCount: fatalCount + nationFatalCount + rulesetFatalCount + botStateFatalCount + botTradeFatalCount
+  });
 
   useEffect(() => {
     if (!autosaveReady) {
@@ -1063,11 +1207,35 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
         return;
       }
       if (action === "focus_suit") {
-        suitSelectElement?.focus();
+        focusCardField("suit");
+        return;
+      }
+      if (action === "focus_raw_text") {
+        focusCardField("rawEffectTextPrivate");
         return;
       }
       if (action === "apply_variable_vp") {
         if (draft.vpMode === "variable") applyVariableVpDetails();
+        return;
+      }
+      if (action === "toggle_implemented") {
+        toggleCardBooleanDraftField("implemented");
+        return;
+      }
+      if (action === "toggle_tested") {
+        toggleCardBooleanDraftField("tested");
+        return;
+      }
+      if (action === "duplicate_structure") {
+        duplicatePrevious(false);
+        return;
+      }
+      if (action === "duplicate_full") {
+        duplicatePrevious(true);
+        return;
+      }
+      if (action === "next_required_blank") {
+        focusNextRequiredBlank();
         return;
       }
       if (isNationBatch) {
@@ -1078,7 +1246,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [applyVariableVpDetails, draft.vpMode, isNationBatch, saveCurrentCard, suitSelectElement, toggleNationCardRole]);
+  }, [applyVariableVpDetails, draft, duplicatePrevious, focusNextRequiredBlank, isNationBatch, saveCurrentCard, toggleCardBooleanDraftField, toggleNationCardRole]);
 
   return (
     <main className="private-entry-screen">
@@ -1134,10 +1302,29 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
               <button type="button" onClick={discardAutosavedDraft}>Clear Autosave Snapshot</button>
             </div>
 
+            <div
+              className="private-entry-export-guidance"
+              data-qa="private-entry-export-guidance"
+              data-next-command={exportGuidance.nextCommand}
+              data-card-rows={rows.length}
+              data-nation-rows={nationRows.length}
+              data-ruleset-rows={rulesetRows.length}
+              data-bot-state-rows={botStateRows.length}
+              data-bot-trade-rows={botTradeRows.length}
+            >
+              <strong>{exportGuidance.summary}</strong>
+              <span>{exportGuidance.detail}</span>
+            </div>
+
             <div className="private-entry-shortcuts">
               <span>Ctrl+Enter save card</span>
               <span>Alt+S suit</span>
+              <span>Alt+R raw text</span>
               <span>Alt+V apply VP</span>
+              <span>Alt+I implemented</span>
+              <span>Alt+T tested</span>
+              <span>Alt+D duplicate</span>
+              <span>Alt+N next blank</span>
               <span>Alt+1-6 slots</span>
             </div>
 
@@ -1376,11 +1563,21 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
         {entryMode === "cards" || entryMode === "nations" ? (
         <>
         <form className="private-entry-grid" onSubmit={(event: { preventDefault: () => void }) => { event.preventDefault(); saveCurrentCard(); }}>
-          <label>Card ID (auto) <input value={draft.cardId} readOnly autoFocus /></label>
-          <label>Actual Card Name <input value={draft.privateName} onChange={draftChange("privateName")} /></label>
-          <label>Placeholder Name <input value={draft.publicPlaceholderName} onChange={draftChange("publicPlaceholderName")} /></label>
-          <label>Suit <select ref={setSuitSelectElement} value={draft.suit} onChange={draftChange("suit")}>{suitOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
-          <label>Suit Icons <input value={draft.suitIcons} onChange={draftChange("suitIcons")} /></label>
+          {cardSaveErrors.length > 0 ? (
+            <div className="private-entry-current-errors private-entry-wide" role="alert">
+              <strong>Current card needs attention</strong>
+              <ul>
+                {cardSaveErrors.slice(0, 4).map((message, index) => (
+                  <li key={`${message.field}-${index}`}>{message.field}: {message.message.replace(/^Row \d+:\s*/, "")}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          <label className={cardFieldErrorClass("cardId")}>Card ID (auto) <input ref={setCardFieldElement("cardId")} value={draft.cardId} readOnly autoFocus />{renderCardFieldError("cardId")}</label>
+          <label className={cardFieldErrorClass("privateName")}>Actual Card Name <input ref={setCardFieldElement("privateName")} value={draft.privateName} onChange={draftChange("privateName")} />{renderCardFieldError("privateName")}</label>
+          <label className={cardFieldErrorClass("publicPlaceholderName")}>Placeholder Name <input ref={setCardFieldElement("publicPlaceholderName")} value={draft.publicPlaceholderName} onChange={draftChange("publicPlaceholderName")} />{renderCardFieldError("publicPlaceholderName")}</label>
+          <label className={cardFieldErrorClass("suit")}>Suit <select ref={setCardFieldElement("suit")} value={draft.suit} onChange={draftChange("suit")}>{suitOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select>{renderCardFieldError("suit")}</label>
+          <label className={cardFieldErrorClass("suitIcons")}>Suit Icons <input ref={setCardFieldElement("suitIcons")} value={draft.suitIcons} onChange={draftChange("suitIcons")} />{renderCardFieldError("suitIcons")}</label>
           <fieldset className="private-entry-choice-fieldset private-entry-wide">
             <legend>Suit Icon Checkboxes</legend>
             <div className="private-entry-choice-grid">
@@ -1392,20 +1589,22 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
               ))}
             </div>
           </fieldset>
-          <label>Type <select value={draft.cardType} onChange={draftChange("cardType")}>{cardTypeOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
-          <label>State <input list="private-card-id-options" value={draft.stateRequirement} onChange={draftChange("stateRequirement")} /></label>
-          <label>State Actions <input value={draft.stateActionTokens} onChange={draftChange("stateActionTokens")} /></label>
-          <label>State Exhaust <input value={draft.stateExhaustTokens} onChange={draftChange("stateExhaustTokens")} /></label>
-          <label>State Hand <input value={draft.stateHandSize} onChange={draftChange("stateHandSize")} /></label>
-          <label>Start <select value={draft.startingLocation} onChange={draftChange("startingLocation")}>{startOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
-          <label>Players <select value={draft.playerCountRequirement} onChange={(event: { target: HTMLSelectElement }) => updateDraft("playerCountRequirement", event.target.value)}>{playerCountOptions.map((option) => <option key={option.label} value={option.value}>{option.label}</option>)}</select></label>
-          <label>Required Expansion <select value={draft.requiredExpansions} onChange={draftChange("requiredExpansions")}>{expansionRequirementOptions.map((option) => <option key={option.label} value={option.value}>{option.label}</option>)}</select></label>
-          <label>Cost M <input value={draft.costMaterials} onChange={draftChange("costMaterials")} /></label>
-          <label>Cost P <input value={draft.costPopulation} onChange={draftChange("costPopulation")} /></label>
-          <label>Cost Prog <input value={draft.costProgress} onChange={draftChange("costProgress")} /></label>
-          <label>Cost Goods <input value={draft.costGoods} onChange={draftChange("costGoods")} /></label>
-          <label>VP Mode <select value={draft.vpMode} onChange={draftChange("vpMode")}>{vpModeOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
-          <label>VP <input value={draft.vpValue} onChange={draftChange("vpValue")} /></label>
+          <label className={cardFieldErrorClass("cardType")}>Type <select ref={setCardFieldElement("cardType")} value={draft.cardType} onChange={draftChange("cardType")}>{cardTypeOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select>{renderCardFieldError("cardType")}</label>
+          <label className={cardFieldErrorClass("stateRequirement")}>State <input ref={setCardFieldElement("stateRequirement")} list="private-card-id-options" value={draft.stateRequirement} onChange={draftChange("stateRequirement")} />{renderCardFieldError("stateRequirement")}</label>
+          <label className={cardFieldErrorClass("stateActionTokens")}>State Actions <input ref={setCardFieldElement("stateActionTokens")} value={draft.stateActionTokens} onChange={draftChange("stateActionTokens")} />{renderCardFieldError("stateActionTokens")}</label>
+          <label className={cardFieldErrorClass("stateExhaustTokens")}>State Exhaust <input ref={setCardFieldElement("stateExhaustTokens")} value={draft.stateExhaustTokens} onChange={draftChange("stateExhaustTokens")} />{renderCardFieldError("stateExhaustTokens")}</label>
+          <label className={cardFieldErrorClass("stateHandSize")}>State Hand <input ref={setCardFieldElement("stateHandSize")} value={draft.stateHandSize} onChange={draftChange("stateHandSize")} />{renderCardFieldError("stateHandSize")}</label>
+          <label className={cardFieldErrorClass("startingLocation")}>Start <select ref={setCardFieldElement("startingLocation")} value={draft.startingLocation} onChange={draftChange("startingLocation")}>{startOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select>{renderCardFieldError("startingLocation")}</label>
+          <label className={cardFieldErrorClass("playerCountRequirement")}>Players <select ref={setCardFieldElement("playerCountRequirement")} value={draft.playerCountRequirement} onChange={(event: { target: HTMLSelectElement }) => updateDraft("playerCountRequirement", event.target.value)}>{playerCountOptions.map((option) => <option key={option.label} value={option.value}>{option.label}</option>)}</select>{renderCardFieldError("playerCountRequirement")}</label>
+          <label className={cardFieldErrorClass("requiredExpansions")}>Required Expansion <select ref={setCardFieldElement("requiredExpansions")} value={draft.requiredExpansions} onChange={draftChange("requiredExpansions")}>{expansionRequirementOptions.map((option) => <option key={option.label} value={option.value}>{option.label}</option>)}</select>{renderCardFieldError("requiredExpansions")}</label>
+          <label className={cardFieldErrorClass("implemented")}>Implemented <select ref={setCardFieldElement("implemented")} value={draft.implemented} onChange={draftChange("implemented")}><option value="false">false</option><option value="true">true</option></select>{renderCardFieldError("implemented")}</label>
+          <label className={cardFieldErrorClass("tested")}>Tested <select ref={setCardFieldElement("tested")} value={draft.tested} onChange={draftChange("tested")}><option value="false">false</option><option value="true">true</option></select>{renderCardFieldError("tested")}</label>
+          <label className={cardFieldErrorClass("costMaterials")}>Cost M <input ref={setCardFieldElement("costMaterials")} value={draft.costMaterials} onChange={draftChange("costMaterials")} />{renderCardFieldError("costMaterials")}</label>
+          <label className={cardFieldErrorClass("costPopulation")}>Cost P <input ref={setCardFieldElement("costPopulation")} value={draft.costPopulation} onChange={draftChange("costPopulation")} />{renderCardFieldError("costPopulation")}</label>
+          <label className={cardFieldErrorClass("costProgress")}>Cost Prog <input ref={setCardFieldElement("costProgress")} value={draft.costProgress} onChange={draftChange("costProgress")} />{renderCardFieldError("costProgress")}</label>
+          <label className={cardFieldErrorClass("costGoods")}>Cost Goods <input ref={setCardFieldElement("costGoods")} value={draft.costGoods} onChange={draftChange("costGoods")} />{renderCardFieldError("costGoods")}</label>
+          <label className={cardFieldErrorClass("vpMode")}>VP Mode <select ref={setCardFieldElement("vpMode")} value={draft.vpMode} onChange={draftChange("vpMode")}>{vpModeOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select>{renderCardFieldError("vpMode")}</label>
+          <label className={cardFieldErrorClass("vpValue")}>VP <input ref={setCardFieldElement("vpValue")} value={draft.vpValue} onChange={draftChange("vpValue")} />{renderCardFieldError("vpValue")}</label>
           {draft.vpMode === "variable" ? (
             <fieldset className="private-entry-choice-fieldset private-entry-wide">
               <legend>Variable VP Builder</legend>
@@ -1426,8 +1625,8 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
               </div>
             </fieldset>
           ) : null}
-          <label>Tags <input value={draft.tags} onChange={draftChange("tags")} /></label>
-          <label className="private-entry-wide">Raw Private Text <textarea rows={6} value={draft.rawEffectTextPrivate} onChange={draftChange("rawEffectTextPrivate")} /></label>
+          <label className={cardFieldErrorClass("tags")}>Tags <input ref={setCardFieldElement("tags")} value={draft.tags} onChange={draftChange("tags")} />{renderCardFieldError("tags")}</label>
+          <label className={cardFieldErrorClass("rawEffectTextPrivate", "private-entry-wide")}>Raw Private Text <textarea ref={setCardFieldElement("rawEffectTextPrivate")} rows={6} value={draft.rawEffectTextPrivate} onChange={draftChange("rawEffectTextPrivate")} />{renderCardFieldError("rawEffectTextPrivate")}</label>
           {isNationBatch ? (
             <fieldset className="private-entry-choice-fieldset private-entry-wide">
               <legend>Nation Definition Slots</legend>
@@ -1441,7 +1640,7 @@ export default function PrivateCardEntry({ onBack }: PrivateCardEntryProps) {
               </div>
             </fieldset>
           ) : null}
-          <label className="private-entry-wide">Notes <textarea rows={3} value={draft.notes} onChange={draftChange("notes")} /></label>
+          <label className={cardFieldErrorClass("notes", "private-entry-wide")}>Notes <textarea ref={setCardFieldElement("notes")} rows={3} value={draft.notes} onChange={draftChange("notes")} />{renderCardFieldError("notes")}</label>
           <div className="private-entry-duplicate-help private-entry-wide">
             <p><strong>Duplicate Structure</strong> copies card shape and metadata, assigns the next auto ID, then clears names, private text, implemented, and tested.</p>
             <p><strong>Duplicate Full</strong> copies the previous draft including actual card name and rules text, then assigns the next auto ID.</p>

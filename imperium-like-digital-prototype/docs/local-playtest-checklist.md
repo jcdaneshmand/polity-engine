@@ -6,6 +6,7 @@ Use this checklist before private data is introduced. Keep every finding public-
 
 - Start from a clean local server with `npm.cmd run playtest:local`.
 - Confirm the setup screen shows compact `Playtest Status` chips for demo/private data, saved-game status, and hosted playtest state.
+- During private-data entry, run `npm.cmd run private:status` for a public-safe local workspace snapshot before using the strict `npm.cmd run private:gate`.
 - Keep public hosting proof separate; this checklist is only for local playability.
 
 ## Manual Scripts
@@ -14,7 +15,7 @@ Use this checklist before private data is introduced. Keep every finding public-
 
 1. Choose Multiplayer, 2 players, Classics Commons, no private data.
 2. Start the game.
-3. Confirm the board shell renders, the current-task panel is visible, the active player is visible, the viewer player is visible, the game log is visible, and the diagnostics export and bug-report summary buttons are present.
+3. Confirm the board shell renders, the current-task panel is visible, the active player is visible, the viewer player is visible, the game log is visible, and the diagnostics export, bug-report summary, and email bug-report controls are present.
 4. Select a hand card and a market card; confirm enabled actions are grouped ahead of unavailable actions and blocked reasons are understandable.
 
 ### Host, Join, Ready, Start, Rejoin
@@ -75,7 +76,9 @@ For every playtest bug, record:
 - exact action attempted
 - visible blocked reason or error message
 - copied bug-report summary from the diagnostics panel
+- email bug-report draft when email is used, with a short bug description and expected/actual result
 - exported `polity-playtest-diagnostics-*.json`
+- downloaded private-data validation preview report when a setup/import issue is involved
 - screenshot when layout or readability is involved
 
 Do not attach private CSVs, generated-private JSON, private card names, or private raw text.

@@ -66,8 +66,8 @@ Contact: [jcdaneshmand@gmail.com](mailto:jcdaneshmand@gmail.com).
 - [x] Metadata-driven Commons setup for placeholder and local private card data.
 - [x] Expansion and variant option plumbing, including the `trade_routes` expansion module.
 - [x] Local private data import for cards, nations, nation rulesets, nation strategy profiles, bot state tables, and bot Trade Routes tables.
-- [x] Browser upload support for local private JSON/CSV data.
-- [x] Card and Nation Transcription Tool for browser-based entry of cards, nation definitions, nation rulesets, bot state tables, and bot Trade Routes tables, with shared import validation, browser draft protection, batch progress, and card search/edit queue.
+- [x] Browser upload support for local private JSON/CSV data with a dry-run validation preview, readiness checklist, cross-file card-reference checks, sanitized copyable issue summary, and downloadable validation report before private data is applied to setup.
+- [x] Card and Nation Transcription Tool for browser-based entry of cards, nation definitions, nation rulesets, bot state tables, and bot Trade Routes tables, with shared import validation, browser draft protection, batch progress, card search/edit queue, field-level recovery for blocked card saves, and expanded keyboard flow for raw text, implementation/test markers, duplication, and required blanks.
 - [x] Card, nation, ruleset, strategy, and bot-table validation/reporting tools.
 - [x] Solo bot support driven by imported bot tables.
 - [x] Solo campaign setup, continuation, end-game update flow, and campaign sheet export.
@@ -75,32 +75,32 @@ Contact: [jcdaneshmand@gmail.com](mailto:jcdaneshmand@gmail.com).
 - [x] Fictional placeholder/demo data and schema examples only.
 - [x] Public-safe fictional scenario smoke coverage.
 - [x] Local save/resume baseline for in-progress local games.
-- [x] Local game export/import baseline for portable save files.
+- [x] Local game export/import baseline for portable save files, with private transcription field guards, import recovery even when no browser save exists, visible corrupt-save recovery reasons, and QA-readable saved-game status metadata.
 - [x] Undo and legal-move guardrail baseline for risky actions.
-- [x] Local playtest server and browser QA loop for setup, save/resume, automated practice, solo, and two-seat online multiplayer self-play.
+- [x] Local playtest server and browser QA loop for setup, save/resume, automated practice, solo, and two-seat online multiplayer self-play, including setup next-gate guidance checks.
 - [x] Player-expectation QA artifacts with public-safe failure reports, action traces, compact UI snapshots, and screenshots.
 
 ### Planned
 
 - [ ] Custom Commons setup workflow for choosing or composing the Commons pool from local data.
-- [ ] Save/resume polish: multi-slot metadata, migration handling, and stronger hidden-info scrubbing in resume lists.
+- [ ] Save/resume polish: multi-slot management, migration handling, and continued hidden-info review as private-data playtests expand.
 - [ ] Extensive local testing with privately entered real card data to improve rules-engine coverage, without committing or distributing that data.
 - [ ] Broader scenario-level rules parity coverage for remaining edge cases and card-specific effect patterns.
 - [ ] Undo/legal-move polish for additional edge cases found through playtesting.
 - [ ] More complete Steam Deck/controller-oriented UI polish and final visual QA for the latest board right-rail changes.
-- [ ] Import/export polish for clearer errors, private-data fingerprint mismatch recovery, and cross-version migration.
-- [ ] Production-ready multiplayer hosting proof, hardening, and operational runbook.
+- [ ] Import/export polish for cross-version migration; private-data fingerprint mismatch recovery now gives clearer lobby/game guidance.
+- [ ] Production-ready multiplayer hosting proof and hardening; the live playtest operations runbook is documented.
 
 ### Current Gap Snapshot
 
 | Bucket | Status | Next gate |
 | --- | --- | --- |
-| Local QA/playtest | Closed for the public-safe baseline: practice, solo, two-seat online self-play, worked-turn, save/resume, invalid save, privacy marker, hierarchy, viewport, and diagnostics gates are covered | Keep `npm.cmd run qa:local-browser`, `npm test`, `npm.cmd run smoke:fictional-game`, and `npm.cmd run typecheck` green before major changes; promote any real playtest failure into a scripted regression. |
+| Local QA/playtest | Closed for the public-safe baseline: practice, solo, two-seat online self-play, worked-turn, save/resume, invalid save, import recovery, corrupt-save explanations, expectation-checked saved-game status, setup next-gate metadata, fatal/applyable private upload previews, privacy marker, hierarchy, viewport, diagnostics, private-field local-save guards, and the non-importing `private:status` readiness report are covered | Keep `npm.cmd run verify:pre-private` green before entering private data or making major changes; promote any real playtest failure into a scripted regression. |
 | UI as playable rulebook | Closed for the current board pass: current-task panel, action provenance, enabled/unavailable action grouping, why-can't-I feedback, collapsible player aid, protected game log, last-event feedback, public-safe diagnostics, bug-report summary helper, zone hierarchy metadata, and viewport checks are in place | Maintain the expectation checks around current task, actions, log, aid, diagnostics, and zone/card state metadata while future UI work lands. |
 | Rules parity | Closed for current public-safe explanations: selector explanations and provenance labels are mapped to coverage evidence | Keep `data/fictional-regression/coverage-map.json`, `rulesParityCoverage.test.ts`, and parity docs aligned whenever new UI explanations or rule-facing action labels are added. |
-| Playability | Public-safe playability gate is closed locally and hosted: save/resume, rejoin flows, deterministic worked-turn coverage, automated player-expectation checks, seeded stress coverage, admin close/end controls, and copied bug-report summaries are in place | Keep admin cleanup, lobby/game close, support messaging, and bug-report diagnostics covered as online playtest usage expands. |
+| Playability | Public-safe playability gate is closed locally and hosted: save/resume, rejoin flows, deterministic worked-turn coverage, automated player-expectation checks, seeded stress coverage, admin close/end controls, and copied/emailed bug-report summaries are in place | Keep admin cleanup, lobby/game close, support messaging, and bug-report diagnostics covered as online playtest usage expands. |
 | Hosted release | Render deployment is live; latest deploys use commit-pinned hosted smoke as release proof, with hosted browser QA available for deeper checks | After each pushed release, run `npm.cmd run smoke:hosted` with `POLITY_EXPECTED_COMMIT`; run `npm.cmd run qa:hosted-browser` after UI/gameplay changes and before broader playtest invites. |
-| Private data | Remaining final gate: transcription UI now reuses real card/nation/ruleset validators and includes browser draft protection, batch progress, and card search/edit, but local ignored private CSV source files are still missing | Add the ignored `*_private.csv` files under `imperium-like-digital-prototype/private-card-data/`, then rerun private preflight/import/completeness locally without committing private data. |
+| Private data | Remaining final gate: transcription UI now reuses real validators, browser draft protection, batch progress, card search/edit, field-level recovery for blocked card saves, expanded keyboard flow for raw text, implementation/test markers, duplication, and required blanks, plus a compact public-safe export cue that points saved CSVs at `private:status` before `private:gate`. Setup uploads show a dry-run import preview with fatal/warning counts, record counts, readiness checks, cross-file card-reference status, implemented/tested coverage, sanitized copyable issue summary, and downloadable validation report before private data can be applied; copied/downloaded preview artifacts now preserve the same `private:status` then `private:gate` command trail without private names, raw text, or parsed payloads. The setup playtest status now points demo-data sessions toward `private:status` during CSV entry and confirmed private-data sessions toward `private:status` plus `private:gate`; browser QA enforces that next-command metadata. Online lobby/game private-data mismatch recovery now gives clearer public-safe guidance. The ignored private CSV work files have been scaffolded locally from templates and are now header-only; `npm run private:status` gives a non-failing public-safe workspace snapshot and `npm run private:completeness` now lists header-only sources with a row-entry next step instead of silently reporting only `0/0 complete`. Preflight rejects missing private files, missing templates, header-only files, and private CSV headers that drift from templates; `private:preflight:report`, `private:status`, and `private:artifacts:verify` write public-safe readiness artifacts with `recommendedCommands` and `nextStep`; ignore-rule tests lock private CSV/generated JSON artifacts as ignored while templates/docs remain trackable; `private:gate` runs the whole local private proof chain | Enter at least one private row in each required ignored local CSV under `imperium-like-digital-prototype/private-card-data/`, run `npm run private:status` to confirm the local-only workspace state, confirm the setup dry-run readiness checklist has no blocked core items, save the validation report if issues remain, then run `npm run private:gate` locally without committing private data. |
 
 ### Next Gate Roadmap
 
@@ -113,13 +113,13 @@ Closed public-safe gates:
 3. Parity evidence map for UI explanations and provenance labels.
 4. Hosted smoke and hosted browser QA plumbing.
 5. Longer public-safe gameplay stress runs.
-6. Transcription workstation baseline with shared validators, draft protection, batch progress, and search/edit.
+6. Transcription workstation baseline with shared validators, draft protection, batch progress, search/edit, field-level save recovery, and expanded keyboard flow.
 
 Remaining gates should close in this order:
 
-1. Run the private-data final gate locally only: add ignored private CSV inputs, run preflight/import/completeness, and convert any rules mismatch into a public-safe fake-card regression before changing engine behavior.
+1. Run the private-data final gate locally only: check `npm run private:status`, scaffold ignored private CSV inputs when needed, enter private rows in each required file, confirm the setup upload dry-run has no fatal issues or blocked core readiness checks, run `npm run private:gate`, and convert any rules mismatch into a public-safe fake-card regression before changing engine behavior.
 2. Keep hosted release proof current after every deploy: commit-pinned hosted smoke every time, hosted browser QA after gameplay/UI changes, and admin close/end checks after online-session changes.
-3. Harden production operations: document support/admin/runbook flows, backup expectations for persistent Render storage, recovery steps for stuck lobbies/games, and the release checklist for playtest invites.
+3. Harden production operations: rehearse the documented support/admin/runbook flows, backup expectations for persistent Render storage, recovery steps for stuck lobbies/games, and the release checklist for playtest invites.
 
 ## Repository Structure
 
@@ -129,7 +129,7 @@ Remaining gates should close in this order:
 - `imperium-like-digital-prototype/private-card-data/`: Local-only private transcription workspace with committed template files.
 - `imperium-like-digital-prototype/generated-private/`: Local generated normalized data and import reports.
 - `imperium-like-digital-prototype/data/placeholder-cards/`: fictional placeholder/demo data.
-- `imperium-like-digital-prototype/docs/`: design notes, legal/content boundary notes, and workflow documentation.
+- `imperium-like-digital-prototype/docs/`: design notes, legal/content boundary notes, workflow documentation, and the production playtest runbook.
 
 ## Running and Testing the App
 
@@ -223,6 +223,14 @@ npm.cmd run qa:local-browser
 
 This builds the app, starts a temporary same-origin local server, checks setup/save/resume behavior, drives automated practice and solo games, and runs a proper two-seat online multiplayer self-play loop against the local lobby server. Player-expectation failures preserve a public-safe JSON report and screenshot under the temporary QA storage folder.
 
+Run the full public-safe pre-private gate:
+
+```powershell
+npm.cmd run verify:pre-private
+```
+
+This chains the local QA script tests, workspace typecheck, app tests, server tests, the non-importing `private:status` readiness report, fictional-game smoke, multiplayer smoke, and local browser QA. It does not read or import ignored private CSV rows; run `npm.cmd run private:gate` only after local private CSV data exists.
+
 These commands use public-safe placeholder data and do not require private CSV files or public hosting.
 
 Local games are saved in browser storage while you play. When a valid saved local game exists, the setup screen offers `Resume Saved Game`, `Export Saved Game`, and `Import Saved Game`; if the saved JSON is corrupt, it offers `Discard Saved Game` without replacing the current setup flow. Exported local games use a versioned JSON envelope named like `polity-local-game-YYYYMMDD-HHMMSS.json`.
@@ -262,13 +270,13 @@ The intended workflow is local and private:
 1. Open the Card and Nation Transcription Tool from the app setup screen.
 2. Enter the card rows, nation definitions, nation ruleset traits, bot state table rows, and bot Trade Routes table rows you want to use locally.
 3. Export CSV files from the transcription tool.
-4. Store those CSV files in a private ignored folder such as `imperium-like-digital-prototype/private-card-data/`.
-5. Import those CSV files into the app.
+4. Store those CSV files in a private ignored folder such as `imperium-like-digital-prototype/private-card-data/`. If the expected private CSV files do not exist yet, run `npm run private:scaffold` from `imperium-like-digital-prototype/` to create header-only local work files from the committed templates; `private:preflight` will still wait for real rows before import.
+5. Import those CSV files into the app and review the dry-run preview for fatal errors, warnings, readiness checks, card-reference status, record counts, and implemented/tested coverage before applying them to setup. Copy the sanitized preview summary or download the validation report when you need to fix a batch.
 6. Use the app for rules automation, bookkeeping, setup support, and solo/table assistance.
 
 Private CSVs are for local use. The repository should only contain schemas, tools, engine code, documentation, and fictional demo data.
 
-The transcription tool is designed for longer local entry sessions: card, nation, and ruleset rows validate through the same import validators used by the CLI/import pipeline; unsaved browser work is autosaved with unload protection; and card batches include progress counts, duplicate/missing-required visibility, recent saved rows, and a search/edit queue.
+The transcription tool is designed for longer local entry sessions: card, nation, and ruleset rows validate through the same import validators used by the CLI/import pipeline; unsaved browser work is autosaved with unload protection; and card batches include progress counts, duplicate/missing-required visibility, recent saved rows, a search/edit queue, inline field recovery when Save / Next is blocked by a current-card validator error, and keyboard shortcuts for raw text, implementation/test markers, duplication, and the next required blank.
 
 ## CSV Import and Export Workflow
 
@@ -289,8 +297,10 @@ npm run nations:import -- --cards generated-private/cards.normalized.json --inpu
 Run the full private import pipeline:
 
 ```bash
-npm run private:import-all
+npm run private:gate
 ```
+
+For diagnosis, the gate is equivalent to `private:preflight:report`, `private:import-all` (which includes `private:completeness`), and `private:artifacts:verify`. When scaffolded private CSVs exist but still have no rows, `private:completeness` lists the header-only sources and points back to `private:status` after row entry.
 
 Additional import and validation scripts are available for nation rulesets, nation strategy data, bot state tables, and bot trade routes tables:
 
@@ -378,3 +388,4 @@ Rules-engine, UI, importer, schema, validation, documentation, and placeholder-d
 - Use `imperium-like-digital-prototype/docs/rules-engine-compliance-checklist.md` when summarizing rules-engine changes.
 - For more detail on content boundaries, see `imperium-like-digital-prototype/docs/legal-boundary.md`.
 - For hosted multiplayer deployment notes, see `imperium-like-digital-prototype/docs/deployment.md`.
+- For live playtest operations, admin cleanup, bug intake, and release closeout, see `imperium-like-digital-prototype/docs/production-playtest-runbook.md`.

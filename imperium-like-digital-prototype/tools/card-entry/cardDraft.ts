@@ -22,7 +22,13 @@ export type VariableVpDraftDetails = {
 export type CardEntryShortcutAction =
   | "save_card"
   | "focus_suit"
+  | "focus_raw_text"
   | "apply_variable_vp"
+  | "toggle_implemented"
+  | "toggle_tested"
+  | "duplicate_structure"
+  | "duplicate_full"
+  | "next_required_blank"
   | { type: "toggle_nation_role"; index: number };
 
 export type CardEntryShortcutEvent = {
@@ -30,6 +36,7 @@ export type CardEntryShortcutEvent = {
   ctrlKey?: boolean;
   metaKey?: boolean;
   altKey?: boolean;
+  shiftKey?: boolean;
 };
 
 function pipeValues(value: string): string[] {
@@ -167,7 +174,12 @@ export function getCardEntryShortcutAction(event: CardEntryShortcutEvent): CardE
   if ((event.ctrlKey || event.metaKey) && key === "enter") return "save_card";
   if (!event.altKey) return null;
   if (key === "s") return "focus_suit";
+  if (key === "r") return "focus_raw_text";
   if (key === "v") return "apply_variable_vp";
+  if (key === "i") return "toggle_implemented";
+  if (key === "t") return "toggle_tested";
+  if (key === "d") return event.shiftKey ? "duplicate_full" : "duplicate_structure";
+  if (key === "n") return "next_required_blank";
   if (/^[1-6]$/.test(key)) return { type: "toggle_nation_role", index: Number(key) - 1 };
   return null;
 }

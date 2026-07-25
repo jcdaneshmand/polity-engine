@@ -322,7 +322,56 @@ describe("OnlineGames", () => {
     expect(html).toContain("Locked Table");
     expect(html).toContain("Locked");
     expect(html).toContain("Private data required");
-    expect(html).toContain("Import matching private data to enter");
+    expect(html).toContain("Import matching private data to enter. Use the same local private CSV bundle as the host.");
+  });
+
+  it("shows private-data recovery states for listed lobbies", () => {
+    const privateLobby: ListedLobby = {
+      ...baseLobby,
+      lobbyID: "private-lobby",
+      roomName: "Private Pregame",
+      privateDataLabel: "private_data_required"
+    };
+    const missingHtml = renderToStaticMarkup(
+      <OnlineGames
+        setupConfig={config}
+        privateDataFingerprint="placeholder"
+        savedSessions={[]}
+        lobbies={[privateLobby]}
+        matches={[]}
+        statusMessage=""
+        onBackToSetup={() => undefined}
+        onRefresh={() => undefined}
+        onHost={() => undefined}
+        onJoinLobby={() => undefined}
+        onJoin={() => undefined}
+        onSpectate={() => undefined}
+        onRejoin={() => undefined}
+        onForgetSession={() => undefined}
+      />
+    );
+    const loadedHtml = renderToStaticMarkup(
+      <OnlineGames
+        setupConfig={config}
+        privateDataFingerprint="private:abc"
+        savedSessions={[]}
+        lobbies={[privateLobby]}
+        matches={[]}
+        statusMessage=""
+        onBackToSetup={() => undefined}
+        onRefresh={() => undefined}
+        onHost={() => undefined}
+        onJoinLobby={() => undefined}
+        onJoin={() => undefined}
+        onSpectate={() => undefined}
+        onRejoin={() => undefined}
+        onForgetSession={() => undefined}
+      />
+    );
+
+    expect(missingHtml).toContain("Private Pregame");
+    expect(missingHtml).toContain("Import matching private data to enter. Use the same local private CSV bundle as the host.");
+    expect(loadedHtml).toContain("Server will verify exact private data before entry");
   });
 
   it("explains that exact private data is server-verified when private data is loaded", () => {

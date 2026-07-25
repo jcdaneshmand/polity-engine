@@ -102,7 +102,13 @@ describe("card entry service", () => {
   it("maps card entry keyboard shortcuts to actions", () => {
     expect(getCardEntryShortcutAction({ key: "Enter", ctrlKey: true })).toBe("save_card");
     expect(getCardEntryShortcutAction({ key: "s", altKey: true })).toBe("focus_suit");
+    expect(getCardEntryShortcutAction({ key: "r", altKey: true })).toBe("focus_raw_text");
     expect(getCardEntryShortcutAction({ key: "v", altKey: true })).toBe("apply_variable_vp");
+    expect(getCardEntryShortcutAction({ key: "i", altKey: true })).toBe("toggle_implemented");
+    expect(getCardEntryShortcutAction({ key: "t", altKey: true })).toBe("toggle_tested");
+    expect(getCardEntryShortcutAction({ key: "d", altKey: true })).toBe("duplicate_structure");
+    expect(getCardEntryShortcutAction({ key: "d", altKey: true, shiftKey: true })).toBe("duplicate_full");
+    expect(getCardEntryShortcutAction({ key: "n", altKey: true })).toBe("next_required_blank");
     expect(getCardEntryShortcutAction({ key: "3", altKey: true })).toEqual({ type: "toggle_nation_role", index: 2 });
     expect(getCardEntryShortcutAction({ key: "Enter" })).toBeNull();
   });

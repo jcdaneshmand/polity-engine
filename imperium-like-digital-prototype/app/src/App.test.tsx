@@ -43,6 +43,11 @@ describe("App shell", () => {
 
     expect(html).toContain('data-theme="default"');
     expect(html).toContain("Online Games");
+    expect(html).toContain("Recover saved local game");
+    expect(html).toContain("data-qa=\"saved-local-game-status\"");
+    expect(html).toContain("data-save-state=\"none\"");
+    expect(html).toContain("Import Saved Game");
+    expect(html).toContain("Import a portable local save file to resume on this device.");
   });
 
   it("shows a resume action for a valid saved local game", () => {
@@ -63,6 +68,10 @@ describe("App shell", () => {
     expect(html).toContain("Export Saved Game");
     expect(html).toContain("Import Saved Game");
     expect(html).toContain("Saved local game");
+    expect(html).toContain("data-qa=\"saved-local-game-status\"");
+    expect(html).toContain("data-save-state=\"valid\"");
+    expect(html).toContain("data-save-source=\"private\"");
+    expect(html).toContain("data-save-mode=\"multiplayer\"");
     expect(html).toContain("Autosave");
     expect(html).toContain("multiplayer / 2 players");
     expect(html).toContain("Player 1");
@@ -75,6 +84,10 @@ describe("App shell", () => {
     const html = renderToStaticMarkup(<App />);
 
     expect(html).toContain("Saved local game could not be loaded");
+    expect(html).toContain("data-qa=\"saved-local-game-status\"");
+    expect(html).toContain("data-save-state=\"corrupt\"");
+    expect(html).toContain("Local game export is not valid JSON.");
+    expect(html).toContain("Import Saved Game");
     expect(html).toContain("Discard Saved Game");
   });
 

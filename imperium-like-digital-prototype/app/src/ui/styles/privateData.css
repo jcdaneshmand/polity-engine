@@ -113,6 +113,27 @@
   padding: 6px 10px;
 }
 
+.private-entry-export-guidance {
+  display: grid;
+  gap: 6px;
+  border: 1px solid rgba(22, 101, 52, 0.24);
+  border-radius: 8px;
+  background: rgba(240, 253, 244, 0.78);
+  color: #14532d;
+  margin: -4px 0 14px;
+  padding: 8px 10px;
+}
+
+.private-entry-export-guidance strong,
+.private-entry-export-guidance span {
+  overflow-wrap: anywhere;
+}
+
+.private-entry-export-guidance span {
+  color: #166534;
+  font-size: 12px;
+}
+
 .private-entry-mode-tabs,
 .private-entry-section-actions {
   display: flex;
@@ -313,6 +334,34 @@
   border-radius: 4px;
   min-width: 0;
   padding: 8px;
+}
+
+.private-entry-grid label.is-field-error input,
+.private-entry-grid label.is-field-error select,
+.private-entry-grid label.is-field-error textarea {
+  border-color: #9f312d;
+  box-shadow: 0 0 0 2px rgba(159, 49, 45, 0.12);
+}
+
+.private-entry-field-error {
+  color: #8d2b29;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.private-entry-current-errors {
+  border: 1px solid #d8a09b;
+  background: #fff7f6;
+  color: #6f2420;
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+}
+
+.private-entry-current-errors ul {
+  margin: 0;
+  padding-left: 18px;
 }
 
 .private-entry-grid textarea,

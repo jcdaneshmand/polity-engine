@@ -279,7 +279,7 @@ function formatLobbyError(error: string): string {
     match_not_found: "Match not found.",
     invalid_credentials: "Lobby credentials are no longer valid.",
     wrong_password: "Password is incorrect.",
-    private_data_mismatch: "Private data does not match this room.",
+    private_data_mismatch: "Private data does not match this room. Import the same private data bundle as the host, refresh the list, and try again.",
     invalid_chat: "Chat message is empty or too long.",
     missing_session: "Sign in to chat.",
     invalid_session: "Your sign-in session is no longer valid.",
@@ -447,11 +447,12 @@ export async function loadMonthlySupportStatus(args: { serverURL: string; fetche
   );
 }
 
-export async function markMonthlySupportCovered(args: { serverURL: string; fetcher?: Fetcher }): Promise<MonthlySupportStatus> {
+export async function markMonthlySupportCovered(args: { serverURL: string; accountToken: string; fetcher?: Fetcher }): Promise<MonthlySupportStatus> {
   return postLobbyJSON<MonthlySupportStatus>(
     lobbyURL(args.serverURL, "/polity/support/monthly/mark-covered"),
     {},
-    args.fetcher ?? fetch
+    args.fetcher ?? fetch,
+    args.accountToken
   );
 }
 

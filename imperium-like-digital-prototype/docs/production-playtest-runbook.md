@@ -14,9 +14,17 @@ npm.cmd run verify:pre-private
 
 This covers local QA script tests, workspace typecheck, app tests, server tests, fictional-game smoke, multiplayer smoke, local browser QA, fatal/applyable private upload previews, save/recover, viewport checks, and private-debug marker checks without reading ignored private CSV rows.
 
-2. Confirm the intended commit is pushed.
-3. Trigger or confirm the Render deploy for that commit.
-4. Run hosted smoke with commit proof:
+2. Run the production operations rehearsal checklist:
+
+```powershell
+npm.cmd run ops:rehearsal
+```
+
+This public-safe check confirms the runbook, deployment notes, hosted handoff, and npm scripts still cover local proof, Render build proof, commit-pinned hosted smoke, hosted browser QA, admin cleanup, support intake, persistent storage expectations, and the private-data boundary.
+
+3. Confirm the intended commit is pushed.
+4. Trigger or confirm the Render deploy for that commit.
+5. Run hosted smoke with commit proof:
 
 ```powershell
 $env:POLITY_HOSTED_BASE_URL="https://polity-engine.onrender.com"
@@ -24,17 +32,17 @@ $env:POLITY_EXPECTED_COMMIT="<short-or-full-git-sha>"
 npm.cmd run smoke:hosted
 ```
 
-5. Run hosted browser QA after gameplay, board UI, lobby, account, admin, support, or diagnostics changes:
+6. Run hosted browser QA after gameplay, board UI, lobby, account, admin, support, or diagnostics changes:
 
 ```powershell
 $env:POLITY_HOSTED_BASE_URL="https://polity-engine.onrender.com"
 npm.cmd run qa:hosted-browser
 ```
 
-6. Confirm the deployment health and commit endpoint:
+7. Confirm the deployment health and commit endpoint:
    - `GET /polity/accounts/health` returns `{ "ok": true }`.
    - `GET /polity/accounts/version` reports the expected commit.
-7. Confirm public builds do not expose private debug markers and that the About page shows the development disclaimer plus one support button.
+8. Confirm public builds do not expose private debug markers and that the About page shows the development disclaimer plus one support button.
 
 ## Runtime Configuration
 

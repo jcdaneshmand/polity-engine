@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { createCampaignProgress } from "../../../../engine/src/game/campaign";
+import { loadCardDb } from "../../../../engine/src/cards/cardLoader";
 import type { CampaignMode, CampaignProgress, CommonsSetId, ExpansionId, GameMode, GameOptions, SoloDifficulty, VariantId } from "../../../../engine/src/options/gameOptions";
 import { loadNationDb } from "../../../../engine/src/nations/nationLoader";
 import { loadBotStateTables } from "../../../../engine/src/solo/botStateTableLoader";
@@ -84,6 +85,7 @@ const campaignModes: Array<{ id: "none" | CampaignMode; label: string }> = [
 ];
 
 export type NationOption = { id: string; label: string };
+export type CommonsCardOption = { id: string; label: string; setId: CommonsSetId; group: string };
 
 export function getNationOptions(enabledExpansions: ExpansionId[], privateData?: PrivateDataBundle): NationOption[] {
   const nations = privateData?.nations?.length ? privateData.nations : Object.values(loadNationDb({ enabledExpansions }));
@@ -93,6 +95,19 @@ export function getNationOptions(enabledExpansions: ExpansionId[], privateData?:
     id: nation.id,
     label: nation.displayName
   }));
+}
+
+export function getCommonsCardOptions(privateData?: PrivateDataBundle): CommonsCardOption[] {
+  const cards = privateData?.cards?.length ? privateData.cards : Object.values(loadCardDb()) as any[];
+  return cards
+    .filter((card: any) => (card.ownership ?? "commons") === "commons" && (card.commonsGroup ?? "base") !== "replacement")
+    .map((card: any) => ({
+      id: card.id,
+      label: card.displayName ?? card.id,
+      setId: card.commonsSetId ?? "classics",
+      group: card.commonsGroup ?? "base"
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id));
 }
 
 function firstNationId(nations: NationOption[]): string {
@@ -122,6 +137,10 @@ export function getPlayerCountSelectionUpdate(
 }
 
 function toggleItem<T extends string>(items: T[], item: T): T[] {
+  return items.includes(item) ? items.filter((value) => value !== item) : [...items, item];
+}
+
+function toggleString(items: string[], item: string): string[] {
   return items.includes(item) ? items.filter((value) => value !== item) : [...items, item];
 }
 
@@ -294,6 +313,8 @@ export default function NewGameSetup({
   const [enabledExpansions, setEnabledExpansions] = useState<ExpansionId[]>([...(initialOptions?.enabledExpansions ?? [])]);
   const [enabledVariants, setEnabledVariants] = useState<VariantId[]>([...(initialOptions?.enabledVariants ?? [])]);
   const [commonsSetId, setCommonsSetId] = useState<CommonsSetId>(initialOptions?.commonsSetId ?? "classics");
+  const [customCommonsCardIds, setCustomCommonsCardIds] = useState<string[]>([...(initialOptions?.customCommonsCardIds ?? [])]);
+  const [customCommonsSearch, setCustomCommonsSearch] = useState("");
   const [soloDifficulty, setSoloDifficulty] = useState<SoloDifficulty>(initialOptions?.soloDifficulty ?? initialCampaignProgress?.currentDifficulty ?? "chieftain");
   const [campaignMode, setCampaignMode] = useState<"none" | CampaignMode>(initialCampaignProgress?.mode ?? initialOptions?.campaignMode ?? "none");
   const [campaignProgress, setCampaignProgress] = useState<CampaignProgress | undefined>(initialCampaignProgress ?? initialOptions?.campaignProgress);
@@ -333,6 +354,17 @@ export default function NewGameSetup({
     () => getNationOptions(enabledExpansions, confirmedPrivateData),
     [enabledExpansions, confirmedPrivateData]
   );
+  const availableCommonsCards = useMemo(
+    () => getCommonsCardOptions(confirmedPrivateData),
+    [confirmedPrivateData]
+  );
+  const customCommonsCards = availableCommonsCards.filter((card) => card.setId === "custom");
+  const customCommonsSelectedSet = new Set(customCommonsCardIds);
+  const customCommonsVisibleCards = customCommonsCards.filter((card) => {
+    const query = customCommonsSearch.trim().toLowerCase();
+    if (!query) return true;
+    return card.label.toLowerCase().includes(query) || card.id.toLowerCase().includes(query);
+  });
   const botNationOptions = useMemo(
     () => getBotNationSetupOptions(availableNations, loadBotStateTables()),
     [availableNations]
@@ -345,6 +377,7 @@ export default function NewGameSetup({
     ...enabledExpansions.map((expansion) => labelFor(expansions, expansion)),
     ...enabledVariants.map((variant) => labelFor(variants, variant))
   ].join(", ") || "Core rules";
+  const commonsSummary = commonsSetId === "custom" ? `${customCommonsCardIds.length} selected` : labelFor(commonsSets, commonsSetId);
   const privateDataSummary = privateDataIsConfirmed ? privateDataReadyMessage : "Placeholder data";
   const localPlaytestDataMode = privateDataIsConfirmed
     ? "private"
@@ -416,6 +449,7 @@ export default function NewGameSetup({
       enabledExpansions,
       enabledVariants,
       commonsSetId,
+      ...(commonsSetId === "custom" ? { customCommonsCardIds } : {}),
       ...(mode === "solo" ? launchCampaignOptions : {})
     };
 
@@ -552,7 +586,7 @@ export default function NewGameSetup({
           </div>
           <div>
             <span>Commons</span>
-            <strong>{labelFor(commonsSets, commonsSetId)}</strong>
+            <strong>{commonsSummary}</strong>
           </div>
           <div>
             <span>Modules</span>
@@ -748,6 +782,48 @@ export default function NewGameSetup({
                 ))}
               </select>
             </label>
+
+            {commonsSetId === "custom" ? (
+              <fieldset
+                className="setup-section setup-section--wide custom-commons-setup"
+                data-qa="custom-commons-setup"
+                data-custom-commons-count={customCommonsCardIds.length}
+                data-custom-commons-available={customCommonsCards.length}
+              >
+                <legend>Custom Commons</legend>
+                <div className="custom-commons-setup__toolbar">
+                  <label className="setup-field">
+                    <span>Search Cards</span>
+                    <input value={customCommonsSearch} onChange={(event: { target: HTMLInputElement }) => setCustomCommonsSearch(event.target.value)} />
+                  </label>
+                  <div className="private-data-actions">
+                    <button type="button" onClick={() => setCustomCommonsCardIds(customCommonsCards.map((card) => card.id))} disabled={customCommonsCards.length === 0}>
+                      Select All
+                    </button>
+                    <button type="button" onClick={() => setCustomCommonsCardIds([])} disabled={customCommonsCardIds.length === 0}>
+                      Clear
+                    </button>
+                  </div>
+                </div>
+                {customCommonsCards.length ? (
+                  <div className="custom-commons-list">
+                    {customCommonsVisibleCards.map((card) => (
+                      <label key={card.id} data-qa="custom-commons-card" data-card-id={card.id} data-selected={customCommonsSelectedSet.has(card.id) ? "true" : "false"}>
+                        <input
+                          type="checkbox"
+                          checked={customCommonsSelectedSet.has(card.id)}
+                          onChange={() => setCustomCommonsCardIds((current) => toggleString(current, card.id))}
+                        />
+                        <span>{card.label}</span>
+                        <small>{card.group}</small>
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="setup-help">Upload or import cards with commons_set_id custom before composing a custom Commons pool.</p>
+                )}
+              </fieldset>
+            ) : null}
 
             <fieldset className="setup-section">
               <legend>Expansions</legend>

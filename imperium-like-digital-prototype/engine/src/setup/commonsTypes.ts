@@ -25,11 +25,15 @@ export type CommonsSetupOptions = {
   campaignMode?: CampaignMode;
   mode?: GameMode;
   selectedNationIds: string[];
+  customCommonsCardIds?: string[];
   replacementPolicy: CommonsReplacementPolicy;
 };
 
 export type CommonsSetupResult = {
   selectedCommonsCards: string[];
+  customCommonsRequested: string[];
+  customCommonsMissing: string[];
+  customCommonsRejected: string[];
   removedForPlayerCount: string[];
   removedForExpansion: string[];
   removedForVariant: string[];

@@ -42,11 +42,15 @@ export function selectCommonsCards(cards: NormalizedCardRecord[], options: Commo
   const removedForPlayerCount: string[] = [];
   const removedForExpansion: string[] = [];
   const removedForVariant: string[] = [];
+  const customCardIds = options.commonsSetId === "custom" && Array.isArray(options.customCommonsCardIds)
+    ? new Set(options.customCommonsCardIds)
+    : undefined;
 
   for (const card of cards) {
     if (card.ownership !== "commons") continue;
     if (card.commonsGroup === "replacement") continue;
     if (card.commonsSetId !== options.commonsSetId) continue;
+    if (customCardIds && !customCardIds.has(card.id)) continue;
     if (!satisfiesCommonsModeRules(card, options)) {
       removedForVariant.push(card.id);
       continue;

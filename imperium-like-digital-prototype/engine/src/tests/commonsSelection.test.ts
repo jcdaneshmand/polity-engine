@@ -20,6 +20,15 @@ describe("commons selection", () => {
     expect(result.selectedCards.map((c) => c.id)).toEqual(["legends_a"]);
   });
 
+  it("limits custom Commons setup to explicitly requested card ids", () => {
+    const result = selectCommonsCards([
+      card({ id: "custom_a", commonsSetId: "custom" }),
+      card({ id: "custom_b", commonsSetId: "custom" }),
+      card({ id: "classics_a", commonsSetId: "classics" })
+    ], options({ commonsSetId: "custom", customCommonsCardIds: ["custom_b"] }));
+    expect(result.selectedCards.map((c) => c.id)).toEqual(["custom_b"]);
+  });
+
   it("excludes replacement-group cards from normal Commons selection", () => {
     const result = selectCommonsCards([
       card({ id: "base_a", commonsGroup: "base" }),

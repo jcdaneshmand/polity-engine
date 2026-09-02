@@ -107,6 +107,22 @@ npm.cmd run verify:pre-private
 
 This chains local QA script tests, workspace typecheck, app tests, server tests, fictional-game smoke, multiplayer smoke, and local browser QA. It does not read ignored private CSV rows.
 
+- Current production operations rehearsal:
+
+```powershell
+npm.cmd run ops:rehearsal
+```
+
+This emits a public-safe checklist for the pre-invite hosted workflow and fails if the runbook, hosted handoff, deployment notes, or npm scripts stop documenting the required proof chain, admin cleanup, support intake, storage expectations, or private-data boundary.
+
+- Current local production verifier:
+
+```powershell
+npm.cmd run verify:production-local
+```
+
+This runs `render:verify` and `ops:rehearsal`. It does not replace the live hosted `smoke:hosted` and `qa:hosted-browser` checks.
+
 - 2026-06-24: `npm.cmd run typecheck`, `npm.cmd run test -w app`, `npm.cmd run test -w server`, and `npm.cmd run smoke:multiplayer` passed from `imperium-like-digital-prototype` before hosted deployment.
 - 2026-07-14: `npm.cmd run typecheck`, `npm.cmd run test -w app`, `npm.cmd run test -w server`, `npm.cmd run test -w engine`, `npm.cmd run smoke:fictional-game`, and `npm.cmd run smoke:multiplayer` passed from `imperium-like-digital-prototype` before hosted proof. `POLITY_HOSTED_BASE_URL=http://127.0.0.1:8794 npm.cmd run smoke:hosted` passed against a local production-style server. `POLITY_HOSTED_BASE_URL=https://polity-engine.onrender.com npm.cmd run smoke:hosted` reached the host but `/polity/accounts/health` returned 404 on repeated attempts, so hosted proof is pending the actual deployed service origin or redeployment.
 - 2026-07-21: Candidate deployment source is branch `agent/remaining-gaps-rules-playability`; last completed local-gate commit before hosted-prep docs/scripts was `6c4e891`. `POLITY_HOSTED_BASE_URL=https://polity-engine.onrender.com npm.cmd run smoke:hosted` reached Render but `/polity/accounts/health` returned `404 Not Found`. `POLITY_HOSTED_BASE_URL=https://polity-engine.onrender.com npm.cmd run qa:hosted-browser` also timed out waiting for `/polity/accounts/health` with `404 Not Found`. Hosted proof remains pending redeploying the selected branch or supplying the correct public origin.

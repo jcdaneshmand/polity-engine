@@ -646,6 +646,7 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
       campaignMode: options.campaignMode,
       mode: options.mode,
       selectedNationIds,
+      customCommonsCardIds: options.customCommonsCardIds,
       replacementPolicy: options.replacementPolicy ?? "use_replacements"
     },
     rng: setupRandom ? { next: setupRandom } : { shuffle: (items) => [...items] }

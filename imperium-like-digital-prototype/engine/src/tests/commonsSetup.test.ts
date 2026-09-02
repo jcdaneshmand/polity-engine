@@ -41,6 +41,28 @@ describe("commons setup", () => {
     expect(result.replacementCardsUsed).toEqual(["direct_replacement"]);
   });
 
+  it("reports custom Commons requested missing and rejected cards", () => {
+    const result = buildCommonsSetup({
+      cardDb: cardDb([
+        card({ id: "custom_a", commonsSetId: "custom" }),
+        card({ id: "custom_three_plus", commonsSetId: "custom", playerCountRequirement: "3+" }),
+        card({ id: "classics_a", commonsSetId: "classics" })
+      ]),
+      nationDb,
+      options: options({
+        commonsSetId: "custom",
+        customCommonsCardIds: ["custom_a", "custom_three_plus", "missing_custom"],
+        effectiveCommonsPlayerCount: 2
+      })
+    });
+
+    expect(result.selectedCommonsCards).toEqual(["custom_a"]);
+    expect(result.customCommonsRequested).toEqual(["custom_a", "custom_three_plus", "missing_custom"]);
+    expect(result.customCommonsMissing).toEqual(["missing_custom"]);
+    expect(result.customCommonsRejected).toEqual(["custom_three_plus"]);
+    expect(result.removedForPlayerCount).toEqual(["custom_three_plus"]);
+  });
+
   it("setup report records removed/delayed/replaced cards", () => {
     const result = buildCommonsSetup({
       cardDb: cardDb([

@@ -41,7 +41,7 @@ export function localQASetupData() {
 }
 
 export function redactBrowserQAResult(result) {
-  return {
+  const redacted = {
     ok: result.ok,
     lobbyID: result.lobbyID,
     matchID: result.matchID,
@@ -61,6 +61,9 @@ export function redactBrowserQAResult(result) {
     invalidSaveChecked: result.invalidSaveChecked,
     noPrivateDebugMarkers: result.noPrivateDebugMarkers
   };
+  if (result.customCommonsSetupChecked !== undefined) redacted.customCommonsSetupChecked = result.customCommonsSetupChecked;
+  if (result.customCommonsSetup !== undefined) redacted.customCommonsSetup = result.customCommonsSetup;
+  return redacted;
 }
 
 export function evaluatePlayerExpectations(snapshot) {
@@ -538,9 +541,9 @@ async function assertApplyablePrivateUploadPreview(page) {
     const cardsPath = join(uploadDir, "imperium_cards_private.csv");
     const nationsPath = join(uploadDir, "imperium_nations_private.csv");
     await writeFile(cardsPath, [
-      "card_id,public_placeholder_name,suit,card_type,starting_location,vp_mode,implemented,tested",
-      "qa-card-1,QA Card 1,civilized,action,draw_deck,none,true,true",
-      "qa-card-2,QA Card 2,region,action,draw_deck,none,true,true"
+      "card_id,public_placeholder_name,suit,card_type,starting_location,vp_mode,implemented,tested,ownership,commons_set_id,commons_group",
+      "qa-card-1,QA Card 1,civilized,action,draw_deck,none,true,true,commons,custom,base",
+      "qa-card-2,QA Card 2,region,action,draw_deck,none,true,true,commons,custom,trade_friendly"
     ].join("\n"), "utf8");
     await writeFile(nationsPath, [
       "nation_id,public_placeholder_name,complexity,power_card_ids,state_card_ids,starting_deck_card_ids,nation_deck_card_ids,development_card_ids,special_setup_json,passive_rules_json,action_tokens_base,exhaust_tokens_base,implemented,tested",
@@ -561,6 +564,16 @@ async function assertApplyablePrivateUploadPreview(page) {
     await applyButton.click();
     const confirmedSnapshot = await assertPrivateDataSetupExpectations(page, "confirmed private upload preview");
     if (confirmedSnapshot.state !== "confirmed") throw new Error(`Expected confirmed private-data setup state, received ${confirmedSnapshot.state ?? "missing"}.`);
+    await page.getByLabel("Commons set").selectOption("custom");
+    const customCommons = page.locator('[data-qa="custom-commons-setup"]');
+    await customCommons.waitFor();
+    const customCommonsCount = await customCommons.getAttribute("data-custom-commons-count");
+    const customCommonsAvailable = await customCommons.getAttribute("data-custom-commons-available");
+    if (customCommonsAvailable !== "2") throw new Error(`Expected 2 custom Commons cards after fictional private upload, received ${customCommonsAvailable ?? "missing"}.`);
+    if (customCommonsCount !== "0") throw new Error(`Expected custom Commons selection to start empty, received ${customCommonsCount ?? "missing"}.`);
+    await page.getByRole("button", { name: "Select All" }).click();
+    const selectedCount = await customCommons.getAttribute("data-custom-commons-count");
+    if (selectedCount !== "2") throw new Error(`Expected Select All to choose 2 custom Commons cards, received ${selectedCount ?? "missing"}.`);
     const status = page.locator('[data-qa="local-playtest-status"]');
     const statusSnapshot = {
       statusVisible: await status.isVisible().catch(() => false),
@@ -639,6 +652,10 @@ async function assertLocalSetupAndBoard(baseURL, browser) {
     privateUploadPreview: {
       fatal: "blocked",
       applyable: "confirmed"
+    },
+    customCommonsSetup: {
+      available: 2,
+      selectedAfterSelectAll: 2
     }
   };
 }
@@ -1308,6 +1325,8 @@ export async function runBrowserQA(config = buildBrowserQAConfig()) {
       setupStatusChecked: true,
       privateUploadPreviewChecked: true,
       privateUploadPreview: setupBoardResult.privateUploadPreview,
+      customCommonsSetupChecked: true,
+      customCommonsSetup: setupBoardResult.customCommonsSetup,
       localBoardChecked: true,
       automatedLocalGameplayChecked: true,
       automatedLocalGameplayModes: {

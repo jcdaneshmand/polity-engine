@@ -170,7 +170,7 @@ function isNewGameSessionConfig(value: unknown): value is NewGameSessionConfig {
   );
 }
 
-function setupConfigForSavedLocalGame(envelope: SavedLocalGameEnvelope): NewGameSessionConfig | undefined {
+export function setupConfigForSavedLocalGame(envelope: SavedLocalGameEnvelope): NewGameSessionConfig | undefined {
   const state = envelope.state as any;
   const options = state?.G?.options;
   const players = state?.G?.players;
@@ -191,6 +191,7 @@ function setupConfigForSavedLocalGame(envelope: SavedLocalGameEnvelope): NewGame
       enabledExpansions: Array.isArray(options?.enabledExpansions) ? options.enabledExpansions : [],
       enabledVariants: Array.isArray(options?.enabledVariants) ? options.enabledVariants : [],
       ...(typeof options?.commonsSetId === "string" ? { commonsSetId: options.commonsSetId } : {}),
+      ...(Array.isArray(options?.customCommonsCardIds) ? { customCommonsCardIds: options.customCommonsCardIds.filter((cardId: unknown): cardId is string => typeof cardId === "string") } : {}),
       ...(options?.campaignProgress ? { campaignProgress: options.campaignProgress } : {})
     },
     playerNationIds,

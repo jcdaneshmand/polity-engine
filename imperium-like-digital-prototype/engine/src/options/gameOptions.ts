@@ -58,6 +58,7 @@ export type GameOptions = {
   campaignMode?: CampaignMode;
   campaignProgress?: CampaignProgress;
   commonsSetId?: CommonsSetId;
+  customCommonsCardIds?: string[];
   replacementPolicy?: CommonsReplacementPolicy;
 };
 

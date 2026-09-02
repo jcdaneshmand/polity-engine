@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import NewGameSetup, { buildCampaignGameOptions, getLaunchPlayerIds, getPlayerCountSelectionUpdate, getPrivateDataSetupState, parseCampaignSheetText, PrivateDataReadinessList } from "./NewGameSetup";
+import NewGameSetup, { buildCampaignGameOptions, getCommonsCardOptions, getLaunchPlayerIds, getPlayerCountSelectionUpdate, getPrivateDataSetupState, parseCampaignSheetText, PrivateDataReadinessList } from "./NewGameSetup";
 import { buildPrivateDataDryRunReport } from "./privateDataImport";
 
 describe("NewGameSetup summary", () => {
@@ -42,6 +42,85 @@ describe("NewGameSetup summary", () => {
     expect(html).toContain("data-qa=\"local-playtest-next-gate\"");
     expect(html).toContain("Demo data");
     expect(html).toContain("Local save ready");
+  });
+
+  it("renders custom Commons composition metadata for confirmed local data", () => {
+    const html = renderToStaticMarkup(
+      <NewGameSetup
+        onStart={() => undefined}
+        initialConfig={{
+          options: {
+            playerCount: 2,
+            mode: "multiplayer",
+            commonsSetId: "custom",
+            customCommonsCardIds: ["custom_card_2"],
+            enabledExpansions: [],
+            enabledVariants: []
+          },
+          playerNationIds: {
+            "1": "nation-1",
+            "2": "nation-1"
+          },
+          privateData: {
+            cards: [
+              {
+                id: "custom_card_1",
+                displayName: "Custom Card One",
+                ownership: "commons",
+                commonsSetId: "custom",
+                commonsGroup: "base"
+              } as any,
+              {
+                id: "custom_card_2",
+                displayName: "Custom Card Two",
+                ownership: "commons",
+                commonsSetId: "custom",
+                commonsGroup: "trade_friendly"
+              } as any
+            ],
+            nations: [{
+              id: "nation-1",
+              displayName: "Nation 1",
+              requiredExpansions: [],
+              excludedExpansions: [],
+              powerCardIds: [],
+              stateCardIds: [],
+              startingDeckCardIds: [],
+              nationDeckCardIds: [],
+              developmentCardIds: [],
+              setupRules: [],
+              passiveRules: [],
+              actionTokensBase: 3,
+              exhaustTokensBase: 5,
+              implemented: true,
+              tested: true
+            } as any]
+          }
+        }}
+      />
+    );
+
+    expect(html).toContain("data-qa=\"custom-commons-setup\"");
+    expect(html).toContain("data-custom-commons-count=\"1\"");
+    expect(html).toContain("data-custom-commons-available=\"2\"");
+    expect(html).toContain("data-card-id=\"custom_card_2\"");
+    expect(html).toContain("data-selected=\"true\"");
+    expect(html).toContain("1 selected");
+  });
+
+  it("derives public-safe custom Commons picker options from a private data bundle", () => {
+    const options = getCommonsCardOptions({
+      cards: [
+        { id: "custom_b", displayName: "Custom B", ownership: "commons", commonsSetId: "custom", commonsGroup: "base" } as any,
+        { id: "nation_a", displayName: "Nation A", ownership: "nation", commonsSetId: "custom", commonsGroup: "base" } as any,
+        { id: "custom_a", displayName: "Custom A", ownership: "commons", commonsSetId: "custom", commonsGroup: "trade_friendly" } as any
+      ]
+    });
+
+    expect(options).toEqual([
+      { id: "custom_a", label: "Custom A", setId: "custom", group: "trade_friendly" },
+      { id: "custom_b", label: "Custom B", setId: "custom", group: "base" }
+    ]);
   });
 
   it("exposes private-data setup diagnostics for an empty setup", () => {

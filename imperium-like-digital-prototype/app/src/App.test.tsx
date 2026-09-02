@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import App, { boardgameClientPropsForSession, loadOnlineDirectory, setupConfigForStartedOnlineSession, shouldHeartbeatLobbySession, startedSessionRecordForLobby } from "./App";
+import App, { boardgameClientPropsForSession, loadOnlineDirectory, setupConfigForSavedLocalGame, setupConfigForStartedOnlineSession, shouldHeartbeatLobbySession, startedSessionRecordForLobby } from "./App";
 import { LOCAL_GAME_SAVE_STORAGE_KEY, serializeLocalGame } from "./localGameSave";
 import type { LobbyRoomDetails, OnlineLobbySessionRecord, OnlineStartedSessionRecord } from "./onlineSession";
 
@@ -122,6 +122,42 @@ describe("App shell", () => {
     };
 
     expect(setupConfigForStartedOnlineSession(saved)).toEqual(setupConfig);
+  });
+
+  it("preserves custom Commons ids when deriving setup from a saved local game", () => {
+    const envelope = {
+      version: 1 as const,
+      savedAtIso: "2026-08-11T00:00:00.000Z",
+      privateDataFingerprint: "placeholder",
+      metadata: {
+        slotName: "Autosave",
+        mode: "multiplayer",
+        playerCount: 2,
+        commonsSetId: "custom",
+        enabledExpansions: [],
+        enabledVariants: [],
+        dataSource: "placeholder" as const
+      },
+      state: {
+        G: {
+          options: {
+            playerCount: 2,
+            mode: "multiplayer",
+            enabledExpansions: [],
+            enabledVariants: [],
+            commonsSetId: "custom",
+            customCommonsCardIds: ["custom_card_1", "custom_card_2", 7]
+          },
+          players: {
+            "1": { nationId: "test_nation_sun_coast" },
+            "2": { nationId: "test_nation_sun_coast" }
+          }
+        },
+        ctx: { numPlayers: 2 }
+      }
+    };
+
+    expect(setupConfigForSavedLocalGame(envelope)?.options.customCommonsCardIds).toEqual(["custom_card_1", "custom_card_2"]);
   });
 
   it("passes online identity props to the rendered boardgame client", () => {

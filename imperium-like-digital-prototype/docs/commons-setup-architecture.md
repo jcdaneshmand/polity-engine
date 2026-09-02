@@ -6,6 +6,10 @@ The Commons setup subsystem determines the public Commons card pool entirely fro
 
 Each normalized card declares `ownership`. Commons setup starts by excluding every card whose ownership is not `commons`, then selects cards whose `commonsSetId` matches the requested set: `classics`, `legends`, `horizons`, or `custom`. Replacement cards are not part of the normal selected Commons set; they are considered only by the replacement policy.
 
+When `commonsSetId` is `custom`, setup can also receive `customCommonsCardIds`. This is an explicit composition list for the custom Commons pool. The engine intersects that list with cards that are still valid Commons cards for the selected mode, player count, expansions, variants, and nation conflicts. Missing requested IDs are reported as `customCommonsMissing`; requested IDs that exist but fail setup filters are reported as `customCommonsRejected`.
+
+The browser setup UI exposes this as a local picker after private or uploaded local data is confirmed. It passes only card IDs in `customCommonsCardIds`; private card names and raw text remain in the local data bundle and are not added to committed docs or generated public-safe reports.
+
 ## Player-count filtering
 
 Cards can declare `playerCountRequirement` as `1+`, `2+`, `3+`, or `4+`. Commons setup compares this requirement to `effectiveCommonsPlayerCount`:

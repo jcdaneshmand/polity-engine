@@ -9,6 +9,10 @@ export function buildCommonsSetup(args: CommonsSetupArgs): CommonsSetupResult {
   const allCards = Object.values(args.cardDb);
   const setupErrors = validateCommonsSetupOptions(args.options);
   const selection = selectCommonsCards(allCards, args.options);
+  const customCommonsRequested = args.options.commonsSetId === "custom" ? [...new Set(args.options.customCommonsCardIds ?? [])] : [];
+  const selectedCustomIds = new Set(selection.selectedCards.map((card) => card.id));
+  const customCommonsMissing = customCommonsRequested.filter((cardId) => !args.cardDb[cardId]);
+  const customCommonsRejected = customCommonsRequested.filter((cardId) => args.cardDb[cardId] && !selectedCustomIds.has(cardId));
   const removedForNationConflict: string[] = [];
   const replacementCardsUsed: string[] = [];
   const setupWarnings: string[] = [];
@@ -43,6 +47,9 @@ export function buildCommonsSetup(args: CommonsSetupArgs): CommonsSetupResult {
 
   return {
     selectedCommonsCards: selectedCards.map((card) => card.id),
+    customCommonsRequested,
+    customCommonsMissing,
+    customCommonsRejected,
     removedForPlayerCount: selection.removedForPlayerCount,
     removedForExpansion: selection.removedForExpansion,
     removedForVariant: selection.removedForVariant,

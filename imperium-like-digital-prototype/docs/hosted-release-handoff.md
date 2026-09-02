@@ -67,6 +67,7 @@ The next local check was `npm.cmd run private:gate`. It reached the final gate b
 After future deploys, rerun from `imperium-like-digital-prototype`:
 
 ```powershell
+npm.cmd run ops:rehearsal
 $env:POLITY_HOSTED_BASE_URL="https://polity-engine.onrender.com"
 $env:POLITY_EXPECTED_COMMIT="<short-or-full-git-sha>"
 npm.cmd run smoke:hosted

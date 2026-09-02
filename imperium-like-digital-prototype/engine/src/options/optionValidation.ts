@@ -20,7 +20,10 @@ export function validateGameOptions(input: GameOptions): OptionValidationReport 
       }))
     }
     : undefined;
-  const options = { ...input, enabledExpansions: [...new Set(input.enabledExpansions)], enabledVariants: [...new Set(input.enabledVariants)], campaignProgress, commonsSetId: input.commonsSetId ?? "classics", replacementPolicy: input.replacementPolicy ?? "use_replacements" };
+  const customCommonsCardIds = Array.isArray(input.customCommonsCardIds)
+    ? [...new Set(input.customCommonsCardIds.filter((cardId) => typeof cardId === "string" && cardId.trim()).map((cardId) => cardId.trim()))]
+    : undefined;
+  const options = { ...input, enabledExpansions: [...new Set(input.enabledExpansions)], enabledVariants: [...new Set(input.enabledVariants)], campaignProgress, commonsSetId: input.commonsSetId ?? "classics", customCommonsCardIds, replacementPolicy: input.replacementPolicy ?? "use_replacements" };
   const issues: OptionValidationIssue[] = [];
   if (input.enabledExpansions.length !== options.enabledExpansions.length) issues.push({ level: "warning", message: "Duplicate expansions were normalized." });
   if (input.enabledVariants.length !== options.enabledVariants.length) issues.push({ level: "warning", message: "Duplicate variants were normalized." });
@@ -49,6 +52,8 @@ export function validateGameOptions(input: GameOptions): OptionValidationReport 
     issues.push({ level: "warning", message: "campaignMode supreme_ruler requires soloDifficulty supreme_ruler; normalized." });
   }
   if (!["classics", "legends", "horizons", "custom"].includes(options.commonsSetId)) issues.push({ level: "fatal", message: `Unknown commonsSetId: ${String(options.commonsSetId)}.` });
+  if (input.customCommonsCardIds && input.customCommonsCardIds.length !== (customCommonsCardIds?.length ?? 0)) issues.push({ level: "warning", message: "Duplicate or blank custom Commons card ids were normalized." });
+  if (options.customCommonsCardIds?.length && options.commonsSetId !== "custom") issues.push({ level: "warning", message: "customCommonsCardIds ignored unless commonsSetId is custom." });
   if (!["none", "use_replacements", "prefer_latest"].includes(options.replacementPolicy)) issues.push({ level: "fatal", message: `Unknown replacementPolicy: ${String(options.replacementPolicy)}.` });
   if (options.mode === "practice" && options.enabledVariants.includes("short_game")) issues.push({ level: "warning", message: "short_game with practice is unusual." });
   return { options, issues };

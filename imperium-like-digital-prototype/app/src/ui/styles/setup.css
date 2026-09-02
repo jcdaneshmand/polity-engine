@@ -279,6 +279,62 @@
   gap: 8px;
 }
 
+.custom-commons-setup {
+  display: grid;
+  gap: 10px;
+}
+
+.custom-commons-setup__toolbar {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.custom-commons-setup input[type="text"],
+.custom-commons-setup input:not([type]) {
+  min-height: 38px;
+  box-sizing: border-box;
+  border: 1px solid #7a6a57;
+  border-radius: 6px;
+  background: #25221f;
+  color: #f3ead8;
+  padding: 6px 8px;
+  font: inherit;
+}
+
+.custom-commons-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.custom-commons-list label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  border: 1px solid #6e5f50;
+  border-radius: 6px;
+  background: #27231f;
+  padding: 7px 8px;
+}
+
+.custom-commons-list span {
+  overflow: hidden;
+  color: #f3ead8;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.custom-commons-list small {
+  color: #d9c7a7;
+  font-size: 0.72rem;
+}
+
 .setup-field {
   display: flex;
   flex-direction: column;

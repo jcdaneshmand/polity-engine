@@ -15,6 +15,7 @@ describe("local game save envelope", () => {
 
     expect(JSON.parse(raw)).toEqual({
       version: 1,
+      stateVersion: 1,
       savedAtIso: "2026-07-14T05:00:00.000Z",
       privateDataFingerprint: "fictional-fixture-fingerprint",
       metadata: {
@@ -227,6 +228,7 @@ describe("local game save envelope", () => {
     expect(exported.fileName).toBe("polity-local-game-20260714-050607.json");
     expect(JSON.parse(exported.content)).toEqual({
       version: 1,
+      stateVersion: 1,
       savedAtIso: "2026-07-14T05:06:07.000Z",
       privateDataFingerprint: "fictional-fixture-fingerprint",
       metadata: {

@@ -144,6 +144,7 @@ export interface PlayerState {
   progressionTokens?: { nationDeck: number; developmentArea: number };
 }
 export interface GameState {
+  lastMoveUndoable?: boolean;
   players: Record<string, PlayerState>; cardDb: Record<string, Card>; market: string[]; marketRefillPool: string[]; sharedDiscard: string[]; log: GameLogEntry[]; round: number;
   playOrder?: string[];
   seatOrder?: string[];

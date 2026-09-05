@@ -7,6 +7,11 @@ import { loadBotStateTables } from "../../../../engine/src/solo/botStateTableLoa
 import type { PrivateDataBundle } from "../../../../engine/src/setup/privateDataBundle";
 import type { AccountPublicView } from "../../accountSession";
 import { getBotNationSetupOptions } from "./botNationOptions";
+import CommonsPresets from "./CommonsPresets";
+import { commonsComposition } from "../../commonsPresets";
+import { selectCommonsCards } from "../../../../engine/src/setup/commonsSelection";
+import { hasNationConflict } from "../../../../engine/src/setup/commonsReplacementPolicy";
+import type { CommonsSetupOptions } from "../../../../engine/src/setup/commonsTypes";
 import { buildPrivateDataDryRunDownload, buildPrivateDataDryRunIssueSummary, getPrivateDataReadyMessage, getPrivateDataRecordCounts, hasPrivateData, importPrivateDataFiles, type PrivateDataDryRunReport, type PrivateDataFileStatus } from "./privateDataImport";
 
 export type NewGameSessionConfig = {
@@ -97,9 +102,10 @@ export function getNationOptions(enabledExpansions: ExpansionId[], privateData?:
   }));
 }
 
-export function getCommonsCardOptions(privateData?: PrivateDataBundle): CommonsCardOption[] {
+export function getCommonsCardOptions(privateData?: PrivateDataBundle, eligibility?: CommonsSetupOptions): CommonsCardOption[] {
   const cards = privateData?.cards?.length ? privateData.cards : Object.values(loadCardDb()) as any[];
-  return cards
+  return (eligibility ? selectCommonsCards(cards, eligibility).selectedCards : cards)
+    .filter((card: any) => !eligibility || !hasNationConflict(card, eligibility.selectedNationIds))
     .filter((card: any) => (card.ownership ?? "commons") === "commons" && (card.commonsGroup ?? "base") !== "replacement")
     .map((card: any) => ({
       id: card.id,
@@ -355,10 +361,17 @@ export default function NewGameSetup({
     [enabledExpansions, confirmedPrivateData]
   );
   const availableCommonsCards = useMemo(
-    () => getCommonsCardOptions(confirmedPrivateData),
-    [confirmedPrivateData]
+    () => getCommonsCardOptions(confirmedPrivateData, {
+      commonsSetId: "custom", playerCount: normalizedPlayerCount,
+      effectiveCommonsPlayerCount: Math.max(2, normalizedPlayerCount) as 2 | 3 | 4,
+      enabledExpansions, enabledVariants, mode,
+      campaignMode: mode !== "solo" || campaignMode === "none" ? undefined : campaignMode,
+      selectedNationIds: [...getLaunchPlayerIds(normalizedPlayerCount).map((id) => playerNationIds[id]), ...(mode === "solo" && soloBotNationId !== "random" ? [soloBotNationId] : [])], replacementPolicy: "none"
+    }),
+    [confirmedPrivateData, normalizedPlayerCount, enabledExpansions, enabledVariants, mode, campaignMode, playerNationIds, soloBotNationId]
   );
   const customCommonsCards = availableCommonsCards.filter((card) => card.setId === "custom");
+  const customCommonsInvalid = commonsSetId === "custom" && !commonsComposition(customCommonsCardIds, customCommonsCards).valid;
   const customCommonsSelectedSet = new Set(customCommonsCardIds);
   const customCommonsVisibleCards = customCommonsCards.filter((card) => {
     const query = customCommonsSearch.trim().toLowerCase();
@@ -462,6 +475,7 @@ export default function NewGameSetup({
   };
 
   const startGame = () => {
+    if (customCommonsInvalid) return;
     onStart(buildLaunchConfig());
   };
 
@@ -569,7 +583,7 @@ export default function NewGameSetup({
           </div>
           <div className="private-data-actions">
             {onCancel ? <button type="button" onClick={onCancel}>Back</button> : null}
-            <button className="primary-action" type="button" onClick={startGame}>
+            <button className="primary-action" type="button" onClick={startGame} disabled={customCommonsInvalid}>
               {submitLabel}
             </button>
           </div>
@@ -721,7 +735,7 @@ export default function NewGameSetup({
                 <p className="setup-help">Sign in before entering online games. Your account username is used at the table.</p>
                 {account ? (
                   <div className="private-data-actions">
-                    <button className="primary-action" type="button" onClick={() => onOpenOnlineGames?.(buildLaunchConfig(), account.username)} disabled={!onOpenOnlineGames}>
+                    <button className="primary-action" type="button" onClick={() => onOpenOnlineGames?.(buildLaunchConfig(), account.username)} disabled={!onOpenOnlineGames || customCommonsInvalid}>
                       Continue as {account.username}
                     </button>
                   </div>
@@ -736,10 +750,10 @@ export default function NewGameSetup({
                       <input name="online-account-password" type="password" value={onlinePassword} onChange={(event: { target: HTMLInputElement }) => setOnlinePassword(event.target.value)} />
                     </label>
                     <div className="private-data-actions">
-                      <button className="primary-action" type="button" onClick={() => void onSignInForOnline?.(buildLaunchConfig(), { login: onlineLogin, password: onlinePassword })} disabled={!onSignInForOnline || !onlineLogin.trim() || !onlinePassword}>
+                      <button className="primary-action" type="button" onClick={() => void onSignInForOnline?.(buildLaunchConfig(), { login: onlineLogin, password: onlinePassword })} disabled={!onSignInForOnline || !onlineLogin.trim() || !onlinePassword || customCommonsInvalid}>
                         Online Games
                       </button>
-                      <button type="button" onClick={() => onOpenOnlineGames?.(buildLaunchConfig(), "Guest")} disabled={!onOpenOnlineGames}>
+                      <button type="button" onClick={() => onOpenOnlineGames?.(buildLaunchConfig(), "Guest")} disabled={!onOpenOnlineGames || customCommonsInvalid}>
                         Continue as Guest
                       </button>
                     </div>
@@ -791,6 +805,7 @@ export default function NewGameSetup({
                 data-custom-commons-available={customCommonsCards.length}
               >
                 <legend>Custom Commons</legend>
+                <CommonsPresets ids={customCommonsCardIds} cards={customCommonsCards} onSelect={setCustomCommonsCardIds} />
                 <div className="custom-commons-setup__toolbar">
                   <label className="setup-field">
                     <span>Search Cards</span>

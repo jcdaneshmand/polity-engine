@@ -75,15 +75,30 @@ Contact: [jcdaneshmand@gmail.com](mailto:jcdaneshmand@gmail.com).
 - [x] Board UI for core bookkeeping, public/shared zones, player zones, card inspection, protected game log, sticky current-task guidance, grouped actions, diagnostics, and keyboard-oriented controls.
 - [x] Fictional placeholder/demo data and schema examples only.
 - [x] Public-safe fictional scenario smoke coverage.
-- [x] Local save/resume baseline for in-progress local games.
+- [x] Local save library with named slots, duplicate/rename, import/export, confirmed replace/delete, retained legacy recovery, version checks, and stale-tab protection.
 - [x] Local game export/import baseline for portable save files, with private transcription field guards, import recovery even when no browser save exists, visible corrupt-save recovery reasons, and QA-readable saved-game status metadata.
 - [x] Undo and legal-move guardrail baseline for risky actions.
 - [x] Local playtest server and browser QA loop for setup, save/resume, automated practice, solo, and two-seat online multiplayer self-play, including setup next-gate guidance checks.
 - [x] Player-expectation QA artifacts with public-safe failure reports, action traces, compact UI snapshots, and screenshots.
 
+### Latest Improvements
+
+The [player audit](imperium-like-digital-prototype/docs/superpowers/plans/2026-09-05-player-audit.md) records nine fixes, verification evidence and remaining device/storage limitations. Local saves now capture authoritative state and recover compatible legacy checkpoints.
+
+The [audited seven-goal plan](imperium-like-digital-prototype/docs/superpowers/plans/2026-09-05-seven-improvement-goals.md) records implementation and verification evidence.
+
+- Seeded replay and serialized-checkpoint stress tests, including pending-effect restoration and invariant negative controls (`npm run test:stress`).
+- Engine-enforced undo boundaries and invalid-move rejection without retained state changes.
+- Deferred optional screens, loading/recovery states, and initial asset budgets (`npm run perf:assets`).
+- Native keyboard traversal, inspection-dialog focus trapping/restoration, visible focus and standard controller navigation. Physical device verification remains pending.
+- Versioned Custom Commons presets with composition counts and launch validation against engine eligibility rules.
+- Explicit Render release automation with configuration checks, bounded deployment tracking and redacted reports. See [release automation](imperium-like-digital-prototype/docs/release-automation.md).
+
+Run `npm run verify:improvements` for the combined public-safe verification gate.
+
 ### Planned
 
-- [ ] Save/resume polish: multi-slot management, migration handling, and continued hidden-info review as private-data playtests expand.
+- [ ] Additional game-state migrations when future engine schemas change, and continued hidden-info review as private-data playtests expand.
 - [ ] Extensive local testing with privately entered real card data to improve rules-engine coverage, without committing or distributing that data.
 - [ ] Broader scenario-level rules parity coverage for remaining edge cases and card-specific effect patterns.
 - [ ] Undo/legal-move polish for additional edge cases found through playtesting.
@@ -100,7 +115,7 @@ Contact: [jcdaneshmand@gmail.com](mailto:jcdaneshmand@gmail.com).
 | Rules parity | Closed for current public-safe explanations: selector explanations and provenance labels are mapped to coverage evidence | Keep `data/fictional-regression/coverage-map.json`, `rulesParityCoverage.test.ts`, and parity docs aligned whenever new UI explanations or rule-facing action labels are added. |
 | Playability | Public-safe playability gate is closed locally and hosted: save/resume, rejoin flows, deterministic worked-turn coverage, automated player-expectation checks, seeded stress coverage, admin close/end controls, and copied/emailed bug-report summaries are in place | Keep admin cleanup, lobby/game close, support messaging, and bug-report diagnostics covered as online playtest usage expands. |
 | Hosted release | Render deployment is live; latest deploys use commit-pinned hosted smoke as release proof, with hosted browser QA available for deeper checks | After each pushed release, run `npm.cmd run smoke:hosted` with `POLITY_EXPECTED_COMMIT`; run `npm.cmd run qa:hosted-browser` after UI/gameplay changes and before broader playtest invites. |
-| Custom Commons | Baseline workflow is implemented: setup can pass `customCommonsCardIds`, the engine reports requested/missing/rejected custom IDs, the setup UI exposes a Custom Commons picker for confirmed local custom cards, and browser QA checks a fictional uploaded custom bundle | Expand picker ergonomics, presets, and saved local configurations after private-data playtests reveal real composition needs. |
+| Custom Commons | Picker and versioned local presets are implemented, including import/export, composition counts, missing-card repair and launch validation; browser QA covers fictional custom bundles and preset restoration | Refine composition feedback from playtests and extend compatibility checks as new datasets and rules require. |
 | Private data | Remaining final gate: transcription UI now reuses real validators, browser draft protection, batch progress, card search/edit, field-level recovery for blocked card saves, expanded keyboard flow for raw text, implementation/test markers, duplication, and required blanks, plus a compact public-safe export cue that points saved CSVs at `private:status` before `private:gate`. Setup uploads show a dry-run import preview with fatal/warning counts, record counts, readiness checks, cross-file card-reference status, implemented/tested coverage, sanitized copyable issue summary, and downloadable validation report before private data can be applied; copied/downloaded preview artifacts now preserve the same `private:status` then `private:gate` command trail without private names, raw text, or parsed payloads. The setup playtest status now points demo-data sessions toward `private:status` during CSV entry and confirmed private-data sessions toward `private:status` plus `private:gate`; browser QA enforces that next-command metadata. Online lobby/game private-data mismatch recovery now gives clearer public-safe guidance. The ignored private CSV work files have been scaffolded locally from templates and are now header-only; `npm run private:status` gives a non-failing public-safe workspace snapshot and `npm run private:completeness` now lists header-only sources with a row-entry next step instead of silently reporting only `0/0 complete`. Preflight rejects missing private files, missing templates, header-only files, and private CSV headers that drift from templates; `private:preflight:report`, `private:status`, and `private:artifacts:verify` write public-safe readiness artifacts with `recommendedCommands` and `nextStep`; ignore-rule tests lock private CSV/generated JSON artifacts as ignored while templates/docs remain trackable; `private:gate` runs the whole local private proof chain | Enter at least one private row in each required ignored local CSV under `imperium-like-digital-prototype/private-card-data/`, run `npm run private:status` to confirm the local-only workspace state, confirm the setup dry-run readiness checklist has no blocked core items, save the validation report if issues remain, then run `npm run private:gate` locally without committing private data. |
 
 ### Next Gate Roadmap

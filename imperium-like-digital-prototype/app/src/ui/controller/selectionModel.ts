@@ -429,6 +429,12 @@ export function getPrimaryBlockedReason(actions: any[]): string | undefined {
   return actions.find((action) => !action.enabled && action.reason)?.reason;
 }
 
+export function getSelectedCardBlockedAction(actions: any[]): any | undefined {
+  const cardActions = actions.filter((action) => ["play", "profit", "exhaust", "acquire"].includes(action.action));
+  if (cardActions.some((action) => action.enabled)) return undefined;
+  return cardActions.find((action) => action.reason);
+}
+
 export function getActionProvenance(action: any): RuleProvenanceCode {
   const name = String(action.action ?? "");
   const reason = String(action.reason ?? "");

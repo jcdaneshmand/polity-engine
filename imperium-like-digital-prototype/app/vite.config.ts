@@ -5,6 +5,7 @@ const multiplayerServerURL = process.env.VITE_MULTIPLAYER_DEV_PROXY_TARGET ?? "h
 
 export default defineConfig({
   plugins: [react()],
+  build: { manifest: true },
   server: {
     proxy: {
       "/polity": {

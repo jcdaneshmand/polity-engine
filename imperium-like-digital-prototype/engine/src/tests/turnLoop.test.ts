@@ -221,8 +221,8 @@ describe("turn loop", () => {
     expect(G.players["1"].discard).toContain(card);
   });
 
-  it("pauses after a triggering effect sentence for a reactive Exhaust before resuming later effects", () => {
-    const G = createInitialState();
+  it.each([false, true])("pauses after a triggering effect sentence for a reactive Exhaust before resuming later effects (restore=%s)", (restore) => {
+    let G = createInitialState();
     const playedCard = "reactive_trigger_card";
     const exhaustCardId = "reactive_exhaust_card";
     G.players["1"].hand = [playedCard];
@@ -273,6 +273,7 @@ describe("turn loop", () => {
     });
     expect(G.players["1"].playArea).toContain(playedCard);
 
+    if (restore) G = JSON.parse(JSON.stringify(G));
     resolveReactiveExhaustChoice({ G, ctx }, exhaustCardId);
 
     expect(G.pendingReactiveExhaustChoice).toBeUndefined();
@@ -3730,7 +3731,7 @@ describe("turn loop", () => {
     expect(G.players["1"].playArea).toContain("source_free_play");
     expect(G.players["1"].discard).not.toContain("source_free_play");
 
-    (PrototypeGame.moves as any).resolveFreePlayChoice({ G, ctx }, "free_target");
+    (PrototypeGame.moves as any).resolveFreePlayChoice.move({ G, ctx }, "free_target");
 
     expect(G.pendingFreePlayChoice).toBeUndefined();
     expect(G.players["1"].discard).toEqual(expect.arrayContaining(["source_free_play", "free_target"]));

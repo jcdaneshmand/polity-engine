@@ -123,6 +123,19 @@ describe("NewGameSetup summary", () => {
     ]);
   });
 
+  it("excludes nation conflicts and applies effective campaign eligibility", () => {
+    const cards = [
+      { id: "valid", displayName: "Valid", ownership: "commons", commonsSetId: "custom", commonsGroup: "base" },
+      { id: "conflict", displayName: "Conflict", ownership: "commons", commonsSetId: "custom", commonsGroup: "base", conflictsWithNationIds: ["nation-1"] },
+      { id: "campaign", displayName: "Campaign", ownership: "commons", commonsSetId: "custom", commonsGroup: "base", tags: ["supreme_ruler_campaign_extra"] }
+    ] as any[];
+    const options = getCommonsCardOptions({ cards }, {
+      commonsSetId: "custom", mode: "practice", playerCount: 1, effectiveCommonsPlayerCount: 2,
+      enabledExpansions: [], enabledVariants: [], selectedNationIds: ["nation-1"], replacementPolicy: "none"
+    });
+    expect(options.map((card) => card.id)).toEqual(["valid"]);
+  });
+
   it("exposes private-data setup diagnostics for an empty setup", () => {
     const html = renderToStaticMarkup(<NewGameSetup onStart={() => undefined} />);
 

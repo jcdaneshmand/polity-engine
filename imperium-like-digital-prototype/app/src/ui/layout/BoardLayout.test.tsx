@@ -66,15 +66,15 @@ describe("BoardLayout", () => {
   it("enables local undo when the local board has undo history", () => {
     expect(getLocalUndoAvailability({
       isMultiplayer: false,
-      undoStack: [{ G: { marker: "before" } }],
-      G: baseGame()
+      undoStack: [{ G: { marker: "before" } }, { G: { marker: "after" } }],
+      G: baseGame({ lastMoveUndoable: true })
     })).toEqual({ enabled: true });
   });
 
   it("blocks local undo for online games", () => {
     expect(getLocalUndoAvailability({
       isMultiplayer: true,
-      undoStack: [{ G: { marker: "before" } }],
+      undoStack: [{ G: { marker: "before" } }, { G: { marker: "after" } }],
       G: baseGame()
     })).toEqual({ enabled: false, reason: "Online games cannot use local undo" });
   });
@@ -82,7 +82,7 @@ describe("BoardLayout", () => {
   it("blocks local undo while hidden information is being resolved", () => {
     expect(getLocalUndoAvailability({
       isMultiplayer: false,
-      undoStack: [{ G: { marker: "before" } }],
+      undoStack: [{ G: { marker: "before" } }, { G: { marker: "after" } }],
       G: baseGame({ pendingLookTakeChoice: { playerId: "0", source: "deck", destination: "hand", cardIds: ["c1"] } })
     })).toEqual({ enabled: false, reason: "Resolve hidden information before undo" });
   });

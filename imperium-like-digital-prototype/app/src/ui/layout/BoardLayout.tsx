@@ -12,7 +12,7 @@ import { TurnStatusBar } from "./TurnStatusBar";
 import { RuleAidPanel } from "./RuleAidPanel";
 import EndGameSummary, { type AccountGameResultContext } from "./EndGameSummary";
 import type { AccountGameResultInput } from "../../onlineSession";
-import { getActionHintsByCardId, getAvailableActionsForSelection, getCurrentTaskUiState, getMarketCardClickAction, getPendingUiState, getPrimaryBlockedReason, getSelectedCard, ruleProvenanceLabels, type CurrentTaskUiState, type Selection } from "../controller/selectionModel";
+import { getActionHintsByCardId, getAvailableActionsForSelection, getCurrentTaskUiState, getMarketCardClickAction, getPendingUiState, getSelectedCardBlockedAction, getSelectedCard, ruleProvenanceLabels, type CurrentTaskUiState, type Selection } from "../controller/selectionModel";
 import { CONTROLLER_HINTS } from "../controller/controllerHints";
 import { handleBoardKeyDown } from "../controller/keyboardControls";
 import { getBotPiles, getCurrentPlayer, getInspectableLookedCards, getInspectableSharedPile, getInspectableZone, getMarketCards, getOwnerVisibleZoneIds, getPlayerZoneCounts, getPlayerZoneLabels, getRecentLogEntries, getSharedPiles } from "./uiSelectors";
@@ -105,8 +105,9 @@ export function getLocalUndoAvailability({
   undoStack?: unknown[];
 }): LocalUndoAvailability {
   if (isMultiplayer) return { enabled: false, reason: "Online games cannot use local undo" };
-  if (!Array.isArray(undoStack) || undoStack.length === 0) return { enabled: false, reason: "No move to undo" };
+  if (!Array.isArray(undoStack) || undoStack.length < 2) return { enabled: false, reason: "No move to undo" };
   if (hasUnresolvedHiddenInformation(G)) return { enabled: false, reason: "Resolve hidden information before undo" };
+  if (G.lastMoveUndoable !== true || G.gameover || Object.entries(G).some(([key, value]) => key.startsWith("pending") && value != null)) return { enabled: false, reason: "This move crossed an undo boundary" };
   return { enabled: true };
 }
 
@@ -446,8 +447,8 @@ export default function BoardLayout({
   const actions = useMemo(() => getAvailableActionsForSelection(selection, G, uiCtx, { cleanupDiscardSelection }), [selection, G, uiCtx, cleanupDiscardSelection]);
   const pending = getPendingUiState(G, uiCtx);
   const currentTask = getCurrentTaskUiState(G, uiCtx);
-  const primaryBlockedReason = getPrimaryBlockedReason(actions);
-  const primaryBlockedAction = actions.find((action: any) => !action.enabled && action.reason);
+  const primaryBlockedAction = getSelectedCardBlockedAction(actions);
+  const primaryBlockedReason = primaryBlockedAction?.reason;
   const localUndoAvailability = getLocalUndoAvailability({ G, isMultiplayer, undoStack: _undo });
   const diagnostics = useMemo(() => buildPlaytestDiagnostics({
     G,
@@ -565,8 +566,8 @@ export default function BoardLayout({
             card={visibleDetailCard}
             pinned={!!detailCardId}
             selected={!!selectedCard}
-            blockedReason={selectedCard ? primaryBlockedReason : undefined}
-            ruleProvenance={selectedCard && primaryBlockedAction?.provenance ? ruleProvenanceLabels[primaryBlockedAction.provenance as keyof typeof ruleProvenanceLabels] : undefined}
+            blockedReason={selectedCard?.id === visibleDetailCard?.id ? primaryBlockedReason : undefined}
+            ruleProvenance={selectedCard?.id === visibleDetailCard?.id && primaryBlockedAction?.provenance ? ruleProvenanceLabels[primaryBlockedAction.provenance as keyof typeof ruleProvenanceLabels] : undefined}
             onUnpin={() => setDetailCardId(null)}
             onZoom={visibleDetailCard?.id ? () => setZoomCardId(visibleDetailCard.id) : undefined}
           />}

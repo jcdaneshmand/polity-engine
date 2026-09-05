@@ -10,6 +10,12 @@ function keyboardEvent(key: string, target?: EventTarget): KeyboardEvent {
 }
 
 describe("board keyboard controls", () => {
+  it.each([{ key: "Tab" }, { key: "e", repeat: true }, { key: "e", ctrlKey: true }, { key: "e", metaKey: true }, { key: "e", isComposing: true }, { key: "e", target: { isContentEditable: true } }])("preserves browser and typing input %j", (input) => {
+    let calls = 0;
+    const called = () => { calls++; };
+    handleBoardKeyDown({ ...keyboardEvent(input.key), ...input } as KeyboardEvent, { onEndTurn: called, onClear: called, onCyclePanel: called, onShortcut: called });
+    expect(calls).toBe(0);
+  });
   it("opens card zoom from the keyboard", () => {
     let zoomed = false;
 

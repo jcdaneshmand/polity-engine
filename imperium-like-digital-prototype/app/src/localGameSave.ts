@@ -1,3 +1,5 @@
+import { redactGameStateForPlayer } from "../../engine/src/game/playerView";
+
 export const LOCAL_GAME_SAVE_STORAGE_KEY = "polity-engine.localGame.v1";
 
 export type LocalSaveMetadata = {
@@ -14,6 +16,8 @@ export type LocalSaveMetadata = {
 
 export type SavedLocalGameEnvelope = {
   version: 1;
+  stateVersion?: 1;
+  snapshotSource?: "authoritative-local";
   savedAtIso: string;
   privateDataFingerprint: string;
   metadata: LocalSaveMetadata;
@@ -62,6 +66,7 @@ export function serializeLocalGame(input: {
   state: unknown;
   now?: Date;
   slotName?: string;
+  snapshotSource?: "authoritative-local";
 }): string {
   if (containsPrivateField(input.state)) {
     throw new Error("Local game save contains private fields.");
@@ -69,6 +74,8 @@ export function serializeLocalGame(input: {
   const savedAtIso = (input.now ?? new Date()).toISOString();
   return JSON.stringify({
     version: 1,
+    stateVersion: 1,
+    ...(input.snapshotSource ? { snapshotSource: input.snapshotSource } : {}),
     savedAtIso,
     privateDataFingerprint: input.privateDataFingerprint,
     metadata: createLocalSaveMetadata(input),
@@ -117,6 +124,26 @@ function normalizeSavedLocalGameMetadata(value: unknown, fallback: { privateData
   };
 }
 
+function recoverLegacySnapshot(envelope: SavedLocalGameEnvelope): SavedLocalGameEnvelope {
+  if (envelope.snapshotSource) return envelope;
+  const state = envelope.state as any;
+  const checkpoint = Array.isArray(state?._undo) ? state._undo.at(-1) : undefined;
+  if (!checkpoint?.G?.players || !checkpoint.plugins || JSON.stringify(checkpoint.ctx) !== JSON.stringify(state.ctx)) return envelope;
+  // Old player views omitted shared object references. Scalar values, arrays, log and context must still match.
+  const sameView = (saved: any, candidate: any): boolean => {
+    if (saved === null || candidate === null || typeof saved !== "object" || typeof candidate !== "object") return saved === candidate;
+    if (Array.isArray(saved) || Array.isArray(candidate)) return Array.isArray(saved) && Array.isArray(candidate) && saved.length === candidate.length && saved.every((item, index) => sameView(item, candidate[index]));
+    return Object.keys(saved).every((key) => Object.hasOwn(candidate, key) && sameView(saved[key], candidate[key]))
+      && Object.keys(candidate).every((key) => Object.hasOwn(saved, key) || (candidate[key] !== null && typeof candidate[key] === "object"));
+  };
+  if (!Array.isArray(state.G?.log) || JSON.stringify(state.G.log) !== JSON.stringify(checkpoint.G.log)) return envelope;
+  try {
+    const matches = JSON.stringify(state.G) === JSON.stringify(checkpoint.G) || Object.keys(checkpoint.G.players).some((id) => sameView(state.G, redactGameStateForPlayer(checkpoint.G, id)));
+    if (!matches) return envelope;
+    return { ...envelope, snapshotSource: "authoritative-local", state: { ...state, G: checkpoint.G, plugins: checkpoint.plugins } };
+  } catch { return envelope; }
+}
+
 function parseSavedLocalGameDetailed(raw: string): ParseSavedLocalGameResult {
   let parsed: unknown;
   try {
@@ -127,6 +154,7 @@ function parseSavedLocalGameDetailed(raw: string): ParseSavedLocalGameResult {
   if (!parsed || typeof parsed !== "object") return { kind: "invalid", reason: "Local game export is not an object." };
   const envelope = parsed as Partial<SavedLocalGameEnvelope>;
   if (envelope.version !== 1) return { kind: "invalid", reason: "Unsupported local game export version." };
+  if (envelope.stateVersion !== undefined && envelope.stateVersion !== 1) return { kind: "invalid", reason: "Unsupported game-state version." };
   if (typeof envelope.savedAtIso !== "string" || Number.isNaN(Date.parse(envelope.savedAtIso))) {
     return { kind: "invalid", reason: "Local game export is missing a valid saved timestamp." };
   }
@@ -137,8 +165,10 @@ function parseSavedLocalGameDetailed(raw: string): ParseSavedLocalGameResult {
   if (containsPrivateField(envelope.state)) return { kind: "invalid", reason: "Local game export contains private fields." };
   return {
     kind: "valid",
-    envelope: {
+    envelope: recoverLegacySnapshot({
       version: 1,
+      stateVersion: 1,
+      ...(envelope.snapshotSource === "authoritative-local" ? { snapshotSource: envelope.snapshotSource } : {}),
       savedAtIso: envelope.savedAtIso,
       privateDataFingerprint: envelope.privateDataFingerprint,
       metadata: normalizeSavedLocalGameMetadata(envelope.metadata, {
@@ -146,7 +176,7 @@ function parseSavedLocalGameDetailed(raw: string): ParseSavedLocalGameResult {
         state: envelope.state
       }),
       state: envelope.state
-    }
+    })
   };
 }
 
@@ -189,6 +219,7 @@ export function createLocalGameExport(input: {
   privateDataFingerprint: string;
   state: unknown;
   now?: Date;
+  snapshotSource?: "authoritative-local";
 }): { fileName: string; content: string } {
   const now = input.now ?? new Date();
   return {
@@ -225,7 +256,14 @@ export function loadSavedLocalGameRecord(storage: StorageReader | undefined): Sa
   return parsed.kind === "valid" ? { kind: "valid", envelope: parsed.envelope } : { kind: "corrupt", reason: parsed.reason };
 }
 
-export function createLocalGameRestoreEnhancer(envelope: SavedLocalGameEnvelope | undefined) {
-  return (createStore: any) => (reducer: any, preloadedState: unknown, enhancer?: any) =>
-    createStore(reducer, envelope?.state ?? preloadedState, enhancer);
+export function createLocalGameRestoreEnhancer(envelope: SavedLocalGameEnvelope | undefined, onState?: (state: unknown) => void) {
+  return (createStore: any) => (reducer: any, preloadedState: unknown, enhancer?: any) => {
+    const store = createStore(reducer, envelope?.state ?? preloadedState, enhancer);
+    if (onState) {
+      const persist = () => onState(store.getState());
+      store.subscribe(persist);
+      persist();
+    }
+    return store;
+  };
 }

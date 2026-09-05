@@ -4,14 +4,18 @@ import { SocketIO } from "boardgame.io/multiplayer";
 import { PrototypeGame } from "../../engine/src/game/game";
 import type { CampaignProgress } from "../../engine/src/options/gameOptions";
 import { ACCOUNT_SESSION_STORAGE_KEY, parseAccountSessionRecord, serializeAccountSessionRecord, type AccountSessionRecord } from "./accountSession";
-import AboutPage from "./AboutPage";
+import { deferredView } from "./deferredView";
 import Board from "./Board";
 import { createLocalGameExport, createLocalGameRestoreEnhancer, importLocalGameExport, loadSavedLocalGameRecord, LOCAL_GAME_SAVE_STORAGE_KEY, serializeLocalGame, type SavedLocalGameEnvelope, type SavedLocalGameRecord } from "./localGameSave";
 import { adminCloseLobby, adminCloseMatch, changeAccountPassword, clearAllOnlineGames, closePolityOnlineMatch, completePasswordReset, computePrivateDataFingerprint, createLobbyRoom, heartbeatLobbyRoom, heartbeatPolityOnlineMatch, joinLobbyRoom, joinPolityOnlineMatch, leaveLobbyRoom, leavePolityOnlineMatch, listLobbyChat, listLobbyRooms, listOnlineChat, listOnlineMatches, loadCurrentAccount, loadMonthlySupportStatus, markMonthlySupportCovered, ONLINE_SESSION_STORAGE_KEY, parseOnlineSessionRecord, recordAccountGameResult, registerAccount, rejoinLobbyRoom, requestPasswordReset, resolveMultiplayerServerURL, selectLobbyNation, sendLobbyChat, sendOnlineChat, serializeOnlineSessionRecord, setLobbyReady, signInAccount, signOutAccount, spectateOnlineMatch, startAccountGameHistory, startLobbyGame, updateLobbySetup, type AccountGameResultInput, type AccountHistoryStartInput, type ChatMessage, type ListedLobby, type ListedMatch, type LobbyRoomDetails, type MonthlySupportStatus, type OnlineLobbySessionRecord, type OnlineSessionRecord, type OnlineStartedSessionRecord } from "./onlineSession";
-import PrivateCardEntry from "./ui/privateData/PrivateCardEntry";
-import LobbyRoom from "./ui/online/LobbyRoom";
-import OnlineGames from "./ui/online/OnlineGames";
 import NewGameSetup, { type NewGameSessionConfig } from "./ui/setup/NewGameSetup";
+import SavedGames from "./ui/setup/SavedGames";
+import { startGamepadNavigation } from "./ui/controller/gamepadControls";
+
+const AboutPage = deferredView(() => import("./AboutPage"));
+const PrivateCardEntry = deferredView(() => import("./ui/privateData/PrivateCardEntry"));
+const LobbyRoom = deferredView(() => import("./ui/online/LobbyRoom"));
+const OnlineGames = deferredView(() => import("./ui/online/OnlineGames"));
 
 type AccountGameTracking = {
   accountHistoryEntryID?: string;
@@ -199,19 +203,6 @@ export function setupConfigForSavedLocalGame(envelope: SavedLocalGameEnvelope): 
   };
 }
 
-function boardPropsToSavedState(props: Parameters<typeof Board>[0]): unknown {
-  const state = props as any;
-  return {
-    G: state.G,
-    ctx: state.ctx,
-    plugins: state.plugins,
-    _stateID: state._stateID,
-    _undo: state._undo,
-    _redo: state._redo,
-    deltalog: state.deltalog
-  };
-}
-
 export function setupConfigForStartedOnlineSession(record: OnlineStartedSessionRecord): NewGameSessionConfig {
   if (isNewGameSessionConfig(record.setupData)) return record.setupData;
   return {
@@ -276,6 +267,7 @@ function startAccountHistoryEntry(args: {
 }
 
 export default function App() {
+  useEffect(() => startGamepadNavigation(), []);
   const [session, setSession] = useState<GameSession | null>(null);
   const [homeView, setHomeView] = useState<HomeView>("setup");
   const [pendingCampaignProgress, setPendingCampaignProgress] = useState<CampaignProgress | undefined>(undefined);
@@ -294,6 +286,7 @@ export default function App() {
   const [currentLobby, setCurrentLobby] = useState<LobbyRoomDetails | undefined>(undefined);
   const [currentLobbySession, setCurrentLobbySession] = useState<OnlineLobbySessionRecord | undefined>(isLobbySessionRecord(savedOnlineSession) ? savedOnlineSession : undefined);
   const [onlineStatus, setOnlineStatus] = useState("");
+  const [autosaveStatus, setAutosaveStatus] = useState("");
   const [monthlySupportStatus, setMonthlySupportStatus] = useState<MonthlySupportStatus | undefined>(undefined);
   const [monthlySupportMessage, setMonthlySupportMessage] = useState<string | undefined>(undefined);
   const multiplayerServerURL = resolveMultiplayerServerURL({
@@ -334,17 +327,6 @@ export default function App() {
       : PrototypeGame;
 
     const SessionBoard = (props: Parameters<typeof Board>[0]) => {
-      useEffect(() => {
-        if (session.kind !== "local" || typeof window === "undefined") return;
-        try {
-          window.localStorage.setItem(LOCAL_GAME_SAVE_STORAGE_KEY, serializeLocalGame({
-            privateDataFingerprint: session.restoredLocalGame?.privateDataFingerprint ?? computePrivateDataFingerprint(session.privateData),
-            state: boardPropsToSavedState(props)
-          }));
-        } catch {
-          return;
-        }
-      }, [props.G, props.ctx, props.plugins, (props as any)._stateID]);
       const boardProps = session.kind === "online" && session.role === "spectator"
         ? { ...props, moves: {}, events: {} }
         : props;
@@ -383,8 +365,19 @@ export default function App() {
       numPlayers: session.options.playerCount,
       debug: false,
       ...(session.kind === "local" ? { playerID: "0" } : {}),
-      ...(session.kind === "local" && session.restoredLocalGame ? {
-        enhancer: createLocalGameRestoreEnhancer(session.restoredLocalGame)
+      ...(session.kind === "local" ? {
+        enhancer: createLocalGameRestoreEnhancer(session.restoredLocalGame, (state) => {
+          if (typeof window === "undefined") return;
+          let message = "";
+          try {
+            window.localStorage.setItem(LOCAL_GAME_SAVE_STORAGE_KEY, serializeLocalGame({
+              privateDataFingerprint: session.restoredLocalGame?.privateDataFingerprint ?? computePrivateDataFingerprint(session.privateData),
+              snapshotSource: !session.restoredLocalGame || session.restoredLocalGame.snapshotSource === "authoritative-local" ? "authoritative-local" : undefined,
+              state
+            }));
+          } catch { message = "Autosave failed. Browser storage may be full or unavailable."; }
+          queueMicrotask(() => setAutosaveStatus(message));
+        })
       } : {}),
       ...(session.kind === "online" ? {
         multiplayer: SocketIO({ server: session.serverURL }),
@@ -479,7 +472,7 @@ export default function App() {
   const startImportedLocalGame = (envelope: SavedLocalGameEnvelope) => {
     const config = setupConfigForSavedLocalGame(envelope);
     if (!config) {
-      setSavedLocalGame({ kind: "corrupt", reason: "Local game export does not contain setup data that can be resumed." });
+      setOnlineStatus("Local game export does not contain setup data that can be resumed. Existing saves have been preserved.");
       return;
     }
     setPendingCampaignProgress(undefined);
@@ -496,6 +489,7 @@ export default function App() {
     if (savedLocalGame.kind !== "valid") return;
     const exported = createLocalGameExport({
       privateDataFingerprint: savedLocalGame.envelope.privateDataFingerprint,
+      snapshotSource: savedLocalGame.envelope.snapshotSource,
       state: savedLocalGame.envelope.state
     });
     downloadJsonFile(exported.fileName, exported.content);
@@ -1298,6 +1292,7 @@ export default function App() {
             hostedDeferred: false
           }}
         />
+        <SavedGames autosave={savedLocalGame.kind === "valid" ? savedLocalGame.envelope : undefined} onResume={startImportedLocalGame} />
         {savedLocalGame.kind !== "none" ? (
           <section
             className="setup-section setup-section--wide"
@@ -1378,6 +1373,8 @@ export default function App() {
           New Game
         </button>
       </div>
+      {autosaveStatus ? <p role="alert">{autosaveStatus}</p> : null}
+      {onlineStatus ? <p role="status">{onlineStatus}</p> : null}
       <GameClient key={session.id} {...boardgameClientPropsForSession(session)} />
     </div>
   );

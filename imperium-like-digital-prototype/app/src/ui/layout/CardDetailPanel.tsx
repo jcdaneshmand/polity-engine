@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { focusableElements } from "../controller/gamepadControls";
 import { isPrivateCardDebugEnabled } from "../debug/privateCardDebug";
 import { resourceLabel } from "./resourceDisplay";
 
@@ -158,16 +159,34 @@ export function CardDetailPanel({ card, pinned = false, selected = false, blocke
 }
 
 export function CardInspectionModal({ card, onClose }: { card: any; onClose: () => void }) {
+  const close = useRef(onClose);
+  close.current = onClose;
   useEffect(() => {
     if (!card) return undefined;
+    const previous = document.activeElement as HTMLElement | null;
+    const dialog = document.querySelector<HTMLElement>('[data-qa="card-inspection-modal"]');
+    const controls = () => dialog ? focusableElements(dialog) : [];
+    controls()[0]?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Tab") {
+        const elements = controls();
+        if (!elements.length) return;
+        const index = elements.indexOf(document.activeElement as HTMLElement);
+        event.preventDefault(); event.stopImmediatePropagation();
+        elements[(index + (event.shiftKey ? -1 : 1) + elements.length) % elements.length].focus();
+        return;
+      }
       if (!isCardInspectionCloseKey(event.key)) return;
       event.preventDefault();
-      onClose();
+      event.stopImmediatePropagation();
+      close.current();
     };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [card, onClose]);
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      if (previous?.isConnected) previous.focus();
+    };
+  }, [card?.id]);
 
   if (!card) return null;
 

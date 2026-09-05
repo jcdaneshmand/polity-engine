@@ -75,9 +75,9 @@ describe("fictional scenario smoke", () => {
     expect(JSON.parse(JSON.stringify(G)).cardDb.fixture_action_gain_materials).toBeDefined();
   });
 
-  it("opens and resolves a fixture acquire choice", () => {
-    const G = createFixtureGame();
-    const player = G.players["1"];
+  it.each([false, true])("opens and resolves a fixture acquire choice (restore=%s)", (restore) => {
+    let G = createFixtureGame();
+    let player = G.players["1"];
     expect(player.hand).toContain("fixture_action_choose_market");
 
     playCard({ G, ctx }, "fixture_action_choose_market");
@@ -86,6 +86,10 @@ describe("fictional scenario smoke", () => {
     expect(G.pendingAcquireChoice?.cardIds.length).toBeGreaterThan(1);
     const selectedCardId = G.pendingAcquireChoice!.cardIds[0];
 
+    if (restore) {
+      G = JSON.parse(JSON.stringify(G));
+      player = G.players["1"];
+    }
     resolveAcquireChoice({ G, ctx }, selectedCardId);
 
     expect(G.pendingAcquireChoice).toBeUndefined();

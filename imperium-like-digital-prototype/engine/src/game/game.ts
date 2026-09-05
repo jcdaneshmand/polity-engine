@@ -1,5 +1,6 @@
 import type { Game } from "boardgame.io";
-import { TurnOrder } from "boardgame.io/core";
+import { TurnOrder, INVALID_MOVE } from "boardgame.io/core";
+import { canUndoLastMove, hasPendingResolution, hiddenZoneSnapshot } from "./undoPolicy";
 import { createInitialGameState } from "./initialState";
 import type { GameState } from "./state";
 import { endTurnMove, exhaustCard, innovateTurn, playCard, profitCard, resolveAcquireChoice, resolveBreakThroughChoice, resolveChoice, resolveCleanupDiscard, resolveCleanupMarketResource, resolveDevelopmentChoice, resolveDiscardChoice, resolveDrawChoice, resolveExileChoice, resolveFindChoice, resolveFreePlayChoice, resolveGarrisonChoice, resolveGiveCardChoice, resolveLookOrderChoice, resolveLookTakeChoice, resolveMarketCardChoice, resolveMarketResourcePlacement, resolvePlaceOnDeckChoice, resolveReactiveExhaustChoice, resolveRegionChoice, resolveReturnExhaustTokenChoice, resolveReturnFameChoice, resolveReturnUnrestChoice, resolveShortGameDevelopmentExileChoice, resolveSolsticeOrderChoice, resolveSwapChoice, resolveTradeChoice, resolveUnrestAllocationChoice, revoltTurn, skipDevelopmentChoice, skipExileChoice, skipReactiveExhaustChoice } from "./moves";
@@ -33,8 +34,23 @@ function engineCtx(G: GameState, ctx: any): any {
   };
 }
 
-function engineMove(move: (...args: any[]) => any): (...args: any[]) => any {
-  return (args: any, ...moveArgs: any[]) => move({ ...args, ctx: engineCtx(args.G, args.ctx) }, ...moveArgs);
+function engineMove(move: (...args: any[]) => any) {
+  return {
+    undoable: ({ G }: { G: GameState }) => canUndoLastMove(G),
+    move: (args: any, ...moveArgs: any[]) => {
+      const before = hiddenZoneSnapshot(args.G);
+      const pendingBefore = hasPendingResolution(args.G);
+      const logLength = args.G.log.length;
+      let usedRandom = false;
+      const random = args.random ? { ...args.random, Number: () => { usedRandom = true; return args.random.Number(); } } : undefined;
+      const result = move({ ...args, random, ctx: engineCtx(args.G, args.ctx) }, ...moveArgs);
+      if (args.G.log.slice(logLength).some((entry: { message: string }) => entry.message.startsWith("InvalidMove("))) return INVALID_MOVE;
+      args.G.lastMoveUndoable = [playCard, profitCard, exhaustCard].includes(move)
+        && !pendingBefore && !hasPendingResolution(args.G) && !usedRandom
+        && before === hiddenZoneSnapshot(args.G) && args.G.options?.mode !== "multiplayer";
+      return result;
+    }
+  };
 }
 
 export const PrototypeGame: Game<GameState> = {

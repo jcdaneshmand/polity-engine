@@ -574,6 +574,19 @@ async function assertApplyablePrivateUploadPreview(page) {
     await page.getByRole("button", { name: "Select All" }).click();
     const selectedCount = await customCommons.getAttribute("data-custom-commons-count");
     if (selectedCount !== "2") throw new Error(`Expected Select All to choose 2 custom Commons cards, received ${selectedCount ?? "missing"}.`);
+    const presets = page.locator('[data-qa="commons-presets"]');
+    await presets.getByLabel("Preset name", { exact: true }).fill("QA Commons");
+    await presets.getByRole("button", { name: "Save Preset", exact: true }).click();
+    await presets.getByText("Preset saved.", { exact: true }).waitFor();
+    if (!(await presets.getByLabel("Commons preset", { exact: true }).inputValue())) throw new Error("New preset was not selected");
+    const presetImport = presets.getByLabel("Import Preset", { exact: true });
+    await presetImport.focus();
+    if (!await presetImport.evaluate((input) => input === document.activeElement && input.getClientRects().length > 0)) throw new Error("Preset import is not keyboard accessible");
+    await page.getByRole("button", { name: "Clear", exact: true }).click();
+    if (!await page.getByRole("button", { name: "Start Game", exact: true }).isDisabled()) throw new Error("Empty custom Commons should block launch");
+    await presets.getByLabel("Commons preset", { exact: true }).selectOption({ label: "QA Commons" });
+    await presets.getByRole("button", { name: "Load Preset", exact: true }).click();
+    if (await customCommons.getAttribute("data-custom-commons-count") !== "2") throw new Error("Preset did not restore selection");
     const status = page.locator('[data-qa="local-playtest-status"]');
     const statusSnapshot = {
       statusVisible: await status.isVisible().catch(() => false),
@@ -634,10 +647,36 @@ async function assertLocalSetupAndBoard(baseURL, browser) {
 
   await page.waitForFunction(() => Boolean(localStorage.getItem("polity-engine.localGame.v1")));
   await page.getByRole("button", { name: "New Game" }).click();
-  await page.getByText("Autosave").waitFor();
+  await page.getByText("Autosave", { exact: true }).waitFor();
   await assertSetupRecoveryExpectations(page, "valid autosave");
   await page.getByRole("button", { name: "Export Saved Game" }).waitFor();
   await page.getByText("Import Saved Game").waitFor();
+  const library = page.locator('[data-qa="save-library"]');
+  await library.getByLabel("Save name").fill("QA Practice");
+  await library.getByRole("button", { name: "Save Copy", exact: true }).click();
+  const savedSlot = library.locator('[data-qa="save-slot"]').filter({ hasText: "QA Practice" }).first();
+  await savedSlot.getByRole("button", { name: "Duplicate", exact: true }).click();
+  await library.getByText("QA Practice copy", { exact: true }).waitFor();
+  const copySlot = library.locator('[data-qa="save-slot"]').filter({ hasText: "QA Practice copy" });
+  await copySlot.getByRole("button", { name: "Rename", exact: true }).click();
+  await copySlot.getByLabel("New save name").fill("QA Renamed");
+  await copySlot.getByRole("button", { name: "Save Name", exact: true }).click();
+  await library.getByText("QA Renamed", { exact: true }).waitFor();
+  const saveImport = library.getByLabel("Import Into Library", { exact: true });
+  await saveImport.focus();
+  if (!await saveImport.evaluate((input) => input === document.activeElement && input.getClientRects().length > 0)) throw new Error("Save import is not keyboard accessible");
+  if (process.env.POLITY_UI_ARTIFACT_DIR) {
+    const artifactDir = resolve(process.env.POLITY_UI_ARTIFACT_DIR);
+    await mkdir(artifactDir, { recursive: true });
+    await library.screenshot({ path: resolve(artifactDir, "saved-games-desktop.png") });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await library.screenshot({ path: resolve(artifactDir, "saved-games-mobile.png") });
+    await page.setViewportSize({ width: 1440, height: 900 });
+  }
+  await savedSlot.getByRole("button", { name: "Resume", exact: true }).click();
+  await page.locator(".board-layout").waitFor();
+  await page.getByRole("button", { name: "New Game" }).click();
+  await page.locator('[data-qa="save-library"]').getByText("QA Renamed", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Resume Saved Game" }).click();
   await page.locator(".board-layout").waitFor();
 
@@ -1256,6 +1295,7 @@ export async function runBrowserQA(config = buildBrowserQAConfig()) {
     });
 
     browser = await chromium.launch({ headless: config.headless });
+    if (["127.0.0.1", "localhost"].includes(new URL(config.baseURL).hostname)) await assertDeferredLoading(config.baseURL, browser);
     const setupBoardResult = await assertLocalSetupAndBoard(config.baseURL, browser);
     const workedTurnTrace = await assertWorkedTurnScenario(config.baseURL, browser, config.storagePath);
     const practiceTrace = await assertAutomatedLocalGameplay(config.baseURL, browser, { mode: "practice", steps: 48, artifactRoot: config.storagePath });
@@ -1356,6 +1396,67 @@ export async function runBrowserQA(config = buildBrowserQAConfig()) {
       await rm(config.storagePath, { recursive: true, force: true });
     }
   }
+}
+
+async function assertDeferredLoading(baseURL, browser) {
+  const metrics = [];
+  for (const profile of [{ name: "desktop", width: 1440, height: 900, cpu: 1 }, { name: "mobile", width: 390, height: 844, cpu: 4 }]) {
+    const context = await browser.newContext({ viewport: { width: profile.width, height: profile.height } });
+    try {
+      const page = await context.newPage();
+      const cdp = await context.newCDPSession(page);
+      await cdp.send("Emulation.setCPUThrottlingRate", { rate: profile.cpu });
+      const coldStart = Date.now();
+      await page.goto(baseURL);
+      await page.getByRole("button", { name: "Start Game", exact: true }).waitFor();
+      const setupMs = Date.now() - coldStart;
+      await page.route("**/assets/AboutPage-*.js", async (route) => {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        await route.continue();
+      });
+      await page.getByRole("button", { name: "About", exact: true }).click();
+      await page.getByText("Loading...", { exact: true }).waitFor();
+      await page.locator(".about-screen").waitFor();
+      await page.reload();
+      await page.getByRole("button", { name: "Start Game", exact: true }).waitFor();
+      const boardStart = Date.now();
+      await page.getByRole("button", { name: "Start Game", exact: true }).click();
+      await page.locator(".board-layout").waitFor();
+      metrics.push({ profile: profile.name, cpu: profile.cpu, setupMs, setupToBoardMs: Date.now() - boardStart });
+      const card = page.locator("button.card-tile:not(:disabled)").first();
+      await card.click();
+      if (!await page.locator('.right > [data-qa="card-detail-panel"]').evaluate((panel) => panel.scrollHeight <= panel.clientHeight + 1)) throw new Error("Card details overflow into the following panel");
+      await card.focus();
+      await page.keyboard.press("z");
+      const dialog = page.locator('[data-qa="card-inspection-modal"]');
+      await dialog.waitFor();
+      await page.keyboard.press("Tab");
+      await page.keyboard.press("Shift+Tab");
+      if (!await page.evaluate(() => document.querySelector('[data-qa="card-inspection-modal"]')?.contains(document.activeElement))) throw new Error("Dialog focus escaped");
+      await page.keyboard.press("Escape");
+      await dialog.waitFor({ state: "hidden" });
+      if (!await card.evaluate((element) => element === document.activeElement)) throw new Error("Dialog did not restore focus");
+      await page.keyboard.press("Tab");
+      if (await card.evaluate((element) => element === document.activeElement)) throw new Error("Board intercepted native Tab navigation");
+    } finally { await context.close(); }
+  }
+  const context = await browser.newContext();
+  try {
+    const page = await context.newPage();
+    await page.route("**/assets/AboutPage-*.js", (route) => route.abort());
+    await page.goto(baseURL);
+    await page.getByRole("button", { name: "About", exact: true }).click();
+    await page.getByText("This screen could not be loaded.").waitFor();
+    await page.unroute("**/assets/AboutPage-*.js");
+    await page.getByRole("button", { name: "Retry", exact: true }).click();
+    // Browsers can cache a failed dynamic import until the document reloads.
+    if (!await page.locator(".about-screen").isVisible()) {
+      await page.getByRole("button", { name: "Reload App", exact: true }).click();
+      await page.getByRole("button", { name: "About", exact: true }).click();
+    }
+    await page.locator(".about-screen").waitFor();
+  } finally { await context.close(); }
+  console.log(JSON.stringify({ performance: metrics, deferredLoadingChecked: true }));
 }
 
 async function main() {

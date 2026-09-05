@@ -348,7 +348,7 @@ function seededIndex(seed: string | undefined, length: number): number {
   return total % length;
 }
 
-function seededRandom(seed: string | undefined): (() => number) | undefined {
+export function seededRandom(seed: string | undefined): (() => number) | undefined {
   if (!seed) return undefined;
   let state = 2166136261;
   for (let i = 0; i < seed.length; i += 1) {

@@ -3,6 +3,7 @@
 .left,.right { display:flex; flex-direction:column; gap:var(--gap); min-height:0; min-width:0; }
 .left { overflow:auto; scrollbar-gutter:stable; }
 .right { overflow:auto; scrollbar-gutter:stable; }
+.right > * { flex-shrink:0; }
 .shared-row,.market-row,.hand-row { display:grid; gap:8px; }
 .shared-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:stretch; }
 .pile-grid { display:grid; grid-template-columns: repeat(7,minmax(78px,1fr)); gap:6px; min-width:0; }

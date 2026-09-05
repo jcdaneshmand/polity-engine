@@ -83,7 +83,7 @@ Contact: [jcdaneshmand@gmail.com](mailto:jcdaneshmand@gmail.com).
 
 ### Latest Improvements
 
-The [player audit](imperium-like-digital-prototype/docs/superpowers/plans/2026-09-05-player-audit.md) records nine fixes, verification evidence and remaining device/storage limitations. Local saves now capture authoritative state and recover compatible legacy checkpoints.
+The [player audit](imperium-like-digital-prototype/docs/superpowers/plans/2026-09-05-player-audit.md) records ten fixes, verification evidence and remaining device/storage limitations. Local saves now capture authoritative state and recover compatible legacy checkpoints.
 
 The [audited seven-goal plan](imperium-like-digital-prototype/docs/superpowers/plans/2026-09-05-seven-improvement-goals.md) records implementation and verification evidence.
 

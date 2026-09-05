@@ -591,6 +591,7 @@ export default function BoardLayout({
       <section
         className="panel playtest-diagnostics"
         data-qa="playtest-diagnostics"
+        data-app-version={diagnostics.appVersion}
         data-current-task-title={diagnostics.currentTask?.title ?? ""}
         data-enabled-action-count={diagnostics.ruleUiState.enabledActions.length}
         data-blocked-action-count={diagnostics.ruleUiState.blockedActions.length}

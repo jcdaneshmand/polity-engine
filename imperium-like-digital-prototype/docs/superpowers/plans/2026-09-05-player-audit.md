@@ -13,6 +13,7 @@ Scope: audit the seven uncommitted improvement tracks, use the actual browser as
 7. **P2: Release retries had pagination and concurrency gaps.** Release reads all result pages, rejects inconsistent pagination, holds a per-service local lock and verifies build/start/root/runtime/health configuration before deployment. Tests cover later-page reuse, command drift and concurrent attempts. Cross-machine releases still require coordination.
 8. **P3: Save and preset management had confusing feedback.** Saves now use inline rename controls and named downloads, copies retain a distinguishing suffix, libraries offer explicit refresh, import work disables conflicting actions, newly created/imported presets become selected, and preset writes use Web Locks where available. Autosave failures use a separate alert that clears after a successful write. Readable save slots remain available if legacy-copy migration hits quota.
 9. **P2: Card details overlapped later controls on compact desktops.** The visual 1280x720 walkthrough exposed flex shrinking that pushed detail content into Undo. Right-rail children now retain their content height and the rail scrolls; browser regression checks detail content containment.
+10. **P2: Production bug reports identified the frontend as local-dev.** The post-deployment player check caught the missing build stamp. Vite now embeds Render's commit SHA, and hosted browser QA checks the frontend diagnostic SHA as well as the server release checks.
 
 ## Player Verification
 
@@ -37,5 +38,7 @@ Scope: audit the seven uncommitted improvement tracks, use the actual browser as
 - Actual UI: legacy test save recovered, named save created/renamed/resumed, public-effect Undo restored resources/hand, card-inspection Tab/Escape restored focus, import controls exposed as accessible buttons, and 1280x720 screenshot confirmed no detail/Undo overlap.
 - The in-app automation tool could open a native overwrite confirmation but could not dismiss it because its focus-emulation request timed out. No replacement was confirmed; the audit continued in a fresh tab. Automated workflows and storage tests cover the normal save paths.
 - Read-only production preflight passed against the existing release, including the expanded configuration checks. Render currently auto-deploys main; the explicit release command will reuse the matching deployment if pushing starts it first.
+- The main audit commit c836cbda57b22f0bdbfe865eb828b0d228efedb6 was pushed, deployed and verified with hosted smoke/browser QA. The subsequent frontend-stamp fix passed all unit/typecheck suites, a negative browser check rejecting an unstamped build, and the full browser suite with the matching SHA enforced (`frontendCommitChecked: true`).
+- Follow-up stamped-build asset check: 940,596 bytes / 239,506 bytes gzip. The final deployment's exact server/frontend SHA checks are recorded in its separate release report.
 
 API contract checked against Render's [trigger-deploy documentation](https://api-docs.render.com/reference/create-deploy) and [deployment-list documentation](https://api-docs.render.com/reference/list-deploys).

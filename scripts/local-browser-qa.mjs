@@ -19,6 +19,7 @@ export function buildBrowserQAConfig(env = process.env) {
   return {
     port,
     baseURL,
+    ...(env.POLITY_EXPECTED_COMMIT ? { expectedCommit: env.POLITY_EXPECTED_COMMIT } : {}),
     storagePath: env.POLITY_BROWSER_QA_STORAGE_PATH ?? resolve("tmp", "local-browser-qa", `storage-${Date.now()}`),
     headless: env.POLITY_BROWSER_QA_HEADLESS !== "false"
   };
@@ -63,6 +64,7 @@ export function redactBrowserQAResult(result) {
   };
   if (result.customCommonsSetupChecked !== undefined) redacted.customCommonsSetupChecked = result.customCommonsSetupChecked;
   if (result.customCommonsSetup !== undefined) redacted.customCommonsSetup = result.customCommonsSetup;
+  if (result.frontendCommitChecked !== undefined) redacted.frontendCommitChecked = result.frontendCommitChecked;
   return redacted;
 }
 
@@ -605,7 +607,7 @@ async function assertApplyablePrivateUploadPreview(page) {
   }
 }
 
-async function assertLocalSetupAndBoard(baseURL, browser) {
+async function assertLocalSetupAndBoard(baseURL, browser, expectedCommit) {
   const context = await browser.newContext();
   const page = await context.newPage();
   await page.goto(baseURL);
@@ -641,6 +643,7 @@ async function assertLocalSetupAndBoard(baseURL, browser) {
   await page.getByRole("button", { name: "Start Game" }).click();
   await page.locator(".board-layout").waitFor();
   await page.locator('[data-qa="playtest-diagnostics"]').waitFor();
+  if (expectedCommit && await page.locator('[data-qa="playtest-diagnostics"]').getAttribute("data-app-version") !== expectedCommit) throw new Error("Frontend build commit does not match the expected release.");
   await page.getByText("Active Player").waitFor();
   await page.getByText("Export Playtest Diagnostics").waitFor();
   await assertNoPrivateDebugMarkers(page);
@@ -1296,7 +1299,7 @@ export async function runBrowserQA(config = buildBrowserQAConfig()) {
 
     browser = await chromium.launch({ headless: config.headless });
     if (["127.0.0.1", "localhost"].includes(new URL(config.baseURL).hostname)) await assertDeferredLoading(config.baseURL, browser);
-    const setupBoardResult = await assertLocalSetupAndBoard(config.baseURL, browser);
+    const setupBoardResult = await assertLocalSetupAndBoard(config.baseURL, browser, config.expectedCommit);
     const workedTurnTrace = await assertWorkedTurnScenario(config.baseURL, browser, config.storagePath);
     const practiceTrace = await assertAutomatedLocalGameplay(config.baseURL, browser, { mode: "practice", steps: 48, artifactRoot: config.storagePath });
     const soloTrace = await assertAutomatedLocalGameplay(config.baseURL, browser, { mode: "solo", steps: 48, artifactRoot: config.storagePath });
@@ -1368,6 +1371,7 @@ export async function runBrowserQA(config = buildBrowserQAConfig()) {
       customCommonsSetupChecked: true,
       customCommonsSetup: setupBoardResult.customCommonsSetup,
       localBoardChecked: true,
+      ...(config.expectedCommit ? { frontendCommitChecked: true } : {}),
       automatedLocalGameplayChecked: true,
       automatedLocalGameplayModes: {
         practice: { steps: practiceTrace.length },

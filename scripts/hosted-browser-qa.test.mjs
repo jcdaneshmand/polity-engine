@@ -9,9 +9,11 @@ test("buildHostedBrowserQAConfig requires a hosted origin", () => {
 test("buildHostedBrowserQAConfig routes hosted origin into browser QA", () => {
   const config = buildHostedBrowserQAConfig({
     POLITY_HOSTED_BASE_URL: "https://polity-engine.example.com/",
+    POLITY_EXPECTED_COMMIT: "a".repeat(40),
     POLITY_BROWSER_QA_HEADLESS: "false"
   });
 
   assert.equal(config.baseURL, "https://polity-engine.example.com");
   assert.equal(config.headless, false);
+  assert.equal(config.expectedCommit, "a".repeat(40));
 });

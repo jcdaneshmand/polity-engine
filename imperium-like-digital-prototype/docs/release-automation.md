@@ -19,6 +19,7 @@ Configure `RENDER_API_KEY` in the local environment. Do not put its value in com
 - A matching active or live deployment is reused. Another active commit blocks the operation.
 - Polling is bounded to 15 minutes with 30-second HTTP timeouts.
 - The live commit and browser origin are checked before hosted smoke/browser QA and again after QA.
+- Hosted browser QA also asserts the frontend diagnostic commit. Production Vite builds embed `RENDER_GIT_COMMIT`; local testing may provide `VITE_GIT_COMMIT` instead.
 - Redacted reports live under ignored `tmp/releases/` and list successful checks and outstanding manual admin/backup tasks.
 
 ## Recovery

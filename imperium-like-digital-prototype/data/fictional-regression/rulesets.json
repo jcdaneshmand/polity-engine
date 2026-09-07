@@ -45,5 +45,78 @@
     "publicSummary": "Public-safe fixture ruleset with no special overrides.",
     "implemented": true,
     "tested": true
+  },
+  {
+    "nationId": "fixture_nation_envoys",
+    "displayName": "Border Envoy Rules",
+    "rulesetTags": ["default_nation_deck"],
+    "requiredExpansions": [],
+    "excludedExpansions": [],
+    "setupOverrides": [
+      {
+        "op": "move_cards_to_unrest_supply",
+        "cardIds": ["fixture_unrest"]
+      }
+    ],
+    "zoneOverrides": [],
+    "stateOverrides": [],
+    "reshuffleOverrides": [],
+    "cleanupOverrides": [],
+    "solsticeOverrides": [],
+    "scoringOverrides": [],
+    "collapseOverrides": [],
+    "botOverrides": [],
+    "shortGameOverrides": [],
+    "hookRules": [],
+    "publicSummary": "Public-safe fixture ruleset for solo recipient and normal-scoring playtests.",
+    "implemented": true,
+    "tested": true
+  },
+  {
+    "nationId": "fixture_nation_timekeepers",
+    "displayName": "Dawn Timekeeper Rules",
+    "rulesetTags": ["default_nation_deck"],
+    "requiredExpansions": [],
+    "excludedExpansions": [],
+    "setupOverrides": [],
+    "zoneOverrides": [],
+    "stateOverrides": [],
+    "reshuffleOverrides": [],
+    "cleanupOverrides": [],
+    "solsticeOverrides": [],
+    "scoringOverrides": [],
+    "collapseOverrides": [],
+    "botOverrides": [],
+    "shortGameOverrides": [],
+    "hookRules": [],
+    "publicSummary": "Public-safe fixture ruleset for a natural Solstice ordering choice.",
+    "implemented": true,
+    "tested": true
+  },
+  {
+    "nationId": "fixture_nation_collapsers",
+    "displayName": "Last-Straw Rules",
+    "rulesetTags": ["default_nation_deck"],
+    "requiredExpansions": [],
+    "excludedExpansions": [],
+    "setupOverrides": [
+      {
+        "op": "move_cards_to_unrest_supply",
+        "cardIds": ["fixture_unrest"]
+      }
+    ],
+    "zoneOverrides": [],
+    "stateOverrides": [],
+    "reshuffleOverrides": [],
+    "cleanupOverrides": [],
+    "solsticeOverrides": [],
+    "scoringOverrides": [],
+    "collapseOverrides": [],
+    "botOverrides": [],
+    "shortGameOverrides": [],
+    "hookRules": [],
+    "publicSummary": "Public-safe fixture ruleset for immediate Collapse playtests.",
+    "implemented": true,
+    "tested": true
   }
 ]

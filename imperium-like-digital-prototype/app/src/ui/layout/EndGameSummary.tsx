@@ -216,6 +216,8 @@ export default function EndGameSummary({
   const campaignComplete = previewCampaignProgress?.complete;
   const scores = gameover?.scores ?? {};
   const tieBreakScores = gameover?.tieBreakScores ?? {};
+  const scoreBreakdowns = G?.finalScoreBreakdowns ?? {};
+  const tieBreakBreakdowns = G?.finalTieBreakBreakdowns ?? {};
   const playerEntries = Object.entries(G?.players ?? {}) as Array<[string, any]>;
   const bot = G?.solo?.bot;
 
@@ -236,10 +238,33 @@ export default function EndGameSummary({
     <p>{titleWords(String(gameover?.reason ?? "complete"))}</p>
 
     <div className="score-list">
-      {Object.entries(scores).map(([playerId, score]) => <div key={playerId} className="score-row">
-        <span>{playerLabel(playerId)}</span>
-        <strong>{String(score)}</strong>
-        {tieBreakScores[playerId] !== undefined ? <small>Tie-break {String(tieBreakScores[playerId])}</small> : null}
+      {Object.entries(scores).map(([playerId, score]) => <div key={playerId} className="score-entry">
+        <div className="score-row">
+          <span>{playerLabel(playerId)}</span>
+          <strong>{String(score)}</strong>
+          {tieBreakScores[playerId] !== undefined ? <small>Tie-break {String(tieBreakScores[playerId])}</small> : null}
+        </div>
+        {scoreBreakdowns[playerId] ? <details className="score-breakdown">
+          <summary>Score breakdown</summary>
+          {scoreBreakdowns[playerId].contributions.map((contribution: any) => <div key={contribution.id} className="score-contribution">
+            <span>{contribution.label}</span>
+            <strong>{String(contribution.score)}</strong>
+            <small>{contribution.reason}</small>
+            {contribution.details?.length ? <details>
+              <summary>{contribution.details.length} scored cards</summary>
+              {contribution.details.map((detail: any) => <div key={detail.id} className="score-detail">
+                <span>{detail.label}</span><strong>{String(detail.score)}</strong><small>{detail.reason}</small>
+              </div>)}
+            </details> : null}
+          </div>)}
+          <div className="score-contribution score-contribution--total"><span>Total</span><strong>{String(scoreBreakdowns[playerId].total)}</strong></div>
+        </details> : null}
+        {tieBreakBreakdowns[playerId] ? <details className="score-breakdown">
+          <summary>Normal-score tie-break</summary>
+          {tieBreakBreakdowns[playerId].contributions.map((contribution: any) => <div key={contribution.id} className="score-contribution">
+            <span>{contribution.label}</span><strong>{String(contribution.score)}</strong><small>{contribution.reason}</small>
+          </div>)}
+        </details> : null}
       </div>)}
     </div>
 

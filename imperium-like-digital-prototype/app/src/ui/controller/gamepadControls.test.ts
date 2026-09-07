@@ -21,6 +21,11 @@ describe("standard gamepad controls", () => {
   it("maps buttons and respects dead zones and disconnects", () => {
     expect(gamepadCommand(pad(0))).toBe("confirm");
     expect(gamepadCommand(pad(1))).toBe("cancel");
+    expect(gamepadCommand(pad(2))).toBe("details");
+    expect(gamepadCommand(pad(3))).toBe("actions");
+    expect(gamepadCommand(pad(4))).toBe("previousZone");
+    expect(gamepadCommand(pad(5))).toBe("nextZone");
+    expect(gamepadCommand(pad(9))).toBe("endTurn");
     expect(gamepadCommand(pad(13))).toBe("next");
     expect(gamepadCommand(pad(-1, [0.2, -0.3]))).toBeNull();
     expect(gamepadCommand(pad(-1, [-0.8, 0]))).toBe("decrease");
@@ -34,6 +39,9 @@ describe("standard gamepad controls", () => {
     expect(repeat("next", 401)).toBeNull();
     expect(repeat("confirm", 500)).toBe("confirm");
     expect(repeat("confirm", 5000)).toBeNull();
+    repeat(null, 5001);
+    expect(repeat("details", 5002)).toBe("details");
+    expect(repeat("details", 9000)).toBeNull();
     repeat(null, 5001);
     expect(repeat("confirm", 5002)).toBe("confirm");
   });

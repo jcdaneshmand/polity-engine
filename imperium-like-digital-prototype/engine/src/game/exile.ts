@@ -14,16 +14,16 @@ function removeOne(cards: string[], cardId: string): boolean {
   return true;
 }
 
-function isUnrestCard(G: GameState, cardId: string): boolean {
+function isRegionCard(G: GameState, cardId: string): boolean {
   const card = G.cardDb[cardId];
-  return card?.suit === "unrest" || card?.cardType === "unrest" || card?.type === "unrest" || (card?.tags ?? []).includes("unrest") || cardHasSuitIcon(card, "unrest");
+  return card?.suit === "region" || card?.cardType === "region" || card?.type === "region" || (card?.tags ?? []).includes("region") || cardHasSuitIcon(card, "region");
 }
 
 export function acquireFromExile(G: GameState, args: { playerId: string; cardId: string; destination?: "hand" | "discard"; takenUnrestPlayerIds?: string[]; randomNumber?: () => number }): boolean {
   const player = G.players[args.playerId];
   const globalExile = G.globalSpecialZones?.exile?.cardIds;
   if (!player || (!player.exile.includes(args.cardId) && !(globalExile ?? []).includes(args.cardId))) return false;
-  const requiresUnrest = !isUnrestCard(G, args.cardId);
+  const requiresUnrest = !isRegionCard(G, args.cardId);
   if (requiresUnrest && (G.unrestPile?.length ?? 0) === 0) {
     triggerCollapse(G, "unrest_pile_empty", args.playerId);
     return false;
@@ -39,6 +39,10 @@ export function acquireFromExile(G: GameState, args: { playerId: string; cardId:
     if (unrestCardId) {
       player.hand.push(unrestCardId);
       args.takenUnrestPlayerIds?.push(args.playerId);
+      if ((G.unrestPile?.length ?? 0) === 0) {
+        triggerCollapse(G, "unrest_pile_empty", args.playerId);
+        return true;
+      }
       if (!runNationHooks({ G, playerId: args.playerId, trigger: "after_gain_unrest", payload: { cardId: unrestCardId, triggeredBy: args.playerId }, randomNumber: args.randomNumber })) return false;
     }
   }
@@ -55,7 +59,7 @@ export function availableExileCards(G: GameState, playerId: string): string[] {
 }
 
 export function canAcquireExileCard(G: GameState, cardId: string): boolean {
-  return isUnrestCard(G, cardId) || (G.unrestPile?.length ?? 0) > 0;
+  return isRegionCard(G, cardId) || (G.unrestPile?.length ?? 0) > 0;
 }
 
 export function marketCardHasTokens(G: GameState, cardId: string): boolean {

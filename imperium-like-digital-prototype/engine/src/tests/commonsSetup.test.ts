@@ -51,13 +51,13 @@ describe("commons setup", () => {
       nationDb,
       options: options({
         commonsSetId: "custom",
-        customCommonsCardIds: ["custom_a", "custom_three_plus", "missing_custom"],
+        customCommonsCardIds: ["custom_a", "classics_a", "custom_three_plus", "missing_custom"],
         effectiveCommonsPlayerCount: 2
       })
     });
 
-    expect(result.selectedCommonsCards).toEqual(["custom_a"]);
-    expect(result.customCommonsRequested).toEqual(["custom_a", "custom_three_plus", "missing_custom"]);
+    expect(result.selectedCommonsCards).toEqual(["custom_a", "classics_a"]);
+    expect(result.customCommonsRequested).toEqual(["custom_a", "classics_a", "custom_three_plus", "missing_custom"]);
     expect(result.customCommonsMissing).toEqual(["missing_custom"]);
     expect(result.customCommonsRejected).toEqual(["custom_three_plus"]);
     expect(result.removedForPlayerCount).toEqual(["custom_three_plus"]);

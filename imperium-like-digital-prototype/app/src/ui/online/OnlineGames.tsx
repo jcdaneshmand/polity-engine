@@ -223,14 +223,21 @@ export default function OnlineGames({
           <div className="online-card-grid">
             {savedSessions.length ? savedSessions.map((record) => (
               <article className="online-card" key={`${record.kind ?? "player"}-${savedSessionLabel(record)}`}>
+                {(() => {
+                  const listed = record.kind === "lobby" ? undefined : matches.find((match) => match.matchID === record.matchID);
+                  const incompatible = listed?.compatibility === "incompatible";
+                  return <>
                 <strong>{savedSessionLabel(record)}</strong>
                 <span>{savedSessionRole(record)}</span>
                 <small>Saved {record.savedAt}</small>
+                {incompatible ? <small className="online-warning">Rules update required. This match is preserved read-only.</small> : null}
                 <div className="private-data-actions">
-                  <button type="button" onClick={() => onRejoin(record)}>Rejoin</button>
+                  <button type="button" disabled={incompatible} onClick={() => onRejoin(record)}>Rejoin</button>
                   <button type="button" onClick={() => onForgetSession(record)}>Forget</button>
                   {canCloseSavedSession(record) && onCloseSession ? <button type="button" onClick={() => onCloseSession(record)}>Close Match</button> : null}
                 </div>
+                  </>;
+                })()}
               </article>
             )) : <p className="setup-help">No saved online games in this browser.</p>}
           </div>
@@ -332,8 +339,9 @@ export default function OnlineGames({
               const blockedByData = dataStatus === "missing";
               const password = matchPasswords[match.matchID] ?? "";
               const savedMatchSession = findSavedMatchSession(savedSessions, match.matchID);
-              const canJoin = Boolean(savedMatchSession) && !blockedByData && (!match.isLocked || password.trim());
-              const canSpectate = match.spectatingAllowed && !blockedByData && (!match.isLocked || password.trim());
+              const incompatible = match.compatibility === "incompatible" || match.compatibility === "missing";
+              const canJoin = Boolean(savedMatchSession) && !incompatible && !blockedByData && (!match.isLocked || password.trim());
+              const canSpectate = match.spectatingAllowed && !incompatible && !blockedByData && (!match.isLocked || password.trim());
               return (
                 <article className="online-match-row" key={match.matchID}>
                   <div>
@@ -341,6 +349,7 @@ export default function OnlineGames({
                     <span>{statusLabel(match.status)} - {match.isLocked ? "Locked" : "Open"} - {match.occupiedSeats.length}/{match.playerCount} seats</span>
                     <small>{formatSeatList(match)}</small>
                     <small>{match.privateDataLabel === "private_data_required" ? "Private data required" : "Placeholder data"}</small>
+                    {incompatible ? <small className="online-warning">Rules update required. This match is preserved read-only.</small> : null}
                     {dataStatus === "missing" ? <small className="online-warning">Import matching private data to enter. Use the same local private CSV bundle as the host.</small> : null}
                     {dataStatus === "server_check" ? <small>Server will verify exact private data before entry</small> : null}
                   </div>

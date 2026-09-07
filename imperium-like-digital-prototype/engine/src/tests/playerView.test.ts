@@ -113,6 +113,22 @@ describe("playerView redaction", () => {
     expect(serialized).not.toContain("p2_deck_secret");
   });
 
+  it("keeps score totals public without leaking opponent or spectator card details", () => {
+    const G = createInitialState({ options: { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: [] } });
+    G.finalScoreBreakdowns = {
+      "1": { playerId: "1", scoring: "normal", total: 5, contributions: [{ id: "cards", label: "Cards", score: 5, reason: "Card VP.", details: [{ id: "secret-1", label: "Secret One", score: 5, reason: "Printed VP." }] }] },
+      "2": { playerId: "2", scoring: "normal", total: 4, contributions: [{ id: "cards", label: "Cards", score: 4, reason: "Card VP.", details: [{ id: "secret-2", label: "Secret Two", score: 4, reason: "Printed VP." }] }] }
+    };
+
+    const owner = redactGameStateForPlayer(G, "1");
+    const spectator = redactGameStateForPlayer(G, undefined);
+    expect(owner.finalScoreBreakdowns?.["1"].contributions[0].details?.[0].label).toBe("Secret One");
+    expect(owner.finalScoreBreakdowns?.["2"].contributions[0].details).toBeUndefined();
+    expect(spectator.finalScoreBreakdowns?.["1"].total).toBe(5);
+    expect(JSON.stringify(spectator.finalScoreBreakdowns)).not.toContain("Secret One");
+    expect(JSON.stringify(spectator.finalScoreBreakdowns)).not.toContain("Secret Two");
+  });
+
   it.each([
     {
       key: "pendingFreePlayChoice",

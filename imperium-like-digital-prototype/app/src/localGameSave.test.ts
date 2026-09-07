@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { createLocalGameExport, createLocalGameRestoreEnhancer, createLocalSaveMetadata, formatLocalGameExportFilename, importLocalGameExport, loadSavedLocalGameRecord, parseSavedLocalGame, serializeLocalGame, upsertLocalGameSlot } from "./localGameSave";
+import { runEffects } from "../../engine/src/cards/effectRunner";
+import { createInitialState } from "../../engine/src/game/initialState";
+import { resolveChoice, resolveSolsticeOrderChoice } from "../../engine/src/game/moves";
+import { finalizeNormalScoring, triggerScoring } from "../../engine/src/game/scoring";
+import type { Card, GameState } from "../../engine/src/game/state";
+import { onTurnEnd } from "../../engine/src/game/turn";
+import { defaultGameOptions } from "../../engine/src/options/gameOptions";
+import { CURRENT_RULES_VERSION, MAX_LOCAL_GAME_EXPORT_BYTES, createLocalGameExport, createLocalGameRestoreEnhancer, createLocalSaveMetadata, formatLocalGameExportFilename, importLocalGameExport, inspectLocalGameExport, loadSavedLocalGameRecord, parseSavedLocalGame, serializeLocalGame, upsertLocalGameSlot } from "./localGameSave";
+
+const compatibleG = <T extends object>(G: T) => ({ rulesVersion: CURRENT_RULES_VERSION, stateVersion: 1, ...G });
 
 describe("local game save envelope", () => {
   it("serializes a versioned local game envelope", () => {
@@ -16,6 +25,7 @@ describe("local game save envelope", () => {
     expect(JSON.parse(raw)).toEqual({
       version: 1,
       stateVersion: 1,
+      rulesVersion: CURRENT_RULES_VERSION,
       savedAtIso: "2026-07-14T05:00:00.000Z",
       privateDataFingerprint: "fictional-fixture-fingerprint",
       metadata: {
@@ -38,17 +48,18 @@ describe("local game save envelope", () => {
   it("parses a valid saved game and preserves turn state", () => {
     const parsed = parseSavedLocalGame(JSON.stringify({
       version: 1,
+      rulesVersion: CURRENT_RULES_VERSION,
       savedAtIso: "2026-07-14T05:00:00.000Z",
       privateDataFingerprint: "fictional-fixture-fingerprint",
       state: {
-        options: { enabledVariants: ["quick_setup"] },
-        turn: { currentPlayer: "2", round: 3 }
+        G: compatibleG({ options: { enabledVariants: ["quick_setup"] }, round: 3 }),
+        ctx: { currentPlayer: "2" }
       }
     }));
 
     expect(parsed?.state).toEqual({
-      options: { enabledVariants: ["quick_setup"] },
-      turn: { currentPlayer: "2", round: 3 }
+      G: compatibleG({ options: { enabledVariants: ["quick_setup"] }, round: 3 }),
+      ctx: { currentPlayer: "2" }
     });
   });
 
@@ -156,13 +167,13 @@ describe("local game save envelope", () => {
       slotName: "Autosave",
       privateDataFingerprint: "placeholder",
       now: new Date("2026-07-14T05:00:00.000Z"),
-      state: { G: { options: { mode: "solo", playerCount: 1 } }, ctx: { currentPlayer: "1" } }
+      state: { G: compatibleG({ options: { mode: "solo", playerCount: 1 } }), ctx: { currentPlayer: "1" } }
     }))!;
     const second = parseSavedLocalGame(serializeLocalGame({
       slotName: "Trade Routes",
       privateDataFingerprint: "placeholder",
       now: new Date("2026-07-14T06:00:00.000Z"),
-      state: { G: { options: { mode: "multiplayer", playerCount: 2, enabledExpansions: ["trade_routes"] } }, ctx: { currentPlayer: "2" } }
+      state: { G: compatibleG({ options: { mode: "multiplayer", playerCount: 2, enabledExpansions: ["trade_routes"] } }), ctx: { currentPlayer: "2" } }
     }))!;
 
     expect(upsertLocalGameSlot([first], second).map((slot) => slot.metadata.slotName)).toEqual(["Trade Routes", "Autosave"]);
@@ -173,7 +184,7 @@ describe("local game save envelope", () => {
     const storage = new Map<string, string>();
     const raw = serializeLocalGame({
       privateDataFingerprint: "fictional-fixture-fingerprint",
-      state: { G: { options: { playerCount: 2 } }, ctx: { currentPlayer: "1" } }
+      state: { G: compatibleG({ options: { playerCount: 2 } }), ctx: { currentPlayer: "1" } }
     });
     storage.set("polity-engine.localGame.v1", raw);
 
@@ -200,7 +211,7 @@ describe("local game save envelope", () => {
   });
 
   it("restores a saved state through a Redux enhancer", () => {
-    const restoredState = { G: { players: { "1": { hand: ["fixture_action_gain_materials"] } } }, ctx: { currentPlayer: "1" } };
+    const restoredState = { G: compatibleG({ players: { "1": { hand: ["fixture_action_gain_materials"] } } }), ctx: { currentPlayer: "1" } };
     const envelope = parseSavedLocalGame(serializeLocalGame({
       privateDataFingerprint: "fictional-fixture-fingerprint",
       now: new Date("2026-07-14T05:00:00.000Z"),
@@ -221,7 +232,7 @@ describe("local game save envelope", () => {
   it("exports a versioned JSON envelope without private official fields", () => {
     const exported = createLocalGameExport({
       privateDataFingerprint: "fictional-fixture-fingerprint",
-      state: { G: { cardDb: { fixture_card: { id: "fixture_card", displayName: "Fixture" } } } },
+      state: { G: compatibleG({ cardDb: { fixture_card: { id: "fixture_card", displayName: "Fixture" } } }), ctx: {} },
       now: new Date("2026-07-14T05:06:07.000Z")
     });
 
@@ -229,6 +240,7 @@ describe("local game save envelope", () => {
     expect(JSON.parse(exported.content)).toEqual({
       version: 1,
       stateVersion: 1,
+      rulesVersion: CURRENT_RULES_VERSION,
       savedAtIso: "2026-07-14T05:06:07.000Z",
       privateDataFingerprint: "fictional-fixture-fingerprint",
       metadata: {
@@ -238,7 +250,7 @@ describe("local game save envelope", () => {
         enabledVariants: [],
         dataSource: "private"
       },
-      state: { G: { cardDb: { fixture_card: { id: "fixture_card", displayName: "Fixture" } } } }
+      state: { G: compatibleG({ cardDb: { fixture_card: { id: "fixture_card", displayName: "Fixture" } } }), ctx: {} }
     });
   });
 
@@ -249,7 +261,7 @@ describe("local game save envelope", () => {
   it("imports a valid exported game", () => {
     const exported = createLocalGameExport({
       privateDataFingerprint: "fictional-fixture-fingerprint",
-      state: { G: { options: { playerCount: 2, mode: "multiplayer" } }, ctx: { numPlayers: 2 } },
+      state: { G: compatibleG({ options: { playerCount: 2, mode: "multiplayer" } }), ctx: { numPlayers: 2 } },
       now: new Date("2026-07-14T05:00:00.000Z")
     });
 
@@ -275,7 +287,7 @@ describe("local game save envelope", () => {
   it("rejects private-data fingerprint mismatches with a reason", () => {
     const exported = createLocalGameExport({
       privateDataFingerprint: "private-a",
-      state: { G: { options: { playerCount: 2, mode: "multiplayer" } }, ctx: { numPlayers: 2 } }
+      state: { G: compatibleG({ options: { playerCount: 2, mode: "multiplayer" } }), ctx: { numPlayers: 2 } }
     });
 
     expect(importLocalGameExport(exported.content, { expectedPrivateDataFingerprint: "private-b" })).toEqual({
@@ -287,9 +299,226 @@ describe("local game save envelope", () => {
   it("rejects malformed imported state before replacing the active game", () => {
     expect(importLocalGameExport(JSON.stringify({
       version: 1,
+      rulesVersion: CURRENT_RULES_VERSION,
       savedAtIso: "2026-07-14T05:00:00.000Z",
       privateDataFingerprint: "fictional-fixture-fingerprint",
       state: { ctx: { numPlayers: 2 } }
     }))).toEqual({ kind: "invalid", reason: "Local game export does not contain a resumable game state." });
+  });
+
+  it("rejects pre-correction saves without mutating their source data", () => {
+    const legacy = JSON.stringify({
+      version: 1,
+      savedAtIso: "2026-07-14T05:00:00.000Z",
+      privateDataFingerprint: "fictional-fixture-fingerprint",
+      state: { G: { options: { mode: "practice" } }, ctx: { currentPlayer: "1" } }
+    });
+
+    expect(importLocalGameExport(legacy)).toEqual({
+      kind: "invalid",
+      reason: "This saved game predates the corrected rules engine and cannot be resumed safely. Its original data has been preserved."
+    });
+    expect(JSON.parse(legacy).rulesVersion).toBeUndefined();
+  });
+
+  it("rejects rules-version 2 saves without mutating their source data", () => {
+    const previousRules = JSON.stringify({
+      version: 1,
+      stateVersion: 1,
+      rulesVersion: 2,
+      savedAtIso: "2026-09-05T05:00:00.000Z",
+      privateDataFingerprint: "placeholder",
+      state: { G: { options: { mode: "solo" } }, ctx: { currentPlayer: "1" } }
+    });
+
+    expect(importLocalGameExport(previousRules)).toEqual({
+      kind: "invalid",
+      reason: "This saved game predates the corrected rules engine and cannot be resumed safely. Its original data has been preserved."
+    });
+    expect(JSON.parse(previousRules).rulesVersion).toBe(2);
+  });
+
+  it("round-trips a pending solo interaction through the production save codec", () => {
+    const G = createInitialState({
+      usePrivateData: false,
+      randomSeed: "local-save-solo-interaction-v3",
+      options: { ...defaultGameOptions, playerCount: 1, mode: "solo" }
+    });
+    const bot = G.solo!.bot;
+    G.players["1"].resources.materials = 0;
+    G.cardDb.fixture_bot_draw = {
+      id: "fixture_bot_draw",
+      displayName: "Fixture Bot Draw",
+      type: "action",
+      cardType: "action",
+      suit: "none",
+      cost: 0,
+      effects: [],
+      tags: []
+    } satisfies Card;
+    bot.botDeck = ["fixture_bot_draw"];
+    bot.botDiscard = [];
+
+    expect(runEffects({ G, playerId: "1", selfCardId: "fixture_optional_source" }, [
+      {
+        trigger: "on_play",
+        op: "optional",
+        effects: [{ trigger: "on_play", op: "draw", count: 1, targetPlayerScope: "others", optionalForTargets: true }]
+      },
+      { trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }
+    ])).toBe(true);
+    expect(G.pendingChoice).toMatchObject({ playerId: "1", sourceCardId: "fixture_optional_source" });
+
+    const raw = serializeLocalGame({
+      privateDataFingerprint: "placeholder",
+      now: new Date("2026-09-06T05:00:00.000Z"),
+      state: { G, ctx: { currentPlayer: "1" } }
+    });
+    const imported = importLocalGameExport(raw);
+    expect(imported.kind).toBe("valid");
+    if (imported.kind !== "valid") throw new Error(imported.reason);
+    const restored = imported.envelope.state as { G: GameState; ctx: { currentPlayer: string } };
+
+    resolveChoice({ G: restored.G, ctx: restored.ctx as any }, 0);
+
+    expect(restored.G.pendingChoice).toBeUndefined();
+    expect(restored.G.solo!.bot.botDeck).toEqual([]);
+    expect(restored.G.solo!.bot.botDiscard).toEqual(["fixture_bot_draw"]);
+    expect(restored.G.players["1"].resources.materials).toBe(1);
+  });
+
+  it("matches uninterrupted Solstice resolution after export/import at an ordering and random boundary", () => {
+    const createPendingState = () => {
+      const G = createInitialState({
+        usePrivateData: false,
+        randomSeed: "local-save-solstice-random-v3",
+        options: { ...defaultGameOptions, playerCount: 3, mode: "multiplayer" }
+      });
+      for (const player of Object.values(G.players)) {
+        player.hand = [];
+        player.deck = [];
+        player.discard = [];
+        player.playArea = [];
+        player.powerArea = [];
+        player.stateArea = [];
+        player.handSize = 0;
+        player.resources = { materials: 0, knowledge: 0, influence: 0, unrest: 0, goods: 0 };
+      }
+      G.cardDb.random_discard = {
+        id: "random_discard",
+        displayName: "Random Discard",
+        type: "in_play",
+        cardType: "in_play",
+        suit: "none",
+        cost: 0,
+        tags: [],
+        effects: [{ trigger: "on_solstice", op: "discard_random", count: 1 }]
+      } satisfies Card;
+      G.cardDb.later_gain = {
+        id: "later_gain",
+        displayName: "Later Gain",
+        type: "in_play",
+        cardType: "in_play",
+        suit: "none",
+        cost: 0,
+        tags: [],
+        effects: [{ trigger: "on_solstice", op: "gain_resource", resource: "knowledge", amount: 1 }]
+      } satisfies Card;
+      G.cardDb.hidden_a = { id: "hidden_a", displayName: "Hidden A", type: "action", cardType: "action", suit: "none", cost: 0, tags: [], effects: [] } satisfies Card;
+      G.cardDb.hidden_b = { id: "hidden_b", displayName: "Hidden B", type: "action", cardType: "action", suit: "none", cost: 0, tags: [], effects: [] } satisfies Card;
+      G.players["1"].playArea = ["random_discard", "later_gain"];
+      G.players["1"].hand = ["hidden_a", "hidden_b"];
+      G.log = [];
+      onTurnEnd(G, { currentPlayer: "3", playOrder: ["1", "2", "3"] } as any);
+      expect(G.pendingSolsticeOrderChoice?.playerId).toBe("1");
+      return G;
+    };
+
+    const direct = createPendingState();
+    resolveSolsticeOrderChoice(
+      { G: direct, ctx: { currentPlayer: "1" } as any, random: { Number: () => 0.75 } },
+      ["random_discard", "later_gain"]
+    );
+
+    const persistedState = {
+      G: createPendingState(),
+      ctx: { currentPlayer: "1", turn: 9, phase: null },
+      plugins: { random: { data: { seed: "public-seed", prngstate: { value: 17 } } } },
+      _stateID: 41
+    };
+    const raw = serializeLocalGame({
+      privateDataFingerprint: "placeholder",
+      now: new Date("2026-09-06T06:00:00.000Z"),
+      state: persistedState
+    });
+    const imported = importLocalGameExport(raw);
+    expect(imported.kind).toBe("valid");
+    if (imported.kind !== "valid") throw new Error(imported.reason);
+    const restored = imported.envelope.state as typeof persistedState;
+    expect(restored.plugins).toEqual(persistedState.plugins);
+    expect(restored._stateID).toBe(41);
+
+    resolveSolsticeOrderChoice(
+      { G: restored.G, ctx: restored.ctx as any, random: { Number: () => 0.75 } },
+      ["random_discard", "later_gain"]
+    );
+
+    expect(restored.G).toEqual(direct);
+    expect(restored.G.players["1"].hand).toEqual(["hidden_a"]);
+    expect(restored.G.players["1"].discard).toContain("hidden_b");
+    expect(restored.G.players["1"].resources.knowledge).toBe(1);
+  });
+
+  it("loads and inspects an already finalized score without scoring again", () => {
+    const G = createInitialState({
+      usePrivateData: false,
+      randomSeed: "local-save-final-score-v3",
+      options: { ...defaultGameOptions, playerCount: 2, mode: "multiplayer" }
+    });
+    triggerScoring(G, "save_inspection", "1");
+    G.scoring = { ...G.scoring!, phase: "final_round", finalRound: G.round };
+    finalizeNormalScoring(G);
+    expect(G.log.filter((entry) => entry.message.startsWith("ScoringFinalized("))).toHaveLength(1);
+
+    const raw = serializeLocalGame({
+      privateDataFingerprint: "placeholder",
+      now: new Date("2026-09-06T07:00:00.000Z"),
+      state: { G, ctx: { currentPlayer: "1" } }
+    });
+    const first = importLocalGameExport(raw);
+    const second = importLocalGameExport(raw);
+    expect(first.kind).toBe("valid");
+    expect(second.kind).toBe("valid");
+    if (first.kind !== "valid" || second.kind !== "valid") throw new Error("Expected finalized score save to remain valid.");
+
+    expect(first.envelope.state).toEqual(second.envelope.state);
+    const restored = first.envelope.state as { G: GameState };
+    expect(restored.G.gameover).toEqual(G.gameover);
+    expect(restored.G.log.filter((entry) => entry.message.startsWith("ScoringFinalized("))).toHaveLength(1);
+  });
+
+  it("classifies current, legacy, future, and mismatched rules snapshots without rewriting bytes", () => {
+    const currentRaw = serializeLocalGame({
+      privateDataFingerprint: "placeholder",
+      state: { G: compatibleG({ options: { mode: "practice" } }), ctx: { currentPlayer: "1" } }
+    });
+    const legacyRaw = JSON.stringify({ ...JSON.parse(currentRaw), rulesVersion: CURRENT_RULES_VERSION - 1 });
+    const futureRaw = JSON.stringify({ ...JSON.parse(currentRaw), rulesVersion: CURRENT_RULES_VERSION + 1, state: { G: { rulesVersion: CURRENT_RULES_VERSION + 1, stateVersion: 1 }, ctx: { currentPlayer: "1" } } });
+    const mismatchRaw = JSON.stringify({ ...JSON.parse(currentRaw), state: { G: { rulesVersion: CURRENT_RULES_VERSION - 1, stateVersion: 1 }, ctx: { currentPlayer: "1" } } });
+
+    const unversionedStateRaw = JSON.stringify({ ...JSON.parse(currentRaw), state: { G: { options: { mode: "practice" } }, ctx: { currentPlayer: "1" } } });
+
+    expect(inspectLocalGameExport(currentRaw).kind).toBe("playable");
+    expect(inspectLocalGameExport(legacyRaw)).toMatchObject({ kind: "legacy-incompatible", raw: legacyRaw });
+    expect(inspectLocalGameExport(futureRaw)).toMatchObject({ kind: "future-version", raw: futureRaw });
+    expect(inspectLocalGameExport(mismatchRaw)).toMatchObject({ kind: "corrupt", raw: mismatchRaw });
+    expect(inspectLocalGameExport(unversionedStateRaw)).toMatchObject({ kind: "corrupt", raw: unversionedStateRaw });
+  });
+
+  it("classifies oversized exports before parsing and preserves their exact content", () => {
+    const raw = "x".repeat(MAX_LOCAL_GAME_EXPORT_BYTES + 1);
+    const inspected = inspectLocalGameExport(raw);
+    expect(inspected.kind).toBe("unsupported-format");
+    expect(inspected.raw).toBe(raw);
   });
 });

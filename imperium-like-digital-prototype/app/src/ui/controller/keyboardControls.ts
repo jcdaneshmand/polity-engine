@@ -10,6 +10,7 @@ export function handleBoardKeyDown(e: KeyboardEvent, handlers: { onEndTurn: () =
   if (e.defaultPrevented || e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.isComposing || isEditableTarget(e.target)) return;
   if (typeof document !== "undefined" && document.querySelector('[aria-modal="true"]')) return;
   if (e.key === "Escape") handlers.onClear();
+  if (e.key === "F6") { e.preventDefault(); handlers.onCyclePanel(); }
   if (e.key.toLowerCase() === "e") handlers.onEndTurn();
   if (e.key.toLowerCase() === "i") handlers.onShortcut("innovate");
   if (e.key.toLowerCase() === "r") handlers.onShortcut("revolt");

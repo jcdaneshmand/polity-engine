@@ -71,7 +71,7 @@ describe("LobbyRoom", () => {
 
     expect(html).toContain("Current setup");
     expect(html).toContain("3 players");
-    expect(html).toContain("Commons: Horizontal");
+    expect(html).toContain("Commons: Horizons");
     expect(html).toContain("Expansions: Trade Module");
     expect(html).toContain("Variants: Quick Setup");
     expect(html).toContain("Nations: Sun Coast, River League, Highland Pact");

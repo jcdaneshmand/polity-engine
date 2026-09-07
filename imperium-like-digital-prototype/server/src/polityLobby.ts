@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { LobbyStore } from "./lobbyStore";
 import type { ListedMatch, LobbyAccessFailureReason } from "./lobbyTypes";
+import { validateMatchSetupData } from "./setupValidation";
 
 type KoaLikeContext = {
   method: string;
@@ -23,6 +24,7 @@ type PolityLobbyOptions = {
   store: LobbyStore;
   boardgameApi: BoardgameApi;
   createSpectatorCredentials?: () => string;
+  readMatchCompatibility?: (matchID: string) => Promise<"compatible" | "incompatible" | "missing">;
 };
 
 type CreateMatchBody = {
@@ -94,6 +96,14 @@ function matchRoute(path: string, suffix: "join" | "spectate" | "leave" | "close
 
 export function createPolityLobbyMiddleware(options: PolityLobbyOptions) {
   const createSpectatorCredentials = options.createSpectatorCredentials ?? (() => `spectator:${randomUUID()}`);
+  const readCompatibility = options.readMatchCompatibility ?? (async () => "compatible" as const);
+
+  const rejectIncompatibleMatch = async (ctx: KoaLikeContext, matchID: string): Promise<boolean> => {
+    const compatibility = await readCompatibility(matchID);
+    if (compatibility === "compatible") return false;
+    setError(ctx, compatibility === "missing" ? 404 : 409, compatibility === "missing" ? "match_not_found" : "incompatible_match");
+    return true;
+  };
 
   return async (ctx: KoaLikeContext, next: KoaLikeNext): Promise<void> => {
     if (!ctx.path.startsWith("/polity/lobby")) {
@@ -102,7 +112,11 @@ export function createPolityLobbyMiddleware(options: PolityLobbyOptions) {
     }
 
     if (ctx.method === "GET" && ctx.path === "/polity/lobby/matches") {
-      ctx.body = { matches: options.store.listMatches() };
+      const matches = await Promise.all(options.store.listMatches().map(async (match) => ({
+        ...match,
+        compatibility: await readCompatibility(match.matchID)
+      })));
+      ctx.body = { matches };
       return;
     }
 
@@ -114,6 +128,12 @@ export function createPolityLobbyMiddleware(options: PolityLobbyOptions) {
       }
       const numPlayers = playerCount(body.numPlayers);
       const setupData = body.setupData ?? {};
+      const setupValidation = validateMatchSetupData(setupData);
+      if (!setupValidation.ok) {
+        ctx.status = 409;
+        ctx.body = setupValidation;
+        return;
+      }
       const privateDataFingerprint = stringValue(body.privateDataFingerprint) ?? "placeholder";
       const created = await options.boardgameApi.createMatch({ numPlayers, setupData });
       const listed = options.store.createMatchMetadata({
@@ -131,6 +151,7 @@ export function createPolityLobbyMiddleware(options: PolityLobbyOptions) {
 
     const joinMatchID = matchRoute(ctx.path, "join");
     if (ctx.method === "POST" && joinMatchID) {
+      if (await rejectIncompatibleMatch(ctx, joinMatchID)) return;
       const body = await readJSONBody(ctx) as JoinBody;
       if (!isRecord(body)) {
         setError(ctx, 400, "invalid_request");
@@ -178,6 +199,7 @@ export function createPolityLobbyMiddleware(options: PolityLobbyOptions) {
 
     const spectateMatchID = matchRoute(ctx.path, "spectate");
     if (ctx.method === "POST" && spectateMatchID) {
+      if (await rejectIncompatibleMatch(ctx, spectateMatchID)) return;
       const body = await readJSONBody(ctx) as SpectateBody;
       if (!isRecord(body)) {
         setError(ctx, 400, "invalid_request");

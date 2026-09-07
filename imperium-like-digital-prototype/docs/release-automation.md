@@ -4,6 +4,7 @@ Run commands from `imperium-like-digital-prototype`. The release helper uses the
 
 ```powershell
 npm.cmd run test:release
+npm.cmd run verify:rules
 npm.cmd run release -- --commit <full-sha> --service srv-d9g4jvr7uimc73ec4teg --origin https://polity-engine.onrender.com --dry-run
 npm.cmd run release -- --commit <full-sha> --service srv-d9g4jvr7uimc73ec4teg --origin https://polity-engine.onrender.com
 ```
@@ -13,6 +14,7 @@ Configure `RENDER_API_KEY` in the local environment. Do not put its value in com
 ## Checks
 
 - Remote commit, service repository, branch and URL must agree.
+- The release helper runs `verify:rules`, which requires the full engine regression suite and the independent source-backed rules audit, before contacting Render for deployment.
 - Production origin, private-debug setting, storage path, optional build-commit override and persistent disk must match expected values. Drift fails the release; no configuration is silently rewritten.
 - Root directory, Node runtime, build/start commands and health-check path must match the checked-in service configuration. Environment/deployment lists are paginated before any decision.
 - A per-service local filesystem lock prevents concurrent helper invocations from submitting duplicate deployments from this checkout. Separate machines must still coordinate releases.

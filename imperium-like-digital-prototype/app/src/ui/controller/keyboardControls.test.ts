@@ -5,6 +5,7 @@ function keyboardEvent(key: string, target?: EventTarget): KeyboardEvent {
   return {
     key,
     target,
+    defaultPrevented: false,
     preventDefault: () => undefined
   } as KeyboardEvent;
 }
@@ -15,6 +16,19 @@ describe("board keyboard controls", () => {
     const called = () => { calls++; };
     handleBoardKeyDown({ ...keyboardEvent(input.key), ...input } as KeyboardEvent, { onEndTurn: called, onClear: called, onCyclePanel: called, onShortcut: called });
     expect(calls).toBe(0);
+  });
+
+  it("moves focus to the action panel with F6", () => {
+    let cycled = false;
+    let prevented = false;
+    handleBoardKeyDown({ ...keyboardEvent("F6"), preventDefault: () => { prevented = true; } } as KeyboardEvent, {
+      onEndTurn: () => undefined,
+      onClear: () => undefined,
+      onCyclePanel: () => { cycled = true; },
+      onShortcut: () => undefined
+    });
+    expect(cycled).toBe(true);
+    expect(prevented).toBe(true);
   });
   it("opens card zoom from the keyboard", () => {
     let zoomed = false;

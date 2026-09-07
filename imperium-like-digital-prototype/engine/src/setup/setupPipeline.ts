@@ -23,10 +23,12 @@ import { activateState } from "../game/stateMatching";
 import { moveCardsToHistoryDestination } from "../game/history";
 import { isAccessionCard } from "../game/nationDeck";
 import { campaignStartingResourceOverride } from "../game/campaign";
+import { CURRENT_GAME_STATE_VERSION, CURRENT_RULES_VERSION } from "../game/version";
 import { resourceAmount, setResourceAmount } from "../game/resources";
 import { exileShortGameDevelopmentCard } from "../game/zones";
 import type { PrivateDataBundle } from "./privateDataBundle";
 import { recordById } from "./privateDataBundle";
+import { analyzeCommonsSetupResult, CommonsSetupValidationError, type CommonsValidationProfile } from "./commonsAnalysis";
 
 function buildGameCardDb(cards: NormalizedCardRecord[]): GameState["cardDb"] {
   return Object.fromEntries(filteredCardEntries(cards)) as GameState["cardDb"];
@@ -80,7 +82,9 @@ function filteredCardEntries(cards: NormalizedCardRecord[]) {
     smallDeckEligible: c.smallDeckEligible,
     mainDeckEligible: c.mainDeckEligible,
     unrestPileEligible: c.unrestPileEligible,
-    fameDeckEligible: c.fameDeckEligible
+    fameDeckEligible: c.fameDeckEligible,
+    implemented: c.implemented,
+    tested: c.tested
   }] as const);
 }
 
@@ -513,7 +517,7 @@ function normalizePlayerNationIds(options: GameOptions, playerNationIds?: Record
   );
 }
 
-export function createInitialGameStateFromPipeline(args: { options: GameOptions; playerNationIds?: Record<string,string>; soloBotNationId?: string; cardDb: Record<string, NormalizedCardRecord>; nationDb: Record<string, NationDefinition>; randomSeed?: string; usePrivateRules?: boolean; privateData?: PrivateDataBundle; privateRulesetPath?: string; privateStrategyPath?: string; privateBotStateTablePath?: string; privateBotTradeRoutesTablePath?: string; }): GameState {
+export function createInitialGameStateFromPipeline(args: { options: GameOptions; playerNationIds?: Record<string,string>; soloBotNationId?: string; cardDb: Record<string, NormalizedCardRecord>; nationDb: Record<string, NationDefinition>; randomSeed?: string; usePrivateRules?: boolean; privateData?: PrivateDataBundle; privateRulesetPath?: string; privateStrategyPath?: string; privateBotStateTablePath?: string; privateBotTradeRoutesTablePath?: string; commonsValidationProfile?: CommonsValidationProfile; }): GameState {
   const validation = validateGameOptions(args.options);
   const fatals = validation.issues.filter((i) => i.level === "fatal");
   if (fatals.length) throw new Error(fatals.map((f) => f.message).join("; "));
@@ -538,6 +542,8 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
   const players: GameState["players"] = {};
   const extraUnrestSupplyCardIds: string[] = [];
   const game: GameState = {
+    rulesVersion: CURRENT_RULES_VERSION,
+    stateVersion: CURRENT_GAME_STATE_VERSION,
     players,
     playOrder: Object.keys(selected),
     seatOrder: Array.from({ length: options.playerCount }, (_, index) => String(index)),
@@ -634,23 +640,34 @@ export function createInitialGameStateFromPipeline(args: { options: GameOptions;
     ...(soloBotNationId ? [soloBotNationId] : [])
   ];
   const effectiveCommonsPlayerCount = options.mode === "solo" || options.mode === "practice" ? 2 : Math.max(2, options.playerCount);
+  const commonsOptions = {
+    commonsSetId: options.commonsSetId ?? "classics",
+    playerCount: options.playerCount,
+    effectiveCommonsPlayerCount: effectiveCommonsPlayerCount as 2 | 3 | 4,
+    enabledExpansions: options.enabledExpansions,
+    enabledVariants: options.enabledVariants,
+    campaignMode: options.campaignMode,
+    mode: options.mode,
+    selectedNationIds,
+    customCommonsCardIds: options.customCommonsCardIds,
+    replacementPolicy: options.replacementPolicy ?? "use_replacements"
+  };
   const commonsSetup = buildCommonsSetup({
     cardDb: args.cardDb,
     nationDb: args.nationDb,
-    options: {
-      commonsSetId: options.commonsSetId ?? "classics",
-      playerCount: options.playerCount,
-      effectiveCommonsPlayerCount: effectiveCommonsPlayerCount as 2 | 3 | 4,
-      enabledExpansions: options.enabledExpansions,
-      enabledVariants: options.enabledVariants,
-      campaignMode: options.campaignMode,
-      mode: options.mode,
-      selectedNationIds,
-      customCommonsCardIds: options.customCommonsCardIds,
-      replacementPolicy: options.replacementPolicy ?? "use_replacements"
-    },
+    options: commonsOptions,
     rng: setupRandom ? { next: setupRandom } : { shuffle: (items) => [...items] }
   });
+  if (args.commonsValidationProfile) {
+    const commonsAnalysis = analyzeCommonsSetupResult({
+      cardDb: args.cardDb,
+      options: commonsOptions,
+      result: commonsSetup,
+      profile: args.commonsValidationProfile,
+      requestedCustomCardIds: args.options.customCommonsCardIds
+    });
+    if (commonsAnalysis.status === "blocked") throw new CommonsSetupValidationError(commonsAnalysis);
+  }
   setupReport.commonsSetup = commonsSetup;
   setupReport.delayedAggressiveCount = Math.max(setupReport.delayedAggressiveCount, commonsSetup.delayedCards.length);
   setupReport.usedQuickSetup = options.enabledVariants.includes("quick_setup");

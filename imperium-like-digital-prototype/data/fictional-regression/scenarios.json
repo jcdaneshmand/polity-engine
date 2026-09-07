@@ -1,96 +1,298 @@
-[
-  {
-    "id": "fixture_2p_setup_and_turn",
-    "description": "Two-player setup creates playable hands, market, unrest pile, and turn order from fictional fixtures.",
-    "mode": "multiplayer",
-    "playerCount": 2,
-    "commonsSetId": "custom",
-    "playerNationIds": {
-      "1": "fixture_nation_surveyors",
-      "2": "fixture_nation_archivists"
+{
+  "fixtureVersion": 3,
+  "rulesVersion": 3,
+  "requiredScenarioIds": ["F01", "F02", "F03", "F04", "F05", "F06", "F07", "F07-SOLO", "F08-3P", "F08-4P", "F09"],
+  "scenarios": [
+    {
+      "id": "F01",
+      "title": "Milestone progression",
+      "kind": "executable_sequence",
+      "description": "A played Action and a reshuffle spend different token pools while the first Nation card enters the deck.",
+      "seed": "fictional-F01-v2",
+      "tags": ["campaign_progression", "setup_variants", "action_exhaust_accounting"],
+      "sourceReferences": ["Horizons progression and reshuffle lifecycle", "G1 R01-R03", "G2 serialized interruption contract"],
+      "setup": { "mode": "multiplayer", "playerCount": 2, "commonsSetId": "custom", "enabledExpansions": [], "enabledVariants": [] },
+      "playerNationIds": { "1": "fixture_nation_progressors", "2": "fixture_nation_progressors" },
+      "steps": [
+        { "type": "play_card", "actor": "1", "cardId": "fixture_action_gain_materials" },
+        { "type": "checkpoint", "id": "action-spent", "checks": [
+          { "type": "resource", "playerId": "1", "resource": "materials", "equals": 4 },
+          { "type": "token", "playerId": "1", "token": "actionsRemaining", "equals": 2 },
+          { "type": "token", "playerId": "1", "token": "actionTokensAvailable", "equals": 2 },
+          { "type": "token", "playerId": "1", "token": "exhaustTokensAvailable", "equals": 1 }
+        ] },
+        { "type": "draw_with_reshuffle", "actor": "1" },
+        { "type": "checkpoint", "id": "nation-card-added", "checks": [
+          { "type": "zone_contains", "playerId": "1", "zone": "hand", "cardId": "fixture_nation_milestone" },
+          { "type": "progression_tokens", "playerId": "1", "nationDeck": 1, "developmentArea": 0 },
+          { "type": "token", "playerId": "1", "token": "exhaustTokensAvailable", "equals": 0 },
+          { "type": "log_contains", "text": "NationCardAdded" },
+          { "type": "no_invalid_moves" }
+        ] }
+      ]
     },
-    "tags": ["setup_variants", "market_acquisition", "pending_choices"],
-    "coverageLevel": "runtime_smoke",
-    "assertions": [
-      "players_exist",
-      "hands_non_empty",
-      "market_non_empty",
-      "unrest_available",
-      "no_private_fields",
-      "pending_choice_opens",
-      "pending_choice_resolves"
-    ]
-  },
-  {
-    "id": "fixture_unrest_flow_serialization",
-    "description": "Active-player action moves fictional Unrest from the supply and leaves the game state JSON-serializable.",
-    "mode": "multiplayer",
-    "playerCount": 2,
-    "commonsSetId": "custom",
-    "playerNationIds": {
-      "1": "fixture_nation_surveyors",
-      "2": "fixture_nation_archivists"
+    {
+      "id": "F02",
+      "title": "Finite Trade and acquisition",
+      "kind": "executable_sequence",
+      "description": "One player establishes a Route; the other trades through it and resolves a typed Market acquisition choice.",
+      "seed": "F02",
+      "tags": ["trade_routes", "market_acquisition", "pending_choices", "finite_resources"],
+      "sourceReferences": ["Horizons Trade Routes module", "G1 R37-R40", "Market acquisition destination rules"],
+      "setup": { "mode": "multiplayer", "playerCount": 2, "commonsSetId": "custom", "enabledExpansions": ["trade_routes"], "enabledVariants": [] },
+      "playerNationIds": { "1": "fixture_nation_traders", "2": "fixture_nation_traders" },
+      "steps": [
+        { "type": "play_card", "actor": "1", "cardId": "fixture_trade_route_sluice" },
+        { "type": "play_card", "actor": "2", "cardId": "fixture_action_trade_goods" },
+        { "type": "checkpoint", "id": "opponent-route-paid", "checks": [
+          { "type": "resource", "playerId": "2", "resource": "goods", "equals": 2 },
+          { "type": "card_resource", "cardId": "fixture_trade_route_sluice", "resource": "goods", "equals": 1 },
+          { "type": "log_contains", "text": "TradeChoiceResolved(opponent_route/fixture_trade_route_sluice)" }
+        ] },
+        { "type": "play_card", "actor": "2", "cardId": "fixture_action_choose_market" },
+        { "type": "checkpoint", "id": "acquire-choice-open", "checks": [
+          { "type": "pending", "pending": "pendingAcquireChoice", "exists": true }
+        ] },
+        { "type": "resolve_acquire_choice", "actor": "2", "cardId": "fixture_market_unrest" },
+        { "type": "checkpoint", "id": "acquired-to-hand", "checks": [
+          { "type": "pending", "pending": "pendingAcquireChoice", "exists": false },
+          { "type": "zone_contains", "playerId": "2", "zone": "hand", "cardId": "fixture_market_unrest" },
+          { "type": "no_invalid_moves" }
+        ] }
+      ]
     },
-    "tags": ["reactive_exhaust_timing", "save_resume_import_export"],
-    "coverageLevel": "runtime_smoke",
-    "assertions": [
-      "unrest_moves_from_pile",
-      "state_serializes",
-      "no_private_fields"
-    ]
-  },
-  {
-    "id": "fixture_trade_routes_finite_resource_probe",
-    "description": "Public-safe probe for future Trade Routes scenario coverage with finite resource constraints and opponent-trigger timing.",
-    "mode": "multiplayer",
-    "playerCount": 2,
-    "commonsSetId": "custom",
-    "enabledExpansions": ["trade_routes"],
-    "playerNationIds": {
-      "1": "fixture_nation_surveyors",
-      "2": "fixture_nation_archivists"
+    {
+      "id": "F03",
+      "title": "Reaction, garrison, restore, recall",
+      "kind": "executable_sequence",
+      "description": "A Region gain opens a reaction, a Unit is garrisoned, state is restored, and recall returns both cards in order.",
+      "seed": "fictional-F03-v2",
+      "tags": ["reactive_exhaust_timing", "garrison_region_movement", "save_resume_import_export"],
+      "sourceReferences": ["Horizons Region and Garrison rules", "G2 pending reaction persistence"],
+      "setup": { "mode": "multiplayer", "playerCount": 2, "commonsSetId": "custom", "enabledExpansions": [], "enabledVariants": [] },
+      "playerNationIds": { "1": "fixture_nation_wayfinders", "2": "fixture_nation_wayfinders" },
+      "steps": [
+        { "type": "play_card", "actor": "1", "cardId": "fixture_region_greenway" },
+        { "type": "checkpoint", "id": "reaction-open", "checks": [
+          { "type": "resource", "playerId": "1", "resource": "materials", "equals": 4 },
+          { "type": "pending", "pending": "pendingReactiveExhaustChoice", "exists": true }
+        ] },
+        { "type": "resolve_reactive_exhaust", "actor": "1", "cardId": "fixture_power_wayfinder" },
+        { "type": "garrison", "actor": "1", "hostCardId": "fixture_region_greenway", "cardId": "fixture_unit_pathfinder" },
+        { "type": "checkpoint", "id": "garrisoned", "checks": [
+          { "type": "resource", "playerId": "1", "resource": "influence", "equals": 3 },
+          { "type": "token", "playerId": "1", "token": "exhaustTokensAvailable", "equals": 0 },
+          { "type": "garrison", "hostCardId": "fixture_region_greenway", "cardId": "fixture_unit_pathfinder", "exists": true }
+        ] },
+        { "type": "restore" },
+        { "type": "recall_region", "actor": "1", "cardId": "fixture_region_greenway" },
+        { "type": "checkpoint", "id": "recalled-after-restore", "checks": [
+          { "type": "zone_contains", "playerId": "1", "zone": "hand", "cardId": "fixture_region_greenway" },
+          { "type": "zone_contains", "playerId": "1", "zone": "hand", "cardId": "fixture_unit_pathfinder" },
+          { "type": "zone_excludes", "playerId": "1", "zone": "playArea", "cardId": "fixture_region_greenway" },
+          { "type": "garrison", "hostCardId": "fixture_region_greenway", "cardId": "fixture_unit_pathfinder", "exists": false },
+          { "type": "no_invalid_moves" }
+        ] }
+      ]
     },
-    "tags": ["trade_routes", "market_acquisition", "pending_choices"],
-    "coverageLevel": "planned_runtime_expansion",
-    "assertions": [
-      "trade_routes_enabled",
-      "finite_resource_supply_checked",
-      "opponent_trigger_order_checked"
-    ]
-  },
-  {
-    "id": "fixture_garrison_history_fame_probe",
-    "description": "Public-safe probe for future Garrison, History replacement, and Fame timing scenario coverage.",
-    "mode": "multiplayer",
-    "playerCount": 2,
-    "commonsSetId": "custom",
-    "playerNationIds": {
-      "1": "fixture_nation_surveyors",
-      "2": "fixture_nation_archivists"
+    {
+      "id": "F04",
+      "title": "Playable human-to-Bot sequence",
+      "kind": "executable_sequence",
+      "description": "The human steals a Bot resource, imposes a Bot draw, and gives the Bot Unrest through ordinary card plays.",
+      "seed": "fictional-F04-v2",
+      "tags": ["solo_bot", "bot_resource_theft", "bot_draw", "bot_unrest"],
+      "sourceReferences": ["Horizons solo human-effect adaptations", "G1 R21-R22 and R41"],
+      "setup": { "mode": "solo", "playerCount": 1, "commonsSetId": "custom", "enabledExpansions": [], "enabledVariants": [], "soloDifficulty": "sovereign" },
+      "playerNationIds": { "1": "fixture_nation_envoys" },
+      "soloBotNationId": "fixture_nation_archivists",
+      "steps": [
+        { "type": "play_card", "actor": "1", "cardId": "fixture_action_bot_levy" },
+        { "type": "checkpoint", "id": "levy-resolved", "checks": [
+          { "type": "resource", "playerId": "1", "resource": "materials", "equals": 4 },
+          { "type": "bot_resource", "resource": "materials", "equals": 2 }
+        ] },
+        { "type": "play_card", "actor": "1", "cardId": "fixture_action_bot_survey" },
+        { "type": "checkpoint", "id": "draw-and-unrest-resolved", "checks": [
+          { "type": "log_contains", "text": "BotTookUnrest" },
+          { "type": "log_contains", "text": "BotDrawFromHumanEffect" },
+          { "type": "no_invalid_moves" }
+        ] }
+      ]
     },
-    "tags": ["garrison_region_movement", "history_replacement", "fame_timing"],
-    "coverageLevel": "planned_runtime_expansion",
-    "assertions": [
-      "garrison_host_child_movement_checked",
-      "history_replacement_checked",
-      "fame_bottom_timing_checked"
-    ]
-  },
-  {
-    "id": "fixture_solo_campaign_handoff_probe",
-    "description": "Public-safe probe for future solo Bot, campaign progression, and next-game setup handoff coverage.",
-    "mode": "solo",
-    "playerCount": 1,
-    "commonsSetId": "custom",
-    "playerNationIds": {
-      "1": "fixture_nation_surveyors"
+    {
+      "id": "F05",
+      "title": "Normal final-round scoring",
+      "kind": "full_game",
+      "description": "A two-player game triggers normal scoring, completes the current and final rounds, restores once, and ties on independently calculated totals.",
+      "seed": "F05",
+      "tags": ["normal_scoring", "complete_game", "save_resume_import_export"],
+      "sourceReferences": ["Horizons endgame timing", "G1 Solstice and scoring corrections", "G2 rules-version restore gate"],
+      "setup": { "mode": "multiplayer", "playerCount": 2, "commonsSetId": "custom", "enabledExpansions": [], "enabledVariants": [] },
+      "playerNationIds": { "1": "fixture_nation_scorekeepers", "2": "fixture_nation_scorekeepers" },
+      "steps": [
+        { "type": "play_card", "actor": "1", "cardId": "fixture_action_score_bell" },
+        { "type": "finish_turn", "actor": "1" },
+        { "type": "play_card", "actor": "2", "cardId": "fixture_action_score_bell" },
+        { "type": "finish_turn", "actor": "2" },
+        { "type": "checkpoint", "id": "final-round-open", "checks": [
+          { "type": "round", "equals": 2 },
+          { "type": "pending", "pending": "scoring", "exists": true }
+        ] },
+        { "type": "restore" },
+        { "type": "finish_turn", "actor": "1" },
+        { "type": "finish_turn", "actor": "2" },
+        { "type": "checkpoint", "id": "normal-terminal", "checks": [
+          { "type": "gameover", "winner": "1,2", "reason": "normal_scoring:fictional_closing_bell", "scores": { "1": 3, "2": 3 } },
+          { "type": "no_invalid_moves" }
+        ] }
+      ],
+      "expectedTerminal": {
+        "winner": "1,2",
+        "reason": "normal_scoring:fictional_closing_bell",
+        "scores": { "1": 3, "2": 3 },
+        "arithmetic": ["Each player: Closing Bell fixed VP 2", "Each player: Progress 1 equals VP 1", "Each player: basic resources total 5 scores 0 at the 10:1 limit", "Total: 2 + 1 + 0 = 3"]
+      }
     },
-    "tags": ["solo_bot", "campaign_progression", "save_resume_import_export"],
-    "coverageLevel": "planned_runtime_expansion",
-    "assertions": [
-      "solo_bot_turn_checked",
-      "campaign_outcome_checked",
-      "next_setup_handoff_checked"
-    ]
-  }
-]
+    {
+      "id": "F06",
+      "title": "Immediate Collapse stops trailing text",
+      "kind": "full_game",
+      "description": "Taking the final fictional Unrest ends the game before the following five-Materials effect can resolve.",
+      "seed": "fictional-F06-v2",
+      "tags": ["collapse", "effect_interruption", "complete_game"],
+      "sourceReferences": ["Horizons immediate Collapse rule", "G1 R04-R06"],
+      "setup": { "mode": "multiplayer", "playerCount": 2, "commonsSetId": "custom", "enabledExpansions": [], "enabledVariants": [] },
+      "playerNationIds": { "1": "fixture_nation_collapsers", "2": "fixture_nation_collapsers" },
+      "steps": [
+        { "type": "play_card", "actor": "1", "cardId": "fixture_action_collapse_chain" },
+        { "type": "checkpoint", "id": "collapse-terminal", "checks": [
+          { "type": "resource", "playerId": "1", "resource": "materials", "equals": 3 },
+          { "type": "gameover", "winner": "2", "reason": "collapse:unrest_pile_empty", "scores": { "1": 1, "2": 0 } },
+          { "type": "no_invalid_moves" }
+        ] }
+      ],
+      "expectedTerminal": {
+        "winner": "2",
+        "reason": "collapse:unrest_pile_empty",
+        "scores": { "1": 1, "2": 0 },
+        "arithmetic": ["Player 1 takes the only Unrest: Collapse count 1", "Player 2 has no Unrest: Collapse count 0", "Lowest Collapse count wins: Player 2"]
+      }
+    },
+    {
+      "id": "F07",
+      "title": "Complete restored two-player game",
+      "kind": "full_game",
+      "description": "A game created from setup is serialized, restored through the current version gate, and legally completed by Collapse.",
+      "seed": "fictional-F07-2p-v2",
+      "tags": ["complete_game", "multiplayer", "save_resume_import_export"],
+      "sourceReferences": ["G2 current-save compatibility", "Horizons Collapse outcome"],
+      "setup": { "mode": "multiplayer", "playerCount": 2, "commonsSetId": "custom", "enabledExpansions": [], "enabledVariants": [] },
+      "playerNationIds": { "1": "fixture_nation_collapsers", "2": "fixture_nation_collapsers" },
+      "steps": [
+        { "type": "restore" },
+        { "type": "play_card", "actor": "1", "cardId": "fixture_action_collapse_chain" },
+        { "type": "checkpoint", "id": "restored-game-terminal", "checks": [
+          { "type": "gameover", "winner": "2", "reason": "collapse:unrest_pile_empty", "scores": { "1": 1, "2": 0 } },
+          { "type": "no_invalid_moves" }
+        ] }
+      ],
+      "expectedTerminal": {
+        "winner": "2",
+        "reason": "collapse:unrest_pile_empty",
+        "scores": { "1": 1, "2": 0 },
+        "arithmetic": ["Restored Player 1 takes one Unrest", "Player 2 takes zero Unrest", "0 is lower than 1"]
+      }
+    },
+    {
+      "id": "F07-SOLO",
+      "title": "Complete restored solo game",
+      "kind": "full_game",
+      "description": "A solo game is serialized, restored, and legally ends when the human empties the Unrest supply.",
+      "seed": "fictional-F07-solo-v2",
+      "tags": ["complete_game", "solo_bot", "save_resume_import_export"],
+      "sourceReferences": ["Horizons solo Collapse rule", "G2 current-save compatibility"],
+      "setup": { "mode": "solo", "playerCount": 1, "commonsSetId": "custom", "enabledExpansions": [], "enabledVariants": [], "soloDifficulty": "sovereign" },
+      "playerNationIds": { "1": "fixture_nation_collapsers" },
+      "soloBotNationId": "fixture_nation_archivists",
+      "steps": [
+        { "type": "restore" },
+        { "type": "play_card", "actor": "1", "cardId": "fixture_action_collapse_chain" },
+        { "type": "checkpoint", "id": "solo-terminal", "checks": [
+          { "type": "resource", "playerId": "1", "resource": "materials", "equals": 3 },
+          { "type": "gameover", "winner": "bot_0", "reason": "collapse:unrest_pile_empty", "scores": { "1": 1 } },
+          { "type": "no_invalid_moves" }
+        ] }
+      ],
+      "expectedTerminal": {
+        "winner": "bot_0",
+        "reason": "collapse:unrest_pile_empty",
+        "scores": { "1": 1 },
+        "arithmetic": ["Human takes the final Unrest", "Solo Collapse always awards the game to the Bot", "Human Collapse count reported as 1"]
+      }
+    },
+    {
+      "id": "F09",
+      "title": "Natural Solstice ordering",
+      "kind": "executable_sequence",
+      "description": "Two ordinary turns reach Solstice, pause on two original Power cards, preserve the boundary once, and resolve the chosen order.",
+      "seed": "fictional-F09-v2",
+      "tags": ["solstice_order", "pending_choices", "save_resume_import_export"],
+      "sourceReferences": ["G2 Solstice ordering and serialized interruption contract"],
+      "setup": { "mode": "multiplayer", "playerCount": 2, "commonsSetId": "custom", "enabledExpansions": [], "enabledVariants": [] },
+      "playerNationIds": { "1": "fixture_nation_timekeepers", "2": "fixture_nation_timekeepers" },
+      "steps": [
+        { "type": "finish_turn", "actor": "1" },
+        { "type": "finish_turn", "actor": "2" },
+        { "type": "checkpoint", "id": "order-open", "checks": [{ "type": "pending", "pending": "pendingSolsticeOrderChoice", "exists": true }] },
+        { "type": "restore" },
+        { "type": "resolve_solstice_order", "actor": "1", "cardIds": ["fixture_power_dawn_store", "fixture_power_dawn_toll"] },
+        { "type": "resolve_solstice_order", "actor": "2", "cardIds": ["fixture_power_dawn_toll", "fixture_power_dawn_store"] },
+        { "type": "checkpoint", "id": "order-resolved", "checks": [
+          { "type": "pending", "pending": "pendingSolsticeOrderChoice", "exists": false },
+          { "type": "round", "equals": 2 },
+          { "type": "log_contains", "text": "SolsticeOrderChoiceResolved" },
+          { "type": "no_invalid_moves" }
+        ] }
+      ]
+    },
+    {
+      "id": "F08-3P",
+      "title": "Three-player Solstice order boundary",
+      "kind": "constructed_boundary",
+      "description": "A labeled boundary fixture places one fictional clock in play and verifies recipient order across three seats.",
+      "seed": "fictional-F08-3p-v2",
+      "tags": ["solstice_order", "constructed_boundary"],
+      "sourceReferences": ["G2 three-player Solstice ordering fixture"],
+      "setup": { "mode": "multiplayer", "playerCount": 3, "commonsSetId": "custom", "enabledExpansions": [], "enabledVariants": [] },
+      "playerNationIds": { "1": "fixture_nation_surveyors", "2": "fixture_nation_archivists", "3": "fixture_nation_wayfinders" },
+      "steps": [
+        { "type": "boundary_solstice", "sourcePlayerId": "2", "cardId": "fixture_solstice_clock" },
+        { "type": "checkpoint", "id": "ordered-recipients", "checks": [
+          { "type": "ordered_log_players", "message": "Gained 1 materials.", "playerIds": ["1", "2", "3"] },
+          { "type": "ordered_log_players", "message": "Gained 1 knowledge.", "playerIds": ["1", "2", "3"] },
+          { "type": "round", "equals": 2 }
+        ] }
+      ]
+    },
+    {
+      "id": "F08-4P",
+      "title": "Four-player Solstice order boundary",
+      "kind": "constructed_boundary",
+      "description": "A labeled boundary fixture places one fictional clock in play and verifies recipient order across four seats.",
+      "seed": "fictional-F08-4p-v2",
+      "tags": ["solstice_order", "constructed_boundary"],
+      "sourceReferences": ["G2 four-player Solstice ordering fixture"],
+      "setup": { "mode": "multiplayer", "playerCount": 4, "commonsSetId": "custom", "enabledExpansions": [], "enabledVariants": [] },
+      "playerNationIds": { "1": "fixture_nation_surveyors", "2": "fixture_nation_archivists", "3": "fixture_nation_wayfinders", "4": "fixture_nation_progressors" },
+      "steps": [
+        { "type": "boundary_solstice", "sourcePlayerId": "3", "cardId": "fixture_solstice_clock" },
+        { "type": "checkpoint", "id": "ordered-recipients", "checks": [
+          { "type": "ordered_log_players", "message": "Gained 1 materials.", "playerIds": ["1", "2", "3", "4"] },
+          { "type": "ordered_log_players", "message": "Gained 1 knowledge.", "playerIds": ["1", "2", "3", "4"] },
+          { "type": "round", "equals": 2 }
+        ] }
+      ]
+    }
+  ]
+}

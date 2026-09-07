@@ -161,7 +161,7 @@ describe("scoring", () => {
     expect(scorePlayer(G, "1")).toBe(20);
   });
 
-  it("caps each positive VP card at 10 across fixed, numeric, and conditional VP modes", () => {
+  it("preserves positive fixed, numeric, and conditional VP above 10", () => {
     const G = createInitialState();
     G.cardDb = {
       ...G.cardDb,
@@ -183,7 +183,7 @@ describe("scoring", () => {
     G.players["1"].discard = ["numeric_vp", "fixed_vp", "conditional_unmet"];
     G.players["1"].history = ["conditional_met"];
 
-    expect(scorePlayer(G, "1")).toBe(40);
+    expect(scorePlayer(G, "1")).toBe(50);
   });
 
   it("scores imported numeric conditional victory points and ignores unresolved conditionals", () => {
@@ -1109,7 +1109,7 @@ describe("scoring", () => {
     expect(scoreBot(G)).toBe(8);
   });
 
-  it("caps each positive Bot VP card at 10", () => {
+  it("preserves fixed Bot VP and values a variable card at 5", () => {
     const G = createInitialState({
       options: { playerCount: 1, mode: "solo", enabledExpansions: [], enabledVariants: [], soloDifficulty: "imperator" }
     });
@@ -1123,7 +1123,7 @@ describe("scoring", () => {
     G.solo!.bot.botDeck = ["bot_numeric", "bot_fixed", "bot_variable", "bot_conditional"];
     G.solo!.bot.resources = {};
 
-    expect(scoreBot(G)).toBe(40);
+    expect(scoreBot(G)).toBe(44);
   });
 
   it("does not score Bot Power cards", () => {

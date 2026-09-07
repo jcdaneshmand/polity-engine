@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
-import { importLocalGameExport, type SavedLocalGameEnvelope } from "../../localGameSave";
-import { migrateLegacySave, readSaveLibrary, SAVE_LIBRARY_KEY, withSaveLibraryLock, writeSaveLibrary, type SaveLibrary, type SaveSlot } from "../../saveLibrary";
+import { CURRENT_RULES_VERSION, importLocalGameExport, type SavedLocalGameEnvelope } from "../../localGameSave";
+import { migrateLegacySave, readRawSaveLibrary, readSaveLibrary, resetSaveLibraryAfterBackup, SAVE_LIBRARY_KEY, withSaveLibraryLock, writeSaveLibrary, type SaveLibrary, type SaveSlot } from "../../saveLibrary";
 
 export default function SavedGames({ autosave, onResume }: { autosave?: SavedLocalGameEnvelope; onResume: (save: SavedLocalGameEnvelope) => void }) {
-  const [library, setLibrary] = useState<SaveLibrary>({ version: 2, stateVersion: 1, revision: 0, slots: [] });
+  const [library, setLibrary] = useState<SaveLibrary>({ version: 2, stateVersion: 1, rulesVersion: CURRENT_RULES_VERSION, revision: 0, slots: [] });
   const [name, setName] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
+  const [libraryRaw, setLibraryRaw] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const report = (error: unknown) => setMessage(error instanceof Error ? error.message : "Could not update saved games.");
@@ -15,12 +16,13 @@ export default function SavedGames({ autosave, onResume }: { autosave?: SavedLoc
     setBusy(true);
     let readable = false;
     try {
+      setLibraryRaw(readRawSaveLibrary(localStorage));
       const next = await withSaveLibraryLock(() => {
         const current = readSaveLibrary(localStorage);
         setLibrary(current); setReady(true); readable = true;
         return migrateLegacySave(localStorage);
       });
-      setLibrary(next); setReady(true);
+      setLibrary(next); setLibraryRaw(next.rawSource ?? readRawSaveLibrary(localStorage)); setReady(true);
     } catch (error) { if (!readable) setReady(false); report(error); }
     finally { setBusy(false); }
   };
@@ -37,7 +39,11 @@ export default function SavedGames({ autosave, onResume }: { autosave?: SavedLoc
   const mutate = async (update: (slots: SaveSlot[]) => SaveSlot[]) => {
     setBusy(true);
     try {
-      await withSaveLibraryLock(() => setLibrary(writeSaveLibrary(localStorage, library, update(library.slots))));
+      await withSaveLibraryLock(() => {
+        const next = writeSaveLibrary(localStorage, library, update(library.slots));
+        setLibrary(next);
+        setLibraryRaw(next.rawSource ?? readRawSaveLibrary(localStorage));
+      });
       setMessage("Saved games updated.");
       return true;
     } catch (error) { report(error); return false; }
@@ -48,11 +54,15 @@ export default function SavedGames({ autosave, onResume }: { autosave?: SavedLoc
     if (!title.trim()) { setMessage("Enter a save name."); return; }
     return mutate((slots) => [...slots, { id: crypto.randomUUID(), envelope: named(save, title) }]);
   };
-  const download = (save: SavedLocalGameEnvelope) => {
-    const url = URL.createObjectURL(new Blob([JSON.stringify(save)], { type: "application/json" }));
+  const downloadContent = (content: string, fileName: string) => {
+    const url = URL.createObjectURL(new Blob([content], { type: "application/json" }));
     const link = document.createElement("a");
-    link.href = url; link.download = `polity-${save.metadata.slotName.replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 60) || "saved-game"}.json`; link.click(); URL.revokeObjectURL(url);
+    link.href = url; link.download = fileName; link.click(); URL.revokeObjectURL(url);
   };
+  const download = (save: SavedLocalGameEnvelope) => downloadContent(
+    JSON.stringify(save),
+    `polity-${save.metadata.slotName.replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 60) || "saved-game"}.json`
+  );
   return <section className="setup-section setup-section--wide" aria-label="Saved games" data-qa="save-library">
     <h2>Saved Games</h2>
     <div className="private-data-actions">
@@ -69,6 +79,11 @@ export default function SavedGames({ autosave, onResume }: { autosave?: SavedLoc
         }).catch(report).finally(() => setBusy(false));
       }} /></label>
       <button type="button" disabled={busy} onClick={() => { setMessage(""); void refresh(); }}>Refresh Saved Games</button>
+      {libraryRaw ? <button type="button" onClick={() => downloadContent(libraryRaw, "polity-save-library-original.json")}>Export Raw Library</button> : null}
+      {!ready && libraryRaw ? <button type="button" disabled={busy} onClick={() => {
+        if (!window.confirm("Reset the unreadable saved-game library? Its exact bytes will remain in the recovery backup key.")) return;
+        try { resetSaveLibraryAfterBackup(localStorage); setMessage("Unreadable library backed up and reset."); void refresh(); } catch (error) { report(error); }
+      }}>Back Up and Reset Library</button> : null}
     </div>
     {library.slots.map((slot) => <article key={slot.id} className="saved-game-row" data-qa="save-slot">
       <strong>{slot.envelope.metadata.slotName}</strong>
@@ -91,6 +106,14 @@ export default function SavedGames({ autosave, onResume }: { autosave?: SavedLoc
         <button type="submit" disabled={busy || !ready || !renameValue.trim()}>Save Name</button>
         <button type="button" onClick={() => setRenaming(null)}>Cancel Rename</button>
       </form> : null}
+    </article>)}
+    {(library.recoverableSlots ?? []).map((slot) => <article key={`recovery-${slot.sourceIndex}`} className="saved-game-row" data-qa="recoverable-save-slot">
+      <strong>{slot.summary.slotName}</strong>
+      <span>{slot.kind.replace(/-/g, " ")} / Rules {slot.summary.rulesVersion ?? "?"} / {slot.summary.savedAtIso ? new Date(slot.summary.savedAtIso).toLocaleString() : "Unknown date"}</span>
+      <span>{slot.reason}</span>
+      <div className="private-data-actions">
+        <button type="button" onClick={() => downloadContent(JSON.stringify(slot.storedSlot), `polity-reconstructed-slot-${slot.sourceIndex + 1}.json`)}>Export Stored Slot</button>
+      </div>
     </article>)}
     <p role="status">{message}</p>
   </section>;

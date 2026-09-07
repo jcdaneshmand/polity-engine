@@ -143,6 +143,15 @@ function redactLookedCards(G: GameState, viewerPlayerId?: string | null): void {
   }
 }
 
+function redactOpponentScoreDetails(G: GameState, viewerPlayerId?: string | null): void {
+  for (const breakdowns of [G.finalScoreBreakdowns, G.finalTieBreakBreakdowns]) {
+    for (const [playerId, breakdown] of Object.entries(breakdowns ?? {})) {
+      if (playerId === viewerPlayerId) continue;
+      breakdown.contributions = breakdown.contributions.map(({ details: _details, ...contribution }) => contribution);
+    }
+  }
+}
+
 export function redactGameStateForPlayer(G: GameState, viewerPlayerId?: string | null): GameState {
   const view = cloneGameState(G);
   for (const [playerId, player] of Object.entries(view.players ?? {})) {
@@ -151,5 +160,6 @@ export function redactGameStateForPlayer(G: GameState, viewerPlayerId?: string |
   redactGlobalSpecialZones(view);
   redactLookedCards(view, viewerPlayerId);
   redactPendingState(view, viewerPlayerId);
+  redactOpponentScoreDetails(view, viewerPlayerId);
   return view;
 }

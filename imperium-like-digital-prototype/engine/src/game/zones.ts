@@ -44,7 +44,7 @@ function hasProgressionMarker(player: PlayerState): boolean {
 }
 
 function canSpendProgressionToken(player: PlayerState): boolean {
-  return !hasProgressionMarker(player) && player.actionTokensAvailable > 0;
+  return !hasProgressionMarker(player) && player.exhaustTokensAvailable > 0;
 }
 
 export function canUseDevelopmentArea(G: GameState, playerId: string): boolean {
@@ -54,7 +54,7 @@ export function canUseDevelopmentArea(G: GameState, playerId: string): boolean {
 
 function spendProgressionToken(player: PlayerState, destination: "nationDeck" | "developmentArea"): void {
   const tokens = ensureProgressionTokens(player);
-  player.actionTokensAvailable -= 1;
+  player.exhaustTokensAvailable -= 1;
   tokens[destination] += 1;
 }
 
@@ -337,7 +337,7 @@ export function maybeReshuffleDeck(G: GameState, playerId: string, randomNumber?
       const inPlayOverride = nationCardInPlayOverride(G, playerId, nationCard.cardId);
       if (inPlayOverride) p.playArea.push(nationCard.cardId);
       else p.discard.push(nationCard.cardId);
-      spendProgressionToken(p, hasNationProgressionCards(p) ? "nationDeck" : "developmentArea");
+      spendProgressionToken(p, "nationDeck");
       G.log.push({ round: G.round, playerId, message: inPlayOverride ? `NationCardAddedToPlayOnReshuffle(${nationCard.cardId})` : `NationCardAddedOnReshuffle(${nationCard.cardId})` });
       if (nationCard.isAccession && !inPlayOverride && !isTerminalNationCard(G, playerId, nationCard.cardId)) flipStateForAccession(G, playerId, nationCard.cardId);
       triggerScoringForTerminalNationCard(G, playerId, nationCard.cardId);

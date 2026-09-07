@@ -238,7 +238,7 @@ describe("effectRunner", () => {
 
   it("does not let attack protection cancel non-card nation effects", () => {
     const G = createInitialState();
-    G.unrestPile = ["nation_unrest"];
+    G.unrestPile = ["nation_unrest", "spare_unrest"];
     G.cardDb.nation_unrest = {
       id: "nation_unrest",
       displayName: "Nation Unrest",
@@ -1516,7 +1516,7 @@ describe("effectRunner", () => {
       },
       playerNationIds: { "1": "unrest_passive_nation", "2": "unrest_passive_nation" }
     });
-    G.unrestPile = ["unrest_a"];
+    G.unrestPile = ["unrest_a", "spare_unrest"];
     G.players["1"].resources.materials = 0;
 
     const result = runEffects({ G, playerId: "1" }, [{ trigger: "on_play", op: "take_unrest", count: 1 } as any]);
@@ -1550,7 +1550,7 @@ describe("effectRunner", () => {
       tags: [],
       effects: []
     };
-    G.unrestPile = ["unrest_a"];
+    G.unrestPile = ["unrest_a", "spare_unrest"];
     G.activeNationRulesets = {
       "1": {
         hookRules: [{
@@ -1592,7 +1592,7 @@ describe("effectRunner", () => {
       tags: [],
       effects: []
     };
-    G.unrestPile = ["unrest_a"];
+    G.unrestPile = ["unrest_a", "spare_unrest"];
     G.activeNationRulesets = {
       "1": {
         stateOverrides: [{ op: "take_unrest_when_spending_resource", resource: "materials" }],
@@ -1700,13 +1700,13 @@ describe("effectRunner", () => {
       },
       playerNationIds: { "1": "unrest_choice_nation", "2": "unrest_choice_nation" }
     });
-    G.unrestPile = ["unrest_a", "unrest_b"];
+    G.unrestPile = ["unrest_a", "unrest_b", "spare_unrest"];
 
     const result = runEffects({ G, playerId: "1" }, [{ trigger: "on_play", op: "take_unrest", count: 2 } as any]);
 
     expect(result).toBe(true);
     expect(G.players["1"].hand).toEqual(["unrest_a"]);
-    expect(G.unrestPile).toEqual(["unrest_b"]);
+    expect(G.unrestPile).toEqual(["unrest_b", "spare_unrest"]);
     expect(G.pendingChoice).toBeDefined();
     expect(G.log.some((entry) => entry.message === "UnrestTaken(players=1/count=2/taken=2)")).toBe(false);
 
@@ -1714,7 +1714,7 @@ describe("effectRunner", () => {
 
     expect(G.pendingChoice).toBeDefined();
     expect(G.players["1"].hand).toEqual(["unrest_a", "unrest_b"]);
-    expect(G.unrestPile).toEqual([]);
+    expect(G.unrestPile).toEqual(["spare_unrest"]);
     expect(G.players["1"].resources.goods).toBe(1);
     expect(G.log.some((entry) => entry.message === "UnrestTaken(players=1/count=2/taken=2)")).toBe(false);
 
@@ -1722,7 +1722,7 @@ describe("effectRunner", () => {
 
     expect(G.pendingChoice).toBeUndefined();
     expect(G.players["1"].hand).toEqual(["unrest_a", "unrest_b"]);
-    expect(G.unrestPile).toEqual([]);
+    expect(G.unrestPile).toEqual(["spare_unrest"]);
     expect(G.players["1"].resources.goods).toBe(2);
     expect(G.log.some((entry) => entry.message === "UnrestTaken(players=1/count=2/taken=2)")).toBe(true);
   });
@@ -1765,7 +1765,7 @@ describe("effectRunner", () => {
       },
       playerNationIds: { "1": "unrest_choice_nation", "2": "unrest_choice_nation" }
     });
-    G.unrestPile = ["unrest_a"];
+    G.unrestPile = ["unrest_a", "spare_unrest"];
     G.players["1"].resources.goods = 0;
     G.players["1"].resources.influence = 0;
     G.players["1"].playArea = ["reactive_unrest_exhaust"];
@@ -3829,7 +3829,7 @@ describe("effectRunner", () => {
       tags: [],
       effects: []
     };
-    G.unrestPile = ["test_unrest_1"];
+    G.unrestPile = ["test_unrest_1", "spare_unrest"];
 
     runEffects({ G, playerId: "1" }, [{
       trigger: "on_play",
@@ -3842,7 +3842,7 @@ describe("effectRunner", () => {
     expect(G.players["1"].exile).toEqual([]);
     expect(G.players["1"].hand).toContain("exiled_action");
     expect(G.players["1"].hand).toContain("test_unrest_1");
-    expect(G.unrestPile).toEqual([]);
+    expect(G.unrestPile).toEqual(["spare_unrest"]);
     expect(G.log.at(-1)?.message).toBe("AcquiredFromExile(exiled_action/destination=hand)");
   });
 
@@ -3878,7 +3878,7 @@ describe("effectRunner", () => {
         reactive: { trigger: "after_take_unrest", target: "self" }
       } as any]
     };
-    G.unrestPile = ["test_unrest_1"];
+    G.unrestPile = ["test_unrest_1", "spare_unrest"];
 
     runEffects({ G, playerId: "1", selfCardId: "exile_acquire_source" }, [
       {
@@ -3970,7 +3970,7 @@ describe("effectRunner", () => {
       tags: [],
       effects: [{ trigger: "on_acquire", op: "gain_resource", resource: "materials", amount: 1 } as any]
     };
-    G.unrestPile = ["test_unrest_1"];
+    G.unrestPile = ["test_unrest_1", "spare_unrest"];
 
     runEffects({ G, playerId: "1", selfCardId: "exile_acquire_source" }, [
       {
@@ -4639,7 +4639,7 @@ describe("effectRunner", () => {
     expect(G.players["1"].exile).toEqual(["garrisoned_civilized"]);
   });
 
-  it("acquire_card effect can acquire an Unrest card from Exile without taking extra Unrest", () => {
+  it("acquire_card effect takes extra Unrest for a non-Region card from Exile", () => {
     const G = createInitialState();
     G.players["1"].exile = ["exiled_unrest"];
     G.cardDb.exiled_unrest = {
@@ -4652,7 +4652,7 @@ describe("effectRunner", () => {
       tags: [],
       effects: []
     };
-    G.unrestPile = ["test_unrest_1"];
+    G.unrestPile = ["test_unrest_1", "spare_unrest"];
 
     runEffects({ G, playerId: "1" }, [{
       trigger: "on_play",
@@ -4665,10 +4665,11 @@ describe("effectRunner", () => {
     expect(G.players["1"].exile).toEqual([]);
     expect(G.players["1"].hand).toContain("exiled_unrest");
     expect(G.players["1"].discard).not.toContain("test_unrest_1");
-    expect(G.unrestPile).toEqual(["test_unrest_1"]);
+    expect(G.players["1"].hand).toContain("test_unrest_1");
+    expect(G.unrestPile).toEqual(["spare_unrest"]);
   });
 
-  it("acquire_card treats tag-only imported Unrest in Exile as Unrest", () => {
+  it("acquire_card treats a tag-only imported Region as exempt from extra Unrest", () => {
     const G = createInitialState();
     G.players["1"].exile = ["tagged_exiled_unrest"];
     G.unrestPile = [];
@@ -4679,7 +4680,7 @@ describe("effectRunner", () => {
       cardType: "action",
       suit: "none",
       cost: 0,
-      tags: ["unrest"],
+      tags: ["region"],
       effects: []
     };
 
@@ -4699,7 +4700,7 @@ describe("effectRunner", () => {
   it("acquire_card from Exile auto-resolves one matching legal card", () => {
     const G = createInitialState();
     G.players["1"].exile = ["exiled_civilized", "exiled_uncivilized"];
-    G.unrestPile = ["required_unrest"];
+    G.unrestPile = ["required_unrest", "spare_unrest"];
     G.cardDb.exiled_civilized = {
       id: "exiled_civilized",
       displayName: "Exiled Civilized",
@@ -4742,13 +4743,13 @@ describe("effectRunner", () => {
     expect(G.pendingAcquireChoice).toBeUndefined();
     expect(G.players["1"].exile).toEqual(["exiled_uncivilized"]);
     expect(G.players["1"].hand).toEqual(["exiled_civilized", "required_unrest"]);
-    expect(G.unrestPile).toEqual([]);
+    expect(G.unrestPile).toEqual(["spare_unrest"]);
     expect(G.log.some((entry) => entry.message === "AcquiredFromExile(exiled_civilized/destination=hand)")).toBe(true);
   });
 
-  it("acquire_card Exile choices exclude non-Unrest cards when required Unrest is unavailable", () => {
+  it("acquire_card Exile choices retain only Regions when required Unrest is unavailable", () => {
     const G = createInitialState();
-    G.players["1"].exile = ["exiled_action", "exiled_unrest"];
+    G.players["1"].exile = ["exiled_action", "exiled_region"];
     G.unrestPile = [];
     G.cardDb.exiled_action = {
       id: "exiled_action",
@@ -4760,12 +4761,12 @@ describe("effectRunner", () => {
       tags: [],
       effects: []
     };
-    G.cardDb.exiled_unrest = {
-      id: "exiled_unrest",
-      displayName: "Exiled Unrest",
-      type: "unrest",
-      cardType: "unrest",
-      suit: "unrest",
+    G.cardDb.exiled_region = {
+      id: "exiled_region",
+      displayName: "Exiled Region",
+      type: "region",
+      cardType: "region",
+      suit: "region",
       cost: 0,
       tags: [],
       effects: []
@@ -4790,7 +4791,7 @@ describe("effectRunner", () => {
 
     expect(G.pendingAcquireChoice).toBeUndefined();
     expect(G.players["1"].exile).toEqual(["exiled_action"]);
-    expect(G.players["1"].hand).toContain("exiled_unrest");
+    expect(G.players["1"].hand).toContain("exiled_region");
     expect(G.gameover).toBeUndefined();
   });
 
@@ -6235,9 +6236,9 @@ describe("effectRunner", () => {
     });
   });
 
-  it("break_through from main deck gains 2 materials if no matching suit is found", () => {
+  it("break_through from main deck gains 2 Progress if no matching suit is found", () => {
     const G = createInitialState();
-    G.players["1"].resources.materials = 0;
+    G.players["1"].resources.knowledge = 0;
     G.cardDb.test_action_archive_survey = { ...G.cardDb.test_action_archive_survey, suit: "civilized" };
     G.cardDb.test_action_risk_audit = { ...G.cardDb.test_action_risk_audit, suit: "civilized" };
     G.marketDecks = {
@@ -6252,21 +6253,21 @@ describe("effectRunner", () => {
 
     expect(G.players["1"].hand).not.toContain("test_action_archive_survey");
     expect(G.players["1"].hand).not.toContain("test_action_risk_audit");
-    expect(G.players["1"].resources.materials).toBe(2);
+    expect(G.players["1"].resources.knowledge).toBe(2);
     expect(G.marketDecks.mainDeck).toEqual(["test_action_risk_audit", "test_action_archive_survey"]);
-    expect(G.log.at(-1)?.message).toBe("BreakThroughFailed(uncivilized/gained=2 materials)");
+    expect(G.log.at(-1)?.message).toBe("BreakThroughFailed(uncivilized/gained=2 progress)");
   });
 
-  it("break_through from deck gains fallback Materials when no matching source or main deck exists", () => {
+  it("break_through from deck gains fallback Progress when no matching source or main deck exists", () => {
     const G = createInitialState();
     G.marketDecks = undefined;
-    G.players["1"].resources.materials = 0;
+    G.players["1"].resources.knowledge = 0;
 
     runEffects({ G, playerId: "1" }, [{ trigger: "on_play", op: "break_through", suit: "civilized", source: "deck", count: 1 } as any]);
 
     expect(G.players["1"].hand).toEqual([]);
-    expect(G.players["1"].resources.materials).toBe(2);
-    expect(G.log.at(-1)?.message).toBe("BreakThroughFailed(civilized/gained=2 materials)");
+    expect(G.players["1"].resources.knowledge).toBe(2);
+    expect(G.log.at(-1)?.message).toBe("BreakThroughFailed(civilized/gained=2 progress)");
   });
 
   it("find_card searches hand, discard, deck, then Nation deck and stops on the first exact match", () => {
@@ -7897,7 +7898,7 @@ describe("effectRunner", () => {
     expect(G.log.at(-1)?.message).toBe("OptionalPending(test_action_optional/options=1)");
   });
 
-  it("offers only the skip path for optional effects with only payable explicit costs", () => {
+  it("offers a payable optional cost path even when no benefit follows", () => {
     const G = createInitialState();
     G.players["1"].resources.materials = 1;
 
@@ -7912,10 +7913,13 @@ describe("effectRunner", () => {
     expect(G.pendingChoice).toEqual({
       playerId: "1",
       sourceCardId: "test_action_optional",
-      choices: [[]]
+      choices: [
+        [{ trigger: "on_play", op: "spend_resource", resource: "materials", amount: 1 }],
+        []
+      ]
     });
     expect(G.players["1"].resources.materials).toBe(1);
-    expect(G.log.at(-1)?.message).toBe("OptionalPending(test_action_optional/options=1)");
+    expect(G.log.at(-1)?.message).toBe("OptionalPending(test_action_optional/options=2)");
   });
 
   it("offers only the skip path for optional effects whose combined explicit costs are unaffordable", () => {
@@ -7961,7 +7965,7 @@ describe("effectRunner", () => {
     expect(G.log.at(-1)?.message).toBe("OptionalPending(test_action_optional/options=1)");
   });
 
-  it("offers optional draw when Action-token reshuffle progression can add a Nation card", () => {
+  it("does not offer optional draw when reshuffle progression has no Exhaust token", () => {
     const G = createInitialState();
     const p = G.players["1"];
     p.deck = [];
@@ -7981,12 +7985,9 @@ describe("effectRunner", () => {
     expect(G.pendingChoice).toEqual({
       playerId: "1",
       sourceCardId: "test_action_optional",
-      choices: [
-        [{ trigger: "on_play", op: "draw", count: 1 }],
-        []
-      ]
+      choices: [[]]
     });
-    expect(G.log.at(-1)?.message).toBe("OptionalPending(test_action_optional/options=2)");
+    expect(G.log.at(-1)?.message).toBe("OptionalPending(test_action_optional/options=1)");
   });
 
   it("offers only the skip path for optional draw when no-Nation-deck progression is skipped", () => {

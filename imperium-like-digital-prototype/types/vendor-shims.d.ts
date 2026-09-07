@@ -13,6 +13,8 @@ declare namespace JSX {
 }
 
 declare module "react" {
+  export function lazy<T>(loader: () => Promise<{ default: T }>): T;
+  export const Suspense: (props: { children?: unknown; fallback?: unknown }) => unknown;
   export function useEffect(effect: () => void | (() => void), deps?: unknown[]): void;
   export function useMemo<T>(factory: () => T, deps?: unknown[]): T;
   export function useRef<T>(initial: T): { current: T };

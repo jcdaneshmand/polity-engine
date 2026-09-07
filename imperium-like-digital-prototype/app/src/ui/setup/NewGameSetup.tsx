@@ -1,18 +1,24 @@
 import { useMemo, useState } from "react";
 import { createCampaignProgress } from "../../../../engine/src/game/campaign";
+import { getCommonsValidationProfile } from "../../../../engine/src/setup/registeredCommonsProfile";
+import { normalizeSetupCardDb } from "../../../../engine/src/setup/setupCardNormalization";
 import { loadCardDb } from "../../../../engine/src/cards/cardLoader";
-import type { CampaignMode, CampaignProgress, CommonsSetId, ExpansionId, GameMode, GameOptions, SoloDifficulty, VariantId } from "../../../../engine/src/options/gameOptions";
+import type { CampaignMode, CampaignProgress, CommonsReplacementPolicy, CommonsSetId, ExpansionId, GameMode, GameOptions, SoloDifficulty, VariantId } from "../../../../engine/src/options/gameOptions";
 import { loadNationDb } from "../../../../engine/src/nations/nationLoader";
 import { loadBotStateTables } from "../../../../engine/src/solo/botStateTableLoader";
 import type { PrivateDataBundle } from "../../../../engine/src/setup/privateDataBundle";
 import type { AccountPublicView } from "../../accountSession";
 import { getBotNationSetupOptions } from "./botNationOptions";
 import CommonsPresets from "./CommonsPresets";
-import { commonsComposition } from "../../commonsPresets";
 import { selectCommonsCards } from "../../../../engine/src/setup/commonsSelection";
 import { hasNationConflict } from "../../../../engine/src/setup/commonsReplacementPolicy";
 import type { CommonsSetupOptions } from "../../../../engine/src/setup/commonsTypes";
 import { buildPrivateDataDryRunDownload, buildPrivateDataDryRunIssueSummary, getPrivateDataReadyMessage, getPrivateDataRecordCounts, hasPrivateData, importPrivateDataFiles, type PrivateDataDryRunReport, type PrivateDataFileStatus } from "./privateDataImport";
+import { createPublicFictionalFixtureBundle, PUBLIC_FICTIONAL_FIXTURE_VERSION, publicFictionalCommonsCardIds } from "../../publicFictionalFixtures";
+import { analyzeCommonsSetup } from "../../../../engine/src/setup/commonsAnalysis";
+import { analyzeAllBaseSetAvailability } from "../../commonsAvailability";
+import { createSetupPresetSettings, getUnavailableSetupReferences, type SetupPresetSettings } from "../../setupPresets";
+import SetupPresets from "./SetupPresets";
 
 export type NewGameSessionConfig = {
   options: GameOptions;
@@ -48,6 +54,7 @@ type NewGameSetupProps = {
   onlineGamesEnabled?: boolean;
   allowedModes?: GameMode[];
   localPlaytestStatus?: LocalPlaytestStatus;
+  onStartGuidedGame?: () => void;
 };
 
 const DEFAULT_NATION_ID = "test_nation_sun_coast";
@@ -60,10 +67,14 @@ const modes: Array<{ id: GameMode; label: string }> = [
 
 const expansions: Array<{ id: ExpansionId; label: string }> = [{ id: "trade_routes", label: "Trade Module" }];
 
+const standardCommonsSets: Array<{ id: Exclude<CommonsSetId, "custom">; label: string }> = [
+  { id: "classics", label: "Classics" },
+  { id: "legends", label: "Legends" },
+  { id: "horizons", label: "Horizons" }
+];
+
 const commonsSets: Array<{ id: CommonsSetId; label: string }> = [
-  { id: "classics", label: "Classical" },
-  { id: "legends", label: "Legendary" },
-  { id: "horizons", label: "Horizontal" },
+  ...standardCommonsSets,
   { id: "custom", label: "Custom" }
 ];
 
@@ -89,6 +100,12 @@ const campaignModes: Array<{ id: "none" | CampaignMode; label: string }> = [
   { id: "supreme_ruler", label: "Supreme Ruler" }
 ];
 
+const replacementPolicies: Array<{ id: CommonsReplacementPolicy; label: string }> = [
+  { id: "use_replacements", label: "Use Replacements" },
+  { id: "prefer_latest", label: "Prefer Latest" },
+  { id: "none", label: "No Replacements" }
+];
+
 export type NationOption = { id: string; label: string };
 export type CommonsCardOption = { id: string; label: string; setId: CommonsSetId; group: string };
 
@@ -103,8 +120,13 @@ export function getNationOptions(enabledExpansions: ExpansionId[], privateData?:
 }
 
 export function getCommonsCardOptions(privateData?: PrivateDataBundle, eligibility?: CommonsSetupOptions): CommonsCardOption[] {
-  const cards = privateData?.cards?.length ? privateData.cards : Object.values(loadCardDb()) as any[];
-  return (eligibility ? selectCommonsCards(cards, eligibility).selectedCards : cards)
+  const cards = Object.values(normalizeSetupCardDb(privateData?.cards?.length
+    ? Object.fromEntries(privateData.cards.map((card) => [card.id, card]))
+    : loadCardDb()));
+  const selectionOptions = eligibility?.commonsSetId === "custom"
+    ? { ...eligibility, customCommonsCardIds: cards.map((card: any) => card.id) }
+    : eligibility;
+  return (selectionOptions ? selectCommonsCards(cards, selectionOptions).selectedCards : cards)
     .filter((card: any) => !eligibility || !hasNationConflict(card, eligibility.selectedNationIds))
     .filter((card: any) => (card.ownership ?? "commons") === "commons" && (card.commonsGroup ?? "base") !== "replacement")
     .map((card: any) => ({
@@ -308,7 +330,8 @@ export default function NewGameSetup({
   onCancel,
   onlineGamesEnabled = true,
   allowedModes,
-  localPlaytestStatus
+  localPlaytestStatus,
+  onStartGuidedGame
 }: NewGameSetupProps) {
   const initialOptions = initialConfig?.options;
   const modeChoices = modes.filter((item) => !allowedModes || allowedModes.includes(item.id));
@@ -318,9 +341,11 @@ export default function NewGameSetup({
   const [playerCount, setPlayerCount] = useState<1 | 2 | 3 | 4>(initialCampaignProgress ? 1 : (initialOptions?.playerCount ?? 2) as 1 | 2 | 3 | 4);
   const [enabledExpansions, setEnabledExpansions] = useState<ExpansionId[]>([...(initialOptions?.enabledExpansions ?? [])]);
   const [enabledVariants, setEnabledVariants] = useState<VariantId[]>([...(initialOptions?.enabledVariants ?? [])]);
+  const [replacementPolicy, setReplacementPolicy] = useState<CommonsReplacementPolicy>(initialOptions?.replacementPolicy ?? "use_replacements");
   const [commonsSetId, setCommonsSetId] = useState<CommonsSetId>(initialOptions?.commonsSetId ?? "classics");
   const [customCommonsCardIds, setCustomCommonsCardIds] = useState<string[]>([...(initialOptions?.customCommonsCardIds ?? [])]);
   const [customCommonsSearch, setCustomCommonsSearch] = useState("");
+  const [customCommonsSource, setCustomCommonsSource] = useState<"all" | CommonsSetId>("all");
   const [soloDifficulty, setSoloDifficulty] = useState<SoloDifficulty>(initialOptions?.soloDifficulty ?? initialCampaignProgress?.currentDifficulty ?? "chieftain");
   const [campaignMode, setCampaignMode] = useState<"none" | CampaignMode>(initialCampaignProgress?.mode ?? initialOptions?.campaignMode ?? "none");
   const [campaignProgress, setCampaignProgress] = useState<CampaignProgress | undefined>(initialCampaignProgress ?? initialOptions?.campaignProgress);
@@ -329,6 +354,7 @@ export default function NewGameSetup({
   const [soloBotNationId, setSoloBotNationId] = useState<string>(initialConfig?.soloBotNationId ?? "random");
   const [privateData, setPrivateData] = useState<PrivateDataBundle>(initialConfig?.privateData ?? {});
   const [privateDataConfirmed, setPrivateDataConfirmed] = useState(Boolean(initialConfig?.privateData));
+  const [loadedDataKind, setLoadedDataKind] = useState<"fictional" | "private" | undefined>(initialConfig?.privateData ? "private" : undefined);
   const [privateFileStatuses, setPrivateFileStatuses] = useState<PrivateDataFileStatus[]>([]);
   const [privateDryRunReport, setPrivateDryRunReport] = useState<PrivateDataDryRunReport | null>(null);
   const [privatePreviewStatus, setPrivatePreviewStatus] = useState("");
@@ -337,6 +363,7 @@ export default function NewGameSetup({
   const [resetEmail, setResetEmail] = useState("");
   const [resetPassword, setResetPassword] = useState("");
   const [resetPasswordConfirmation, setResetPasswordConfirmation] = useState("");
+  const [advancedSetupOpen, setAdvancedSetupOpen] = useState(Boolean(passwordResetToken));
   const [playerNationIds, setPlayerNationIds] = useState<Record<string, string>>({
     "1": initialNationId(initialConfig, "1") ?? initialCampaignProgress?.playerNationId ?? DEFAULT_NATION_ID,
     "2": initialNationId(initialConfig, "2") ?? DEFAULT_NATION_ID,
@@ -348,17 +375,29 @@ export default function NewGameSetup({
   const confirmedPrivateData = privateDataConfirmed ? privateData : undefined;
   const privateDataCounts = useMemo(() => getPrivateDataRecordCounts(privateData), [privateData]);
   const hasLoadedPrivateData = privateDataCounts.length > 0;
+  const hasLoadedPrivateImportData = hasLoadedPrivateData && loadedDataKind !== "fictional";
   const privateDataHasFatalPreview = (privateDryRunReport?.fatal ?? 0) > 0;
   const privateDataIsConfirmed = privateDataConfirmed && hasPrivateData(privateData);
+  const privateImportIsConfirmed = privateDataIsConfirmed && loadedDataKind !== "fictional";
   const privateDataSetupState = getPrivateDataSetupState({
-    hasLoadedPrivateData,
+    hasLoadedPrivateData: hasLoadedPrivateImportData,
     hasFatalPreview: privateDataHasFatalPreview,
-    privateDataConfirmed: privateDataIsConfirmed
+    privateDataConfirmed: privateImportIsConfirmed
   });
   const privateDataReadyMessage = getPrivateDataReadyMessage(privateDataCounts);
   const availableNations = useMemo(
     () => getNationOptions(enabledExpansions, confirmedPrivateData),
     [enabledExpansions, confirmedPrivateData]
+  );
+  const launchCardDb = useMemo(
+    () => normalizeSetupCardDb(confirmedPrivateData?.cards?.length
+      ? Object.fromEntries(confirmedPrivateData.cards.map((card) => [card.id, card]))
+      : loadCardDb()),
+    [confirmedPrivateData]
+  );
+  const launchNationDb = useMemo(
+    () => Object.fromEntries((confirmedPrivateData?.nations?.length ? confirmedPrivateData.nations : Object.values(loadNationDb({ enabledExpansions }))).map((nation) => [nation.id, nation])),
+    [confirmedPrivateData, enabledExpansions]
   );
   const availableCommonsCards = useMemo(
     () => getCommonsCardOptions(confirmedPrivateData, {
@@ -370,19 +409,64 @@ export default function NewGameSetup({
     }),
     [confirmedPrivateData, normalizedPlayerCount, enabledExpansions, enabledVariants, mode, campaignMode, playerNationIds, soloBotNationId]
   );
-  const customCommonsCards = availableCommonsCards.filter((card) => card.setId === "custom");
-  const customCommonsInvalid = commonsSetId === "custom" && !commonsComposition(customCommonsCardIds, customCommonsCards).valid;
+  const customCommonsCards = availableCommonsCards;
+  const selectedCommonsNationIds = [...getLaunchPlayerIds(normalizedPlayerCount).map((id) => playerNationIds[id]), ...(mode === "solo" && soloBotNationId !== "random" ? [soloBotNationId] : [])];
+  const commonsValidationProfile = getCommonsValidationProfile({ usePrivateData: Boolean(confirmedPrivateData), cards: launchCardDb });
+  const commonsAnalysis = useMemo(() => analyzeCommonsSetup({
+    cardDb: launchCardDb,
+    nationDb: launchNationDb,
+    options: {
+      commonsSetId,
+      playerCount: normalizedPlayerCount,
+      effectiveCommonsPlayerCount: Math.max(2, normalizedPlayerCount) as 2 | 3 | 4,
+      enabledExpansions,
+      enabledVariants,
+      campaignMode: mode !== "solo" || campaignMode === "none" ? undefined : campaignMode,
+      mode,
+      selectedNationIds: selectedCommonsNationIds,
+      customCommonsCardIds,
+      replacementPolicy
+    },
+    profile: commonsValidationProfile,
+    requestedCustomCardIds: customCommonsCardIds,
+    randomBotUnresolved: mode === "solo" && soloBotNationId === "random"
+  }), [launchCardDb, launchNationDb, commonsValidationProfile, commonsSetId, normalizedPlayerCount, enabledExpansions, enabledVariants, replacementPolicy, mode, campaignMode, selectedCommonsNationIds.join("\u0000"), customCommonsCardIds, soloBotNationId]);
+  const baseSetAvailability = useMemo(() => analyzeAllBaseSetAvailability({
+    cardDb: launchCardDb,
+    nationDb: launchNationDb,
+    options: {
+      playerCount: normalizedPlayerCount,
+      effectiveCommonsPlayerCount: Math.max(2, normalizedPlayerCount) as 2 | 3 | 4,
+      enabledExpansions,
+      enabledVariants,
+      campaignMode: mode !== "solo" || campaignMode === "none" ? undefined : campaignMode,
+      mode,
+      selectedNationIds: selectedCommonsNationIds,
+      replacementPolicy
+    },
+    profile: commonsValidationProfile,
+    randomBotUnresolved: mode === "solo" && soloBotNationId === "random"
+  }), [launchCardDb, launchNationDb, commonsValidationProfile, normalizedPlayerCount, enabledExpansions, enabledVariants, replacementPolicy, mode, campaignMode, selectedCommonsNationIds.join("\u0000"), soloBotNationId]);
+  const commonsLaunchBlocked = commonsAnalysis.status === "blocked";
   const customCommonsSelectedSet = new Set(customCommonsCardIds);
   const customCommonsVisibleCards = customCommonsCards.filter((card) => {
     const query = customCommonsSearch.trim().toLowerCase();
-    if (!query) return true;
-    return card.label.toLowerCase().includes(query) || card.id.toLowerCase().includes(query);
+    const sourceMatches = customCommonsSource === "all" || card.setId === customCommonsSource;
+    if (!sourceMatches) return false;
+    return !query || card.label.toLowerCase().includes(query) || card.id.toLowerCase().includes(query);
   });
+  const customCommonsVisibleIds = customCommonsVisibleCards.map((card) => card.id);
   const botNationOptions = useMemo(
     () => getBotNationSetupOptions(availableNations, loadBotStateTables()),
     [availableNations]
   );
   const activePlayerIds = getLaunchPlayerIds(normalizedPlayerCount);
+  const availableNationIds = new Set(availableNations.map((nation) => nation.id));
+  const unavailableSetupReferences = getUnavailableSetupReferences({ mode, playerCount: normalizedPlayerCount, playerNationIds, soloBotNationId }, availableNationIds);
+  const missingPlayerNationIds = unavailableSetupReferences.playerIds;
+  const missingSoloBotNation = Boolean(unavailableSetupReferences.botNationId);
+  const setupReferenceBlocked = missingPlayerNationIds.length > 0 || missingSoloBotNation;
+  const launchBlocked = commonsLaunchBlocked || setupReferenceBlocked;
   const selectedNationLabels = activePlayerIds
     .map((playerId) => availableNations.find((nation) => nation.id === playerNationIds[playerId])?.label ?? firstNationId(availableNations))
     .join(", ");
@@ -390,9 +474,11 @@ export default function NewGameSetup({
     ...enabledExpansions.map((expansion) => labelFor(expansions, expansion)),
     ...enabledVariants.map((variant) => labelFor(variants, variant))
   ].join(", ") || "Core rules";
-  const commonsSummary = commonsSetId === "custom" ? `${customCommonsCardIds.length} selected` : labelFor(commonsSets, commonsSetId);
-  const privateDataSummary = privateDataIsConfirmed ? privateDataReadyMessage : "Placeholder data";
-  const localPlaytestDataMode = privateDataIsConfirmed
+  const commonsSummary = commonsSetId === "custom" ? `${customCommonsCardIds.length} selected` : `${labelFor(commonsSets, commonsSetId)} / ${baseSetAvailability[commonsSetId].statusLabel}`;
+  const privateDataSummary = loadedDataKind === "fictional" && privateDataIsConfirmed
+    ? `Fictional playtest set v${PUBLIC_FICTIONAL_FIXTURE_VERSION}`
+    : privateDataIsConfirmed ? privateDataReadyMessage : "Placeholder data";
+  const localPlaytestDataMode = privateImportIsConfirmed
     ? "private"
     : localPlaytestStatus?.dataMode ?? "placeholder";
   const localPlaytestNextCommand = localPlaytestDataMode === "private" ? "private:status private:gate" : "private:status";
@@ -417,6 +503,31 @@ export default function NewGameSetup({
     : launchCampaignProgress
       ? `${labelFor(campaignModes, launchCampaignProgress.mode)} ${launchCampaignProgress.wins}-${launchCampaignProgress.losses}`
       : labelFor(campaignModes, effectiveCampaignMode);
+  const soloSetupSummary = mode === "solo"
+    ? `${soloBotNationId === "random" ? "Random Bot" : botNationOptions.find((nation) => nation.id === soloBotNationId)?.label ?? soloBotNationId} / ${labelFor(soloDifficulties, soloDifficulty)}`
+    : undefined;
+  const advancedSummary = [
+    enabledModuleSummary !== "Core rules" ? enabledModuleSummary : undefined,
+    effectiveCampaignMode !== "none" ? campaignSummary : undefined,
+    privateDataIsConfirmed ? privateDataSummary : undefined
+  ].filter((value): value is string => Boolean(value)).join(" / ") || "Core options";
+  const setupPresetSettings = useMemo(() => createSetupPresetSettings({
+    options: {
+      playerCount: normalizedPlayerCount,
+      mode,
+      enabledExpansions,
+      enabledVariants,
+      replacementPolicy,
+      commonsSetId,
+      ...(commonsSetId === "custom" ? { customCommonsCardIds } : {}),
+      ...(mode === "solo" ? {
+        soloDifficulty: launchCampaignOptions.soloDifficulty,
+        ...(effectiveCampaignMode !== "none" ? { campaignMode: effectiveCampaignMode } : {})
+      } : {})
+    },
+    playerNationIds: Object.fromEntries(activePlayerIds.map((playerId) => [playerId, playerNationIds[playerId] ?? DEFAULT_NATION_ID])),
+    ...(mode === "solo" ? { soloBotNationId } : {})
+  }), [normalizedPlayerCount, mode, enabledExpansions, enabledVariants, replacementPolicy, commonsSetId, customCommonsCardIds, launchCampaignOptions.soloDifficulty, effectiveCampaignMode, activePlayerIds.join("\u0000"), playerNationIds, soloBotNationId]);
 
   const updateMode = (nextMode: GameMode) => {
     setMode(nextMode);
@@ -462,6 +573,7 @@ export default function NewGameSetup({
       enabledExpansions,
       enabledVariants,
       commonsSetId,
+      replacementPolicy,
       ...(commonsSetId === "custom" ? { customCommonsCardIds } : {}),
       ...(mode === "solo" ? launchCampaignOptions : {})
     };
@@ -475,8 +587,24 @@ export default function NewGameSetup({
   };
 
   const startGame = () => {
-    if (customCommonsInvalid) return;
+    if (launchBlocked) return;
     onStart(buildLaunchConfig());
+  };
+
+  const applySetupPreset = (settings: SetupPresetSettings) => {
+    setMode(settings.mode);
+    setPlayerCount(settings.playerCount);
+    setEnabledExpansions([...settings.enabledExpansions]);
+    setEnabledVariants([...settings.enabledVariants]);
+    setReplacementPolicy(settings.replacementPolicy);
+    setCommonsSetId(settings.commonsSetId);
+    setCustomCommonsCardIds([...(settings.customCommonsCardIds ?? [])]);
+    setPlayerNationIds({ ...settings.playerNationIds });
+    setSoloDifficulty(settings.soloDifficulty ?? "chieftain");
+    setSoloBotNationId(settings.soloBotNationId ?? "random");
+    setCampaignMode(settings.campaignMode ?? "none");
+    setCampaignProgress(undefined);
+    setCampaignImportMessage("");
   };
 
   const updateCampaignMode = (nextCampaignMode: "none" | CampaignMode) => {
@@ -526,6 +654,27 @@ export default function NewGameSetup({
     );
     setSoloBotNationId((nationId) => nationId === "random" || nextNationIds.has(nationId) ? nationId : "random");
     setPrivateDataConfirmed(true);
+    setLoadedDataKind("private");
+  };
+
+  const loadFictionalPlaytestSet = () => {
+    const bundle = createPublicFictionalFixtureBundle();
+    const seatNations = [
+      "fixture_nation_surveyors",
+      "fixture_nation_archivists",
+      "fixture_nation_wayfinders",
+      "fixture_nation_progressors"
+    ];
+    setPrivateData(bundle);
+    setPrivateDataConfirmed(true);
+    setLoadedDataKind("fictional");
+    setPrivateFileStatuses([]);
+    setPrivateDryRunReport(null);
+    setPrivatePreviewStatus("");
+    setCommonsSetId("custom");
+    setCustomCommonsCardIds(publicFictionalCommonsCardIds(bundle));
+    setPlayerNationIds(Object.fromEntries(getLaunchPlayerIds(normalizedPlayerCount).map((playerId, index) => [playerId, seatNations[index]])));
+    setSoloBotNationId("fixture_nation_archivists");
   };
 
   const importPrivateFiles = async (event: { target: HTMLInputElement }) => {
@@ -534,6 +683,7 @@ export default function NewGameSetup({
     const result = await importPrivateDataFiles(files.map((file) => ({ name: file.name, text: () => file.text() })));
     setPrivateData(result.privateData);
     setPrivateDataConfirmed(false);
+    setLoadedDataKind(undefined);
     setPrivateFileStatuses(result.files);
     setPrivateDryRunReport(result.dryRunReport);
     setPrivatePreviewStatus("");
@@ -575,7 +725,7 @@ export default function NewGameSetup({
 
   return (
     <main className="setup-screen">
-      <section className="setup-panel" aria-labelledby="setup-title">
+      <section className="setup-panel" aria-labelledby="setup-title" data-setup-mode={advancedSetupOpen ? "advanced" : "basic"}>
         <div className="setup-heading">
           <div>
             <p className="setup-kicker">{kicker}</p>
@@ -583,7 +733,8 @@ export default function NewGameSetup({
           </div>
           <div className="private-data-actions">
             {onCancel ? <button type="button" onClick={onCancel}>Back</button> : null}
-            <button className="primary-action" type="button" onClick={startGame} disabled={customCommonsInvalid}>
+            {onStartGuidedGame ? <button type="button" onClick={onStartGuidedGame}>Learning Game</button> : null}
+            <button className="primary-action" type="button" onClick={startGame} disabled={launchBlocked}>
               {submitLabel}
             </button>
           </div>
@@ -618,11 +769,29 @@ export default function NewGameSetup({
             <span>Campaign</span>
             <strong>{campaignSummary}</strong>
           </div>
+          {soloSetupSummary ? <div>
+            <span>Solo</span>
+            <strong>{soloSetupSummary}</strong>
+          </div> : null}
         </section>
+
+        <div className="advanced-setup-toggle">
+          <button
+            type="button"
+            aria-expanded={advancedSetupOpen}
+            onClick={() => setAdvancedSetupOpen((current) => !current)}
+          >
+            {advancedSetupOpen ? "Hide Advanced Setup" : "Advanced Setup"}
+          </button>
+          <span>{advancedSummary}</span>
+        </div>
+
+        <SetupPresets settings={setupPresetSettings} onApply={applySetupPreset} />
 
         {localPlaytestStatus ? (
           <fieldset
             className="setup-section setup-section--wide local-playtest-status"
+            hidden={!advancedSetupOpen}
             data-qa="local-playtest-status"
             data-data-mode={localPlaytestDataMode}
             data-saved-game={localPlaytestStatus.savedGameAvailable ? "available" : "none"}
@@ -648,7 +817,7 @@ export default function NewGameSetup({
           <div className="setup-grid">
             <fieldset className="setup-section">
               <legend>Mode</legend>
-              <div className="segmented-control">
+              <div className="segmented-control mode-control">
                 {modeChoices.map((item) => (
                   <button key={item.id} className={mode === item.id ? "is-active" : ""} type="button" onClick={() => updateMode(item.id)}>
                     {item.label}
@@ -676,7 +845,7 @@ export default function NewGameSetup({
 
             {mode === "solo" ? (
               <>
-                <label className="setup-section setup-field">
+                <label className="setup-section setup-field" hidden={!advancedSetupOpen}>
                   <span>Solo difficulty</span>
                   <select value={soloDifficulty} onChange={(event: { target: HTMLSelectElement }) => setSoloDifficulty(event.target.value as SoloDifficulty)} disabled={campaignMode === "supreme_ruler"}>
                     {soloDifficulties.map((difficulty) => (
@@ -687,10 +856,11 @@ export default function NewGameSetup({
                   </select>
                 </label>
 
-                <label className="setup-section setup-field">
+                <label className="setup-section setup-field" hidden={!advancedSetupOpen}>
                   <span>Bot nation</span>
                   <select value={soloBotNationId} onChange={(event: { target: HTMLSelectElement }) => setSoloBotNationId(event.target.value)}>
                     <option value="random">Random</option>
+                    {missingSoloBotNation ? <option value={soloBotNationId} disabled>Unavailable: {soloBotNationId}</option> : null}
                     {botNationOptions.map((nation) => (
                       <option key={nation.id} value={nation.id}>
                         {nation.label} - {nation.statusLabel}
@@ -701,7 +871,7 @@ export default function NewGameSetup({
               </>
             ) : null}
 
-            {mode === "solo" ? <fieldset className="setup-section setup-section--wide">
+              {mode === "solo" ? <fieldset className="setup-section setup-section--wide" hidden={!advancedSetupOpen}>
               <legend>Campaign</legend>
               <div className="segmented-control">
                 {campaignModes.map((item) => (
@@ -730,12 +900,12 @@ export default function NewGameSetup({
             </fieldset> : null}
 
             {mode === "multiplayer" && onlineGamesEnabled ? (
-              <fieldset className="setup-section setup-section--wide">
+              <fieldset className="setup-section setup-section--wide" hidden={!advancedSetupOpen}>
                 <legend>Online</legend>
                 <p className="setup-help">Sign in before entering online games. Your account username is used at the table.</p>
                 {account ? (
                   <div className="private-data-actions">
-                    <button className="primary-action" type="button" onClick={() => onOpenOnlineGames?.(buildLaunchConfig(), account.username)} disabled={!onOpenOnlineGames || customCommonsInvalid}>
+                    <button className="primary-action" type="button" onClick={() => onOpenOnlineGames?.(buildLaunchConfig(), account.username)} disabled={!onOpenOnlineGames || launchBlocked}>
                       Continue as {account.username}
                     </button>
                   </div>
@@ -750,10 +920,10 @@ export default function NewGameSetup({
                       <input name="online-account-password" type="password" value={onlinePassword} onChange={(event: { target: HTMLInputElement }) => setOnlinePassword(event.target.value)} />
                     </label>
                     <div className="private-data-actions">
-                      <button className="primary-action" type="button" onClick={() => void onSignInForOnline?.(buildLaunchConfig(), { login: onlineLogin, password: onlinePassword })} disabled={!onSignInForOnline || !onlineLogin.trim() || !onlinePassword || customCommonsInvalid}>
+                      <button className="primary-action" type="button" onClick={() => void onSignInForOnline?.(buildLaunchConfig(), { login: onlineLogin, password: onlinePassword })} disabled={!onSignInForOnline || !onlineLogin.trim() || !onlinePassword || launchBlocked}>
                         Online Games
                       </button>
-                      <button type="button" onClick={() => onOpenOnlineGames?.(buildLaunchConfig(), "Guest")} disabled={!onOpenOnlineGames || customCommonsInvalid}>
+                      <button type="button" onClick={() => onOpenOnlineGames?.(buildLaunchConfig(), "Guest")} disabled={!onOpenOnlineGames || launchBlocked}>
                         Continue as Guest
                       </button>
                     </div>
@@ -786,16 +956,57 @@ export default function NewGameSetup({
         <section className="setup-stage" aria-labelledby="setup-stage-content">
           <h2 id="setup-stage-content">Content</h2>
           <div className="setup-grid">
-            <label className="setup-section setup-field">
-              <span>Commons set</span>
-              <select value={commonsSetId} onChange={(event: { target: HTMLSelectElement }) => setCommonsSetId(event.target.value as CommonsSetId)}>
-                {commonsSets.map((commonsSet) => (
-                  <option key={commonsSet.id} value={commonsSet.id}>
-                    {commonsSet.label}
-                  </option>
+            <fieldset className="setup-section setup-section--wide commons-setup" data-qa="commons-setup" data-commons-mode={commonsSetId === "custom" ? "advanced" : "standard"}>
+              <legend>Commons</legend>
+              <div className="segmented-control commons-set-picker" role="group" aria-label="Commons set">
+                {standardCommonsSets.map((commonsSet) => {
+                  const availability = baseSetAvailability[commonsSet.id];
+                  return (
+                  <button
+                    key={commonsSet.id}
+                    type="button"
+                    className={commonsSetId === commonsSet.id ? "is-active" : ""}
+                    aria-pressed={commonsSetId === commonsSet.id}
+                    disabled={availability.disabled}
+                    onClick={() => setCommonsSetId(commonsSet.id)}
+                  >
+                    <span>{commonsSet.label}</span>
+                    <small>{availability.statusLabel} / {availability.eligibleCount}</small>
+                  </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  className={commonsSetId === "custom" ? "is-active" : ""}
+                  aria-pressed={commonsSetId === "custom"}
+                  onClick={() => setCommonsSetId("custom")}
+                >
+                  Advanced
+                </button>
+              </div>
+              <div className="commons-availability-details" aria-label="Base Commons availability">
+                {standardCommonsSets.filter((set) => baseSetAvailability[set.id].disabled).map((set) => (
+                  <p key={set.id}><strong>{set.label}</strong>: {baseSetAvailability[set.id].reason}</p>
                 ))}
-              </select>
-            </label>
+              </div>
+              <div
+                className="commons-composition-summary"
+                data-qa="commons-composition-summary"
+                data-status={commonsAnalysis.status}
+                role={commonsLaunchBlocked ? "alert" : "status"}
+              >
+                <strong>{commonsAnalysis.status === "blocked" ? "Commons setup needs attention" : commonsAnalysis.status === "conditional" ? "Commons setup will be checked at launch" : "Commons setup ready"}</strong>
+                <span>{commonsAnalysis.counts.selected} cards / {commonsAnalysis.counts.initialMarket} Market / {commonsAnalysis.counts.unrestRemaining} Unrest remaining</span>
+                {commonsAnalysis.issues.map((issue) => (
+                  <p key={`${issue.code}:${issue.cardIds?.join(",") ?? ""}`} data-issue-code={issue.code} data-severity={issue.severity}>{issue.message}</p>
+                ))}
+                {commonsAnalysis.removals.missing.length > 0 && commonsSetId === "custom" ? (
+                  <button type="button" onClick={() => setCustomCommonsCardIds((current) => current.filter((id) => !commonsAnalysis.removals.missing.includes(id)))}>
+                    Remove unavailable cards
+                  </button>
+                ) : null}
+              </div>
+            </fieldset>
 
             {commonsSetId === "custom" ? (
               <fieldset
@@ -804,22 +1015,29 @@ export default function NewGameSetup({
                 data-custom-commons-count={customCommonsCardIds.length}
                 data-custom-commons-available={customCommonsCards.length}
               >
-                <legend>Custom Commons</legend>
-                <CommonsPresets ids={customCommonsCardIds} cards={customCommonsCards} onSelect={setCustomCommonsCardIds} />
+                <legend>Advanced Commons</legend>
                 <div className="custom-commons-setup__toolbar">
                   <label className="setup-field">
-                    <span>Search Cards</span>
+                    <span>Search cards</span>
                     <input value={customCommonsSearch} onChange={(event: { target: HTMLInputElement }) => setCustomCommonsSearch(event.target.value)} />
                   </label>
+                  <label className="setup-field">
+                    <span>Source set</span>
+                    <select value={customCommonsSource} onChange={(event: { target: HTMLSelectElement }) => setCustomCommonsSource(event.target.value as "all" | CommonsSetId)}>
+                      <option value="all">All sets</option>
+                      {commonsSets.map((commonsSet) => <option key={commonsSet.id} value={commonsSet.id}>{commonsSet.label}</option>)}
+                    </select>
+                  </label>
                   <div className="private-data-actions">
-                    <button type="button" onClick={() => setCustomCommonsCardIds(customCommonsCards.map((card) => card.id))} disabled={customCommonsCards.length === 0}>
-                      Select All
+                    <button type="button" onClick={() => setCustomCommonsCardIds((current) => [...new Set([...current, ...customCommonsVisibleIds])])} disabled={customCommonsVisibleIds.length === 0}>
+                      Select Shown
                     </button>
-                    <button type="button" onClick={() => setCustomCommonsCardIds([])} disabled={customCommonsCardIds.length === 0}>
-                      Clear
+                    <button type="button" onClick={() => setCustomCommonsCardIds((current) => current.filter((id) => !customCommonsVisibleIds.includes(id)))} disabled={!customCommonsVisibleIds.some((id) => customCommonsSelectedSet.has(id))}>
+                      Clear Shown
                     </button>
                   </div>
                 </div>
+                <div className="custom-commons-count" role="status"><strong>{customCommonsCardIds.length}</strong> selected</div>
                 {customCommonsCards.length ? (
                   <div className="custom-commons-list">
                     {customCommonsVisibleCards.map((card) => (
@@ -830,17 +1048,21 @@ export default function NewGameSetup({
                           onChange={() => setCustomCommonsCardIds((current) => toggleString(current, card.id))}
                         />
                         <span>{card.label}</span>
-                        <small>{card.group}</small>
+                        <small>{formatCommonsSetLabel(card.setId)} / {card.group}</small>
                       </label>
                     ))}
                   </div>
                 ) : (
-                  <p className="setup-help">Upload or import cards with commons_set_id custom before composing a custom Commons pool.</p>
+                  <p className="setup-help">Load Commons card data before composing an advanced pool.</p>
                 )}
+                <details className="commons-saved-pools">
+                  <summary>Saved pools</summary>
+                  <CommonsPresets ids={customCommonsCardIds} cards={customCommonsCards} onSelect={setCustomCommonsCardIds} />
+                </details>
               </fieldset>
             ) : null}
 
-            <fieldset className="setup-section">
+            <fieldset className="setup-section" hidden={!advancedSetupOpen}>
               <legend>Expansions</legend>
               <div className="toggle-list">
                 {expansions.map((expansion) => (
@@ -852,7 +1074,7 @@ export default function NewGameSetup({
               </div>
             </fieldset>
 
-            <fieldset className="setup-section setup-section--wide">
+            <fieldset className="setup-section setup-section--wide" hidden={!advancedSetupOpen}>
               <legend>Variants</legend>
               <div className="toggle-list toggle-list--grid">
                 {variants.map((variant) => (
@@ -864,6 +1086,13 @@ export default function NewGameSetup({
               </div>
             </fieldset>
 
+            <label className="setup-section setup-field" hidden={!advancedSetupOpen}>
+              <span>Replacement policy</span>
+              <select value={replacementPolicy} onChange={(event: { target: HTMLSelectElement }) => setReplacementPolicy(event.target.value as CommonsReplacementPolicy)}>
+                {replacementPolicies.map((policy) => <option key={policy.id} value={policy.id}>{policy.label}</option>)}
+              </select>
+            </label>
+
             <fieldset className="setup-section setup-section--wide">
               <legend>Nations</legend>
               <div className="nation-grid">
@@ -871,6 +1100,7 @@ export default function NewGameSetup({
                   <label key={playerId} className="setup-field">
                     <span>{displayPlayerLabel(playerId)}</span>
                     <select value={playerNationIds[playerId] ?? DEFAULT_NATION_ID} onChange={(event: { target: HTMLSelectElement }) => setPlayerNationIds((current) => ({ ...current, [playerId]: event.target.value }))}>
+                      {!availableNationIds.has(playerNationIds[playerId]) ? <option value={playerNationIds[playerId]} disabled>Unavailable: {playerNationIds[playerId]}</option> : null}
                       {availableNations.map((nation) => (
                         <option key={nation.id} value={nation.id}>
                           {nation.label}
@@ -880,20 +1110,38 @@ export default function NewGameSetup({
                   </label>
                 ))}
               </div>
+              {setupReferenceBlocked ? <div className="setup-reference-error" role="alert" data-qa="setup-reference-error">
+                <strong>Setup references need attention</strong>
+                {missingPlayerNationIds.length ? <span>Unavailable nations: {missingPlayerNationIds.map((playerId) => playerNationIds[playerId]).join(", ")}</span> : null}
+                {missingSoloBotNation ? <span>Unavailable Bot nation: {soloBotNationId}</span> : null}
+              </div> : null}
             </fieldset>
           </div>
         </section>
 
-        <section className="setup-stage" aria-labelledby="setup-stage-data">
+        <section className="setup-stage" aria-labelledby="setup-stage-fictional-data" hidden={!advancedSetupOpen}>
+          <h2 id="setup-stage-fictional-data">Fictional Playtest Data</h2>
+          <fieldset className="setup-section setup-section--wide" data-qa="fictional-playtest-setup" data-loaded={loadedDataKind === "fictional" ? "true" : "false"}>
+            <legend>Public Synthetic Set</legend>
+            <div className="private-data-actions">
+              <span>Fixture version {PUBLIC_FICTIONAL_FIXTURE_VERSION}</span>
+              <button className="primary-action" type="button" onClick={loadFictionalPlaytestSet}>
+                {loadedDataKind === "fictional" ? "Fictional Set Loaded" : "Load Fictional Playtest Set"}
+              </button>
+            </div>
+          </fieldset>
+        </section>
+
+        <section className="setup-stage" aria-labelledby="setup-stage-data" hidden={!advancedSetupOpen}>
           <h2 id="setup-stage-data">Private Data</h2>
           <fieldset
             className="setup-section setup-section--wide"
             data-qa="private-data-setup"
             data-private-data-state={privateDataSetupState}
-            data-private-data-loaded={hasLoadedPrivateData ? "true" : "false"}
-            data-private-data-confirmed={privateDataIsConfirmed ? "true" : "false"}
+            data-private-data-loaded={hasLoadedPrivateImportData ? "true" : "false"}
+            data-private-data-confirmed={privateImportIsConfirmed ? "true" : "false"}
             data-private-data-preview-status={privateDryRunReport?.status ?? "none"}
-            data-private-data-next-command={privateDataIsConfirmed ? "private:status private:gate" : "private:status"}
+            data-private-data-next-command={privateImportIsConfirmed ? "private:status private:gate" : "private:status"}
           >
             <legend>Private Data</legend>
             <p className="setup-help">
@@ -913,7 +1161,7 @@ export default function NewGameSetup({
               <button type="button" onClick={onOpenCardEntry}>
                 Card and Nation Transcription Tool
               </button>
-              <button className="primary-action" type="button" disabled={!hasLoadedPrivateData || privateDataHasFatalPreview} onClick={() => applyPrivateDataToSetup(privateData)}>
+              <button className="primary-action" type="button" disabled={!hasLoadedPrivateImportData || privateDataHasFatalPreview} onClick={() => applyPrivateDataToSetup(privateData)}>
                 Use This Private Data
               </button>
             </div>
@@ -964,7 +1212,7 @@ export default function NewGameSetup({
                 ) : null}
               </section>
             ) : null}
-            {hasLoadedPrivateData ? (
+            {hasLoadedPrivateImportData ? (
               <div className={`private-data-ready ${privateDataConfirmed ? "is-confirmed" : ""}`}>
                 <strong>{privateDataConfirmed ? "Private data will be used when you start the game." : privateDataReadyMessage}</strong>
                 <span>Export CSVs from the transcription tool, then upload them here before starting a game.</span>
@@ -985,7 +1233,7 @@ export default function NewGameSetup({
           </fieldset>
         </section>
 
-        {mode === "solo" ? <section className="setup-stage" aria-labelledby="setup-stage-campaign-data">
+        {mode === "solo" ? <section className="setup-stage" aria-labelledby="setup-stage-campaign-data" hidden={!advancedSetupOpen}>
           <h2 id="setup-stage-campaign-data">Campaign Data</h2>
           <fieldset className="setup-section setup-section--wide">
             <legend>Campaign Sheet</legend>

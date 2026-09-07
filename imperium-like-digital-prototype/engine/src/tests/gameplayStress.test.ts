@@ -296,6 +296,10 @@ describe("automated gameplay stress", () => {
       playerNationIds: { "1": "fixture_nation_surveyors" },
       minTraceLength: 4,
       prepare: (G) => {
+        const unrestTemplate = G.cardDb.fixture_unrest;
+        const stressUnrest = Array.from({ length: 8 }, (_, index) => `fixture_unrest_stress_${index + 1}`);
+        for (const cardId of stressUnrest) G.cardDb[cardId] = { ...unrestTemplate, id: cardId, displayName: `Fictional Unrest ${cardId}` };
+        G.unrestPile = stressUnrest;
         G.practiceClock = { turnsRemaining: 1, progressTokens: 1 };
         G.market = ["fixture_market_materials", "fixture_market_knowledge", "fixture_market_unrest"];
         G.marketSlots = G.market.map((cardId, index) => ({

@@ -1251,7 +1251,7 @@ describe("turn loop", () => {
     expect(G.players["1"].resources.materials).toBe(0);
   });
 
-  it("pauses after failed Break through fallback Materials for a resource reactive Exhaust before resuming later effects", () => {
+  it("pauses after failed Break through fallback Progress for a resource reactive Exhaust before resuming later effects", () => {
     const G = createInitialState();
     const playedCard = "reactive_break_through_fallback_trigger_card";
     const exhaustCardId = "reactive_after_break_through_fallback_exhaust_card";
@@ -1287,14 +1287,14 @@ describe("turn loop", () => {
         op: "gain_resource",
         resource: "influence",
         amount: 1,
-        reactive: { trigger: "after_gain_resource", resource: "materials" }
+        reactive: { trigger: "after_gain_resource", resource: "knowledge" }
       } as any]
     };
 
     playCard({ G, ctx }, playedCard);
 
-    expect(G.players["1"].resources.materials).toBe(2);
-    expect(G.players["1"].resources.knowledge).toBe(0);
+    expect(G.players["1"].resources.materials).toBe(0);
+    expect(G.players["1"].resources.knowledge).toBe(2);
     expect(G.players["1"].resources.influence).toBe(0);
     expect(G.pendingReactiveExhaustChoice).toMatchObject({
       playerId: "1",
@@ -1302,14 +1302,14 @@ describe("turn loop", () => {
       resolvingPlayerId: "1",
       sourceCardId: playedCard,
       trigger: "after_gain_resource",
-      resource: "materials"
+      resource: "knowledge"
     });
 
     resolveReactiveExhaustChoice({ G, ctx }, exhaustCardId);
 
     expect(G.pendingReactiveExhaustChoice).toBeUndefined();
     expect(G.players["1"].resources.influence).toBe(1);
-    expect(G.players["1"].resources.knowledge).toBe(1);
+    expect(G.players["1"].resources.knowledge).toBe(3);
     expect(G.players["1"].playArea).not.toContain(playedCard);
     expect(G.players["1"].discard).toContain(playedCard);
   });
@@ -1323,7 +1323,7 @@ describe("turn loop", () => {
     G.players["1"].actionsRemaining = 1;
     G.players["1"].actionTokensAvailable = 1;
     G.players["1"].exhaustTokensAvailable = 1;
-    G.unrestPile = ["reactive_unrest_card"];
+    G.unrestPile = ["reactive_unrest_card", "spare_unrest"];
     G.cardDb.reactive_unrest_card = {
       id: "reactive_unrest_card",
       displayName: "Reactive Unrest",
@@ -3866,7 +3866,7 @@ describe("turn loop", () => {
     G.players["1"].developmentArea = [];
     G.players["1"].actionsRemaining = 2;
     G.players["1"].actionTokensAvailable = 2;
-    G.players["1"].exhaustTokensAvailable = 0;
+    G.players["1"].exhaustTokensAvailable = 1;
     G.players["1"].progressionTokens = { nationDeck: 0, developmentArea: 0 };
 
     playCard({ G, ctx, random: { Number: () => 0 } }, card);
@@ -3874,7 +3874,7 @@ describe("turn loop", () => {
     expect(G.players["1"].hand).toEqual(["test_action_lineage_record"]);
     expect(G.players["1"].discard).toContain(card);
     expect(G.players["1"].nationDeck).toEqual([]);
-    expect(G.players["1"].actionTokensAvailable).toBe(0);
+    expect(G.players["1"].actionTokensAvailable).toBe(1);
     expect(G.players["1"].exhaustTokensAvailable).toBe(0);
     expect(G.log.some((entry) => entry.message === `InvalidMove(playCard): no_resolvable_on_play_effects(${card})`)).toBe(false);
   });
@@ -4364,7 +4364,7 @@ describe("turn loop", () => {
     };
     G.players["1"].hand = [card];
     G.players["1"].exile = [];
-    G.unrestPile = ["required_unrest"];
+    G.unrestPile = ["required_unrest", "spare_unrest"];
     G.players["1"].actionsRemaining = 1;
     G.players["1"].actionTokensAvailable = 1;
     G.globalSpecialZones = {
@@ -5061,7 +5061,7 @@ describe("turn loop", () => {
     G.players["1"].stateArea = ["alien_state"];
     G.players["1"].actionsRemaining = 1;
     G.players["1"].actionTokensAvailable = 1;
-    G.unrestPile = ["alien_unrest"];
+    G.unrestPile = ["alien_unrest", "spare_unrest"];
     G.cardDb.alien_state = {
       id: "alien_state",
       displayName: "Alien",
@@ -7852,8 +7852,8 @@ describe("turn loop", () => {
     expect(G.pausedSolstice).toEqual({
       playOrder: ["1", "2"],
       playerIndex: 0,
-      phase: "on_solstice",
-      cardIndex: 1,
+      phase: "overrides",
+      cardIndex: 0,
       overrideIndex: 0
     });
     expect(G.log.some((entry) => entry.message === "SolsticePaused(pending_exile_choice)")).toBe(true);
@@ -7921,8 +7921,8 @@ describe("turn loop", () => {
     expect(G.pausedSolstice).toEqual({
       playOrder: ["1", "2"],
       playerIndex: 0,
-      phase: "on_solstice",
-      cardIndex: 1,
+      phase: "overrides",
+      cardIndex: 0,
       overrideIndex: 0
     });
     expect(G.round).toBe(1);
@@ -7980,7 +7980,7 @@ describe("turn loop", () => {
       cardIds: ["first_card", "second_card"]
     });
     expect(G.players["1"].resources.knowledge).toBe(0);
-    expect(G.pausedSolstice).toMatchObject({ playerIndex: 0, phase: "on_solstice", cardIndex: 1 });
+    expect(G.pausedSolstice).toMatchObject({ playerIndex: 0, phase: "overrides", cardIndex: 0 });
     expect(G.log.some((entry) => entry.message === "SolsticePaused(pending_place_on_deck_choice)")).toBe(true);
   });
 
@@ -8012,7 +8012,7 @@ describe("turn loop", () => {
       recipientPlayerIds: ["2"]
     });
     expect(G.players["1"].resources.knowledge).toBe(0);
-    expect(G.pausedSolstice).toMatchObject({ playerIndex: 0, phase: "on_solstice", cardIndex: 1 });
+    expect(G.pausedSolstice).toMatchObject({ playerIndex: 0, phase: "overrides", cardIndex: 0 });
     expect(G.log.some((entry) => entry.message === "SolsticePaused(pending_give_card_choice)")).toBe(true);
   });
 
@@ -8065,7 +8065,7 @@ describe("turn loop", () => {
       ]
     });
     expect(G.players["1"].resources.knowledge).toBe(0);
-    expect(G.pausedSolstice).toMatchObject({ playerIndex: 0, phase: "on_solstice", cardIndex: 1 });
+    expect(G.pausedSolstice).toMatchObject({ playerIndex: 0, phase: "overrides", cardIndex: 0 });
     expect(G.log.some((entry) => entry.message === "SolsticePaused(pending_swap_choice)")).toBe(true);
   });
 
@@ -8728,8 +8728,8 @@ describe("turn loop", () => {
     expect(G.pausedSolstice).toEqual({
       playOrder: ["1", "2"],
       playerIndex: 0,
-      phase: "on_solstice",
-      cardIndex: 1,
+      phase: "overrides",
+      cardIndex: 0,
       overrideIndex: 0
     });
     expect(G.players["2"].resources.knowledge).toBe(0);
@@ -9359,7 +9359,7 @@ describe("turn loop", () => {
     G.players["1"].resources.goods = 1;
     G.players["1"].stateArea = ["alien_state"];
     G.players["1"].exhaustTokensAvailable = 1;
-    G.unrestPile = ["alien_unrest"];
+    G.unrestPile = ["alien_unrest", "spare_unrest"];
     G.cardDb.alien_state = {
       id: "alien_state",
       displayName: "Alien",
@@ -11178,7 +11178,7 @@ describe("turn loop", () => {
     G.players["1"].resources.knowledge = 1;
     G.players["1"].resources.goods = 1;
     G.players["1"].stateArea = ["alien_state"];
-    G.unrestPile = ["alien_unrest"];
+    G.unrestPile = ["alien_unrest", "spare_unrest"];
     G.cardDb.alien_state = {
       id: "alien_state",
       displayName: "Alien",
@@ -11973,7 +11973,7 @@ describe("turn loop", () => {
         reactive: { trigger: "after_take_unrest", target: "self" }
       } as any]
     };
-    G.unrestPile = ["test_unrest_1"];
+    G.unrestPile = ["test_unrest_1", "spare_unrest"];
     G.pendingAcquireChoice = {
       playerId: "1",
       sourceCardId: "exile_picker",
@@ -12035,7 +12035,7 @@ describe("turn loop", () => {
         }]
       }
     } as any;
-    G.unrestPile = ["test_unrest_1"];
+    G.unrestPile = ["test_unrest_1", "spare_unrest"];
     G.pendingAcquireChoice = {
       playerId: "1",
       sourceCardId: "exile_picker",
@@ -12095,7 +12095,7 @@ describe("turn loop", () => {
       tags: [],
       effects: []
     };
-    G.unrestPile = ["test_unrest_1"];
+    G.unrestPile = ["test_unrest_1", "spare_unrest"];
     G.activeNationRulesets!["1"] = {
       ...G.activeNationRulesets!["1"],
       hookRules: [{
@@ -12112,7 +12112,7 @@ describe("turn loop", () => {
     expect(G.players["1"].exile).toEqual(["exiled_action"]);
     expect(G.players["1"].actionsRemaining).toBe(1);
     expect(G.players["1"].actionTokensAvailable).toBe(1);
-    expect(G.unrestPile).toEqual(["test_unrest_1"]);
+    expect(G.unrestPile).toEqual(["test_unrest_1", "spare_unrest"]);
     expect(G.log.some((entry) => entry.message === "Nation hook after_gain_unrest #0 failed.")).toBe(true);
     expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): on_play_effect_failed(${card})`);
   });
@@ -12133,7 +12133,7 @@ describe("turn loop", () => {
       tags: [],
       effects: [{ trigger: "on_play", op: "take_unrest", count: 1 } as any]
     };
-    G.unrestPile = ["test_unrest_1"];
+    G.unrestPile = ["test_unrest_1", "spare_unrest"];
     G.activeNationRulesets!["1"] = {
       ...G.activeNationRulesets!["1"],
       hookRules: [{
@@ -12149,7 +12149,7 @@ describe("turn loop", () => {
     expect(G.players["1"].discard).not.toContain(card);
     expect(G.players["1"].actionsRemaining).toBe(1);
     expect(G.players["1"].actionTokensAvailable).toBe(1);
-    expect(G.unrestPile).toEqual(["test_unrest_1"]);
+    expect(G.unrestPile).toEqual(["test_unrest_1", "spare_unrest"]);
     expect(G.log.some((entry) => entry.message === "Nation hook after_gain_unrest #0 failed.")).toBe(true);
     expect(G.log.at(-1)?.message).toBe(`InvalidMove(playCard): on_play_effect_failed(${card})`);
   });
@@ -12170,7 +12170,7 @@ describe("turn loop", () => {
       tags: [],
       effects: [{ trigger: "on_play", op: "take_unrest", count: 2 } as any]
     };
-    G.unrestPile = ["test_unrest_1", "test_unrest_2"];
+    G.unrestPile = ["test_unrest_1", "test_unrest_2", "spare_unrest"];
     G.activeNationRulesets!["1"] = {
       ...G.activeNationRulesets!["1"],
       hookRules: [
@@ -12211,7 +12211,7 @@ describe("turn loop", () => {
     expect(G.players["1"].actionsRemaining).toBe(1);
     expect(G.players["1"].actionTokensAvailable).toBe(1);
     expect(G.players["1"].resources.goods).toBe(0);
-    expect(G.unrestPile).toEqual(["test_unrest_1", "test_unrest_2"]);
+    expect(G.unrestPile).toEqual(["test_unrest_1", "test_unrest_2", "spare_unrest"]);
     expect(G.pendingChoice).toBeUndefined();
     expect(G.pendingUnrestTakeContinuation).toBeUndefined();
     expect(G.players["1"].hand).not.toContain("test_unrest_1");

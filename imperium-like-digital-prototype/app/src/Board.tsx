@@ -4,12 +4,17 @@ import type { CampaignProgress } from "../../engine/src/options/gameOptions";
 import type { AccountGameResultInput } from "./onlineSession";
 import BoardLayout from "./ui/layout/BoardLayout";
 import type { AccountGameResultContext } from "./ui/layout/EndGameSummary";
+import type { GuidedChapterId } from "./guidedGame";
 
 export type PolityBoardProps = BoardProps<GameState> & {
   viewerPlayerID?: string | null;
   onCampaignProgress?: (progress: CampaignProgress) => void;
   accountResultContext?: AccountGameResultContext;
   onAccountGameResult?: (result: AccountGameResultInput) => void;
+  guidedChapterId?: GuidedChapterId;
+  onRestartGuidedChapter?: () => void;
+  onExitGuidedGame?: () => void;
+  onStartGuidedChapter?: (chapterId: GuidedChapterId) => void;
 };
 
 export default function Board(props: PolityBoardProps) {

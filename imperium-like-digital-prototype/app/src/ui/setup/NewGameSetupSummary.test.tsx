@@ -4,6 +4,63 @@ import NewGameSetup, { buildCampaignGameOptions, getCommonsCardOptions, getLaunc
 import { buildPrivateDataDryRunReport } from "./privateDataImport";
 
 describe("NewGameSetup summary", () => {
+  it("defaults to the five-field basic setup surface", () => {
+    const html = renderToStaticMarkup(<NewGameSetup onStart={() => undefined} />);
+    expect(html).toContain('data-setup-mode="basic"');
+    expect(html).toContain('aria-expanded="false">Advanced Setup</button>');
+    expect(html).toContain('<legend>Mode</legend>');
+    expect(html).toContain('<legend>Players</legend>');
+    expect(html).toContain('<legend>Commons</legend>');
+    expect(html).toContain('<legend>Nations</legend>');
+    expect(html).toContain('hidden=""><legend>Expansions</legend>');
+    expect(html).toContain('hidden=""><legend>Variants</legend>');
+    expect(html).toContain('aria-labelledby="setup-stage-fictional-data" hidden=""');
+    expect(html).toContain('aria-labelledby="setup-stage-data" hidden=""');
+  });
+
+  it("summarizes active optional settings while Advanced Setup is collapsed", () => {
+    const html = renderToStaticMarkup(<NewGameSetup
+      onStart={() => undefined}
+      initialConfig={{
+        options: {
+          playerCount: 2,
+          mode: "multiplayer",
+          commonsSetId: "classics",
+          enabledExpansions: ["trade_routes"],
+          enabledVariants: ["quick_setup"]
+        },
+        playerNationIds: { "1": "test_nation_sun_coast", "2": "test_nation_sun_coast" }
+      }}
+    />);
+    expect(html).toContain('data-setup-mode="basic"');
+    expect(html).toContain("Trade Module, Quick Setup");
+    expect(html).toContain('type="checkbox" checked=""');
+  });
+
+  it("shows the built-in compact demo as launch-ready", () => {
+    const html = renderToStaticMarkup(<NewGameSetup onStart={() => undefined} />);
+    expect(html).toContain('data-qa="commons-composition-summary"');
+    expect(html).toContain('data-status="ready"');
+    expect(html).toContain("Commons setup ready");
+    expect(html).toContain("This repository-owned demo uses a compact teaching composition.");
+  });
+
+  it("keeps custom missing-card blockers visible outside Saved pools", () => {
+    const html = renderToStaticMarkup(<NewGameSetup
+      onStart={() => undefined}
+      initialConfig={{
+        options: { playerCount: 2, mode: "multiplayer", commonsSetId: "custom", customCommonsCardIds: ["missing-card"], enabledExpansions: [], enabledVariants: [] },
+        playerNationIds: { "1": "test_nation_sun_coast", "2": "test_nation_sun_coast" },
+        privateData: { cards: [{ id: "available-card", displayName: "Available", ownership: "commons", commonsSetId: "custom", commonsGroup: "base" } as any] }
+      }}
+    />);
+    expect(html).toContain('data-status="blocked"');
+    expect(html).toContain('data-issue-code="custom_cards_missing"');
+    expect(html).toContain("1 selected Commons card is not loaded.");
+    expect(html).toContain("Remove unavailable cards");
+    expect(html).toMatch(/<button class="primary-action" type="button" disabled="">Start Game<\/button>/);
+  });
+
   it("shows a scan-friendly launch summary before starting a game", () => {
     const html = renderToStaticMarkup(<NewGameSetup onStart={() => undefined} />);
 
@@ -16,6 +73,18 @@ describe("NewGameSetup summary", () => {
     expect(html).toContain("Session");
     expect(html).toContain("Online Games");
     expect(html).toContain("Content");
+    expect(html).toContain("Load Fictional Playtest Set");
+    expect(html).toContain('data-qa="fictional-playtest-setup"');
+    expect(html).toContain('aria-label="Commons set"');
+    expect(html).toContain("<span>Classics</span><small>Demo Data / 10</small>");
+    expect(html).toContain("<span>Legends</span><small>No Cards Loaded / 0</small>");
+    expect(html).toContain("<span>Horizons</span><small>No Cards Loaded / 0</small>");
+    expect(html).toMatch(/<button type="button" class="" aria-pressed="false" disabled=""><span>Legends<\/span>/);
+    expect(html).toContain("No Legends Commons cards are loaded.");
+    expect(html).toContain("No Horizons Commons cards are loaded.");
+    expect(html).toContain(">Advanced</button>");
+    expect(html).toContain('data-commons-mode="standard"');
+    expect(html).not.toContain("Advanced Commons");
   });
 
   it("renders local playtest readiness status", () => {
@@ -103,6 +172,10 @@ describe("NewGameSetup summary", () => {
     expect(html).toContain("data-qa=\"custom-commons-setup\"");
     expect(html).toContain("data-custom-commons-count=\"1\"");
     expect(html).toContain("data-custom-commons-available=\"2\"");
+    expect(html).toContain('data-commons-mode="advanced"');
+    expect(html).toContain("Advanced Commons");
+    expect(html).toContain("Source set");
+    expect(html).toContain("Saved pools");
     expect(html).toContain("data-card-id=\"custom_card_2\"");
     expect(html).toContain("data-selected=\"true\"");
     expect(html).toContain("1 selected");
@@ -121,6 +194,19 @@ describe("NewGameSetup summary", () => {
       { id: "custom_a", label: "Custom A", setId: "custom", group: "trade_friendly" },
       { id: "custom_b", label: "Custom B", setId: "custom", group: "base" }
     ]);
+  });
+
+  it("offers eligible Commons from all source sets to the advanced picker", () => {
+    const cards = [
+      { id: "classics_a", displayName: "Classics A", ownership: "commons", commonsSetId: "classics", commonsGroup: "base" },
+      { id: "legends_a", displayName: "Legends A", ownership: "commons", commonsSetId: "legends", commonsGroup: "base" },
+      { id: "horizons_a", displayName: "Horizons A", ownership: "commons", commonsSetId: "horizons", commonsGroup: "base" }
+    ] as any[];
+    const options = getCommonsCardOptions({ cards }, {
+      commonsSetId: "custom", mode: "multiplayer", playerCount: 2, effectiveCommonsPlayerCount: 2,
+      enabledExpansions: [], enabledVariants: [], selectedNationIds: [], replacementPolicy: "none"
+    });
+    expect(options.map((card) => card.id)).toEqual(["classics_a", "horizons_a", "legends_a"]);
   });
 
   it("excludes nation conflicts and applies effective campaign eligibility", () => {
@@ -332,7 +418,7 @@ describe("NewGameSetup summary", () => {
     expect(html).toContain("Update Lobby");
     expect(html).toContain("Back");
     expect(html).toContain("<strong>3</strong>");
-    expect(html).toContain("<strong>Legendary</strong>");
+    expect(html).toContain("<strong>Legends</strong>");
     expect(html).toContain("Trade Module");
     expect(html).toContain("Quick Setup");
     expect(html).not.toContain(">Solo</button>");

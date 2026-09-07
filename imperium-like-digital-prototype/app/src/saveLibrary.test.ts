@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { serializeLocalGame, LOCAL_GAME_SAVE_STORAGE_KEY, importLocalGameExport } from "./localGameSave";
-import { migrateLegacySave, readSaveLibrary, SAVE_LIBRARY_KEY, writeSaveLibrary } from "./saveLibrary";
+import { CURRENT_RULES_VERSION, serializeLocalGame, LOCAL_GAME_SAVE_STORAGE_KEY, importLocalGameExport } from "./localGameSave";
+import { migrateLegacySave, readRawSaveLibrary, readSaveLibrary, readSaveLibraryBackup, resetSaveLibraryAfterBackup, SAVE_LIBRARY_BACKUP_KEY, SAVE_LIBRARY_KEY, writeSaveLibrary } from "./saveLibrary";
 function storage() {
   const data = new Map<string, string>();
-  return { getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string) => { data.set(key, value); } };
+  return {
+    getItem: (key: string) => data.get(key) ?? null,
+    setItem: (key: string, value: string) => { data.set(key, value); },
+    removeItem: (key: string) => { data.delete(key); }
+  };
 }
-const raw = serializeLocalGame({ privateDataFingerprint: "placeholder", state: { G: { options: { mode: "practice" }, round: 2 }, ctx: { currentPlayer: "0" } } });
+const raw = serializeLocalGame({ privateDataFingerprint: "placeholder", state: { G: { rulesVersion: CURRENT_RULES_VERSION, stateVersion: 1, options: { mode: "practice" }, round: 2 }, ctx: { currentPlayer: "0" } } });
 describe("saved-game library", () => {
   it("migrates once and retains the legacy source", () => {
     const store = storage(); store.setItem(LOCAL_GAME_SAVE_STORAGE_KEY, raw);
@@ -50,5 +54,74 @@ describe("saved-game library", () => {
     store.setItem(SAVE_LIBRARY_KEY, old);
     expect(readSaveLibrary(store).version).toBe(2);
     expect(store.getItem(SAVE_LIBRARY_KEY)).toBe(old);
+  });
+
+  it("keeps healthy slots usable beside legacy, future, malformed, and duplicate slots", () => {
+    const store = storage();
+    const healthy = JSON.parse(raw);
+    const legacy = { ...JSON.parse(raw), rulesVersion: healthy.rulesVersion - 1 };
+    const future = { ...JSON.parse(raw), rulesVersion: healthy.rulesVersion + 1 };
+    future.state.G.rulesVersion = healthy.rulesVersion + 1;
+    const original = JSON.stringify({
+      version: 2,
+      stateVersion: 1,
+      revision: 4,
+      slots: [
+        { id: "healthy", envelope: healthy },
+        { id: "legacy", envelope: legacy },
+        { id: "future", envelope: future },
+        { id: "broken", envelope: { version: 1 } },
+        { id: "healthy", envelope: healthy }
+      ]
+    });
+    store.setItem(SAVE_LIBRARY_KEY, original);
+
+    const library = readSaveLibrary(store);
+    expect(library.slots.map((slot) => slot.id)).toEqual(["healthy"]);
+    expect(library.recoverableSlots?.map((slot) => slot.kind)).toEqual([
+      "legacy-incompatible",
+      "future-version",
+      "legacy-incompatible",
+      "corrupt"
+    ]);
+    expect(store.getItem(SAVE_LIBRARY_KEY)).toBe(original);
+
+    const renamed = { ...library.slots[0], envelope: { ...library.slots[0].envelope, metadata: { ...library.slots[0].envelope.metadata, slotName: "Healthy renamed" } } };
+    const written = writeSaveLibrary(store, library, [renamed]);
+    expect(written.slots[0].envelope.metadata.slotName).toBe("Healthy renamed");
+    expect(written.recoverableSlots).toHaveLength(4);
+    expect(readSaveLibraryBackup(store)).toBe(original);
+    expect(JSON.parse(store.getItem(SAVE_LIBRARY_KEY)!).slots.slice(1)).toEqual(JSON.parse(original).slots.slice(1));
+  });
+
+  it("backs up exact malformed library bytes before an explicit reset", () => {
+    const store = storage();
+    const malformed = "{malformed library bytes";
+    store.setItem(SAVE_LIBRARY_KEY, malformed);
+    expect(() => readSaveLibrary(store)).toThrow();
+    expect(readRawSaveLibrary(store)).toBe(malformed);
+
+    resetSaveLibraryAfterBackup(store);
+
+    expect(store.getItem(SAVE_LIBRARY_KEY)).toBeNull();
+    expect(store.getItem(SAVE_LIBRARY_BACKUP_KEY)).toBe(malformed);
+    expect(readSaveLibrary(store).slots).toEqual([]);
+  });
+
+  it("leaves the current library intact when a post-backup write fails", () => {
+    const store = storage();
+    const initial = writeSaveLibrary(store, readSaveLibrary(store), [{ id: "healthy", envelope: JSON.parse(raw) }]);
+    const original = store.getItem(SAVE_LIBRARY_KEY)!;
+    const failing = {
+      getItem: store.getItem,
+      setItem: (key: string, value: string) => {
+        if (key === SAVE_LIBRARY_KEY) throw new Error("Quota exceeded");
+        store.setItem(key, value);
+      }
+    };
+
+    expect(() => writeSaveLibrary(failing, initial, [])).toThrow("Quota");
+    expect(store.getItem(SAVE_LIBRARY_KEY)).toBe(original);
+    expect(store.getItem(SAVE_LIBRARY_BACKUP_KEY)).toBe(original);
   });
 });

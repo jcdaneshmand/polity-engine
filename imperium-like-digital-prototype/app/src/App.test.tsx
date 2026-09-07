@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App, { boardgameClientPropsForSession, loadOnlineDirectory, setupConfigForSavedLocalGame, setupConfigForStartedOnlineSession, shouldHeartbeatLobbySession, startedSessionRecordForLobby } from "./App";
-import { LOCAL_GAME_SAVE_STORAGE_KEY, serializeLocalGame } from "./localGameSave";
+import { CURRENT_RULES_VERSION, LOCAL_GAME_SAVE_STORAGE_KEY, serializeLocalGame } from "./localGameSave";
 import type { LobbyRoomDetails, OnlineLobbySessionRecord, OnlineStartedSessionRecord } from "./onlineSession";
 
 const setupConfig = {
@@ -42,12 +42,15 @@ describe("App shell", () => {
     const html = renderToStaticMarkup(<App />);
 
     expect(html).toContain('data-theme="default"');
-    expect(html).toContain("Online Games");
+    expect(html).toContain('class="deferred-view"');
+    expect(html).toContain("Loading...");
     expect(html).toContain("Recover saved local game");
     expect(html).toContain("data-qa=\"saved-local-game-status\"");
     expect(html).toContain("data-save-state=\"none\"");
     expect(html).toContain("Import Saved Game");
     expect(html).toContain("Import a portable local save file to resume on this device.");
+    expect(html).toContain("Start Learning Game");
+    expect(html).toContain('data-qa="guided-game-launcher"');
   });
 
   it("shows a resume action for a valid saved local game", () => {
@@ -56,7 +59,7 @@ describe("App shell", () => {
         privateDataFingerprint: "fictional-fixture-fingerprint",
         now: new Date("2026-07-14T05:00:00.000Z"),
         state: {
-          G: { options: { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: [] } },
+          G: { rulesVersion: CURRENT_RULES_VERSION, stateVersion: 1, options: { playerCount: 2, mode: "multiplayer", enabledExpansions: [], enabledVariants: [] } },
           ctx: { currentPlayer: "1", numPlayers: 2 }
         }
       })
@@ -127,6 +130,7 @@ describe("App shell", () => {
   it("preserves custom Commons ids when deriving setup from a saved local game", () => {
     const envelope = {
       version: 1 as const,
+      rulesVersion: CURRENT_RULES_VERSION,
       savedAtIso: "2026-08-11T00:00:00.000Z",
       privateDataFingerprint: "placeholder",
       metadata: {

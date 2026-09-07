@@ -2,9 +2,9 @@
 
 > **Purpose:** implementation-oriented notes distilled from the public Imperium: Horizons rulebook PDF for a private rules-engine prototype. These notes summarize mechanics, timing, state boundaries, and data requirements. They intentionally do not reproduce official card text, card names, art, logos, faction names, or rulebook language.
 >
-> **Boundary:** keep official PDFs, card transcription, scans, exports, and proprietary card data outside the public repo. Use a gitignored `reference/` folder for private source material. Committed data should stay placeholder/original unless the repo is explicitly made private and the legal boundary is re-reviewed.
+> **Boundary:** keep official PDFs, card transcription, scans, exports, and proprietary card data out of tracked files. Verify exclusions with `git check-ignore` before saving source material; do not assume `reference/` is ignored. Committed data should stay placeholder/original unless the legal boundary is re-reviewed.
 >
-> **Source of truth:** rulebook sections for Core Concepts, Setup, Flow of Play, Reshuffling, Solstice, Game End, Keywords, and Solo Ruleset. When this file and engine behavior disagree, treat this file as the rules contract to update or implement against.
+> **Source of truth:** the publisher's current rulebook and applicable errata, not these implementation notes. The 11 contracts found by the [2026-09-05 independent audit](superpowers/plans/2026-09-05-rules-fidelity-audit.md) were repaired and are tracked in the [closure report](superpowers/plans/2026-09-05-rules-fidelity-closure.md). The passing audit establishes those known public-engine contracts only, not complete official-content certification.
 
 ## Core Modeling Direction
 

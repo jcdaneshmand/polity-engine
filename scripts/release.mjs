@@ -20,6 +20,12 @@ export async function withReleaseLock(path, action) {
   } finally { closeSync(handle); unlinkSync(path); }
 }
 
+export function runReleaseRulesGate(spawn = spawnSync, workspace = fileURLToPath(new URL('../imperium-like-digital-prototype/', import.meta.url))) {
+  const command = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const result = spawn(command, ['run', 'verify:rules'], { cwd: workspace, encoding: 'utf8', timeout: 10 * 60 * 1000 });
+  if (result.status !== 0) throw new Error('Local rules verification failed. Deployment was not started.');
+}
+
 async function listAll(api, path, limit) {
   const results = [];
   const cursors = new Set();
@@ -119,6 +125,7 @@ async function main() {
   const config = { commit: get('--commit'), serviceId: get('--service'), baseURL: get('--origin'), branch,
     repo: git('remote', 'get-url', 'origin'), remoteCommit: git('ls-remote', 'origin', `refs/heads/${branch}`).split(/\s+/)[0], dryRun: args.includes('--dry-run') };
   validateRelease(config);
+  runReleaseRulesGate();
   if (!process.env.RENDER_API_KEY) throw new Error('RENDER_API_KEY is required.');
   const reportDir = resolve(workspace, 'tmp', 'releases'); mkdirSync(reportDir, { recursive: true });
   const reportPath = resolve(reportDir, `${config.serviceId}-${config.commit}${config.dryRun ? '-dry-run' : ''}.json`);

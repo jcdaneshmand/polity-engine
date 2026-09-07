@@ -35,7 +35,7 @@ function queueFailingAfterReshuffleContinuation(G: ReturnType<typeof createIniti
 }
 
 describe("reshuffle progression", () => {
-  it("does not add a Nation card during reshuffle when no Action token is available", () => {
+  it("does not add a Nation card during reshuffle when no Exhaust token is available", () => {
     const G = createInitialState();
     const p = G.players["1"];
     p.deck = [];
@@ -43,7 +43,7 @@ describe("reshuffle progression", () => {
     p.nationDeck = ["test_action_lineage_record"];
     p.developmentArea = [];
     p.actionTokensAvailable = 0;
-    p.exhaustTokensAvailable = 1;
+    p.exhaustTokensAvailable = 0;
 
     const drawn = drawCardWithReshuffleLifecycle(G, "1", () => 0);
 
@@ -52,7 +52,7 @@ describe("reshuffle progression", () => {
     expect(p.nationDeck).toEqual(["test_action_lineage_record"]);
     expect(p.progressionTokens).toEqual({ nationDeck: 0, developmentArea: 0 });
     expect(p.actionTokensAvailable).toBe(0);
-    expect(p.exhaustTokensAvailable).toBe(1);
+    expect(p.exhaustTokensAvailable).toBe(0);
     expect(G.log.some((entry) => entry.message === "NationCardAddedOnReshuffle(test_action_lineage_record)")).toBe(false);
   });
 
@@ -275,9 +275,9 @@ describe("reshuffle progression", () => {
 
     expect(p.nationDeck).toEqual([]);
     expect(p.hand).toContain("test_action_lineage_record");
-    expect(p.progressionTokens?.developmentArea).toBe(1);
-    expect(p.actionTokensAvailable).toBe(p.actionTokensBase - 1);
-    expect(p.exhaustTokensAvailable).toBe(p.exhaustTokensBase);
+    expect(p.progressionTokens?.nationDeck).toBe(1);
+    expect(p.actionTokensAvailable).toBe(p.actionTokensBase);
+    expect(p.exhaustTokensAvailable).toBe(p.exhaustTokensBase - 1);
   });
 
   it("consumes ordered Nation cards deterministically before Development choices", () => {
@@ -316,11 +316,11 @@ describe("reshuffle progression", () => {
     expect(p.hand).toEqual(["test_action_lineage_record"]);
     expect(p.nationDeck).toEqual([]);
     expect(p.discard).toEqual([]);
-    expect(p.progressionTokens?.developmentArea).toBe(1);
+    expect(p.progressionTokens?.nationDeck).toBe(1);
     expect(G.log.some((entry) => entry.message === "NationCardAddedOnReshuffle(test_action_lineage_record)")).toBe(true);
   });
 
-  it("places the reshuffle progression marker in Development when adding the last Nation card", () => {
+  it("places the reshuffle progression marker on the Nation deck when adding its last card", () => {
     const G = createInitialState({ usePrivateData: false });
     const p = G.players["1"];
     p.deck = [];
@@ -333,9 +333,9 @@ describe("reshuffle progression", () => {
 
     drawCardWithReshuffleLifecycle(G, "1", () => 0);
 
-    expect(p.progressionTokens).toEqual({ nationDeck: 0, developmentArea: 1 });
-    expect(p.actionTokensAvailable).toBe(0);
-    expect(p.exhaustTokensAvailable).toBe(1);
+    expect(p.progressionTokens).toEqual({ nationDeck: 1, developmentArea: 0 });
+    expect(p.actionTokensAvailable).toBe(1);
+    expect(p.exhaustTokensAvailable).toBe(0);
     expect(p.hand).toEqual(["test_action_lineage_record"]);
   });
 
@@ -645,7 +645,7 @@ describe("reshuffle progression", () => {
     expect(p.developmentArea).toEqual(["test_action_scholars_circle"]);
     expect(p.accessionCardId).toBeUndefined();
     expect(p.stateArea[0]).toBe("civilized_state");
-    expect(p.progressionTokens?.developmentArea).toBe(1);
+    expect(p.progressionTokens?.nationDeck).toBe(1);
   });
 
   it("treats separately tracked Accession as a Nation deck card for hook zone conditions", () => {
@@ -961,7 +961,7 @@ describe("reshuffle progression", () => {
     expect(p.deck).toEqual(["test_action_archive_survey"]);
     expect(p.discard).toEqual([]);
     expect(p.developmentArea).toEqual(["test_action_scholars_circle"]);
-    expect(p.progressionTokens?.developmentArea).toBe(1);
+    expect(p.progressionTokens?.nationDeck).toBe(1);
   });
 
   it("can offer development for no-Nation-deck nations that develop from the start", () => {
@@ -1322,8 +1322,8 @@ describe("reshuffle progression", () => {
     expect(p.resources.materials).toBe(0);
     expect(p.developmentArea).toEqual([]);
     expect(p.progressionTokens?.developmentArea).toBe(1);
-    expect(p.actionTokensAvailable).toBe(p.actionTokensBase - 1);
-    expect(p.exhaustTokensAvailable).toBe(p.exhaustTokensBase);
+    expect(p.actionTokensAvailable).toBe(p.actionTokensBase);
+    expect(p.exhaustTokensAvailable).toBe(p.exhaustTokensBase - 1);
     expect(p.hand).toHaveLength(1);
     expect(["test_action_archive_survey", "test_action_scholars_circle"]).toContain(p.hand[0]);
   });
@@ -2576,7 +2576,7 @@ describe("reshuffle progression", () => {
     p.nationDeck = [];
     p.developmentArea = [];
     p.resources.goods = 1;
-    p.resources.knowledge = 0;
+    p.resources.knowledge = 1;
     G.cardDb.own_route = {
       id: "own_route",
       displayName: "Own Route",
@@ -2613,8 +2613,8 @@ describe("reshuffle progression", () => {
     expect(G.pendingTradeChoice).toBeUndefined();
     expect(G.pendingNationHookContinuation).toBeUndefined();
     expect(G.pendingReshuffleDraw).toBeUndefined();
-    expect(p.resources.goods).toBe(0);
-    expect(p.resources.knowledge).toBe(1);
+    expect(p.resources.goods).toBe(2);
+    expect(p.resources.knowledge).toBe(0);
     expect(p.hand).toEqual([]);
     expect(p.deck).toEqual(["test_action_archive_survey"]);
     expect(G.log.some((entry) => entry.message === "Nation hook after_reshuffle #1 failed.")).toBe(true);

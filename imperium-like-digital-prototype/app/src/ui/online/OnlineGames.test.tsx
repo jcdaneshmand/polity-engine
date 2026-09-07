@@ -79,6 +79,42 @@ const account: AccountPublicView = {
 };
 
 describe("OnlineGames", () => {
+  it("labels preserved incompatible matches and disables rejoin and spectate", () => {
+    const saved: OnlineSessionRecord = {
+      kind: "player",
+      matchID: "match-open",
+      playerID: "0",
+      credentials: "saved-token",
+      serverURL: "http://localhost:8000",
+      numPlayers: 2,
+      savedAt: "2026-09-06T04:00:00.000Z"
+    };
+    const html = renderToStaticMarkup(
+      <OnlineGames
+        setupConfig={config}
+        privateDataFingerprint="placeholder"
+        savedSessions={[saved]}
+        lobbies={[]}
+        matches={[{ ...baseMatch, compatibility: "incompatible" }]}
+        statusMessage=""
+        onBackToSetup={() => undefined}
+        onRefresh={() => undefined}
+        onHost={() => undefined}
+        onJoinLobby={() => undefined}
+        onJoin={() => undefined}
+        onSpectate={() => undefined}
+        onRejoin={() => undefined}
+        onForgetSession={() => undefined}
+      />
+    );
+
+    expect(html.match(/Rules update required/g)).toHaveLength(2);
+    expect(html).toContain("This match is preserved read-only.");
+    expect(html).toMatch(/<button type="button" disabled="">Rejoin<\/button>/);
+    expect(html).toMatch(/<button type="button" disabled="">Rejoin Seat<\/button>/);
+    expect(html).toMatch(/<button type="button" disabled="">Spectate<\/button>/);
+  });
+
   it("finds saved sessions for listed games so joins can become rejoins", () => {
     const savedLobby: OnlineSessionRecord = {
       kind: "lobby",

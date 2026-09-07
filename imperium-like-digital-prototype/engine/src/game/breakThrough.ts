@@ -61,8 +61,8 @@ function breakThroughFromMarket(G: GameState, playerId: string, suit: Suit, resu
 }
 
 function gainBreakThroughFallback(G: GameState, playerId: string, suit: Suit): number {
-  const gained = gainPlayerResource(G, playerId, "materials", 2);
-  G.log.push({ round: G.round, playerId, message: `BreakThroughFailed(${suit}/gained=${gained === 2 ? 2 : `${gained}/2`} materials)` });
+  const gained = gainPlayerResource(G, playerId, "knowledge", 2);
+  G.log.push({ round: G.round, playerId, message: `BreakThroughFailed(${suit}/gained=${gained === 2 ? 2 : `${gained}/2`} progress)` });
   return gained;
 }
 
@@ -116,7 +116,7 @@ function breakThroughFromDeck(G: GameState, playerId: string, suit: Suit, fallba
   if (!mainDeck) {
     if (cardId) return undefined;
     const gained = gainBreakThroughFallback(G, playerId, suit);
-    if (gained > 0) fallbackResourceGains.materials = (fallbackResourceGains.materials ?? 0) + gained;
+    if (gained > 0) fallbackResourceGains.knowledge = (fallbackResourceGains.knowledge ?? 0) + gained;
     return undefined;
   }
   const revealed: string[] = [];
@@ -135,7 +135,7 @@ function breakThroughFromDeck(G: GameState, playerId: string, suit: Suit, fallba
   mainDeck.splice(0, mainDeck.length, ...shuffleWithRandom(revealed, randomNumber));
   if (cardId) return undefined;
   const gained = gainBreakThroughFallback(G, playerId, suit);
-  if (gained > 0) fallbackResourceGains.materials = (fallbackResourceGains.materials ?? 0) + gained;
+  if (gained > 0) fallbackResourceGains.knowledge = (fallbackResourceGains.knowledge ?? 0) + gained;
   return undefined;
 }
 

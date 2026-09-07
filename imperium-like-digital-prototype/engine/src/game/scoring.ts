@@ -1,4 +1,4 @@
-import type { GameState, ResourceName } from "./state";
+import type { GameState, PlayerScoreBreakdown, ResourceName, ScoreContributionDetail } from "./state";
 import type { CampaignGameOutcome, GameOptions } from "../options/gameOptions";
 import type { ScoringOverride } from "../nations/nationRulesetTypes";
 import { runEffects } from "../cards/effectRunner";
@@ -107,7 +107,7 @@ function scoredFormulaZoneIds(G: GameState, playerId: string, requestedZoneIds: 
 }
 
 function formulaCap(score: number, cap: unknown): number {
-  return typeof cap === "number" ? Math.min(score, cap) : Math.min(score, 10);
+  return Math.min(score, typeof cap === "number" ? Math.min(cap, 10) : 10);
 }
 
 function countVariableFormula(
@@ -159,13 +159,9 @@ function countVariableFormula(
   return undefined;
 }
 
-function capPositiveCardVp(value: number): number {
-  return value > 10 ? 10 : value;
-}
-
 function cardVp(G: GameState, playerId: string, cardId: string, zoneId?: string): number {
   const vp = G.cardDb[cardId]?.vp as unknown;
-  if (typeof vp === "number") return capPositiveCardVp(vp);
+  if (typeof vp === "number") return vp;
   if (typeof vp === "object" && vp !== null) {
     const { mode, value, condition, formula, trueValue, falseValue } = vp as {
       mode?: string;
@@ -182,13 +178,13 @@ function cardVp(G: GameState, playerId: string, cardId: string, zoneId?: string)
         && typeof zoneId === "string"
         && actualScoredHistoryZoneIds(G, playerId).includes(zoneId);
       const matchedValue = zoneId === condition.zoneId || isHistoryAlias ? trueValue : falseValue;
-      return capPositiveCardVp(typeof matchedValue === "number" ? matchedValue : numericValue);
+      return typeof matchedValue === "number" ? matchedValue : numericValue;
     }
-    if (mode === "conditional") return capPositiveCardVp(numericValue);
+    if (mode === "conditional") return numericValue;
     if (mode === "variable" && formula) return countVariableFormula(G, playerId, formula) ?? Math.min(numericValue, 10);
     if (mode === "variable") return Math.min(numericValue, 10);
     if (mode === "negative") return -Math.abs(numericValue);
-    return capPositiveCardVp(numericValue);
+    return numericValue;
   }
   return 0;
 }
@@ -205,21 +201,21 @@ function zoneIsExcluded(G: GameState, playerId: string, zoneId: string, excluded
 
 function botCardVp(G: GameState, cardId: string): number {
   const vp = G.cardDb[cardId]?.vp as unknown;
-  if (typeof vp === "number") return capPositiveCardVp(vp);
+  if (typeof vp === "number") return vp;
   if (typeof vp === "object" && vp !== null) {
     const { mode, value, trueValue, falseValue } = vp as { mode?: string; value?: unknown; trueValue?: unknown; falseValue?: unknown };
     const numericValue = typeof value === "number" ? value : 0;
     if (mode === "none") return 0;
-    if (mode === "variable") return capPositiveCardVp(numericValue || 5);
+    if (mode === "variable") return 5;
     if (mode === "conditional" && (typeof trueValue === "number" || typeof falseValue === "number")) {
-      return capPositiveCardVp(Math.max(
+      return Math.max(
         typeof trueValue === "number" ? trueValue : numericValue,
         typeof falseValue === "number" ? falseValue : numericValue
-      ));
+      );
     }
-    if (mode === "conditional") return capPositiveCardVp(numericValue);
+    if (mode === "conditional") return numericValue;
     if (mode === "negative") return -Math.abs(numericValue);
-    return capPositiveCardVp(numericValue);
+    return numericValue;
   }
   return 0;
 }
@@ -273,6 +269,103 @@ export function scoreBot(G: GameState): number {
   const basicResourceScore = Math.floor(basicResourceTotal / resourceDenominator);
   const sovereignGoodsScore = sovereignOrHigher ? (resources.goods ?? 0) : 0;
   return cardScore + progressScore + basicResourceScore + sovereignGoodsScore;
+}
+
+function cardScoreReason(G: GameState, cardId: string, score: number, zoneId: string): string {
+  const vp = G.cardDb[cardId]?.vp as unknown;
+  if (typeof vp === "object" && vp !== null) {
+    const mode = (vp as { mode?: string }).mode;
+    if (mode === "variable") return `Variable VP formula in ${zoneId}; card VP is capped at 10.`;
+    if (mode === "conditional") return `Conditional VP evaluated in ${zoneId}.`;
+    if (mode === "negative" || score < 0) return `VP penalty in ${zoneId}.`;
+  }
+  return score < 0 ? `VP penalty in ${zoneId}.` : `Printed VP in ${zoneId}.`;
+}
+
+function cardContributionDetails(G: GameState, playerId: string, cardIds: string[], zoneId: string, excluded: boolean): ScoreContributionDetail[] {
+  return cardIds.map((cardId, index) => {
+    const score = excluded ? 0 : cardVp(G, playerId, cardId, zoneId);
+    return {
+      id: `${zoneId}:${cardId}:${index}`,
+      label: G.cardDb[cardId]?.displayName ?? cardId,
+      score,
+      reason: excluded ? `${zoneId} is excluded by the active nation rule.` : cardScoreReason(G, cardId, score, zoneId)
+    };
+  });
+}
+
+export function calculatePlayerScoreBreakdown(G: GameState, playerId: string): PlayerScoreBreakdown {
+  const excludedZones = playerExcludedScoringZones(G, playerId);
+  const scoredZoneIds = baseScoredZoneIds(G, playerId);
+  const zoneDetails = scoredZoneIds.flatMap((zoneId) => cardContributionDetails(
+    G,
+    playerId,
+    getZoneCards(G, playerId, zoneId),
+    zoneId,
+    zoneIsExcluded(G, playerId, zoneId, excludedZones)
+  ));
+  const garrisoned = garrisonedCardsInScoringZones(G, playerId, scoredZoneIds, excludedZones);
+  const garrisonDetails = cardContributionDetails(G, playerId, garrisoned, "garrison", false);
+  const cardScore = zoneDetails.reduce((sum, detail) => sum + detail.score, 0);
+  const garrisonScore = garrisonDetails.reduce((sum, detail) => sum + detail.score, 0);
+  const resourceScore = scoreResourcePool(G, playerId);
+  const contributions = [
+    {
+      id: "cards",
+      label: "Cards",
+      score: cardScore,
+      reason: "VP from cards in scoring zones, including variable, conditional, and negative values.",
+      details: zoneDetails
+    },
+    {
+      id: "garrison",
+      label: "Garrisoned Cards",
+      score: garrisonScore,
+      reason: "VP from cards garrisoned beneath cards in scoring zones.",
+      details: garrisonDetails
+    },
+    {
+      id: "progress",
+      label: "Progress",
+      score: resourceScore,
+      reason: resourceScore === (normalizeResourceMap(G.players[playerId]?.resources).knowledge ?? 0)
+        ? "One VP per Progress."
+        : "Progress converted by the active nation scoring rule."
+    }
+  ];
+  return { playerId, scoring: "normal", contributions, total: contributions.reduce((sum, contribution) => sum + contribution.score, 0) };
+}
+
+export function calculateBotScoreBreakdown(G: GameState): PlayerScoreBreakdown | undefined {
+  const bot = G.solo?.bot;
+  if (!bot) return undefined;
+  const slotCardIds = Object.values(bot.slots).flatMap((slot) => slot.cardId ? [slot.cardId] : []);
+  const cardIds = [...slotCardIds, ...bot.botPlayArea, ...bot.botDeck, ...bot.botDiscard, ...bot.botHistory];
+  const cardDetails = cardIds.map((cardId, index) => ({
+    id: `bot-card:${cardId}:${index}`,
+    label: G.cardDb[cardId]?.displayName ?? cardId,
+    score: botScoredCardVp(G, cardId),
+    reason: "Bot card scoring rule."
+  }));
+  const resources = normalizeResourceMap(bot.resources);
+  const sovereignOrHigher = bot.difficulty === "sovereign" || bot.difficulty === "overlord" || bot.difficulty === "supreme_ruler";
+  const basicResourceTotal = (resources.materials ?? 0) + (resources.influence ?? 0) + (sovereignOrHigher ? 0 : (resources.goods ?? 0) * 5);
+  const contributions = [
+    { id: "cards", label: "Cards", score: cardDetails.reduce((sum, detail) => sum + detail.score, 0), reason: "VP from scored Bot cards.", details: cardDetails },
+    { id: "progress", label: "Progress", score: resources.knowledge ?? 0, reason: "One VP per Bot Progress." },
+    { id: "basic-resources", label: "Basic Resources", score: Math.floor(basicResourceTotal / (sovereignOrHigher ? 5 : 10)), reason: `One VP per ${sovereignOrHigher ? 5 : 10} weighted basic resources.` },
+    { id: "goods", label: "Goods", score: sovereignOrHigher ? (resources.goods ?? 0) : 0, reason: sovereignOrHigher ? "One VP per Goods at Sovereign or higher." : "Goods are included in weighted basic resources." }
+  ];
+  return { playerId: bot.botId, scoring: "normal", contributions, total: contributions.reduce((sum, contribution) => sum + contribution.score, 0) };
+}
+
+function collapseScoreBreakdown(playerId: string, score: number): PlayerScoreBreakdown {
+  return {
+    playerId,
+    scoring: "collapse",
+    contributions: [{ id: "unrest", label: "Unrest", score, reason: "Fewest Unrest wins after Collapse." }],
+    total: score
+  };
 }
 
 function isUnrestCard(G: GameState, cardId: string): boolean {
@@ -549,6 +642,7 @@ export function triggerCollapse(G: GameState, reason: string, triggeredBy?: stri
       reason: `collapse:${reason}`,
       scores: { [humanPlayerId]: humanCollapseScore }
     };
+    G.finalScoreBreakdowns = { [humanPlayerId]: collapseScoreBreakdown(humanPlayerId, humanCollapseScore) };
     const campaignOutcome = buildCampaignOutcome({
       G,
       humanPlayerId,
@@ -558,7 +652,7 @@ export function triggerCollapse(G: GameState, reason: string, triggeredBy?: stri
     });
     if (campaignOutcome) G.gameover.campaignOutcome = campaignOutcome;
     G.log.push({ round: G.round, playerId: triggeredBy ?? "collapse", message: `CollapseTriggered(${reason})` });
-    G.log.push({ round: G.round, playerId: "collapse", message: `CollapseFinalized(winner=${G.gameover.winner})` });
+    G.log.push({ round: G.round, playerId: "collapse", message: `CollapseFinalized(winner=${G.gameover.winner})`, event: { type: "terminal", winner: G.gameover.winner, reason: G.gameover.reason, scoring: "collapse" } });
     return;
   }
   const scores = Object.fromEntries(Object.keys(G.players).map((playerId) => [playerId, collapseUnrestCount(G, playerId)]));
@@ -581,8 +675,12 @@ export function triggerCollapse(G: GameState, reason: string, triggeredBy?: stri
     scores,
     ...(tieBreakScores ? { tieBreakScores } : {})
   };
+  G.finalScoreBreakdowns = Object.fromEntries(Object.entries(scores).map(([playerId, score]) => [playerId, collapseScoreBreakdown(playerId, score)]));
+  G.finalTieBreakBreakdowns = tieBreakScores
+    ? Object.fromEntries(Object.keys(tieBreakScores).map((playerId) => [playerId, calculatePlayerScoreBreakdown(G, playerId)]))
+    : undefined;
   G.log.push({ round: G.round, playerId: triggeredBy ?? "collapse", message: `CollapseTriggered(${reason})` });
-  G.log.push({ round: G.round, playerId: "collapse", message: `CollapseFinalized(winner=${G.gameover.winner})` });
+  G.log.push({ round: G.round, playerId: "collapse", message: `CollapseFinalized(winner=${G.gameover.winner})`, event: { type: "terminal", winner: G.gameover.winner, reason: G.gameover.reason, scoring: "collapse" } });
 }
 
 export function finalizeNormalScoring(G: GameState, randomNumber?: () => number): void {
@@ -614,6 +712,11 @@ export function finalizeNormalScoring(G: GameState, randomNumber?: () => number)
       reason: `normal_scoring:${reason}`,
       scores
     };
+    const botBreakdown = calculateBotScoreBreakdown(G);
+    G.finalScoreBreakdowns = {
+      [humanPlayerId]: calculatePlayerScoreBreakdown(G, humanPlayerId),
+      ...(botBreakdown ? { [botId]: botBreakdown } : {})
+    };
     const campaignOutcome = buildCampaignOutcome({
       G,
       humanPlayerId,
@@ -623,7 +726,7 @@ export function finalizeNormalScoring(G: GameState, randomNumber?: () => number)
       botScore
     });
     if (campaignOutcome) G.gameover.campaignOutcome = campaignOutcome;
-    G.log.push({ round: G.round, playerId: "scoring", message: `ScoringFinalized(winner=${G.gameover.winner})` });
+    G.log.push({ round: G.round, playerId: "scoring", message: `ScoringFinalized(winner=${G.gameover.winner})`, event: { type: "terminal", winner: G.gameover.winner, reason: G.gameover.reason, scoring: "normal" } });
     return;
   }
   const sorted = Object.entries(scores).sort(([, a], [, b]) => b - a);
@@ -636,7 +739,8 @@ export function finalizeNormalScoring(G: GameState, randomNumber?: () => number)
     reason: `normal_scoring:${reason}`,
     scores
   };
-  G.log.push({ round: G.round, playerId: "scoring", message: `ScoringFinalized(winner=${G.gameover.winner})` });
+  G.finalScoreBreakdowns = Object.fromEntries(Object.keys(scores).map((playerId) => [playerId, calculatePlayerScoreBreakdown(G, playerId)]));
+  G.log.push({ round: G.round, playerId: "scoring", message: `ScoringFinalized(winner=${G.gameover.winner})`, event: { type: "terminal", winner: G.gameover.winner, reason: G.gameover.reason, scoring: "normal" } });
 }
 
 export function continuePendingScoringFinalization(G: GameState, randomNumber?: () => number): void {
@@ -667,9 +771,5 @@ export function scorePlayer(G: GameState, playerId: string, randomNumber?: () =>
 }
 
 function calculatePlayerScore(G: GameState, playerId: string): number {
-  const excludedZones = playerExcludedScoringZones(G, playerId);
-  const scoredZoneIds = baseScoredZoneIds(G, playerId);
-  const cardScore = scoredZoneIds.reduce((sum, zoneId) => sum + scoreZone(G, playerId, zoneId, excludedZones), 0);
-  const garrisonScore = scoreCardIds(G, playerId, garrisonedCardsInScoringZones(G, playerId, scoredZoneIds, excludedZones));
-  return cardScore + garrisonScore + scoreResourcePool(G, playerId);
+  return calculatePlayerScoreBreakdown(G, playerId).total;
 }

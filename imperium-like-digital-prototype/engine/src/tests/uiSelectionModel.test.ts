@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { getActionHintsByCardId, getActionIntent, getActionProvenance, getAvailableActionsForSelection, getCurrentTaskUiState, getMarketCardClickAction, getPendingUiState, getPrimaryBlockedReason, getSelectedCard } from "../../../app/src/ui/controller/selectionModel";
+import { getActionHintsByCardId, getActionIntent, getActionProvenance, getAvailableActionsForSelection, getCurrentTaskUiState, getMarketCardClickAction, getPendingUiState, getPrimaryBlockedReason, getSelectedCard, isSelectionStillAvailable } from "../../../app/src/ui/controller/selectionModel";
 import { compactReason, groupActionsForMenu } from "../../../app/src/ui/layout/ActionMenu";
 import { formatLogMessage } from "../../../app/src/ui/layout/GameLogPanel";
 import { marketResourceTokens } from "../../../app/src/ui/layout/MarketRow";
+import { getOrderChoiceModel, orderComposerOperationCount } from "../../../app/src/ui/controller/orderComposer";
 
 describe("selection model", () => {
   const G:any = { cardDb:{c1:{id:"c1",displayName:"Card1"},m1:{id:"m1",displayName:"Market1",cost:2}}, market:["m1"], players:{"1":{hand:["c1"],actionsRemaining:1,actionTokensAvailable:1,resources:{materials:3}}} };
@@ -12,6 +13,11 @@ describe("selection model", () => {
   it("hand selection returns card",()=> expect(getSelectedCard({kind:"hand_card",id:"c1"},G)?.id).toBe("c1"));
   it("market selection returns card",()=> expect(getSelectedCard({kind:"market_slot",id:"m1"},G)?.id).toBe("m1"));
   it("empty selection returns undefined",()=> expect(getSelectedCard({kind:"market_slot",id:"none"},G)).toBeUndefined());
+  it("clears card selections that no longer exist in their selected zone",()=> {
+    expect(isSelectionStillAvailable({kind:"hand_card",id:"c1",playerId:"1"},G)).toBe(true);
+    expect(isSelectionStillAvailable({kind:"hand_card",id:"missing",playerId:"1"},G)).toBe(false);
+    expect(isSelectionStillAvailable({kind:"market_slot",id:"missing"},G)).toBe(false);
+  });
   it("pin details carries the selected card id for card selections",()=> {
     const view=getAvailableActionsForSelection({kind:"hand_card",id:"c1"},G,ctx).find(a=>a.action==="view");
     expect(view).toMatchObject({ label:"Pin Details", enabled:true, cardId:"c1" });
@@ -235,37 +241,25 @@ describe("selection model", () => {
       pendingBreakThroughChoice:{playerId:"1",sourceCardId:"breaker",source:"exile",suit:"civilized",cardIds:["m1"]}
     },ctx,"m1")).toBeUndefined();
   });
-  it("exposes every legal Look return order for three looked cards",()=> {
+  it("uses one bounded Look order composer instead of factorial action generation",()=> {
     const withLookOrder = {
       ...G,
       cardDb: {...G.cardDb, a:{id:"a",displayName:"A"},b:{id:"b",displayName:"B"},c:{id:"c",displayName:"C"}},
       pendingLookOrderChoice:{playerId:"1",source:"deck",cardIds:["a","b","c"]}
     };
-    const acts=getAvailableActionsForSelection(null,withLookOrder,ctx);
-    expect(acts.filter((a)=>a.action==="resolveLookOrderChoice")).toEqual([
-      expect.objectContaining({ label:"Return A then B then C", cardIds:["a","b","c"] }),
-      expect.objectContaining({ label:"Return A then C then B", cardIds:["a","c","b"] }),
-      expect.objectContaining({ label:"Return B then A then C", cardIds:["b","a","c"] }),
-      expect.objectContaining({ label:"Return B then C then A", cardIds:["b","c","a"] }),
-      expect.objectContaining({ label:"Return C then A then B", cardIds:["c","a","b"] }),
-      expect.objectContaining({ label:"Return C then B then A", cardIds:["c","b","a"] })
-    ]);
+    expect(getAvailableActionsForSelection(null,withLookOrder,ctx).filter((a)=>a.action==="resolveLookOrderChoice")).toEqual([]);
+    expect(getOrderChoiceModel(withLookOrder)).toMatchObject({ kind:"look", cardIds:["a","b","c"], resolveAction:"resolveLookOrderChoice" });
   });
-  it("exposes every legal Look-take choice and return order",()=> {
+  it("uses one bounded Look-take composer instead of factorial action generation",()=> {
     const withLookTake = {
       ...G,
       cardDb: {...G.cardDb, a:{id:"a",displayName:"A"},b:{id:"b",displayName:"B"},c:{id:"c",displayName:"C"}},
       pendingLookTakeChoice:{playerId:"1",source:"deck",destination:"hand",cardIds:["a","b","c"]}
     };
-    const acts=getAvailableActionsForSelection(null,withLookTake,ctx);
-    expect(acts.filter((a)=>a.action==="resolveLookTakeChoice")).toEqual([
-      expect.objectContaining({ label:"Take A; return B then C", cardId:"a", returnOrder:["b","c"] }),
-      expect.objectContaining({ label:"Take A; return C then B", cardId:"a", returnOrder:["c","b"] }),
-      expect.objectContaining({ label:"Take B; return A then C", cardId:"b", returnOrder:["a","c"] }),
-      expect.objectContaining({ label:"Take B; return C then A", cardId:"b", returnOrder:["c","a"] }),
-      expect.objectContaining({ label:"Take C; return A then B", cardId:"c", returnOrder:["a","b"] }),
-      expect.objectContaining({ label:"Take C; return B then A", cardId:"c", returnOrder:["b","a"] })
-    ]);
+    const model = getOrderChoiceModel(withLookTake)!;
+    expect(getAvailableActionsForSelection(null,withLookTake,ctx).filter((a)=>a.action==="resolveLookTakeChoice")).toEqual([]);
+    expect(model).toMatchObject({ kind:"look_take", cardIds:["a","b","c"], resolveAction:"resolveLookTakeChoice" });
+    expect(orderComposerOperationCount(model)).toBe(11);
   });
   it("does not expose direct market Acquire as a normal player action",()=> {
     expect(getAvailableActionsForSelection({kind:"market_slot",id:"m1"},G,ctx).some(a=>a.action==="acquire")).toBe(false);
@@ -479,7 +473,7 @@ describe("selection model", () => {
     expect(acts[0]).toMatchObject({ label:"Remove Development", enabled:true, cardId:"d1" });
     expect(acts[1].enabled).toBe(false);
   });
-  it("pending Trade choice actions expose route and Goods-for-Progress choices",()=> {
+  it("pending Trade choice actions expose route and Progress-for-Goods choices",()=> {
     const withTrade = {
       ...G,
       cardDb: {...G.cardDb, tr1:{id:"tr1",displayName:"River Road",type:"trade_route",cardType:"trade_route",suit:"trade_route"}},
@@ -488,7 +482,7 @@ describe("selection model", () => {
     const acts=getAvailableActionsForSelection(null,withTrade,ctx);
     expect(acts.map((a)=>a.action)).toEqual(["resolveTradeChoice","resolveTradeChoice","endTurn"]);
     expect(acts[0]).toMatchObject({ label:"Trade via River Road", enabled:true, cardId:"tr1" });
-    expect(acts[1]).toMatchObject({ label:"Trade Goods for Progress", enabled:true });
+    expect(acts[1]).toMatchObject({ label:"Pay Progress for Goods", enabled:true });
     expect(acts[2].enabled).toBe(false);
   });
   it("pending Return Unrest choice actions expose eligible Unrest cards",()=> {
@@ -606,29 +600,27 @@ describe("selection model", () => {
     expect(acts[1]).toMatchObject({ label:"Give Unrest to 1", enabled:true, recipientPlayerIds:["1"] });
     expect(acts[2].enabled).toBe(false);
   });
-  it("pending Solstice order choice exposes available card orders",()=> {
+  it("pending Solstice order choice delegates to the bounded composer",()=> {
     const withSolsticeOrder = {
       ...G,
       cardDb: {...G.cardDb, s1:{id:"s1",displayName:"Spend"},g1:{id:"g1",displayName:"Gain"}},
       pendingSolsticeOrderChoice:{playerId:"1",phase:"on_solstice",cardIds:["s1","g1"]}
     };
     const acts=getAvailableActionsForSelection(null,withSolsticeOrder,ctx);
-    expect(acts.map((a)=>a.action)).toEqual(["resolveSolsticeOrderChoice","resolveSolsticeOrderChoice","endTurn"]);
-    expect(acts[0]).toMatchObject({ label:"Resolve Spend then Gain", enabled:true, cardIds:["s1","g1"] });
-    expect(acts[1]).toMatchObject({ label:"Resolve Gain then Spend", enabled:true, cardIds:["g1","s1"] });
-    expect(acts[2].enabled).toBe(false);
+    expect(acts.map((a)=>a.action)).toEqual(["endTurn"]);
+    expect(acts[0]).toMatchObject({ enabled:false, reason:"Resolve the pending Solstice order first" });
+    expect(getOrderChoiceModel(withSolsticeOrder)).toMatchObject({ kind:"solstice", cardIds:["s1","g1"] });
   });
-  it("pending Look order choice exposes available card orders",()=> {
+  it("pending Look order choice delegates to the bounded composer",()=> {
     const withLookOrder = {
       ...G,
       cardDb: {...G.cardDb, a:{id:"a",displayName:"A"},b:{id:"b",displayName:"B"}},
       pendingLookOrderChoice:{playerId:"1",source:"deck",cardIds:["a","b"]}
     };
     const acts=getAvailableActionsForSelection(null,withLookOrder,ctx);
-    expect(acts.map((a)=>a.action)).toEqual(["resolveLookOrderChoice","resolveLookOrderChoice","endTurn"]);
-    expect(acts[0]).toMatchObject({ label:"Return A then B", enabled:true, cardIds:["a","b"] });
-    expect(acts[1]).toMatchObject({ label:"Return B then A", enabled:true, cardIds:["b","a"] });
-    expect(acts[2].enabled).toBe(false);
+    expect(acts.map((a)=>a.action)).toEqual(["endTurn"]);
+    expect(acts[0]).toMatchObject({ enabled:false, reason:"Resolve the pending Look order first" });
+    expect(getOrderChoiceModel(withLookOrder)).toMatchObject({ kind:"look", cardIds:["a","b"] });
   });
   it("labels empty pending-choice options as Skip",()=> {
     const acts=getAvailableActionsForSelection(null,{...G,pendingChoice:{playerId:"1",sourceCardId:"c1",choices:[[{op:"gain_resource",resource:"knowledge",amount:1}],[]]}},ctx);

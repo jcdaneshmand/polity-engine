@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import type { CampaignProgress } from "../../../../engine/src/options/gameOptions";
 import { SharedAreaRow } from "./SharedAreaRow";
 import { MarketRow } from "./MarketRow";
@@ -10,13 +10,18 @@ import { BotRow } from "./BotRow";
 import { ZoneDetailPanel } from "./ZoneDetailPanel";
 import { TurnStatusBar } from "./TurnStatusBar";
 import { RuleAidPanel } from "./RuleAidPanel";
-import EndGameSummary, { type AccountGameResultContext } from "./EndGameSummary";
+import { OrderChoicePanel } from "./OrderChoicePanel";
+import GuidedGamePanel from "./GuidedGamePanel";
+import { deriveGuidedProgress, getGuidedChapter, type GuidedChapterId } from "../../guidedGame";
+import type { AccountGameResultContext } from "./EndGameSummary";
 import type { AccountGameResultInput } from "../../onlineSession";
-import { getActionHintsByCardId, getAvailableActionsForSelection, getCurrentTaskUiState, getMarketCardClickAction, getPendingUiState, getSelectedCardBlockedAction, getSelectedCard, ruleProvenanceLabels, type CurrentTaskUiState, type Selection } from "../controller/selectionModel";
+import { getActionHintsByCardId, getAvailableActionsForSelection, getCurrentTaskUiState, getMarketCardClickAction, getPendingUiState, getSelectedCardBlockedAction, getSelectedCard, isSelectionStillAvailable, ruleProvenanceLabels, type CurrentTaskUiState, type Selection } from "../controller/selectionModel";
 import { CONTROLLER_HINTS } from "../controller/controllerHints";
 import { handleBoardKeyDown } from "../controller/keyboardControls";
 import { getBotPiles, getCurrentPlayer, getInspectableLookedCards, getInspectableSharedPile, getInspectableZone, getMarketCards, getOwnerVisibleZoneIds, getPlayerZoneCounts, getPlayerZoneLabels, getRecentLogEntries, getSharedPiles } from "./uiSelectors";
 import { resourceLabelsForGame } from "./resourceDisplay";
+
+const EndGameSummary = lazy(() => import("./EndGameSummary"));
 
 function mapViewerPlayerId(G: any, candidate?: string | null): string | undefined {
   if (candidate == null) return undefined;
@@ -294,7 +299,7 @@ function CurrentTaskPanel({ task }: { task: CurrentTaskUiState }) {
 function LastEventPanel({ outcome }: { outcome?: string }) {
   if (!outcome) return null;
   return (
-    <section className="panel last-event-panel" data-qa="last-event-panel" aria-label="Last event">
+    <section className="panel last-event-panel" data-qa="last-event-panel" aria-label="Last event" role="status" aria-live="polite" aria-atomic="true">
       <div className="eyebrow">Last Event</div>
       <span>{outcome}</span>
     </section>
@@ -403,12 +408,20 @@ export default function BoardLayout({
   _undo,
   onCampaignProgress,
   accountResultContext,
-  onAccountGameResult
+  onAccountGameResult,
+  guidedChapterId,
+  onRestartGuidedChapter,
+  onExitGuidedGame,
+  onStartGuidedChapter
 }: any & {
   viewerPlayerID?: string | null;
   onCampaignProgress?: (progress: CampaignProgress) => void;
   accountResultContext?: AccountGameResultContext;
   onAccountGameResult?: (result: AccountGameResultInput) => void;
+  guidedChapterId?: GuidedChapterId;
+  onRestartGuidedChapter?: () => void;
+  onExitGuidedGame?: () => void;
+  onStartGuidedChapter?: (chapterId: GuidedChapterId) => void;
 }) {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [detailCardId, setDetailCardId] = useState<string | null>(null);
@@ -463,10 +476,16 @@ export default function BoardLayout({
     appVersion: (import.meta as any).env?.VITE_GIT_COMMIT ?? "local-dev"
   }), [G, ctx, activePlayerId, viewerId, isMultiplayer, pending?.detail, currentTask, actions, selectedCard?.id, selection]);
   const lastOutcome = diagnostics.lastOutcome;
+  const guidedTargetCardIds = guidedChapterId
+    ? getGuidedChapter(guidedChapterId).steps[deriveGuidedProgress(guidedChapterId, G)]?.targetCardIds ?? []
+    : [];
   const handActionHintsByCardId = useMemo(() => {
     const hints = getActionHintsByCardId(actions, "hand");
-    if (!G.pendingCleanupDiscardChoice) return hints;
     const next = { ...hints };
+    guidedTargetCardIds.forEach((cardId) => {
+      next[cardId] = { labels: [...(next[cardId]?.labels ?? []), "Learning target"], highlighted: true };
+    });
+    if (!G.pendingCleanupDiscardChoice) return next;
     cleanupDiscardCardIds.forEach((cardId) => {
       next[cardId] = {
         labels: ["Select to discard"],
@@ -474,8 +493,15 @@ export default function BoardLayout({
       };
     });
     return next;
-  }, [G.pendingCleanupDiscardChoice, actions, cleanupDiscardCardIds]);
-  const marketActionHintsByCardId = useMemo(() => getActionHintsByCardId(actions, "market"), [actions]);
+  }, [G.pendingCleanupDiscardChoice, actions, cleanupDiscardCardIds, guidedTargetCardIds.join("|")]);
+  const marketActionHintsByCardId = useMemo(() => {
+    const hints = getActionHintsByCardId(actions, "market");
+    const next = { ...hints };
+    guidedTargetCardIds.forEach((cardId) => {
+      next[cardId] = { labels: [...(next[cardId]?.labels ?? []), "Learning target"], highlighted: true };
+    });
+    return next;
+  }, [actions, guidedTargetCardIds.join("|")]);
 
   useEffect(() => {
     if (!G.pendingCleanupDiscardChoice) {
@@ -486,8 +512,14 @@ export default function BoardLayout({
   }, [G.pendingCleanupDiscardChoice, cleanupDiscardKey]);
 
   useEffect(() => {
+    if (!isSelectionStillAvailable(selection, G)) setSelection(null);
+  }, [G, selection]);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => handleBoardKeyDown(e, {
-      onEndTurn: () => moves.endTurn?.(),
+      onEndTurn: () => {
+        if (actions.some((action) => action.action === "endTurn" && action.enabled)) moves.endTurn?.();
+      },
       onClear: () => {
         if (zoomCardId) {
           setZoomCardId(null);
@@ -495,8 +527,11 @@ export default function BoardLayout({
         }
         setSelection(null);
       },
-      onCyclePanel: () => {},
-      onShortcut: () => {},
+      onCyclePanel: () => document.querySelector<HTMLElement>('.action-menu button:not(:disabled)')?.focus(),
+      onShortcut: (shortcut) => {
+        const action = actions.find((candidate) => candidate.action === shortcut && candidate.enabled);
+        if (action) dispatchBoardAction({ action, moves, setDetailCardId, setSelection });
+      },
       onZoom: () => {
         const cardId = detailCardId ?? detailCard?.id;
         if (cardId) setZoomCardId(cardId);
@@ -504,7 +539,7 @@ export default function BoardLayout({
     });
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [detailCard?.id, detailCardId, moves, zoomCardId]);
+  }, [actions, detailCard?.id, detailCardId, moves, zoomCardId]);
 
   const onAction = (action: any) => dispatchBoardAction({ action, moves, setDetailCardId, setSelection });
 
@@ -553,8 +588,18 @@ export default function BoardLayout({
       <div className="panel hints">{CONTROLLER_HINTS.map((h)=> <div key={h}>{h}</div>)}</div>
     </div>
     <div className="right">
+      {guidedChapterId && onRestartGuidedChapter && onExitGuidedGame && onStartGuidedChapter ? (
+        <GuidedGamePanel
+          G={G}
+          chapterId={guidedChapterId}
+          onRestart={onRestartGuidedChapter}
+          onExit={onExitGuidedGame}
+          onNextChapter={onStartGuidedChapter}
+        />
+      ) : null}
       <CurrentTaskPanel task={currentTask} />
       <LastEventPanel outcome={lastOutcome} />
+      <OrderChoicePanel G={G} viewerId={viewerId} onAction={onAction} />
       {lookedZone ? <ZoneDetailPanel title={`Looked ${lookedZone.source}`} cardIds={lookedZone.cardIds} hidden={lookedZone.hidden} count={lookedZone.count} cardDb={G.cardDb ?? {}} zoneKind="own-private" zoneRole={`looked:${lookedZone.source}`} /> : null}
       {selection?.kind === "player_zone"
         ? <ZoneDetailPanel title={playerZoneLabels[selection.id] ?? selection.id} cardIds={selectedZone?.cardIds ?? []} hidden={selectedZone?.hidden} count={selectedZone?.count} cardDb={G.cardDb ?? {}} zoneKind={selectedZone?.hidden ? "opponent-hidden" : "own-private"} zoneRole={selection.id} />
@@ -641,14 +686,16 @@ export default function BoardLayout({
     </div>
     <CardInspectionModal card={zoomCard} onClose={() => setZoomCardId(null)} />
     {G.gameover && !summaryDismissed ? (
-      <EndGameSummary
-        G={G}
-        ctx={ctx}
-        onReviewBoard={() => setSummaryDismissed(true)}
-        onCampaignProgress={onCampaignProgress}
-        accountResultContext={accountResultContext}
-        onAccountGameResult={onAccountGameResult}
-      />
+      <Suspense fallback={<div className="panel end-game-summary" role="status">Loading final results...</div>}>
+        <EndGameSummary
+          G={G}
+          ctx={ctx}
+          onReviewBoard={() => setSummaryDismissed(true)}
+          onCampaignProgress={onCampaignProgress}
+          accountResultContext={accountResultContext}
+          onAccountGameResult={onAccountGameResult}
+        />
+      </Suspense>
     ) : null}
   </div>;
 }

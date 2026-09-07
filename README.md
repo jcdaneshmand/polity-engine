@@ -10,6 +10,10 @@ Polity Engine does not include official Osprey Games assets or datasets. It prov
 
 Try the live app at [polity-engine.onrender.com](https://polity-engine.onrender.com).
 
+## Rules Fidelity Status
+
+The 11 public-engine issue groups reproduced by the [2026-09-05 independent audit](imperium-like-digital-prototype/docs/superpowers/plans/2026-09-05-rules-fidelity-audit.md) are repaired. The separate source-backed audit now passes 42 checks and is required by `npm.cmd run verify:rules` and the release command. See the [closure report](imperium-like-digital-prototype/docs/superpowers/plans/2026-09-05-rules-fidelity-closure.md) for evidence and remaining boundaries. This is not complete card-by-card, nation-by-nation, or private-dataset certification.
+
 ## Important Disclaimer
 
 - This is an unofficial fan-made project.
@@ -93,6 +97,8 @@ The [audited seven-goal plan](imperium-like-digital-prototype/docs/superpowers/p
 - Native keyboard traversal, inspection-dialog focus trapping/restoration, visible focus and standard controller navigation. Physical device verification remains pending.
 - Versioned Custom Commons presets with composition counts and launch validation against engine eligibility rules.
 - Explicit Render release automation with configuration checks, bounded deployment tracking and redacted reports. See [release automation](imperium-like-digital-prototype/docs/release-automation.md).
+- Repaired rules contracts for token progression, Collapse, Solstice ordering, solo recipients, scoring, Bot valuation, payments, Break-through, Exile, and Trade, backed by a required independent audit.
+- Rules-versioned local saves that preserve and clearly reject pre-correction states instead of silently replaying them under changed semantics.
 
 Run `npm run verify:improvements` for the combined public-safe verification gate.
 

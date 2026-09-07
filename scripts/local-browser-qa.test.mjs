@@ -57,10 +57,16 @@ test("redactBrowserQAResult does not include credentials", () => {
     automatedMultiplayerSelfPlayChecked: true,
     automatedMultiplayerSelfPlay: { steps: 8 },
     viewportQaChecked: true,
-    viewportQa: ["desktop", "steam-deck", "narrow-tablet", "iphone-portrait", "iphone-landscape"],
+    viewportQa: ["desktop", "wide-desktop", "steam-deck", "narrow-tablet", "small-phone", "iphone-portrait", "iphone-landscape", "enlarged-text"],
     saveResumeChecked: true,
     invalidSaveChecked: true,
+    recoveryLibraryChecked: true,
+    recoveryLibrary: { healthySlotsBesideRecoverable: 2, recoverableSlots: 2, rawBackupExact: true },
     noPrivateDebugMarkers: true,
+    customCommonsSetupChecked: true,
+    customCommonsSetup: { quickChoices: ["classics", "legends", "horizons", "advanced"], available: 2, selectedAfterSelectShown: 2 },
+    orderComposerChecked: true,
+    orderComposer: { size: 12, moveControls: 24, keyboardMove: true, keyboardReset: true, submitted: true, playerId: "1" },
     hostCredentials: "secret-host",
     guestCredentials: "secret-guest"
   });
@@ -79,10 +85,16 @@ test("redactBrowserQAResult does not include credentials", () => {
     automatedMultiplayerSelfPlayChecked: true,
     automatedMultiplayerSelfPlay: { steps: 8 },
     viewportQaChecked: true,
-    viewportQa: ["desktop", "steam-deck", "narrow-tablet", "iphone-portrait", "iphone-landscape"],
+    viewportQa: ["desktop", "wide-desktop", "steam-deck", "narrow-tablet", "small-phone", "iphone-portrait", "iphone-landscape", "enlarged-text"],
     saveResumeChecked: true,
     invalidSaveChecked: true,
-    noPrivateDebugMarkers: true
+    recoveryLibraryChecked: true,
+    recoveryLibrary: { healthySlotsBesideRecoverable: 2, recoverableSlots: 2, rawBackupExact: true },
+    noPrivateDebugMarkers: true,
+    customCommonsSetupChecked: true,
+    customCommonsSetup: { quickChoices: ["classics", "legends", "horizons", "advanced"], available: 2, selectedAfterSelectShown: 2 },
+    orderComposerChecked: true,
+    orderComposer: { size: 12, moveControls: 24, keyboardMove: true, keyboardReset: true, submitted: true, playerId: "1" }
   });
 });
 

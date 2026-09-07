@@ -3,6 +3,7 @@ import type { AccountStore } from "./accountStore";
 import type { PregameLobbyStore } from "./pregameLobbyStore";
 import type { LobbyAccessFailureReason, LobbySetupData } from "./pregameLobbyTypes";
 import type { LobbyStore } from "./lobbyStore";
+import { validateMatchSetupData } from "./setupValidation";
 
 type KoaLikeContext = {
   method: string;
@@ -213,10 +214,17 @@ export function createPregameLobbyMiddleware(options: PregameLobbyOptions) {
         setError(ctx, 400, "invalid_request");
         return;
       }
+      const requestedSetup = setupData(body.setupData);
+      const setupValidation = validateMatchSetupData(requestedSetup);
+      if (!setupValidation.ok) {
+        ctx.status = 409;
+        ctx.body = setupValidation;
+        return;
+      }
       const created = options.store.createLobby({
         roomName: stringValue(body.roomName),
         playerCount: playerCount(body.playerCount),
-        setupData: setupData(body.setupData),
+        setupData: requestedSetup,
         privateDataFingerprint: stringValue(body.privateDataFingerprint) ?? "placeholder",
         password: stringValue(body.password),
         hostName: stringValue(body.hostName),
@@ -311,12 +319,19 @@ export function createPregameLobbyMiddleware(options: PregameLobbyOptions) {
         setError(ctx, 400, "invalid_request");
         return;
       }
+      const requestedSetup = setupData(body.setupData);
+      const setupValidation = validateMatchSetupData(requestedSetup);
+      if (!setupValidation.ok) {
+        ctx.status = 409;
+        ctx.body = setupValidation;
+        return;
+      }
       const result = options.store.updateSetup({
         lobbyID: updateLobbyID,
         lobbyCredentials: credential(body) as string,
         roomName: stringValue(body.roomName),
         playerCount: playerCount(body.playerCount),
-        setupData: setupData(body.setupData),
+        setupData: requestedSetup,
         privateDataFingerprint: stringValue(body.privateDataFingerprint),
         password: stringValue(body.password),
         spectatingAllowed: booleanValue(body.spectatingAllowed)
@@ -413,6 +428,13 @@ export function createPregameLobbyMiddleware(options: PregameLobbyOptions) {
       }
       try {
         const finalSetup = finalizedSetup(start.setupData, start.seats);
+        const setupValidation = validateMatchSetupData(finalSetup);
+        if (!setupValidation.ok) {
+          options.store.recoverStartFailure(startLobbyID);
+          ctx.status = 409;
+          ctx.body = setupValidation;
+          return;
+        }
         const created = await options.boardgameApi.createMatch({ numPlayers: start.seats.length, setupData: finalSetup });
         const playerCredentialsBySeat: Record<string, string> = {};
         for (const seat of start.seats) {

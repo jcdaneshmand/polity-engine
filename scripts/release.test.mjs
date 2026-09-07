@@ -1,10 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { runRelease, withReleaseLock } from './release.mjs';
+import { runRelease, runReleaseRulesGate, withReleaseLock } from './release.mjs';
 import { mkdtempSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const config = { commit: 'a'.repeat(40), remoteCommit: 'a'.repeat(40), serviceId: 'srv-fixture', baseURL: 'https://fixture.onrender.com', repo: 'https://github.com/example/fixture.git', branch: 'main' };
+
+test('requires the engine and independent rules gate before deployment', () => {
+  const calls = [];
+  runReleaseRulesGate((command, args) => { calls.push([command, args]); return { status: 0 }; }, '/fixture');
+  assert.deepEqual(calls[0][1], ['run', 'verify:rules']);
+  assert.throws(() => runReleaseRulesGate(() => ({ status: 1 }), '/fixture'), /Deployment was not started/);
+});
 function harness(options = {}) {
   const calls = []; const reports = []; let now = 0;
   const deployment = { id: 'dep-fixture', status: 'build_in_progress', commit: { id: config.commit } };

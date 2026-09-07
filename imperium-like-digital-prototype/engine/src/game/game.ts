@@ -68,7 +68,8 @@ export const PrototypeGame: Game<GameState> = {
       privateRulesetPath: setupData?.privateRulesetPath,
       privateStrategyPath: setupData?.privateStrategyPath,
       privateBotStateTablePath: setupData?.privateBotStateTablePath,
-      privateBotTradeRoutesTablePath: setupData?.privateBotTradeRoutesTablePath
+      privateBotTradeRoutesTablePath: setupData?.privateBotTradeRoutesTablePath,
+      enforceCommonsValidation: true
     }),
   endIf: ({ G }) => G.gameover,
   playerView: ({ G, playerID }) => redactGameStateForPlayer(G, gamePlayerIdForSeat(G, playerID)),

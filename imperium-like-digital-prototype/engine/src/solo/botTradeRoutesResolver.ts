@@ -198,12 +198,12 @@ export function resolveBotTrade(G: GameState, bot: BotState, randomNumber?: () =
   if (!tradeRoutesEnabled(G)) return false;
   const chosen = chooseTradeRoute(G, bot);
   if (!chosen) {
-    if ((bot.resources.goods ?? 0) > 0) {
-      if (G.resourceSupply && (G.resourceSupply.knowledge ?? 0) <= 0) return false;
-      bot.resources.goods = (bot.resources.goods ?? 0) - 1;
-      returnResourceToSupply(G, "goods", 1);
-      const gained = takeResourceFromSupply(G, "knowledge", 1);
-      bot.resources.knowledge = (bot.resources.knowledge ?? 0) + gained;
+    if ((bot.resources.knowledge ?? 0) > 0) {
+      if (G.resourceSupply && (G.resourceSupply.goods ?? 0) <= 0) return false;
+      bot.resources.knowledge = (bot.resources.knowledge ?? 0) - 1;
+      returnResourceToSupply(G, "knowledge", 1);
+      const gained = takeResourceFromSupply(G, "goods", 1);
+      bot.resources.goods = (bot.resources.goods ?? 0) + gained;
       return gained > 0;
     }
     return false;
@@ -214,15 +214,13 @@ export function resolveBotTrade(G: GameState, bot: BotState, randomNumber?: () =
     if (goods <= 0) return false;
     addCardResource(G, chosen.cardId, "goods", goods);
   } else if (chosen.owner === "human") {
-    const goods = takeResourceFromSupply(G, "goods", 1);
-    const knowledge = takeResourceFromSupply(G, "knowledge", 1);
-    if (goods <= 0 || knowledge <= 0) {
+    const goods = takeResourceFromSupply(G, "goods", 2);
+    if (goods < 2) {
       returnResourceToSupply(G, "goods", goods);
-      returnResourceToSupply(G, "knowledge", knowledge);
       return false;
     }
-    addCardResource(G, chosen.cardId, "goods", goods);
-    bot.resources.knowledge = (bot.resources.knowledge ?? 0) + knowledge;
+    addCardResource(G, chosen.cardId, "goods", 1);
+    bot.resources.goods = (bot.resources.goods ?? 0) + 1;
   }
   resolveBotTriggerTradeRoute(G, bot, chosen.cardId, randomNumber);
   return true;

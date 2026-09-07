@@ -24,27 +24,23 @@ function shuffleWithRandom<T>(items: T[], randomNumber?: () => number): T[] {
   return out;
 }
 
-function capPositiveCardVp(value: number): number {
-  return value > 0 ? Math.min(value, 10) : value;
-}
-
 function cardVpForBot(card: Card | undefined): number {
   const vp = card?.vp as unknown;
-  if (typeof vp === "number") return capPositiveCardVp(vp);
+  if (typeof vp === "number") return vp;
   if (typeof vp === "object" && vp !== null) {
     const { mode, value, trueValue, falseValue } = vp as { mode?: string; value?: unknown; trueValue?: unknown; falseValue?: unknown };
     const numericValue = typeof value === "number" ? value : 0;
     if (mode === "none") return 0;
     if (mode === "conditional" && (typeof trueValue === "number" || typeof falseValue === "number")) {
-      return capPositiveCardVp(Math.max(
+      return Math.max(
         typeof trueValue === "number" ? trueValue : numericValue,
         typeof falseValue === "number" ? falseValue : numericValue
-      ));
+      );
     }
-    if (mode === "conditional") return capPositiveCardVp(numericValue || 5);
-    if (mode === "variable") return capPositiveCardVp(numericValue || 5);
+    if (mode === "conditional") return numericValue || 5;
+    if (mode === "variable") return 5;
     if (mode === "negative") return -Math.abs(numericValue);
-    return capPositiveCardVp(numericValue);
+    return numericValue;
   }
   return 0;
 }
@@ -54,7 +50,7 @@ function marketTokenCount(G: GameState, cardId: string): number {
 }
 
 function marketCardVpForBot(G: GameState, cardId: string): number {
-  return cardVpForBot(G.cardDb[cardId]) + marketTokenCount(G, cardId);
+  return cardVpForBot(G.cardDb[cardId]) + resourceAmount(marketResourceMarkers(G, cardId), "knowledge");
 }
 
 function marketResourceMarkers(G: GameState, cardId: string): Partial<Record<ResourceName, number>> {
@@ -130,21 +126,24 @@ function chooseBotAcquireCard(G: GameState, botId: string, filter: BotAcquireFil
   })[0];
 }
 
-function isUnrestCard(G: GameState, cardId: string): boolean {
+function isRegionCard(G: GameState, cardId: string): boolean {
   const card = G.cardDb[cardId];
-  return card?.suit === "unrest" || card?.cardType === "unrest" || card?.type === "unrest" || cardHasSuitIcon(card, "unrest");
+  return card?.suit === "region" || card?.cardType === "region" || card?.type === "region" || cardHasSuitIcon(card, "region");
 }
 
 function takeUnrestForBotExileAcquire(G: GameState, bot: BotState, cardId: string): string[] {
-  if (isUnrestCard(G, cardId)) return [];
+  if (isRegionCard(G, cardId)) return [];
   const unrestCardId = G.unrestPile?.shift();
-  if (unrestCardId) return [unrestCardId];
+  if (unrestCardId) {
+    if ((G.unrestPile?.length ?? 0) === 0) triggerCollapse(G, "unrest_pile_empty", bot.botId);
+    return [unrestCardId];
+  }
   triggerCollapse(G, "unrest_pile_empty", bot.botId);
   return [];
 }
 
 function canTakeRequiredUnrestForBotExileAcquire(G: GameState, cardId: string): boolean {
-  return isUnrestCard(G, cardId) || (G.unrestPile?.length ?? 0) > 0;
+  return isRegionCard(G, cardId) || (G.unrestPile?.length ?? 0) > 0;
 }
 
 function addGainedCardsToTopOfBotDeck(bot: BotState, cardIds: string[]): void {
@@ -273,8 +272,8 @@ export function botBreakThrough(G: GameState, bot: BotState, filter?: BotAcquire
     mainDeck.splice(0, mainDeck.length, ...shuffleWithRandom(missed, options?.randomNumber));
   }
 
-  const gained = takeResourceFromSupply(G, "materials", 2);
-  bot.resources.materials = (bot.resources.materials ?? 0) + gained;
-  G.log.push({ round: G.round, playerId: bot.botId, message: `BotBreakThroughFailed(${suit ?? "unknown"}/gained=${gained === 2 ? 2 : `${gained}/2`} materials)` });
+  const gained = takeResourceFromSupply(G, "knowledge", 2);
+  bot.resources.knowledge = (bot.resources.knowledge ?? 0) + gained;
+  G.log.push({ round: G.round, playerId: bot.botId, message: `BotBreakThroughFailed(${suit ?? "unknown"}/gained=${gained === 2 ? 2 : `${gained}/2`} progress)` });
   return false;
 }

@@ -61,6 +61,7 @@ export type ListedMatch = {
   isLocked: boolean;
   spectatingAllowed: boolean;
   privateDataLabel: PrivateDataLabel;
+  compatibility?: "compatible" | "incompatible" | "missing";
   setupSummary: {
     commonsSetId: string;
     enabledExpansions: string[];
@@ -278,8 +279,10 @@ function formatLobbyError(error: string): string {
     lobby_not_found: "Lobby not found.",
     match_not_found: "Match not found.",
     invalid_credentials: "Lobby credentials are no longer valid.",
+    invalid_setup: "Game setup is not ready.",
     wrong_password: "Password is incorrect.",
     private_data_mismatch: "Private data does not match this room. Import the same private data bundle as the host, refresh the list, and try again.",
+    incompatible_match: "This match uses an incompatible rules version and is preserved read-only.",
     invalid_chat: "Chat message is empty or too long.",
     missing_session: "Sign in to chat.",
     invalid_session: "Your sign-in session is no longer valid.",
@@ -296,7 +299,13 @@ async function lobbyErrorMessage(response: Response): Promise<string> {
   try {
     const body = await response.json() as unknown;
     if (body && typeof body === "object" && typeof (body as { error?: unknown }).error === "string") {
-      return formatLobbyError((body as { error: string }).error);
+      const error = (body as { error: string }).error;
+      const issues = Array.isArray((body as { issues?: unknown }).issues)
+        ? (body as { issues: unknown[] }).issues
+          .filter((issue): issue is { code?: string; message: string } => Boolean(issue && typeof issue === "object" && typeof (issue as { message?: unknown }).message === "string"))
+        : [];
+      if (error === "invalid_setup" && issues.length > 0) return `Game setup is not ready: ${issues.map((issue) => issue.message).join(" ")}`;
+      return formatLobbyError(error);
     }
   } catch {
     return fallback;

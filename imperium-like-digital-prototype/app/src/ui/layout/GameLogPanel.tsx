@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { PublicGameEvent } from "../../../../engine/src/game/state";
 
 function plural(count: number, singular: string): string {
   return `${count} ${singular}${count === 1 ? "" : "s"}`;
@@ -80,6 +81,18 @@ function formatPlayerId(playerId: string): string {
   return `Player ${playerId}`;
 }
 
+export function formatPublicGameEvent(event: PublicGameEvent): string {
+  if (event.type === "terminal") {
+    return `${event.scoring === "collapse" ? "Collapse" : "Scoring"} complete. Winner: ${formatPlayerId(event.winner)}.`;
+  }
+  const changes = event.changes.map((change) => {
+    const sign = change.amount > 0 ? "+" : "";
+    return `${formatPlayerId(change.playerId)} ${sign}${change.amount} ${titleWords(change.resource)}`;
+  });
+  const reason = event.reason === "payment" ? "Payment" : titleWords(event.reason);
+  return `${reason}: ${changes.join(", ")}.`;
+}
+
 export function GameLogPanel({ entries }: { entries: any[] }) {
   const [panel, setPanel] = useState<HTMLDivElement | null>(null);
 
@@ -91,14 +104,14 @@ export function GameLogPanel({ entries }: { entries: any[] }) {
   }, [panel, entries.length, entries.at(-1)?.message]);
 
   return (
-    <section className="panel log-panel" ref={setPanel} aria-label="Game log" data-qa="game-log">
+    <section className="panel log-panel" ref={setPanel} aria-label="Game log" data-qa="game-log" tabIndex={0}>
       <div className="panel-title">Game Log</div>
       {entries.length === 0
         ? <div>No log entries.</div>
         : entries.map((e, i) => (
           <div key={i}>
             <span className="log-prefix">Round {e.round} - {formatPlayerId(String(e.playerId))}</span>
-            <span>{formatLogMessage(String(e.message))}</span>
+            <span>{e.event ? formatPublicGameEvent(e.event) : formatLogMessage(String(e.message))}</span>
           </div>
         ))}
     </section>
@@ -108,5 +121,5 @@ export function GameLogPanel({ entries }: { entries: any[] }) {
 export function summarizeLastLogEntry(entries: any[]): string | undefined {
   const entry = entries.at(-1);
   if (!entry) return undefined;
-  return formatLogMessage(String(entry.message ?? ""));
+  return entry.event ? formatPublicGameEvent(entry.event) : formatLogMessage(String(entry.message ?? ""));
 }

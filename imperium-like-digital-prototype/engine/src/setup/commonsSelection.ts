@@ -20,7 +20,8 @@ export function satisfiesCommonsExpansionRules(card: NormalizedCardRecord, optio
 
   const tradeRoutesEnabled = enabled.includes("trade_routes");
   if (!tradeRoutesEnabled && card.commonsGroup === "trade_routes") return false;
-  if (tradeRoutesEnabled && options.commonsSetId === "horizons" && isTradeRoutesMutuallyExclusiveAlternate(card)) return false;
+  const sourceSetId = options.commonsSetId === "custom" ? card.commonsSetId : options.commonsSetId;
+  if (tradeRoutesEnabled && sourceSetId === "horizons" && isTradeRoutesMutuallyExclusiveAlternate(card)) return false;
   return true;
 }
 
@@ -49,8 +50,9 @@ export function selectCommonsCards(cards: NormalizedCardRecord[], options: Commo
   for (const card of cards) {
     if (card.ownership !== "commons") continue;
     if (card.commonsGroup === "replacement") continue;
-    if (card.commonsSetId !== options.commonsSetId) continue;
-    if (customCardIds && !customCardIds.has(card.id)) continue;
+    if (options.commonsSetId === "custom") {
+      if (customCardIds ? !customCardIds.has(card.id) : card.commonsSetId !== "custom") continue;
+    } else if (card.commonsSetId !== options.commonsSetId) continue;
     if (!satisfiesCommonsModeRules(card, options)) {
       removedForVariant.push(card.id);
       continue;

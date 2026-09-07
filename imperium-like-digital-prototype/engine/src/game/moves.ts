@@ -969,18 +969,17 @@ function canResolveTradeEffect(G: GameState, playerId: string): boolean {
   if (!G.options?.enabledExpansions?.includes("trade_routes")) return false;
   const p = G.players[playerId];
   const hasGoods = (p.resources.goods ?? 0) > 0;
-  const hasGoodsFallback = hasGoods && canGainResourceFromSupply(G, "knowledge", 1);
+  const hasProgressFallback = (p.resources.knowledge ?? 0) > 0 && canGainResourceFromSupply(G, "goods", 1);
   const ownRouteAvailable = p.playArea.some((cardId) =>
     isTradeRouteCard(G, cardId) && cardGoods(G, cardId) < 3 && hasGoods
   );
-  if (ownRouteAvailable || hasGoodsFallback) return true;
+  if (ownRouteAvailable || hasProgressFallback) return true;
   return Object.entries(G.players).some(([candidatePlayerId, opponent]) =>
     candidatePlayerId !== playerId
     && opponent.playArea.some((cardId) =>
       isTradeRouteCard(G, cardId)
       && cardGoods(G, cardId) < 3
-      && canGainResourceFromSupply(G, "goods", 1)
-      && canGainResourceFromSupply(G, "knowledge", 1)
+      && canGainResourceFromSupply(G, "goods", 2)
     )
   );
 }
@@ -1112,11 +1111,23 @@ function playerIdsForScope(G: GameState, playerId: string, scope: TargetPlayerSc
   return [playerId];
 }
 
+function participantIdsForScope(G: GameState, playerId: string, scope: TargetPlayerScope | undefined): string[] {
+  const playerIds = playerIdsForScope(G, playerId, scope);
+  const botId = G.solo?.bot.botId;
+  const includesBot = Boolean(botId) && (
+    scope === "all"
+    || (scope === "others" && playerId !== botId)
+    || (!scope && playerId === botId)
+  );
+  return botId && includesBot && !playerIds.includes(botId) ? [...playerIds, botId] : playerIds;
+}
+
 function canResolveDrawEffect(G: GameState, playerId: string, effect: Extract<Effect, { op: "draw" }>): boolean {
   if (effect.count <= 0) return false;
   const source = effect.source ?? "deck";
-  const targetPlayerIds = effect.targetPlayerIds ?? playerIdsForScope(G, playerId, effect.targetPlayerScope);
+  const targetPlayerIds = effect.targetPlayerIds ?? participantIdsForScope(G, playerId, effect.targetPlayerScope);
   return targetPlayerIds.some((targetPlayerId) => {
+    if (G.solo?.bot.botId === targetPlayerId) return G.solo.bot.botDeck.length > 0;
     if (!G.players[targetPlayerId]) return false;
     if (source === "fameDeck") return canGainFameCard(G, targetPlayerId);
     if (source !== "deck") return drawChoiceSourceCards(G, targetPlayerId, source).length > 0;
@@ -1127,15 +1138,17 @@ function canResolveDrawEffect(G: GameState, playerId: string, effect: Extract<Ef
 function stealSourcePlayerIds(G: GameState, playerId: string, effect: Extract<Effect, { op: "steal_resource" }>): string[] {
   if (effect.fromPlayerIds?.length) return effect.fromPlayerIds;
   if (effect.fromPlayerId) return [effect.fromPlayerId];
-  if (effect.targetPlayerScope) return playerIdsForScope(G, playerId, effect.targetPlayerScope);
+  if (effect.targetPlayerScope) return participantIdsForScope(G, playerId, effect.targetPlayerScope);
   return [];
 }
 
 function canResolveStealEffect(G: GameState, playerId: string, effect: Extract<Effect, { op: "steal_resource" }>): boolean {
   if (effect.amount <= 0) return false;
   return stealSourcePlayerIds(G, playerId, effect).some((targetPlayerId) => {
-    if (!G.players[targetPlayerId]) return false;
-    return resourceAmount(G.players[targetPlayerId].resources, effect.resource) > 0 || (effect.ifUnable ?? []).length > 0;
+    const resources = G.players[targetPlayerId]?.resources
+      ?? (G.solo?.bot.botId === targetPlayerId ? G.solo.bot.resources : undefined);
+    if (!resources) return false;
+    return resourceAmount(resources, effect.resource) > 0 || (effect.ifUnable ?? []).length > 0;
   });
 }
 
@@ -1156,8 +1169,8 @@ function canResolveSwapEffect(G: GameState, playerId: string, effect: Extract<Ef
 
 function canResolveTakeUnrestEffect(G: GameState, playerId: string, effect: Extract<Effect, { op: "take_unrest" }>): boolean {
   if (effect.count <= 0) return false;
-  const recipients = effect.targetPlayerIds ?? playerIdsForScope(G, playerId, effect.targetPlayerScope);
-  return recipients.some((candidatePlayerId) => Boolean(G.players[candidatePlayerId]));
+  const recipients = effect.targetPlayerIds ?? participantIdsForScope(G, playerId, effect.targetPlayerScope);
+  return recipients.some((candidatePlayerId) => Boolean(G.players[candidatePlayerId]) || G.solo?.bot.botId === candidatePlayerId);
 }
 
 function marketCardMatchesMoveEffect(G: GameState, playerId: string, cardId: string, effect: Extract<Effect, { op: "gain_card" | "take_card" }>): boolean {
@@ -2931,14 +2944,14 @@ export function resolveTradeChoice({ G, ctx, random }: MoveCtx, routeCardId?: st
   if (!resolvePendingTradeChoice(G, ctx.currentPlayer, routeCardId)) {
     if (returnIfGameover(G)) return;
     restoreGameState(G, snapshot);
-    logInvalidMove(G, ctx.currentPlayer, "resolveTradeChoice", `trade_choice_failed(${routeCardId ?? "goods_to_progress"})`);
+    logInvalidMove(G, ctx.currentPlayer, "resolveTradeChoice", `trade_choice_failed(${routeCardId ?? "progress_to_goods"})`);
     return;
   }
   if (!resumeEffectsAfterPendingChoice({ G, ctx, random }, pending.sourceCardId, resumeEffects)) {
     if (returnIfGameover(G)) return;
     if (handleAfterReshuffleHookFailure(G, ctx.currentPlayer, "resolveTradeChoice")) return;
     restoreGameState(G, snapshot);
-    logInvalidMove(G, ctx.currentPlayer, "resolveTradeChoice", `resume_effect_failed(${routeCardId ?? "goods_to_progress"})`);
+    logInvalidMove(G, ctx.currentPlayer, "resolveTradeChoice", `resume_effect_failed(${routeCardId ?? "progress_to_goods"})`);
     return;
   }
   continuePausedRulesSequences(G, ctx, random?.Number);

@@ -15,6 +15,79 @@ function context(method: string, path: string, body?: unknown): TestContext {
 }
 
 describe("polity lobby middleware", () => {
+  it("rejects invalid Commons before creating a direct online match", async () => {
+    const store = createLobbyStore();
+    let createCalls = 0;
+    const middleware = createPolityLobbyMiddleware({
+      store,
+      boardgameApi: {
+        createMatch: async () => {
+          createCalls += 1;
+          return { matchID: "must-not-exist" };
+        },
+        joinMatch: async () => ({ playerCredentials: "unused" })
+      }
+    });
+    const create = context("POST", "/polity/lobby/matches", {
+      numPlayers: 2,
+      setupData: {
+        options: { playerCount: 2, mode: "multiplayer", commonsSetId: "custom", customCommonsCardIds: ["not_loaded"], enabledExpansions: [], enabledVariants: [] },
+        playerNationIds: {}
+      }
+    });
+
+    await middleware(create, async () => undefined);
+
+    expect(create.status).toBe(409);
+    expect(create.body).toEqual(expect.objectContaining({
+      error: "invalid_setup",
+      issues: expect.arrayContaining([expect.objectContaining({ code: "custom_cards_missing" })])
+    }));
+    expect(createCalls).toBe(0);
+    expect(store.listMatches()).toEqual([]);
+  });
+
+  it("lists storage-derived compatibility and refuses entry to preserved incompatible matches", async () => {
+    const store = createLobbyStore({ now: () => "2026-09-06T04:00:00.000Z" });
+    store.createMatchMetadata({
+      matchID: "legacy-match",
+      playerCount: 2,
+      setupData: {},
+      privateDataFingerprint: "placeholder"
+    });
+    let joinCalls = 0;
+    const middleware = createPolityLobbyMiddleware({
+      store,
+      readMatchCompatibility: async (matchID) => matchID === "legacy-match" ? "incompatible" : "compatible",
+      boardgameApi: {
+        createMatch: async () => ({ matchID: "unused" }),
+        joinMatch: async () => {
+          joinCalls += 1;
+          return { playerCredentials: "must-not-be-issued" };
+        }
+      }
+    });
+
+    const list = context("GET", "/polity/lobby/matches");
+    await middleware(list, async () => undefined);
+    expect(list.body).toEqual({ matches: [expect.objectContaining({ matchID: "legacy-match", compatibility: "incompatible" })] });
+
+    const join = context("POST", "/polity/lobby/matches/legacy-match/join", {
+      playerID: "0",
+      playerName: "Player",
+      privateDataFingerprint: "placeholder"
+    });
+    await middleware(join, async () => undefined);
+    expect(join).toMatchObject({ status: 409, body: { error: "incompatible_match" } });
+
+    const spectate = context("POST", "/polity/lobby/matches/legacy-match/spectate", {
+      privateDataFingerprint: "placeholder"
+    });
+    await middleware(spectate, async () => undefined);
+    expect(spectate).toMatchObject({ status: 409, body: { error: "incompatible_match" } });
+    expect(joinCalls).toBe(0);
+  });
+
   it("creates and lists lobby matches", async () => {
     const store = createLobbyStore({ now: () => "2026-06-05T01:00:00.000Z" });
     const middleware = createPolityLobbyMiddleware({
@@ -28,7 +101,7 @@ describe("polity lobby middleware", () => {
     const createCtx = context("POST", "/polity/lobby/matches", {
       roomName: "Friday Table",
       numPlayers: 2,
-      setupData: { options: { commonsSetId: "classics", enabledExpansions: [], enabledVariants: [] } },
+      setupData: { options: { playerCount: 2, mode: "multiplayer", commonsSetId: "classics", enabledExpansions: [], enabledVariants: [] }, playerNationIds: {} },
       privateDataFingerprint: "placeholder"
     });
     await middleware(createCtx, async () => undefined);

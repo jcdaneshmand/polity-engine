@@ -110,8 +110,31 @@ export interface Card {
   stateRequirement?: string; allowedModes?: ("multiplayer"|"solo"|"practice")[]; disallowedModes?: ("multiplayer"|"solo"|"practice")[]; playerCountRequirement?: CommonsPlayerCountRequirement|string; startingLocation?: string;
   ownership?: CommonsOwnership; commonsSetId?: CommonsSetId; setupBannerSuit?: Suit; commonsGroup?: CommonsGroup; replacementForCardId?: string; replacementGroupId?: string; conflictsWithNationIds?: string[];
   delayableInLoweredAggression?: boolean; marketEligible?: boolean; smallDeckEligible?: boolean; mainDeckEligible?: boolean; unrestPileEligible?: boolean; fameDeckEligible?: boolean;
+  implemented?: boolean; tested?: boolean;
 }
-export interface GameLogEntry { round: number; playerId: string; message: string; }
+export type PublicGameEvent =
+  | { type: "resource_change"; changes: Array<{ playerId: string; resource: ResourceName; amount: number }>; reason: "payment" | "gain" | "remove" | "return" | "steal" }
+  | { type: "terminal"; winner: string; reason: string; scoring: "normal" | "collapse" };
+export interface GameLogEntry { round: number; playerId: string; message: string; event?: PublicGameEvent; }
+export interface ScoreContributionDetail {
+  id: string;
+  label: string;
+  score: number;
+  reason: string;
+}
+export interface ScoreContribution {
+  id: string;
+  label: string;
+  score: number;
+  reason: string;
+  details?: ScoreContributionDetail[];
+}
+export interface PlayerScoreBreakdown {
+  playerId: string;
+  scoring: "normal" | "collapse";
+  contributions: ScoreContribution[];
+  total: number;
+}
 export interface CardRuntimeState {
   resources?: Partial<Record<ResourceName, number>>;
   garrisonedCardIds?: string[];
@@ -144,6 +167,8 @@ export interface PlayerState {
   progressionTokens?: { nationDeck: number; developmentArea: number };
 }
 export interface GameState {
+  rulesVersion?: number;
+  stateVersion?: number;
   lastMoveUndoable?: boolean;
   players: Record<string, PlayerState>; cardDb: Record<string, Card>; market: string[]; marketRefillPool: string[]; sharedDiscard: string[]; log: GameLogEntry[]; round: number;
   playOrder?: string[];
@@ -173,7 +198,7 @@ export interface GameState {
   pendingDevelopmentChoice?: { playerId: string; sourceCardId?: string; cardIds: string[]; resumeDrawCount: number; resumeBehavior?: "reshuffle_draw" | "none"; usesProgressionToken?: boolean; free?: boolean; allowSkip?: boolean; resumeEffects?: Effect[] };
   pendingShortGameDevelopmentExileChoice?: { playerId: string; cardIds: string[]; resumeDrawCount: number; resumeBehavior?: "reshuffle_draw" | "none"; resumeEffects?: Effect[] };
   pendingShortGameDevelopmentExileQueue?: Array<{ playerId: string; cardIds: string[]; resumeDrawCount: number; resumeBehavior?: "reshuffle_draw" | "none" }>;
-  pendingTradeChoice?: { playerId: string; sourceCardId?: string; routeCardIds: string[]; allowGoodsForProgress: boolean; resumeEffects?: Effect[] };
+  pendingTradeChoice?: { playerId: string; sourceCardId?: string; routeCardIds: string[]; allowProgressForGoods?: boolean; /** Legacy v1 save field; interpreted with corrected semantics. */ allowGoodsForProgress?: boolean; resumeEffects?: Effect[] };
   pendingDiscardChoice?: { playerId: string; sourceCardId?: string; cardIds: string[]; count: number; resumeEffects?: Effect[] };
   pendingReturnUnrestChoice?: { playerId: string; sourceCardId?: string; cardIds: string[]; sourceZones: ReturnUnrestSourceZone[]; resumeEffects?: Effect[] };
   pendingReturnFameChoice?: { playerId: string; sourceCardId?: string; cardIds: string[]; sourceZones: ReturnFameSourceZone[]; resumeEffects?: Effect[] };
@@ -204,8 +229,8 @@ export interface GameState {
   pendingCollapseLifecycle?: { playerId: string; nextOverrideIndex: number };
   pendingScoringLifecycle?: { playerId: string; stage: "overrides" | "collapse_checks" | "after_scoring" | "complete"; overrideIndex: number; lifecycleKey: string };
   pendingScoringFinalization?: { playerIds: string[]; scores: Record<string, number>; nextPlayerIndex: number };
-  pendingSolsticeOrderChoice?: { playerId: string; phase: Extract<EffectTrigger, "on_solstice" | "end_of_solstice">; cardIds: string[] };
-  pendingSolsticeContinuation?: { playerId: string; phase: Extract<EffectTrigger, "on_solstice" | "end_of_solstice">; cardIds: string[]; cursor: PausedSolsticeState };
+  pendingSolsticeOrderChoice?: { playerId: string; phase: Extract<EffectTrigger, "on_solstice" | "end_of_solstice">; cardIds: string[]; sourcePlayerIds?: Record<string, string> };
+  pendingSolsticeContinuation?: { playerId: string; phase: Extract<EffectTrigger, "on_solstice" | "end_of_solstice">; cardIds: string[]; cursor: PausedSolsticeState; sourcePlayerIds?: Record<string, string> };
   pendingSolsticeRoundEnd?: { playerId: string };
   pendingCleanupMarketResourceChoice?: { playerId: string; resource: ResourceName; amount: number; cardIds: string[] };
   pendingMarketResourcePlacementChoice?: { playerId: string; sourceCardId?: string; resource: ResourceName; amount: number; cardIds: string[]; resumeEffects?: Effect[] };
@@ -227,6 +252,8 @@ export interface GameState {
   scoringOptions?: GameOptions;
   practiceClock?: { turnsRemaining: number; progressTokens: number };
   solo?: SoloState;
+  finalScoreBreakdowns?: Record<string, PlayerScoreBreakdown>;
+  finalTieBreakBreakdowns?: Record<string, PlayerScoreBreakdown>;
   setupReport?: { delayedAggressiveCount: number; usedQuickSetup: boolean; shortGameExiled: number; shortGameNationAdvanced: number; practiceModeExiled: number; commonsSetup?: CommonsSetupResult };
   scoring?: { reason: string; triggeredBy?: string; phase: "finish_current_round" | "final_round"; finalRound?: number };
   gameover?: { winner: string; reason: string; scores?: Record<string, number>; tieBreakScores?: Record<string, number>; campaignOutcome?: CampaignGameOutcome };

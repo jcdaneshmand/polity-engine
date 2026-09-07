@@ -5,14 +5,17 @@ import { PrototypeGame } from "../../engine/src/game/game";
 import type { CampaignProgress } from "../../engine/src/options/gameOptions";
 import { ACCOUNT_SESSION_STORAGE_KEY, parseAccountSessionRecord, serializeAccountSessionRecord, type AccountSessionRecord } from "./accountSession";
 import { deferredView } from "./deferredView";
-import Board from "./Board";
+import type { PolityBoardProps } from "./Board";
 import { createLocalGameExport, createLocalGameRestoreEnhancer, importLocalGameExport, loadSavedLocalGameRecord, LOCAL_GAME_SAVE_STORAGE_KEY, serializeLocalGame, type SavedLocalGameEnvelope, type SavedLocalGameRecord } from "./localGameSave";
 import { adminCloseLobby, adminCloseMatch, changeAccountPassword, clearAllOnlineGames, closePolityOnlineMatch, completePasswordReset, computePrivateDataFingerprint, createLobbyRoom, heartbeatLobbyRoom, heartbeatPolityOnlineMatch, joinLobbyRoom, joinPolityOnlineMatch, leaveLobbyRoom, leavePolityOnlineMatch, listLobbyChat, listLobbyRooms, listOnlineChat, listOnlineMatches, loadCurrentAccount, loadMonthlySupportStatus, markMonthlySupportCovered, ONLINE_SESSION_STORAGE_KEY, parseOnlineSessionRecord, recordAccountGameResult, registerAccount, rejoinLobbyRoom, requestPasswordReset, resolveMultiplayerServerURL, selectLobbyNation, sendLobbyChat, sendOnlineChat, serializeOnlineSessionRecord, setLobbyReady, signInAccount, signOutAccount, spectateOnlineMatch, startAccountGameHistory, startLobbyGame, updateLobbySetup, type AccountGameResultInput, type AccountHistoryStartInput, type ChatMessage, type ListedLobby, type ListedMatch, type LobbyRoomDetails, type MonthlySupportStatus, type OnlineLobbySessionRecord, type OnlineSessionRecord, type OnlineStartedSessionRecord } from "./onlineSession";
-import NewGameSetup, { type NewGameSessionConfig } from "./ui/setup/NewGameSetup";
+import type { NewGameSessionConfig } from "./ui/setup/NewGameSetup";
 import SavedGames from "./ui/setup/SavedGames";
 import { startGamepadNavigation } from "./ui/controller/gamepadControls";
+import { GUIDED_GAME_STORAGE_KEY, getGuidedChapter, loadGuidedGame, serializeGuidedGame, type GuidedChapterId, type GuidedGameSaveRecord } from "./guidedGame";
 
 const AboutPage = deferredView(() => import("./AboutPage"));
+const NewGameSetup = deferredView(() => import("./ui/setup/NewGameSetup"));
+const Board = deferredView<PolityBoardProps>(() => import("./Board"));
 const PrivateCardEntry = deferredView(() => import("./ui/privateData/PrivateCardEntry"));
 const LobbyRoom = deferredView(() => import("./ui/online/LobbyRoom"));
 const OnlineGames = deferredView(() => import("./ui/online/OnlineGames"));
@@ -26,6 +29,8 @@ type AccountGameTracking = {
 
 type GameSession = NewGameSessionConfig & AccountGameTracking & {
   id: number;
+  randomSeed?: string;
+  guidedChapterId?: GuidedChapterId;
 } & (
   | { kind: "local"; restoredLocalGame?: SavedLocalGameEnvelope }
   | { kind: "online"; role: "player"; matchID: string; playerID: string; credentials: string; serverURL: string }
@@ -146,6 +151,30 @@ function localAccountVariant(config: NewGameSessionConfig): "standard" | "campai
 
 function gamePlayerIDForSeatID(playerID: string | undefined): string {
   return String(Number(playerID ?? "0") + 1);
+}
+
+function loadSavedGuidedGame(): GuidedGameSaveRecord {
+  if (typeof window === "undefined") return { kind: "none" };
+  return loadGuidedGame(window.localStorage);
+}
+
+async function guidedGameConfig(chapterId: GuidedChapterId): Promise<NewGameSessionConfig> {
+  const chapter = getGuidedChapter(chapterId);
+  const { createPublicFictionalFixtureBundle, publicFictionalCommonsCardIds } = await import("./publicFictionalFixtures");
+  const privateData = createPublicFictionalFixtureBundle();
+  return {
+    options: {
+      mode: chapter.setup.mode,
+      playerCount: chapter.setup.playerCount,
+      commonsSetId: "custom",
+      customCommonsCardIds: publicFictionalCommonsCardIds(privateData),
+      enabledExpansions: [...chapter.setup.enabledExpansions],
+      enabledVariants: [],
+      replacementPolicy: "none"
+    },
+    playerNationIds: { ...chapter.setup.playerNationIds },
+    privateData
+  };
 }
 
 export function boardgameClientPropsForSession(session: GameSession | null): Record<string, string> {
@@ -273,6 +302,7 @@ export default function App() {
   const [pendingCampaignProgress, setPendingCampaignProgress] = useState<CampaignProgress | undefined>(undefined);
   const [savedOnlineSession, setSavedOnlineSession] = useState<OnlineSessionRecord | undefined>(loadOnlineSessionRecord());
   const [savedLocalGame, setSavedLocalGame] = useState<SavedLocalGameRecord>(loadSavedLocalGame());
+  const [savedGuidedGame, setSavedGuidedGame] = useState<GuidedGameSaveRecord>(loadSavedGuidedGame());
   const [onlineSetupConfig, setOnlineSetupConfig] = useState<NewGameSessionConfig | undefined>(undefined);
   const [onlinePlayerName, setOnlinePlayerName] = useState("Player");
   const [accountSession, setAccountSession] = useState<AccountSessionRecord | undefined>(loadAccountSessionRecord());
@@ -319,14 +349,15 @@ export default function App() {
             playerNationIds: session.playerNationIds,
             soloBotNationId: session.soloBotNationId,
             privateData: session.privateData,
-            randomSeed: String(session.id)
+            randomSeed: session.randomSeed ?? String(session.id)
           }),
         playerView: (args: Parameters<NonNullable<typeof PrototypeGame.playerView>>[0]) =>
           PrototypeGame.playerView!({ ...args, playerID: args.playerID ?? args.ctx?.currentPlayer ?? "0" })
       }
       : PrototypeGame;
 
-    const SessionBoard = (props: Parameters<typeof Board>[0]) => {
+    const SessionBoard = (props: PolityBoardProps) => {
+      const guidedChapterId = session.guidedChapterId;
       const boardProps = session.kind === "online" && session.role === "spectator"
         ? { ...props, moves: {}, events: {} }
         : props;
@@ -356,6 +387,10 @@ export default function App() {
           setSession(null);
           setHomeView("setup");
         }}
+        guidedChapterId={guidedChapterId}
+        onRestartGuidedChapter={guidedChapterId ? () => startGuidedChapter(guidedChapterId) : undefined}
+        onExitGuidedGame={guidedChapterId ? () => leaveCurrentGame() : undefined}
+        onStartGuidedChapter={guidedChapterId ? (chapterId: GuidedChapterId) => startGuidedChapter(chapterId) : undefined}
       />;
     };
 
@@ -370,11 +405,16 @@ export default function App() {
           if (typeof window === "undefined") return;
           let message = "";
           try {
-            window.localStorage.setItem(LOCAL_GAME_SAVE_STORAGE_KEY, serializeLocalGame({
-              privateDataFingerprint: session.restoredLocalGame?.privateDataFingerprint ?? computePrivateDataFingerprint(session.privateData),
-              snapshotSource: !session.restoredLocalGame || session.restoredLocalGame.snapshotSource === "authoritative-local" ? "authoritative-local" : undefined,
-              state
-            }));
+            if (session.guidedChapterId) {
+              const raw = serializeGuidedGame({ chapterId: session.guidedChapterId, state });
+              window.localStorage.setItem(GUIDED_GAME_STORAGE_KEY, raw);
+            } else {
+              window.localStorage.setItem(LOCAL_GAME_SAVE_STORAGE_KEY, serializeLocalGame({
+                privateDataFingerprint: session.restoredLocalGame?.privateDataFingerprint ?? computePrivateDataFingerprint(session.privateData),
+                snapshotSource: !session.restoredLocalGame || session.restoredLocalGame.snapshotSource === "authoritative-local" ? "authoritative-local" : undefined,
+                state
+              }));
+            }
           } catch { message = "Autosave failed. Browser storage may be full or unavailable."; }
           queueMicrotask(() => setAutosaveStatus(message));
         })
@@ -462,6 +502,32 @@ export default function App() {
       });
     }
     setSession({ ...config, ...tracking, id: Date.now(), kind: "local" });
+  };
+
+  const startGuidedChapter = async (chapterId: GuidedChapterId, restoredLocalGame?: SavedLocalGameEnvelope) => {
+    const chapter = getGuidedChapter(chapterId);
+    const config = await guidedGameConfig(chapterId);
+    setPendingCampaignProgress(undefined);
+    setOnlineStatus("");
+    setAutosaveStatus("");
+    setSession({
+      ...config,
+      id: Date.now(),
+      kind: "local",
+      guidedChapterId: chapterId,
+      randomSeed: chapter.seed,
+      ...(restoredLocalGame ? { restoredLocalGame } : {})
+    });
+  };
+
+  const resumeGuidedGame = () => {
+    if (savedGuidedGame.kind !== "valid") return;
+    void startGuidedChapter(savedGuidedGame.save.chapterId, savedGuidedGame.save.snapshot);
+  };
+
+  const discardGuidedGame = () => {
+    if (typeof window !== "undefined") window.localStorage.removeItem(GUIDED_GAME_STORAGE_KEY);
+    setSavedGuidedGame({ kind: "none" });
   };
 
   const resumeLocalGame = () => {
@@ -1152,6 +1218,7 @@ export default function App() {
       }
     }
     setSavedLocalGame(loadSavedLocalGame());
+    setSavedGuidedGame(loadSavedGuidedGame());
     setSession(null);
   };
 
@@ -1291,7 +1358,22 @@ export default function App() {
             savedGameAvailable: savedLocalGame.kind === "valid",
             hostedDeferred: false
           }}
+          onStartGuidedGame={() => void startGuidedChapter("commit-action")}
         />
+        <section className="setup-section setup-section--wide guided-game-launcher" aria-label="Learning game" data-qa="guided-game-launcher" data-save-state={savedGuidedGame.kind}>
+          <div>
+            <span className="setup-kicker">Original public-safe tutorial</span>
+            <h2>The River Assembly</h2>
+            <p className="setup-help">Six guided chapters use fictional cards and the real engine.</p>
+          </div>
+          <div className="private-data-actions">
+            <button className="primary-action" type="button" onClick={() => void startGuidedChapter("commit-action")}>Start Learning Game</button>
+            {savedGuidedGame.kind === "valid" ? <button type="button" onClick={resumeGuidedGame}>Continue Chapter {getGuidedChapter(savedGuidedGame.save.chapterId).number}</button> : null}
+            {savedGuidedGame.kind !== "none" ? <button type="button" onClick={discardGuidedGame}>Discard Learning Save</button> : null}
+          </div>
+          {savedGuidedGame.kind === "valid" ? <p className="setup-help" role="status">Saved at step {savedGuidedGame.save.progress} of {getGuidedChapter(savedGuidedGame.save.chapterId).steps.length}. Ordinary autosaves and account history are separate.</p> : null}
+          {savedGuidedGame.kind === "incompatible" || savedGuidedGame.kind === "corrupt" ? <p className="setup-help" role="alert">{savedGuidedGame.reason}</p> : null}
+        </section>
         <SavedGames autosave={savedLocalGame.kind === "valid" ? savedLocalGame.envelope : undefined} onResume={startImportedLocalGame} />
         {savedLocalGame.kind !== "none" ? (
           <section
@@ -1366,11 +1448,13 @@ export default function App() {
               ? session.role === "spectator"
                 ? `online room ${session.matchID} / Spectator`
                 : `online room ${session.matchID} / Player ${Number(session.playerID) + 1}`
-              : `${session.options.mode} / ${session.options.playerCount} player${session.options.playerCount === 1 ? "" : "s"}`}
+              : session.guidedChapterId
+                ? `Learning Game / Chapter ${getGuidedChapter(session.guidedChapterId).number}`
+                : `${session.options.mode} / ${session.options.playerCount} player${session.options.playerCount === 1 ? "" : "s"}`}
           </span>
         </div>
         <button type="button" onClick={leaveCurrentGame}>
-          New Game
+          {session.guidedChapterId ? "Exit Learning Game" : "New Game"}
         </button>
       </div>
       {autosaveStatus ? <p role="alert">{autosaveStatus}</p> : null}

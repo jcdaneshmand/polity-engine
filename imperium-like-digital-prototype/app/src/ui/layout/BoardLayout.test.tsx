@@ -638,8 +638,9 @@ describe("BoardLayout", () => {
       }
     });
 
-    expect(html).toContain("Take Card1; return Card2");
-    expect(html).toContain("Take Card2; return Card1");
+    expect(html).toContain("Take Card1");
+    expect(html).toContain("Take Card2");
+    expect(html).toContain("Take card and return the rest");
     expect(html).not.toContain("waiting for player 0");
   });
 
@@ -712,12 +713,12 @@ describe("BoardLayout", () => {
     {
       name: "solstice order",
       pending: { pendingSolsticeOrderChoice: { playerId: "0", phase: "on_solstice", cardIds: ["c1", "c2"] } },
-      text: "Resolve Card1 then Card2"
+      text: "Resolve in this order"
     },
     {
       name: "look order",
       pending: { pendingLookOrderChoice: { playerId: "0", source: "deck", cardIds: ["c1", "c2"] } },
-      text: "Return Card1 then Card2"
+      text: "Return in this order"
     }
   ])("uses the online player seat for pending $name choices", ({ pending, text }) => {
     const html = renderForViewer(pending);
@@ -753,7 +754,7 @@ describe("BoardLayout", () => {
         lookedCards: { playerId: "0", source: "deck", cardIds: ["c1", "c2"] },
         pendingLookTakeChoice: { playerId: "0", source: "deck", destination: "hand", cardIds: ["c1", "c2"] }
       },
-      targetText: "Take Card1; return Card2"
+      targetText: "Pending Look Take"
     }
   ])("keeps pending $name choices blocked for the wrong online player seat", ({ pending, targetText }) => {
     const html = renderForWrongViewer(pending);

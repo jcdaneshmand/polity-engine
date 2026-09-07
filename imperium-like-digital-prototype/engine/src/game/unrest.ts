@@ -6,7 +6,20 @@ import { detachGarrisonedCard } from "./regions";
 import { cardHasSuitIcon } from "./suitIcons";
 
 function activeRecipients(G: GameState, playerIds: string[]): string[] {
-  return playerIds.filter((playerId) => !!G.players[playerId]);
+  return playerIds.filter((playerId) => !!G.players[playerId] || G.solo?.bot.botId === playerId);
+}
+
+function giveUnrestToRecipient(G: GameState, playerId: string, cardId: string): "player" | "bot" | undefined {
+  const player = G.players[playerId];
+  if (player) {
+    player.hand.push(cardId);
+    return "player";
+  }
+  const bot = G.solo?.bot;
+  if (bot?.botId !== playerId) return undefined;
+  bot.botDeck.unshift(cardId);
+  G.log.push({ round: G.round, playerId, message: `BotTookUnrest(${cardId})` });
+  return "bot";
 }
 
 function hasPendingInterruption(G: GameState): boolean {
@@ -75,7 +88,6 @@ function takeUnrestFromPosition(
   const reactiveTargetPlayerIds = args.reactiveTargetPlayerIds ?? [];
   for (let recipientIndex = args.recipientIndex; recipientIndex < args.recipientPlayerIds.length; recipientIndex += 1) {
     const playerId = args.recipientPlayerIds[recipientIndex];
-    const player = G.players[playerId];
     const startingCardIndex = recipientIndex === args.recipientIndex ? args.cardIndex : 0;
     for (let cardIndex = startingCardIndex; cardIndex < args.countPerPlayer; cardIndex += 1) {
       const unrestCardId = G.unrestPile?.shift();
@@ -84,10 +96,16 @@ function takeUnrestFromPosition(
         triggerCollapse(G, "unrest_pile_empty", args.playerId);
         return false;
       }
-      player.hand.push(unrestCardId);
+      const recipientKind = giveUnrestToRecipient(G, playerId, unrestCardId);
+      if (!recipientKind) return false;
       taken += 1;
-      if (!reactiveTargetPlayerIds.includes(playerId)) reactiveTargetPlayerIds.push(playerId);
-      if (!runNationHooks({ G, playerId, trigger: "after_gain_unrest", payload: { cardId: unrestCardId, triggeredBy: args.playerId }, randomNumber: args.randomNumber })) return false;
+      if (recipientKind === "player" && !reactiveTargetPlayerIds.includes(playerId)) reactiveTargetPlayerIds.push(playerId);
+      if ((G.unrestPile?.length ?? 0) === 0) {
+        G.log.push({ round: G.round, playerId: args.playerId, message: `UnrestTaken(players=${args.recipientPlayerIds.join(",")}/count=${args.countPerPlayer}/taken=${taken})` });
+        triggerCollapse(G, "unrest_pile_empty", args.playerId);
+        return false;
+      }
+      if (recipientKind === "player" && !runNationHooks({ G, playerId, trigger: "after_gain_unrest", payload: { cardId: unrestCardId, triggeredBy: args.playerId }, randomNumber: args.randomNumber })) return false;
       if (G.gameover) return false;
       if (hasPendingInterruption(G)) {
         const nextPosition = nextUnrestTakePosition({ recipientIndex, cardIndex, countPerPlayer: args.countPerPlayer });
@@ -241,7 +259,7 @@ export function resolvePendingUnrestAllocationChoice(G: GameState, playerId: str
 
   const counts: Record<string, number> = {};
   for (const recipientPlayerId of recipientPlayerIds) {
-    if (!pending.recipientPlayerIds.includes(recipientPlayerId) || !G.players[recipientPlayerId]) return false;
+    if (!pending.recipientPlayerIds.includes(recipientPlayerId) || (!G.players[recipientPlayerId] && G.solo?.bot.botId !== recipientPlayerId)) return false;
     counts[recipientPlayerId] = (counts[recipientPlayerId] ?? 0) + 1;
     if (counts[recipientPlayerId] > pending.countPerPlayer) return false;
   }
@@ -263,8 +281,9 @@ function resolveUnrestAllocationFromIndex(
   for (let index = args.nextIndex; index < args.availableUnrestCardIds.length; index += 1) {
     const recipientPlayerId = args.recipientPlayerIds[index];
     const unrestCardId = args.availableUnrestCardIds[index];
-    G.players[recipientPlayerId].hand.push(unrestCardId);
-    if (!runNationHooks({ G, playerId: recipientPlayerId, trigger: "after_gain_unrest", payload: { cardId: unrestCardId, triggeredBy: args.playerId }, randomNumber: args.randomNumber })) return false;
+    const recipientKind = giveUnrestToRecipient(G, recipientPlayerId, unrestCardId);
+    if (!recipientKind) return false;
+    if (recipientKind === "player" && !runNationHooks({ G, playerId: recipientPlayerId, trigger: "after_gain_unrest", payload: { cardId: unrestCardId, triggeredBy: args.playerId }, randomNumber: args.randomNumber })) return false;
     if (G.gameover) return true;
     if (hasPendingInterruption(G)) {
       G.pendingUnrestAllocationResolution = { ...args, nextIndex: index + 1 };

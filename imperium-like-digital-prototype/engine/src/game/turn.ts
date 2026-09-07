@@ -1,5 +1,5 @@
 import type { Ctx } from "boardgame.io";
-import type { GameState, PausedSolsticeState, SolsticePhase } from "./state";
+import type { Effect, GameState, PausedSolsticeState, SolsticePhase } from "./state";
 import { advanceScoringAtRoundBoundary, applyCollapseWinChecks } from "./scoring";
 import { drawCardWithReshuffleLifecycle } from "./zones";
 import { runEffects, runTriggeredEffects } from "../cards/effectRunner";
@@ -189,7 +189,73 @@ function solsticeCardsWithTrigger(G: GameState, cardIds: string[], phase: "on_so
 
 function isCurrentSolsticeSource(G: GameState, playerId: string, cardId: string): boolean {
   const p = G.players[playerId];
-  return p.playArea.includes(cardId) || p.powerArea.includes(cardId) || p.stateArea.includes(cardId);
+  return Boolean(p && (p.playArea.includes(cardId) || p.powerArea.includes(cardId) || p.stateArea.includes(cardId)));
+}
+
+function isValidSolsticePhase(value: unknown): value is SolsticePhase {
+  return value === "on_solstice" || value === "overrides" || value === "end_of_solstice";
+}
+
+function isValidSolsticeCursor(G: GameState, cursor: PausedSolsticeState | undefined): cursor is PausedSolsticeState {
+  if (!cursor || !Array.isArray(cursor.playOrder) || cursor.playOrder.length === 0) return false;
+  if (cursor.playOrder.some((playerId) => typeof playerId !== "string" || !G.players[playerId])) return false;
+  if (!Number.isInteger(cursor.playerIndex) || cursor.playerIndex < 0 || cursor.playerIndex > cursor.playOrder.length) return false;
+  if (!isValidSolsticePhase(cursor.phase)) return false;
+  return Number.isInteger(cursor.cardIndex) && cursor.cardIndex >= 0
+    && Number.isInteger(cursor.overrideIndex) && cursor.overrideIndex >= 0;
+}
+
+function hasValidSolsticeSourceMap(
+  G: GameState,
+  recipientPlayerId: string,
+  cardIds: string[],
+  sourcePlayerIds?: Record<string, string>
+): boolean {
+  if (!G.players[recipientPlayerId] || cardIds.some((cardId) => typeof cardId !== "string")) return false;
+  if (new Set(cardIds).size !== cardIds.length) return false;
+  if (!sourcePlayerIds) return true;
+  return cardIds.every((cardId) => {
+    const sourcePlayerId = sourcePlayerIds[cardId];
+    return typeof sourcePlayerId === "string" && Boolean(G.players[sourcePlayerId]);
+  });
+}
+
+function solsticeEffectAppliesToPlayer(effect: Effect, sourcePlayerId: string, recipientPlayerId: string): boolean {
+  const targeted = effect as Effect & { targetPlayerId?: string; targetPlayerIds?: string[]; targetPlayerScope?: string };
+  if (effect.op === "take_unrest" && (targeted.targetPlayerIds?.length ?? 0) > 1) return sourcePlayerId === recipientPlayerId;
+  if (targeted.targetPlayerIds) return targeted.targetPlayerIds.includes(recipientPlayerId);
+  if (targeted.targetPlayerId) return targeted.targetPlayerId === recipientPlayerId;
+  if (targeted.targetPlayerScope === "all") return true;
+  if (targeted.targetPlayerScope === "others") return sourcePlayerId !== recipientPlayerId;
+  return sourcePlayerId === recipientPlayerId;
+}
+
+function solsticeEffectsForPlayer(G: GameState, sourcePlayerId: string, recipientPlayerId: string, cardId: string, phase: "on_solstice" | "end_of_solstice"): Effect[] {
+  return (G.cardDb[cardId]?.effects ?? [])
+    .filter((effect) => effect.trigger === phase && solsticeEffectAppliesToPlayer(effect, sourcePlayerId, recipientPlayerId))
+    .map((effect) => {
+      const targeted = { ...effect } as Effect & { targetPlayerId?: string; targetPlayerIds?: string[]; targetPlayerScope?: string };
+      if (effect.op === "take_unrest" && (targeted.targetPlayerIds?.length ?? 0) > 1) return targeted;
+      delete targeted.targetPlayerId;
+      delete targeted.targetPlayerIds;
+      delete targeted.targetPlayerScope;
+      return targeted;
+    });
+}
+
+function solsticeSourcesForPlayer(G: GameState, playOrder: string[], recipientPlayerId: string, phase: "on_solstice" | "end_of_solstice"): { cardIds: string[]; sourcePlayerIds: Record<string, string> } {
+  const sourcePlayerIds: Record<string, string> = {};
+  const cardIds: string[] = [];
+  for (const sourcePlayerId of playOrder) {
+    const source = G.players[sourcePlayerId];
+    if (!source) continue;
+    for (const cardId of [...source.playArea, ...source.powerArea, ...source.stateArea]) {
+      if (solsticeEffectsForPlayer(G, sourcePlayerId, recipientPlayerId, cardId, phase).length === 0) continue;
+      cardIds.push(cardId);
+      sourcePlayerIds[cardId] = sourcePlayerId;
+    }
+  }
+  return { cardIds, sourcePlayerIds };
 }
 
 function solsticeEffectsNeedPlayerOrder(G: GameState, cardIds: string[], phase: "on_solstice" | "end_of_solstice"): boolean {
@@ -244,12 +310,16 @@ function createSolsticeOrderChoice(
   playerId: string,
   phase: "on_solstice" | "end_of_solstice",
   cardIds: string[],
-  cursor: PausedSolsticeState
+  cursor: PausedSolsticeState,
+  sourcePlayerIds?: Record<string, string>
 ): boolean {
   const eligibleCardIds = solsticeCardsWithTrigger(G, cardIds, phase);
   if (eligibleCardIds.length <= 1) return false;
   if (!solsticeEffectsNeedPlayerOrder(G, eligibleCardIds, phase)) return false;
-  G.pendingSolsticeOrderChoice = { playerId, phase, cardIds: eligibleCardIds };
+  const externalSources = sourcePlayerIds && Object.values(sourcePlayerIds).some((sourcePlayerId) => sourcePlayerId !== playerId)
+    ? sourcePlayerIds
+    : undefined;
+  G.pendingSolsticeOrderChoice = { playerId, phase, cardIds: eligibleCardIds, ...(externalSources ? { sourcePlayerIds: externalSources } : {}) };
   G.pausedSolstice = cursor;
   G.log.push({ round: G.round, playerId, message: `SolsticeOrderChoicePending(${phase}/cards=${eligibleCardIds.length})` });
   return true;
@@ -261,16 +331,24 @@ function runOrderedSolsticeCardEffects(
   phase: "on_solstice" | "end_of_solstice",
   cardIds: string[],
   cursor: PausedSolsticeState,
-  randomNumber?: () => number
+  randomNumber?: () => number,
+  sourcePlayerIds?: Record<string, string>
 ): boolean {
   for (let index = 0; index < cardIds.length; index += 1) {
     const cardId = cardIds[index];
-    if (!isCurrentSolsticeSource(G, playerId, cardId)) continue;
-    runTriggeredEffects({ G, playerId, selfCardId: cardId, enabledExpansions: G.options?.enabledExpansions, randomNumber }, G.cardDb[cardId]?.effects ?? [], phase);
+    const sourcePlayerId = sourcePlayerIds?.[cardId] ?? playerId;
+    if (!isCurrentSolsticeSource(G, sourcePlayerId, cardId)) continue;
+    const effects = solsticeEffectsForPlayer(G, sourcePlayerId, playerId, cardId, phase);
+    runTriggeredEffects({ G, playerId, selfCardId: cardId, enabledExpansions: G.options?.enabledExpansions, randomNumber }, effects, phase);
     if (G.gameover) return false;
     if (pendingInterruption(G)) {
       const remainingCardIds = cardIds.slice(index + 1);
-      if (remainingCardIds.length > 0 || phase === "end_of_solstice") G.pendingSolsticeContinuation = { playerId, phase, cardIds: remainingCardIds, cursor };
+      if (remainingCardIds.length > 0 || phase === "end_of_solstice") {
+        const externalSources = sourcePlayerIds && Object.values(sourcePlayerIds).some((sourcePlayerId) => sourcePlayerId !== playerId)
+          ? sourcePlayerIds
+          : undefined;
+        G.pendingSolsticeContinuation = { playerId, phase, cardIds: remainingCardIds, cursor, ...(externalSources ? { sourcePlayerIds: externalSources } : {}) };
+      }
       pauseForPendingInterruption(G, playerId, cursor);
       return false;
     }
@@ -371,9 +449,7 @@ function runSolsticeForPlayer(
   randomNumber?: () => number
 ): boolean {
   const playerId = args.playOrder[args.playerIndex];
-  const p = G.players[playerId];
   const ruleset = G.activeNationRulesets?.[playerId];
-  const solsticeCardIds = [...p.playArea, ...p.powerArea, ...p.stateArea];
   if (!args.skipBeforeHook && !runNationHooks({ G, playerId, trigger: "before_solstice", randomNumber })) return false;
   if (G.gameover) return false;
   if (!args.skipBeforeHook && pauseForPendingInterruption(G, playerId, nextSolsticeCursor({ playOrder: args.playOrder, playerIndex: args.playerIndex, phase: "on_solstice" }))) return false;
@@ -383,13 +459,10 @@ function runSolsticeForPlayer(
 
   if (phase === "on_solstice") {
     const startCardIndex = args.startPhase === "on_solstice" ? args.startCardIndex ?? 0 : 0;
-    if (startCardIndex === 0 && createSolsticeOrderChoice(G, playerId, "on_solstice", solsticeCardIds, nextSolsticeCursor({ playOrder: args.playOrder, playerIndex: args.playerIndex, phase: "overrides" }))) return false;
-    for (let index = startCardIndex; index < solsticeCardIds.length; index += 1) {
-      const cardId = solsticeCardIds[index];
-      runTriggeredEffects({ G, playerId, selfCardId: cardId, enabledExpansions: G.options?.enabledExpansions, randomNumber }, G.cardDb[cardId]?.effects ?? [], "on_solstice");
-      if (G.gameover) return false;
-      if (pauseForPendingInterruption(G, playerId, nextSolsticeCursor({ playOrder: args.playOrder, playerIndex: args.playerIndex, phase: "on_solstice", cardIndex: index + 1 }))) return false;
-    }
+    const sources = solsticeSourcesForPlayer(G, args.playOrder, playerId, "on_solstice");
+    const cursor = nextSolsticeCursor({ playOrder: args.playOrder, playerIndex: args.playerIndex, phase: "overrides" });
+    if (startCardIndex === 0 && createSolsticeOrderChoice(G, playerId, "on_solstice", sources.cardIds, cursor, sources.sourcePlayerIds)) return false;
+    if (!runOrderedSolsticeCardEffects(G, playerId, "on_solstice", sources.cardIds.slice(startCardIndex), cursor, randomNumber, sources.sourcePlayerIds)) return false;
     phase = "overrides";
   }
 
@@ -411,14 +484,10 @@ function runSolsticeForPlayer(
 
   if (phase === "end_of_solstice") {
     const startCardIndex = args.startPhase === "end_of_solstice" ? args.startCardIndex ?? 0 : 0;
-    const endSolsticeCardIds = solsticeCardIds.filter((cardId) => isCurrentSolsticeSource(G, playerId, cardId));
-    if (startCardIndex === 0 && createSolsticeOrderChoice(G, playerId, "end_of_solstice", endSolsticeCardIds, nextSolsticeCursor({ playOrder: args.playOrder, playerIndex: args.playerIndex + 1, phase: "on_solstice" }))) return false;
-    for (let index = startCardIndex; index < endSolsticeCardIds.length; index += 1) {
-      const cardId = endSolsticeCardIds[index];
-      runTriggeredEffects({ G, playerId, selfCardId: cardId, enabledExpansions: G.options?.enabledExpansions, randomNumber }, G.cardDb[cardId]?.effects ?? [], "end_of_solstice");
-      if (G.gameover) return false;
-      if (pauseForPendingInterruption(G, playerId, nextSolsticeCursor({ playOrder: args.playOrder, playerIndex: args.playerIndex, phase: "end_of_solstice", cardIndex: index + 1 }))) return false;
-    }
+    const sources = solsticeSourcesForPlayer(G, args.playOrder, playerId, "end_of_solstice");
+    const cursor = nextSolsticeCursor({ playOrder: args.playOrder, playerIndex: args.playerIndex + 1, phase: "on_solstice" });
+    if (startCardIndex === 0 && createSolsticeOrderChoice(G, playerId, "end_of_solstice", sources.cardIds, cursor, sources.sourcePlayerIds)) return false;
+    if (!runOrderedSolsticeCardEffects(G, playerId, "end_of_solstice", sources.cardIds.slice(startCardIndex), cursor, randomNumber, sources.sourcePlayerIds)) return false;
     if (ruleset) applyEndOfSolsticeRemovals(G, playerId, ruleset);
   }
   if (!runNationHooks({ G, playerId, trigger: "after_solstice", randomNumber })) return false;
@@ -480,8 +549,17 @@ export function continuePausedSolstice(G: GameState, playerId: string, randomNum
 
   const continuation = G.pendingSolsticeContinuation;
   if (continuation && !pendingInterruption(G)) {
+    if (
+      continuation.playerId !== playerId
+      || !isValidSolsticePhase(continuation.phase)
+      || !isValidSolsticeCursor(G, continuation.cursor)
+      || !hasValidSolsticeSourceMap(G, continuation.playerId, continuation.cardIds, continuation.sourcePlayerIds)
+    ) {
+      G.log.push({ round: G.round, playerId, message: "SolsticeContinuationRejected(malformed_or_wrong_actor)" });
+      return;
+    }
     G.pendingSolsticeContinuation = undefined;
-    runOrderedSolsticeCardEffects(G, continuation.playerId, continuation.phase, continuation.cardIds, continuation.cursor, randomNumber);
+    runOrderedSolsticeCardEffects(G, continuation.playerId, continuation.phase, continuation.cardIds, continuation.cursor, randomNumber, continuation.sourcePlayerIds);
     if (G.gameover || pendingInterruption(G)) return;
     if (continuation.phase === "end_of_solstice") {
       const ruleset = G.activeNationRulesets?.[continuation.playerId];
@@ -505,13 +583,16 @@ export function resolvePendingSolsticeOrderChoice(G: GameState, playerId: string
   const pending = G.pendingSolsticeOrderChoice;
   const paused = G.pausedSolstice;
   if (!pending || !paused || pending.playerId !== playerId) return false;
+  if (pending.phase !== "on_solstice" && pending.phase !== "end_of_solstice") return false;
+  if (!isValidSolsticeCursor(G, paused)) return false;
+  if (!hasValidSolsticeSourceMap(G, pending.playerId, pending.cardIds, pending.sourcePlayerIds)) return false;
   if (cardIds.length !== pending.cardIds.length) return false;
   if (new Set(cardIds).size !== cardIds.length) return false;
   if (cardIds.some((cardId) => !pending.cardIds.includes(cardId))) return false;
 
   G.currentTurnType = "solstice";
   G.pendingSolsticeOrderChoice = undefined;
-  const completed = runOrderedSolsticeCardEffects(G, playerId, pending.phase, cardIds, paused, randomNumber);
+  const completed = runOrderedSolsticeCardEffects(G, playerId, pending.phase, cardIds, paused, randomNumber, pending.sourcePlayerIds);
   if (!completed) return true;
   G.log.push({ round: G.round, playerId, message: `SolsticeOrderChoiceResolved(${pending.phase}/cards=${cardIds.length})` });
   if (pending.phase === "end_of_solstice") {
@@ -529,9 +610,9 @@ export function resolvePendingSolsticeOrderChoice(G: GameState, playerId: string
 export function onTurnBegin(G: GameState, ctx: Ctx, randomNumber?: () => number): void {
   const p = G.players[ctx.currentPlayer];
   G.currentTurnType ??= "activate";
-  p.actionsRemaining = p.actionTokensBase;
-  p.actionTokensAvailable = p.actionTokensBase;
-  p.exhaustTokensAvailable = p.exhaustTokensBase;
+  // Cleanup refreshed these pools. Preserve progression and reactive Exhaust
+  // spending that occurred after cleanup and before this turn began.
+  p.actionsRemaining = p.actionTokensAvailable;
   G.freePlayedThisTurn ??= {};
   G.freePlayedThisTurn[ctx.currentPlayer] = [];
   clearTreatAsEffects(G, ctx.currentPlayer);

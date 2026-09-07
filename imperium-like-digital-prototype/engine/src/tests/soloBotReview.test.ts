@@ -1431,14 +1431,15 @@ describe("solo bot setup from imported cards", () => {
         starter: card({}),
         bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" }),
         unrest_one: card({ id: "unrest_one", displayName: "Unrest", suit: "unrest", cardType: "unrest" }),
-        unrest_two: card({ id: "unrest_two", displayName: "Unrest", suit: "unrest", cardType: "unrest" })
+        unrest_two: card({ id: "unrest_two", displayName: "Unrest", suit: "unrest", cardType: "unrest" }),
+        unrest_spare: card({ id: "unrest_spare", displayName: "Unrest", suit: "unrest", cardType: "unrest" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
       playerNationIds: { "1": "test_nation_sun_coast" }
     });
     const bot = G.solo!.bot;
     G.players["1"].discard = [];
-    G.unrestPile = ["unrest_one", "unrest_two"];
+    G.unrestPile = ["unrest_one", "unrest_two", "unrest_spare"];
 
     const result = resolveBotCard({
       G,
@@ -1459,7 +1460,7 @@ describe("solo bot setup from imported cards", () => {
     expect(result.warnings).toEqual([]);
     expect(G.players["1"].hand).toContain("unrest_one");
     expect(G.players["1"].hand).toContain("unrest_two");
-    expect(G.unrestPile).toEqual([]);
+    expect(G.unrestPile).toEqual(["unrest_spare"]);
     expect(bot.botDiscard).toContain("bot_region");
   });
 
@@ -1482,7 +1483,8 @@ describe("solo bot setup from imported cards", () => {
             reactive: { trigger: "after_take_unrest", target: "self" }
           }]
         }),
-        unrest_one: card({ id: "unrest_one", displayName: "Unrest", suit: "unrest", cardType: "unrest" })
+        unrest_one: card({ id: "unrest_one", displayName: "Unrest", suit: "unrest", cardType: "unrest" }),
+        unrest_spare: card({ id: "unrest_spare", displayName: "Unrest", suit: "unrest", cardType: "unrest" })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
       playerNationIds: { "1": "test_nation_sun_coast" }
@@ -1493,7 +1495,7 @@ describe("solo bot setup from imported cards", () => {
     G.players["1"].hand = [];
     G.players["1"].resources.knowledge = 0;
     G.players["1"].exhaustTokensAvailable = 1;
-    G.unrestPile = ["unrest_one"];
+    G.unrestPile = ["unrest_one", "unrest_spare"];
     G.solo!.botStateTables = {
       test_table: {
         id: "test_table",
@@ -2404,7 +2406,7 @@ describe("solo bot setup from imported cards", () => {
     expect(bot.botLog.some((entry) => entry.message === "bot_trigger_trade_route:trade_route")).toBe(false);
   });
 
-  it("Bot Trade selects an available human Trade Route, adds Goods, gains Progress, and triggers commerce", () => {
+  it("Bot Trade selects an available human Trade Route, places and gains Goods, and triggers commerce", () => {
     const G = createInitialGameStateFromPipeline({
       options: { ...options, enabledExpansions: ["trade_routes"] },
       cardDb: {
@@ -2430,7 +2432,7 @@ describe("solo bot setup from imported cards", () => {
     resolveBotTrade(G, bot);
 
     expect(G.cardStates.human_route.resources?.goods).toBe(2);
-    expect(bot.resources.knowledge).toBe(1);
+    expect(bot.resources.goods).toBe(1);
     expect(G.players["1"].resources.goods).toBe(2);
   });
 
@@ -2468,7 +2470,7 @@ describe("solo bot setup from imported cards", () => {
 
     expect(resolved).toBe(true);
     expect(G.cardStates.imported_human_route.resources?.goods).toBe(2);
-    expect(bot.resources.knowledge).toBe(1);
+    expect(bot.resources.goods).toBe(1);
     expect(G.players["1"].resources.goods).toBe(2);
   });
 
@@ -2579,8 +2581,7 @@ describe("solo bot setup from imported cards", () => {
       reason: "collapse:unrest_pile_empty",
       scores: { "1": 1 }
     });
-    expect(bot.resources.knowledge).toBe(1);
-    expect(bot.resources.goods).toBeUndefined();
+    expect(bot.resources.goods).toBe(1);
     expect(G.cardStates.human_route.resources?.goods).toBe(2);
   });
 
@@ -2818,7 +2819,8 @@ describe("solo bot setup from imported cards", () => {
       }
     };
     bot.botStateTableId = "test_table";
-    G.unrestPile = ["unrest_b"];
+    G.cardDb.unrest_spare = card({ id: "unrest_spare", displayName: "Unrest", suit: "unrest", cardType: "unrest" }) as any;
+    G.unrestPile = ["unrest_b", "unrest_spare"];
     G.players["1"].hand = ["unrest_a"];
     G.pendingChoice = {
       playerId: "1",
@@ -3328,7 +3330,7 @@ describe("solo bot setup from imported cards", () => {
 
     expect(result.warnings).toEqual([]);
     expect(G.cardStates.human_route.resources?.goods).toBe(2);
-    expect(bot.resources.knowledge).toBe(1);
+    expect(bot.resources.goods).toBe(1);
     expect(G.players["1"].resources.goods).toBe(2);
     expect(bot.botDiscard).toContain("bot_prompt");
   });
@@ -3401,7 +3403,7 @@ describe("solo bot setup from imported cards", () => {
     runBotTurn({ G, rollDie: () => 6 });
 
     expect(G.cardStates.human_route.resources?.goods).toBe(2);
-    expect(bot.resources.knowledge).toBe(1);
+    expect(bot.resources.goods).toBe(1);
     expect(G.players["1"].resources.knowledge).toBe(1);
     expect(G.pendingReactiveExhaustChoice).toMatchObject({
       playerId: "1",
@@ -3413,7 +3415,7 @@ describe("solo bot setup from imported cards", () => {
       eventSourceCardId: "human_route",
       eventSourceWasInPlay: true
     });
-    expect(bot.resources.goods).toBeUndefined();
+    expect(bot.resources.goods).toBe(1);
 
     resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "1" } as any }, "human_reactive");
 
@@ -3422,7 +3424,7 @@ describe("solo bot setup from imported cards", () => {
     expect(G.solo?.pendingBotRowContinuation).toBeUndefined();
     expect(G.solo?.pausedBotTurn).toBeUndefined();
     expect(G.players["1"].resources.goods).toBe(1);
-    expect(bot.resources.goods).toBe(2);
+    expect(bot.resources.goods).toBe(3);
   });
 
   it("matches source-suited human reactive Exhausts against the Bot-triggered Trade Route source", () => {
@@ -4746,7 +4748,8 @@ describe("solo bot setup from imported cards", () => {
         bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" }),
         market_card: card({ id: "market_card", displayName: "Market", suit: "civilized", cardType: "action", vp: { mode: "fixed", value: 1 } }),
         exile_card: card({ id: "exile_card", displayName: "Exile", suit: "civilized", cardType: "action", vp: { mode: "fixed", value: 4 } }),
-        unrest_from_pile: card({ id: "unrest_from_pile", displayName: "Unrest", suit: "unrest", cardType: "unrest", vp: { mode: "fixed", value: -2 } })
+        unrest_from_pile: card({ id: "unrest_from_pile", displayName: "Unrest", suit: "unrest", cardType: "unrest", vp: { mode: "fixed", value: -2 } }),
+        unrest_spare: card({ id: "unrest_spare", displayName: "Unrest", suit: "unrest", cardType: "unrest", vp: { mode: "fixed", value: -2 } })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
       playerNationIds: { "1": "test_nation_sun_coast" }
@@ -4755,7 +4758,7 @@ describe("solo bot setup from imported cards", () => {
     bot.botDeck = ["existing_top"];
     G.market = ["market_card"];
     G.players["1"].exile = ["exile_card"];
-    G.unrestPile = ["unrest_from_pile"];
+    G.unrestPile = ["unrest_from_pile", "unrest_spare"];
 
     const result = resolveBotCard({
       G,
@@ -4776,7 +4779,7 @@ describe("solo bot setup from imported cards", () => {
     expect(result.warnings).toEqual([]);
     expect(bot.botDeck).toEqual(["market_card", "existing_top"]);
     expect(G.players["1"].exile).toEqual(["exile_card"]);
-    expect(G.unrestPile).toEqual(["unrest_from_pile"]);
+    expect(G.unrestPile).toEqual(["unrest_from_pile", "unrest_spare"]);
     expect(G.market).toEqual([]);
     expect(G.log.some((entry) => entry.message === "BotAcquiredFromExile(exile_card)")).toBe(false);
   });
@@ -4789,7 +4792,8 @@ describe("solo bot setup from imported cards", () => {
         bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" }),
         market_card: card({ id: "market_card", displayName: "Market", suit: "civilized", cardType: "action", vp: { mode: "fixed", value: 1 } }),
         setup_exile_card: card({ id: "setup_exile_card", displayName: "Setup Exile", suit: "civilized", cardType: "action", vp: { mode: "fixed", value: 4 } }),
-        unrest_from_pile: card({ id: "unrest_from_pile", displayName: "Unrest", suit: "unrest", cardType: "unrest", vp: { mode: "fixed", value: -2 } })
+        unrest_from_pile: card({ id: "unrest_from_pile", displayName: "Unrest", suit: "unrest", cardType: "unrest", vp: { mode: "fixed", value: -2 } }),
+        unrest_spare: card({ id: "unrest_spare", displayName: "Unrest", suit: "unrest", cardType: "unrest", vp: { mode: "fixed", value: -2 } })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
       playerNationIds: { "1": "test_nation_sun_coast" }
@@ -4806,7 +4810,7 @@ describe("solo bot setup from imported cards", () => {
         scoresAsOwned: false
       }
     };
-    G.unrestPile = ["unrest_from_pile"];
+    G.unrestPile = ["unrest_from_pile", "unrest_spare"];
 
     const result = resolveBotCard({
       G,
@@ -4827,7 +4831,7 @@ describe("solo bot setup from imported cards", () => {
     expect(result.warnings).toEqual([]);
     expect(bot.botDeck).toEqual(["unrest_from_pile", "setup_exile_card", "existing_top"]);
     expect(G.globalSpecialZones.exile.cardIds).toEqual([]);
-    expect(G.unrestPile).toEqual([]);
+    expect(G.unrestPile).toEqual(["unrest_spare"]);
     expect(G.market).toEqual(["market_card"]);
   });
 
@@ -4839,7 +4843,8 @@ describe("solo bot setup from imported cards", () => {
         bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" }),
         market_card: card({ id: "market_card", displayName: "Market", suit: "civilized", cardType: "action", vp: { mode: "fixed", value: 1 } }),
         setup_exile_unrest: card({ id: "setup_exile_unrest", displayName: "Setup Exile Unrest", suit: "multi", cardType: "action", tags: ["suit:unrest", "suit:civilized"], vp: { mode: "fixed", value: 4 } }),
-        unrest_from_pile: card({ id: "unrest_from_pile", displayName: "Unrest", suit: "unrest", cardType: "unrest", vp: { mode: "fixed", value: -2 } })
+        unrest_from_pile: card({ id: "unrest_from_pile", displayName: "Unrest", suit: "unrest", cardType: "unrest", vp: { mode: "fixed", value: -2 } }),
+        unrest_spare: card({ id: "unrest_spare", displayName: "Unrest", suit: "unrest", cardType: "unrest", vp: { mode: "fixed", value: -2 } })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
       playerNationIds: { "1": "test_nation_sun_coast" }
@@ -4856,7 +4861,7 @@ describe("solo bot setup from imported cards", () => {
         scoresAsOwned: false
       }
     };
-    G.unrestPile = ["unrest_from_pile"];
+    G.unrestPile = ["unrest_from_pile", "unrest_spare"];
 
     const result = resolveBotCard({
       G,
@@ -4875,9 +4880,9 @@ describe("solo bot setup from imported cards", () => {
     });
 
     expect(result.warnings).toEqual([]);
-    expect(bot.botDeck).toEqual(["setup_exile_unrest", "existing_top"]);
+    expect(bot.botDeck).toEqual(["unrest_from_pile", "setup_exile_unrest", "existing_top"]);
     expect(G.globalSpecialZones.exile.cardIds).toEqual([]);
-    expect(G.unrestPile).toEqual(["unrest_from_pile"]);
+    expect(G.unrestPile).toEqual(["unrest_spare"]);
     expect(G.market).toEqual(["market_card"]);
   });
 
@@ -4889,7 +4894,8 @@ describe("solo bot setup from imported cards", () => {
         bot_region: card({ id: "bot_region", displayName: "Bot Region", suit: "region", cardType: "attack", startingLocation: "bot_deck" }),
         market_card: card({ id: "market_card", displayName: "Market", suit: "civilized", cardType: "action", vp: { mode: "fixed", value: 1 } }),
         setup_exile_unrest: card({ id: "setup_exile_unrest", displayName: "Setup Exile Unrest", suit: "civilized", cardType: "action", tags: ["unrest"], vp: { mode: "fixed", value: 4 } }),
-        unrest_from_pile: card({ id: "unrest_from_pile", displayName: "Unrest", suit: "unrest", cardType: "unrest", vp: { mode: "fixed", value: -2 } })
+        unrest_from_pile: card({ id: "unrest_from_pile", displayName: "Unrest", suit: "unrest", cardType: "unrest", vp: { mode: "fixed", value: -2 } }),
+        unrest_spare: card({ id: "unrest_spare", displayName: "Unrest", suit: "unrest", cardType: "unrest", vp: { mode: "fixed", value: -2 } })
       } as any,
       nationDb: { test_nation_sun_coast: nation },
       playerNationIds: { "1": "test_nation_sun_coast" }
@@ -4906,7 +4912,7 @@ describe("solo bot setup from imported cards", () => {
         scoresAsOwned: false
       }
     };
-    G.unrestPile = ["unrest_from_pile"];
+    G.unrestPile = ["unrest_from_pile", "unrest_spare"];
 
     const result = resolveBotCard({
       G,
@@ -4925,9 +4931,9 @@ describe("solo bot setup from imported cards", () => {
     });
 
     expect(result.warnings).toEqual([]);
-    expect(bot.botDeck).toEqual(["setup_exile_unrest", "existing_top"]);
+    expect(bot.botDeck).toEqual(["unrest_from_pile", "setup_exile_unrest", "existing_top"]);
     expect(G.globalSpecialZones.exile.cardIds).toEqual([]);
-    expect(G.unrestPile).toEqual(["unrest_from_pile"]);
+    expect(G.unrestPile).toEqual(["unrest_spare"]);
     expect(G.market).toEqual(["market_card"]);
   });
 
@@ -5147,8 +5153,8 @@ describe("solo bot setup from imported cards", () => {
     });
 
     expect(result.warnings).toEqual([]);
-    expect(bot.botDeck[0]).toBe("market_b");
-    expect(G.market).toEqual(["market_a", "market_c"]);
+    expect(bot.botDeck[0]).toBe("market_c");
+    expect(G.market).toEqual(["market_a", "market_b"]);
   });
 
   it("bot Acquire does not count tucked Unrest as market tokens for tie-breaks", () => {
@@ -5185,11 +5191,11 @@ describe("solo bot setup from imported cards", () => {
     });
 
     expect(result.warnings).toEqual([]);
-    expect(bot.botDeck[0]).toBe("market_b");
-    expect(G.market).toEqual(["market_a"]);
+    expect(bot.botDeck).toContain("market_a");
+    expect(G.market).toEqual(["market_b"]);
   });
 
-  it("bot Acquire adds market resource tokens to Bot VP value before tie-breaks", () => {
+  it("bot Acquire adds only Progress market tokens to Bot VP value before tie-breaks", () => {
     const G = createInitialGameStateFromPipeline({
       options,
       cardDb: {
@@ -5222,11 +5228,11 @@ describe("solo bot setup from imported cards", () => {
     });
 
     expect(result.warnings).toEqual([]);
-    expect(bot.botDeck[0]).toBe("token_high");
-    expect(G.market).toEqual(["base_high"]);
+    expect(bot.botDeck[0]).toBe("base_high");
+    expect(G.market).toEqual(["token_high"]);
   });
 
-  it("bot Acquire caps printed market VP at 10 before adding market resource tokens", () => {
+  it("bot Acquire does not cap fixed printed market VP", () => {
     const G = createInitialGameStateFromPipeline({
       options,
       cardDb: {
@@ -5259,8 +5265,8 @@ describe("solo bot setup from imported cards", () => {
     });
 
     expect(result.warnings).toEqual([]);
-    expect(bot.botDeck[0]).toBe("capped_plus_token");
-    expect(G.market).toEqual(["raw_twelve"]);
+    expect(bot.botDeck[0]).toBe("raw_twelve");
+    expect(G.market).toEqual(["capped_plus_token"]);
   });
 
   it("bot Acquire values conditional VP by the best branch when choosing market cards", () => {
@@ -5587,7 +5593,7 @@ describe("solo bot setup from imported cards", () => {
     expect(G.marketDecks.mainDeck).toEqual(["miss_a", "miss_b", "tail"]);
   });
 
-  it("bot Break through gains 2 Materials if no matching deck card exists", () => {
+  it("bot Break through gains 2 Progress if no matching deck card exists", () => {
     const G = createInitialGameStateFromPipeline({
       options,
       cardDb: {
@@ -5619,7 +5625,7 @@ describe("solo bot setup from imported cards", () => {
     });
 
     expect(result.warnings).toEqual([]);
-    expect(bot.resources.materials).toBe(2);
+    expect(bot.resources.knowledge).toBe(2);
     expect(bot.botDeck).not.toContain("miss");
     expect(G.marketDecks.mainDeck).toEqual(["miss"]);
   });

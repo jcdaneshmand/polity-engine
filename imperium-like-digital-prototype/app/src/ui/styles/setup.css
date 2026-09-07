@@ -27,6 +27,10 @@
   padding: 16px;
 }
 
+.setup-panel [hidden] {
+  display: none !important;
+}
+
 .setup-heading,
 .game-shell-bar {
   display: flex;
@@ -110,6 +114,105 @@
   margin: 0;
   color: #f3ead8;
   font-size: 1rem;
+}
+
+.advanced-setup-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.advanced-setup-toggle button {
+  min-height: 40px;
+  border: 1px solid #7a6a57;
+  border-radius: 6px;
+  background: #4a4038;
+  color: #f3ead8;
+  cursor: pointer;
+  padding: 7px 12px;
+}
+
+.advanced-setup-toggle button[aria-expanded="true"] {
+  border-color: var(--ui-selection);
+  background: #6a5138;
+}
+
+.advanced-setup-toggle span {
+  max-width: min(55%, 460px);
+  overflow: hidden;
+  color: #d9c7a7;
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.setup-presets {
+  margin-top: 8px;
+  border-top: 1px solid #5b5047;
+  padding-top: 8px;
+}
+
+.setup-presets > summary,
+.setup-presets__manage > summary {
+  color: #f3ead8;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.setup-presets > fieldset {
+  min-width: 0;
+  margin: 8px 0 0;
+  border: 0;
+  padding: 0;
+}
+
+.setup-presets__primary {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) auto minmax(150px, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.setup-presets button,
+.setup-presets .file-action {
+  min-height: 40px;
+  box-sizing: border-box;
+}
+
+.setup-preset-preview {
+  display: grid;
+  gap: 3px;
+  margin-top: 8px;
+  border-left: 3px solid var(--ui-info);
+  padding-left: 9px;
+  color: #d9c7a7;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.setup-preset-preview strong {
+  color: #f3ead8;
+}
+
+.setup-presets__manage {
+  margin-top: 8px;
+}
+
+.setup-presets__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.setup-presets > p {
+  min-height: 1.1em;
+  margin: 6px 0 0;
+  color: #d9c7a7;
+  font-size: 0.78rem;
 }
 
 .account-stats {
@@ -278,17 +381,118 @@
   align-items: center;
   gap: 8px;
 }
+.segmented-control button.is-active small { color:#fff4e2; }
+
+.mode-control {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
+}
 
 .custom-commons-setup {
   display: grid;
   gap: 10px;
 }
 
+.commons-setup {
+  display: grid;
+  gap: 8px;
+}
+
+.commons-set-picker {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.commons-set-picker button {
+  display: grid;
+  gap: 2px;
+  min-height: 48px;
+  align-content: center;
+}
+
+.commons-set-picker button small {
+  color: #cbbda6;
+  font-size: 0.7rem;
+}
+
+.commons-set-picker button:disabled small {
+  color: #9a9184;
+}
+
+.commons-availability-details {
+  display: grid;
+  gap: 3px;
+  color: #d9c7a7;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.commons-availability-details:empty {
+  display: none;
+}
+
+.commons-availability-details p {
+  margin: 0;
+}
+
+.commons-composition-summary {
+  display: grid;
+  gap: 4px;
+  padding-left: 10px;
+  border-left: 3px solid #4fa777;
+  color: #d9c7a7;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.commons-composition-summary[data-status="blocked"] {
+  border-left-color: #e07167;
+}
+
+.commons-composition-summary[data-status="conditional"] {
+  border-left-color: #d2a74f;
+}
+
+.commons-composition-summary strong {
+  color: #f7ead4;
+}
+
+.commons-composition-summary p {
+  margin: 0;
+}
+
+.commons-composition-summary [data-severity="blocking"] {
+  color: #ffc0b9;
+}
+
+.commons-composition-summary button {
+  justify-self: start;
+  margin-top: 4px;
+}
+
 .custom-commons-setup__toolbar {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) auto;
+  grid-template-columns: minmax(180px, 1fr) minmax(140px, 0.55fr) auto;
   gap: 10px;
   align-items: end;
+}
+
+.custom-commons-count {
+  color: #d9c7a7;
+  font-size: 0.82rem;
+}
+
+.custom-commons-count strong {
+  color: #ffe0a3;
+}
+
+.commons-saved-pools {
+  border-top: 1px solid #6e5f50;
+  padding-top: 8px;
+}
+
+.commons-saved-pools > summary {
+  color: #ffe0a3;
+  cursor: pointer;
+  font-weight: 700;
 }
 
 .custom-commons-setup input[type="text"],
@@ -415,7 +619,9 @@
 }
 
 .private-data-actions button,
-.private-data-actions .file-action {
+.private-data-actions .file-action,
+.setup-presets button,
+.setup-presets .file-action {
   min-height: 38px;
   border: 1px solid #7a6a57;
   border-radius: 6px;
@@ -425,13 +631,15 @@
   padding: 0 12px;
 }
 
-.private-data-actions .file-action {
+.private-data-actions .file-action,
+.setup-presets .file-action {
   display: inline-flex;
   align-items: center;
   position: relative;
 }
 
-.private-data-actions .file-action input {
+.private-data-actions .file-action input,
+.setup-presets .file-action input {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -440,7 +648,8 @@
   cursor: pointer;
 }
 
-.private-data-actions .file-action:focus-within {
+.private-data-actions .file-action:focus-within,
+.setup-presets .file-action:focus-within {
   outline: 3px solid #55d6c2;
   outline-offset: 3px;
 }
@@ -468,7 +677,8 @@
   min-width: 0;
 }
 
-.private-data-actions button:disabled {
+.private-data-actions button:disabled,
+.setup-presets button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }
@@ -771,6 +981,15 @@
   .setup-grid {
     grid-template-columns: 1fr;
   }
+  .commons-set-picker {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .custom-commons-setup__toolbar {
+    grid-template-columns: 1fr;
+  }
+  .setup-presets__primary {
+    grid-template-columns: 1fr;
+  }
   .setup-heading,
   .game-shell-bar {
     align-items: stretch;
@@ -811,6 +1030,22 @@
 
   .local-playtest-status__chips {
     justify-content: flex-start;
+  }
+
+  .advanced-setup-toggle {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .advanced-setup-toggle button,
+  .advanced-setup-toggle span {
+    max-width: none;
+    width: 100%;
+  }
+
+  .advanced-setup-toggle span {
+    overflow-wrap: anywhere;
+    white-space: normal;
   }
 }
 
@@ -1014,6 +1249,9 @@
   border-bottom: 1px solid #b8c2c8;
   overflow-wrap: anywhere;
 }
+.guided-game-launcher { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:14px; align-items:center; }
+.guided-game-launcher h2 { margin:2px 0 4px; color:#f3ead8; }
+@media (max-width:760px) { .guided-game-launcher { grid-template-columns:1fr; } }
 .deferred-view {
   min-height: 240px;
   padding: 24px;

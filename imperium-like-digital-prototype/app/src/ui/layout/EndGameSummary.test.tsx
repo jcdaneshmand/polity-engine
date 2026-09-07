@@ -18,6 +18,20 @@ describe("EndGameSummary", () => {
             scores: { "0": 42, "1": 38 },
             tieBreakScores: { "0": 12, "1": 8 }
           },
+          finalScoreBreakdowns: {
+            "0": {
+              playerId: "0",
+              scoring: "normal",
+              contributions: [
+                { id: "cards", label: "Cards", score: 37, reason: "Printed, variable, and penalty VP.", details: [{ id: "card-a", label: "Civic Archive", score: 37, reason: "Variable VP formula; card VP is capped at 10 per formula." }] },
+                { id: "progress", label: "Progress", score: 5, reason: "One VP per Progress." }
+              ],
+              total: 42
+            }
+          },
+          finalTieBreakBreakdowns: {
+            "0": { playerId: "0", scoring: "normal", contributions: [{ id: "cards", label: "Cards", score: 12, reason: "Normal score tie-break." }], total: 12 }
+          },
           players: {
             "0": {
               hand: ["card-a"],
@@ -69,6 +83,10 @@ describe("EndGameSummary", () => {
     expect(html).toContain("Player 0");
     expect(html).toContain("42");
     expect(html).toContain("Tie-break");
+    expect(html).toContain("Score breakdown");
+    expect(html).toContain("Civic Archive");
+    expect(html).toContain("capped at 10");
+    expect(html).toContain("Normal-score tie-break");
     expect(html).toContain("Rounds Played");
     expect(html).toContain("7");
     expect(html).toContain("Log Events");

@@ -1,4 +1,5 @@
 import { getCardById } from "../layout/uiSelectors";
+import { explainResourcePayment, type ResourcePaymentExplanation } from "../../../../engine/src/game/payments";
 
 export type SelectableKind = "market_slot"|"hand_card"|"play_area_card"|"development_card"|"pile"|"player_zone"|"bot_zone"|"action";
 export type Selection = { kind: SelectableKind; id: string; playerId?: string; index?: number };
@@ -14,39 +15,16 @@ export function getSelectedCard(s: Selection | null, G: any): any | undefined {
   return undefined;
 }
 
-function cardCost(card: any): Record<string, number> {
-  return typeof card?.cost === "number"
-    ? { materials: card.cost }
-    : {
-      materials: Number(card?.cost?.materials ?? 0),
-      influence: Number(card?.cost?.influence ?? 0),
-      knowledge: Number(card?.cost?.knowledge ?? 0),
-      goods: Number(card?.cost?.goods ?? 0),
-      unrest: Number(card?.cost?.unrest ?? 0)
-    };
-}
-
-function describeCost(cost: Record<string, number>): string {
-  return ["materials", "influence", "knowledge", "goods", "unrest"]
-    .filter((resource) => Number(cost[resource] ?? 0) > 0)
-    .map((resource) => `${resource}=${cost[resource]}`)
-    .join(", ");
-}
-
-function canPayResourceCost(resources: any, cost: Record<string, number>): boolean {
-  const progressCost = Number(cost.knowledge ?? 0);
-  const goodsCost = Number(cost.goods ?? 0);
-  const unrestCost = Number(cost.unrest ?? 0);
-  if (Number(resources.knowledge ?? 0) < progressCost) return false;
-  if (Number(resources.goods ?? 0) < goodsCost) return false;
-  if (Number(resources.unrest ?? 0) < unrestCost) return false;
-
-  const remainingProgress = Number(resources.knowledge ?? 0) - progressCost;
-  const remainingGoods = Number(resources.goods ?? 0) - goodsCost;
-  const materialShortfall = Math.max(0, Number(cost.materials ?? 0) - Number(resources.materials ?? 0));
-  const populationShortfall = Math.max(0, Number(cost.influence ?? 0) - Number(resources.influence ?? 0));
-  const substituteTokensNeeded = Math.ceil(materialShortfall / 2) + populationShortfall;
-  return remainingProgress + remainingGoods >= substituteTokensNeeded;
+export function isSelectionStillAvailable(s: Selection | null, G: any): boolean {
+  if (!s) return true;
+  const ownerId = s.playerId;
+  if (s.kind === "market_slot") return (G?.market ?? []).includes(s.id);
+  if (s.kind === "hand_card") return Boolean(ownerId && G?.players?.[ownerId]?.hand?.includes(s.id));
+  if (s.kind === "play_area_card") return Boolean(ownerId && G?.players?.[ownerId]?.playArea?.includes(s.id));
+  if (s.kind === "development_card") return Boolean(ownerId && G?.players?.[ownerId]?.developmentArea?.includes(s.id));
+  if (s.kind === "player_zone") return Boolean(ownerId && G?.players?.[ownerId]);
+  if (s.kind === "bot_zone") return Boolean(G?.solo?.bot);
+  return true;
 }
 
 function isActivateTurn(G: any): boolean {
@@ -148,14 +126,13 @@ function choiceLabel(choice: any[]): string {
 }
 
 function canPayChoiceCost(G: any, ctx: any, choice: any[]): boolean {
-  const resources = G.players?.[ctx.currentPlayer]?.resources ?? {};
   const cost = choice
     .filter((effect) => effect?.op === "spend_resource")
     .reduce((acc, effect) => {
       acc[effect.resource] = (acc[effect.resource] ?? 0) + Number(effect.amount ?? 0);
       return acc;
     }, {} as Record<string, number>);
-  return canPayResourceCost(resources, cost);
+  return explainResourcePayment(G, ctx.currentPlayer, cost).payable;
 }
 
 function isInnovateSuit(suit: string | undefined): boolean {
@@ -191,14 +168,6 @@ function allocationOptions(recipients: string[], countPerPlayer: number, slots: 
   };
   walk([], {});
   return results;
-}
-
-function orderedPermutations(cardIds: string[]): string[][] {
-  if (cardIds.length <= 1) return [cardIds];
-  return cardIds.flatMap((cardId, index) => {
-    const remaining = cardIds.filter((_, candidateIndex) => candidateIndex !== index);
-    return orderedPermutations(remaining).map((order) => [cardId, ...order]);
-  });
 }
 
 function cardCombinations(cardIds: string[], count: number): string[][] {
@@ -277,7 +246,7 @@ export function getPendingUiState(G: any, ctx: any): CurrentTaskUiState | undefi
     G.pendingRegionChoice ? { title: "Pending Region", detail: `Choose ${plural(G.pendingRegionChoice.cardIds?.length ?? 0, "region")}`, playerId: G.pendingRegionChoice.playerId, choiceType: "region" as const } :
     G.pendingDevelopmentChoice ? { title: "Pending Development", detail: `Choose ${plural(G.pendingDevelopmentChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingDevelopmentChoice.playerId, choiceType: "development" as const } :
     G.pendingShortGameDevelopmentExileChoice ? { title: "Pending Development Removal", detail: `Choose ${plural(G.pendingShortGameDevelopmentExileChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingShortGameDevelopmentExileChoice.playerId, choiceType: "development" as const } :
-    G.pendingTradeChoice ? { title: "Pending Trade", detail: plural((G.pendingTradeChoice.routeCardIds?.length ?? 0) + (G.pendingTradeChoice.allowGoodsForProgress ? 1 : 0), "option"), playerId: G.pendingTradeChoice.playerId, choiceType: "trade" as const } :
+    G.pendingTradeChoice ? { title: "Pending Trade", detail: plural((G.pendingTradeChoice.routeCardIds?.length ?? 0) + ((G.pendingTradeChoice.allowProgressForGoods ?? G.pendingTradeChoice.allowGoodsForProgress) ? 1 : 0), "option"), playerId: G.pendingTradeChoice.playerId, choiceType: "trade" as const } :
     G.pendingDiscardChoice ? { title: "Pending Discard", detail: `Choose ${G.pendingDiscardChoice.count ?? 0} ${(G.pendingDiscardChoice.count ?? 0) === 1 ? "card" : "cards"} from ${plural(G.pendingDiscardChoice.cardIds?.length ?? 0, "option")}`, playerId: G.pendingDiscardChoice.playerId, choiceType: "discard" as const } :
     G.pendingReturnUnrestChoice ? { title: "Pending Return Unrest", detail: `Choose ${plural(G.pendingReturnUnrestChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingReturnUnrestChoice.playerId, choiceType: "return" as const } :
     G.pendingReturnFameChoice ? { title: "Pending Return Fame", detail: `Choose ${plural(G.pendingReturnFameChoice.cardIds?.length ?? 0, "card")}`, playerId: G.pendingReturnFameChoice.playerId, choiceType: "return" as const } :
@@ -455,7 +424,7 @@ function withActionMetadata<T extends { action: string; enabled: boolean; proven
 }
 
 export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx: any, uiState: { cleanupDiscardSelection?: string[] } = {}) {
-  const actions: Array<{ label:string; action:string; enabled:boolean; reason?:string; provenance?: RuleProvenanceCode; group?: string; cardId?:string; hostCardId?: string; marketCardId?: string; choiceIndex?: number; suit?: string; source?: "market" | "deck" | "discard" | "exile"; recipientPlayerId?: string; recipientPlayerIds?: string[]; cardIds?: string[]; returnOrder?: string[] }> = [];
+  const actions: Array<{ label:string; action:string; enabled:boolean; reason?:string; provenance?: RuleProvenanceCode; paymentExplanation?: ResourcePaymentExplanation; group?: string; cardId?:string; hostCardId?: string; marketCardId?: string; choiceIndex?: number; suit?: string; source?: "market" | "deck" | "discard" | "exile"; recipientPlayerId?: string; recipientPlayerIds?: string[]; cardIds?: string[]; returnOrder?: string[] }> = [];
   const pendingCleanupDiscard = G.pendingCleanupDiscardChoice;
   if (pendingCleanupDiscard) {
     const isCurrentPlayer = pendingCleanupDiscard.playerId === ctx.currentPlayer;
@@ -689,9 +658,9 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
         cardId
       });
     });
-    if (pendingTradeChoice.allowGoodsForProgress) {
+    if (pendingTradeChoice.allowProgressForGoods ?? pendingTradeChoice.allowGoodsForProgress) {
       actions.push({
-        label: "Trade Goods for Progress",
+        label: "Pay Progress for Goods",
         action: "resolveTradeChoice",
         enabled: isCurrentPlayer,
         reason: isCurrentPlayer ? undefined : `Waiting for player ${pendingTradeChoice.playerId}`
@@ -876,54 +845,16 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
   }
   const pendingSolsticeOrderChoice = G.pendingSolsticeOrderChoice;
   if (pendingSolsticeOrderChoice) {
-    const isCurrentPlayer = pendingSolsticeOrderChoice.playerId === ctx.currentPlayer;
-    orderedPermutations(pendingSolsticeOrderChoice.cardIds ?? []).forEach((cardIds) => {
-      const names = cardIds.map((cardId) => getCardById(G, cardId)?.displayName ?? cardId);
-      actions.push({
-        label: `Resolve ${names.join(" then ")}`,
-        action: "resolveSolsticeOrderChoice",
-        enabled: isCurrentPlayer,
-        reason: isCurrentPlayer ? undefined : `Waiting for player ${pendingSolsticeOrderChoice.playerId}`,
-        cardIds
-      });
-    });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Solstice order first" });
     return withActionMetadata(actions);
   }
   const pendingLookOrderChoice = G.pendingLookOrderChoice;
   if (pendingLookOrderChoice) {
-    const isCurrentPlayer = pendingLookOrderChoice.playerId === ctx.currentPlayer;
-    orderedPermutations(pendingLookOrderChoice.cardIds ?? []).forEach((cardIds) => {
-      const names = cardIds.map((cardId) => getCardById(G, cardId)?.displayName ?? cardId);
-      actions.push({
-        label: `Return ${names.join(" then ")}`,
-        action: "resolveLookOrderChoice",
-        enabled: isCurrentPlayer,
-        reason: isCurrentPlayer ? undefined : `Waiting for player ${pendingLookOrderChoice.playerId}`,
-        cardIds
-      });
-    });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Look order first" });
     return withActionMetadata(actions);
   }
   const pendingLookTakeChoice = G.pendingLookTakeChoice;
   if (pendingLookTakeChoice) {
-    const isCurrentPlayer = pendingLookTakeChoice.playerId === ctx.currentPlayer;
-    (pendingLookTakeChoice.cardIds ?? []).forEach((cardId: string) => {
-      const returnCandidates = (pendingLookTakeChoice.cardIds ?? []).filter((candidate: string) => candidate !== cardId);
-      orderedPermutations(returnCandidates).forEach((returnOrder) => {
-        const card = getCardById(G, cardId);
-        const returnNames = returnOrder.map((returnCardId) => getCardById(G, returnCardId)?.displayName ?? returnCardId);
-        actions.push({
-          label: returnNames.length > 0 ? `Take ${card?.displayName ?? cardId}; return ${returnNames.join(" then ")}` : `Take ${card?.displayName ?? cardId}`,
-          action: "resolveLookTakeChoice",
-          enabled: isCurrentPlayer,
-          reason: isCurrentPlayer ? undefined : `Waiting for player ${pendingLookTakeChoice.playerId}`,
-          cardId,
-          returnOrder
-        });
-      });
-    });
     actions.push({ label:"End Turn", action:"endTurn", enabled:false, reason:"Resolve the pending Look take first" });
     return withActionMetadata(actions);
   }
@@ -1010,18 +941,21 @@ export function getAvailableActionsForSelection(s: Selection | null, G: any, ctx
   }
   if (s.kind === "hand_card") {
     const p = G.players?.[ctx.currentPlayer];
+    const card = getCardById(G, s.id);
     const meetsStateRequirement = cardMeetsStateRequirement(G, ctx, s.id);
     const freePlay = isFreePlayCard(G, s.id);
     const freePlayUsed = freePlayAlreadyUsed(G, ctx, s.id);
     const hasAction = (p?.actionsRemaining ?? 0) > 0;
     const hasActionToken = (p?.actionTokensAvailable ?? 0) > 0;
-    const ok = canUseNormalActions && meetsStateRequirement && !freePlayUsed && (p?.hand ?? []).includes(s.id) && (freePlay || (hasAction && hasActionToken));
+    const paymentExplanation = explainResourcePayment(G, ctx.currentPlayer, freePlay ? 0 : card?.cost);
+    const ok = canUseNormalActions && meetsStateRequirement && !freePlayUsed && paymentExplanation.payable && (p?.hand ?? []).includes(s.id) && (freePlay || (hasAction && hasActionToken));
     actions.push({
       label:"Play Card",
       action:"play",
       enabled: ok,
-      reason: ok ? undefined : !canUseNormalActions ? "Normal actions require an Activate turn" : !meetsStateRequirement ? `Requires ${getCardById(G, s.id)?.stateRequirement} State` : freePlayUsed ? "Free play already used this turn" : "Card is not in hand or no action tokens available",
-      cardId: s.id
+      reason: ok ? undefined : !canUseNormalActions ? "Normal actions require an Activate turn" : !meetsStateRequirement ? `Requires ${card?.stateRequirement} State` : freePlayUsed ? "Free play already used this turn" : !paymentExplanation.payable ? paymentExplanation.summary : "Card is not in hand or no action tokens available",
+      cardId: s.id,
+      paymentExplanation
     });
     if (isUnrestCard(getCardById(G, s.id))) actions.push({ label:"Revolt Return", action:"revolt", enabled:canUseNormalActions, reason:canUseNormalActions ? undefined : "Revolt requires starting from an Activate turn", cardId: s.id });
   }

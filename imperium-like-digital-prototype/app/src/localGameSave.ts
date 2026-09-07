@@ -1,6 +1,9 @@
 import { redactGameStateForPlayer } from "../../engine/src/game/playerView";
+import { CURRENT_GAME_STATE_VERSION, CURRENT_RULES_VERSION as ENGINE_RULES_VERSION, inspectGameStateCompatibility } from "../../engine/src/game/version";
 
 export const LOCAL_GAME_SAVE_STORAGE_KEY = "polity-engine.localGame.v1";
+export const CURRENT_RULES_VERSION = ENGINE_RULES_VERSION;
+export const MAX_LOCAL_GAME_EXPORT_BYTES = 8 * 1024 * 1024;
 
 export type LocalSaveMetadata = {
   slotName: string;
@@ -17,6 +20,7 @@ export type LocalSaveMetadata = {
 export type SavedLocalGameEnvelope = {
   version: 1;
   stateVersion?: 1;
+  rulesVersion: typeof CURRENT_RULES_VERSION;
   snapshotSource?: "authoritative-local";
   savedAtIso: string;
   privateDataFingerprint: string;
@@ -32,6 +36,18 @@ export type SavedLocalGameRecord =
 export type ImportedLocalGameExport =
   | { kind: "valid"; envelope: SavedLocalGameEnvelope }
   | { kind: "invalid"; reason: string };
+
+export type LocalGameRecoverySummary = {
+  slotName: string;
+  savedAtIso?: string;
+  envelopeVersion?: number;
+  stateVersion?: number;
+  rulesVersion?: number;
+};
+
+export type LocalGameExportInspection =
+  | { kind: "playable"; envelope: SavedLocalGameEnvelope; summary: LocalGameRecoverySummary; raw: string }
+  | { kind: "legacy-incompatible" | "future-version" | "corrupt" | "unsupported-format"; reason: string; summary: LocalGameRecoverySummary; raw: string };
 
 type StorageReader = Pick<Storage, "getItem">;
 
@@ -52,6 +68,24 @@ const PRIVATE_FIELD_NAMES = new Set([
   "officialText",
   "officialRulesText"
 ]);
+
+function recoverySummary(value: unknown): LocalGameRecoverySummary {
+  if (!value || typeof value !== "object") return { slotName: "Unreadable save" };
+  const envelope = value as Record<string, unknown>;
+  const metadata = envelope.metadata && typeof envelope.metadata === "object"
+    ? envelope.metadata as Record<string, unknown>
+    : {};
+  const slotName = typeof metadata.slotName === "string" && metadata.slotName.trim()
+    ? metadata.slotName.trim().slice(0, 80)
+    : "Unnamed save";
+  return {
+    slotName,
+    ...(typeof envelope.savedAtIso === "string" && !Number.isNaN(Date.parse(envelope.savedAtIso)) ? { savedAtIso: envelope.savedAtIso } : {}),
+    ...(typeof envelope.version === "number" ? { envelopeVersion: envelope.version } : {}),
+    ...(typeof envelope.stateVersion === "number" ? { stateVersion: envelope.stateVersion } : {}),
+    ...(typeof envelope.rulesVersion === "number" ? { rulesVersion: envelope.rulesVersion } : {})
+  };
+}
 
 function containsPrivateField(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;
@@ -75,6 +109,7 @@ export function serializeLocalGame(input: {
   return JSON.stringify({
     version: 1,
     stateVersion: 1,
+    rulesVersion: CURRENT_RULES_VERSION,
     ...(input.snapshotSource ? { snapshotSource: input.snapshotSource } : {}),
     savedAtIso,
     privateDataFingerprint: input.privateDataFingerprint,
@@ -144,40 +179,92 @@ function recoverLegacySnapshot(envelope: SavedLocalGameEnvelope): SavedLocalGame
   } catch { return envelope; }
 }
 
-function parseSavedLocalGameDetailed(raw: string): ParseSavedLocalGameResult {
+export function inspectLocalGameExport(raw: string): LocalGameExportInspection {
+  if (new TextEncoder().encode(raw).byteLength > MAX_LOCAL_GAME_EXPORT_BYTES) {
+    return {
+      kind: "unsupported-format",
+      reason: `Saved game exceeds the ${MAX_LOCAL_GAME_EXPORT_BYTES / (1024 * 1024)} MB recovery limit. Its original data has been preserved.`,
+      summary: { slotName: "Oversized save" },
+      raw
+    };
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return { kind: "invalid", reason: "Local game export is not valid JSON." };
+    return { kind: "corrupt", reason: "Local game export is not valid JSON.", summary: { slotName: "Unreadable save" }, raw };
   }
-  if (!parsed || typeof parsed !== "object") return { kind: "invalid", reason: "Local game export is not an object." };
+  const summary = recoverySummary(parsed);
+  if (!parsed || typeof parsed !== "object") return { kind: "corrupt", reason: "Local game export is not an object.", summary, raw };
   const envelope = parsed as Partial<SavedLocalGameEnvelope>;
-  if (envelope.version !== 1) return { kind: "invalid", reason: "Unsupported local game export version." };
-  if (envelope.stateVersion !== undefined && envelope.stateVersion !== 1) return { kind: "invalid", reason: "Unsupported game-state version." };
+  if (envelope.version !== 1) return { kind: "unsupported-format", reason: "Unsupported local game export version.", summary, raw };
+  if (envelope.stateVersion !== undefined && envelope.stateVersion !== 1) {
+    return { kind: "unsupported-format", reason: "Unsupported game-state version. Its original data has been preserved.", summary, raw };
+  }
+  if (envelope.rulesVersion === undefined || (typeof envelope.rulesVersion === "number" && envelope.rulesVersion < CURRENT_RULES_VERSION)) {
+    return {
+      kind: "legacy-incompatible",
+      reason: "This saved game predates the corrected rules engine and cannot be resumed safely. Its original data has been preserved.",
+      summary,
+      raw
+    };
+  }
+  if (typeof envelope.rulesVersion !== "number") {
+    return { kind: "corrupt", reason: "Local game export has an invalid rules version.", summary, raw };
+  }
+  if (envelope.rulesVersion > CURRENT_RULES_VERSION) {
+    return {
+      kind: "future-version",
+      reason: "This saved game was created by a newer rules engine. Update the app to resume it; its original data has been preserved.",
+      summary,
+      raw
+    };
+  }
   if (typeof envelope.savedAtIso !== "string" || Number.isNaN(Date.parse(envelope.savedAtIso))) {
-    return { kind: "invalid", reason: "Local game export is missing a valid saved timestamp." };
+    return { kind: "corrupt", reason: "Local game export is missing a valid saved timestamp.", summary, raw };
   }
   if (typeof envelope.privateDataFingerprint !== "string") {
-    return { kind: "invalid", reason: "Local game export is missing a private-data fingerprint." };
+    return { kind: "corrupt", reason: "Local game export is missing a private-data fingerprint.", summary, raw };
   }
-  if (!("state" in envelope)) return { kind: "invalid", reason: "Local game export is missing game state." };
-  if (containsPrivateField(envelope.state)) return { kind: "invalid", reason: "Local game export contains private fields." };
-  return {
-    kind: "valid",
-    envelope: recoverLegacySnapshot({
-      version: 1,
-      stateVersion: 1,
-      ...(envelope.snapshotSource === "authoritative-local" ? { snapshotSource: envelope.snapshotSource } : {}),
-      savedAtIso: envelope.savedAtIso,
+  if (!("state" in envelope)) return { kind: "corrupt", reason: "Local game export is missing game state.", summary, raw };
+  if (containsPrivateField(envelope.state)) return { kind: "corrupt", reason: "Local game export contains private fields.", summary, raw };
+  const state = envelope.state as { G?: { rulesVersion?: unknown; stateVersion?: unknown }; ctx?: unknown } | undefined;
+  if (!state || typeof state !== "object" || !state.G || typeof state.G !== "object" || !state.ctx || typeof state.ctx !== "object") {
+    return { kind: "corrupt", reason: "Local game export does not contain a resumable game state.", summary, raw };
+  }
+  const compatibility = inspectGameStateCompatibility(state.G);
+  if (compatibility.kind === "legacy-rules" || compatibility.kind === "future-rules") {
+    return { kind: "corrupt", reason: "Saved-game envelope and engine rules versions disagree.", summary, raw };
+  }
+  if (compatibility.kind !== "current") {
+    return { kind: "unsupported-format", reason: `Unsupported engine state version. Expected ${CURRENT_GAME_STATE_VERSION}.`, summary, raw };
+  }
+  const playableEnvelope = recoverLegacySnapshot({
+    version: 1,
+    stateVersion: 1,
+    rulesVersion: CURRENT_RULES_VERSION,
+    ...(envelope.snapshotSource === "authoritative-local" ? { snapshotSource: envelope.snapshotSource } : {}),
+    savedAtIso: envelope.savedAtIso,
+    privateDataFingerprint: envelope.privateDataFingerprint,
+    metadata: normalizeSavedLocalGameMetadata(envelope.metadata, {
       privateDataFingerprint: envelope.privateDataFingerprint,
-      metadata: normalizeSavedLocalGameMetadata(envelope.metadata, {
-        privateDataFingerprint: envelope.privateDataFingerprint,
-        state: envelope.state
-      }),
       state: envelope.state
-    })
+    }),
+    state: envelope.state
+  });
+  return {
+    kind: "playable",
+    envelope: playableEnvelope,
+    summary: recoverySummary(playableEnvelope),
+    raw
   };
+}
+
+function parseSavedLocalGameDetailed(raw: string): ParseSavedLocalGameResult {
+  const inspection = inspectLocalGameExport(raw);
+  return inspection.kind === "playable"
+    ? { kind: "valid", envelope: inspection.envelope }
+    : { kind: "invalid", reason: inspection.reason };
 }
 
 export function parseSavedLocalGame(raw: string): SavedLocalGameEnvelope | null {

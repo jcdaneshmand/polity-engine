@@ -4,7 +4,7 @@ import { PrototypeGame } from "../../engine/src/game/game";
 import { createAccountStore } from "./accountStore";
 import { createAccountMiddleware } from "./accounts";
 import { getBoardgameServerPackage } from "./boardgameServer";
-import { createBoardgameStorage, waitForBoardgameStorageIdle } from "./boardgameStorage";
+import { createBoardgameStorage, readBoardgameMatchCompatibility, waitForBoardgameStorageIdle } from "./boardgameStorage";
 import { createLobbyStore } from "./lobbyStore";
 import { createBoardgameHttpApi, createPolityLobbyMiddleware } from "./polityLobby";
 import { createPregameLobbyMiddleware } from "./pregameLobby";
@@ -33,7 +33,7 @@ const server = Server({
   origins: config.origins,
   apiOrigins: config.origins,
   transport: new SocketIO(),
-  ...(db ? { db } : {})
+  db
 });
 
 server.app.use(createAccountMiddleware({ store: accountStore, buildCommit: config.buildCommit }));
@@ -45,7 +45,8 @@ server.app.use(createPregameLobbyMiddleware({
 }));
 server.app.use(createPolityLobbyMiddleware({
   store: lobbyStore,
-  boardgameApi
+  boardgameApi,
+  readMatchCompatibility: (matchID) => readBoardgameMatchCompatibility(db, matchID)
 }));
 server.app.use(createSupportMiddleware({ store: supportStore, accountStore }));
 server.app.use(createStaticAppMiddleware(join(currentDir, "../../app/dist")));

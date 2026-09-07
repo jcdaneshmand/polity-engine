@@ -6,6 +6,16 @@ import { takeUnrest } from "./unrest";
 export type ResourceCost = Partial<Record<ResourceName, number>>;
 const RESOURCE_NAMES: ResourceName[] = ["materials", "knowledge", "influence", "goods", "unrest"];
 
+export interface ResourcePaymentExplanation {
+  payable: boolean;
+  kind: "free" | "fixed" | "alternative" | "unavailable";
+  cost: ResourceCost;
+  available: ResourceCost;
+  payment?: ResourceCost;
+  summary: string;
+  reason?: string;
+}
+
 export function normalizeResourceCost(cost: number | ResourceCost | undefined): ResourceCost {
   if (typeof cost === "number") return { materials: cost };
   return normalizeResourceMap(cost as Partial<Record<string, number | undefined>>);
@@ -63,33 +73,10 @@ export function canPayResourceCosts(G: GameState, playerId: string, cost: Resour
   const normalizedCost = normalizeResourceMap(cost as Partial<Record<string, number | undefined>>);
   const normalizedPayment = payment ? normalizeResourceMap(payment as Partial<Record<string, number | undefined>>) : undefined;
   normalizePlayerResourcePool(G, playerId);
-  if (!resourcesCanPayCost(G.players[playerId].resources, normalizedCost)) return false;
-  if (!normalizedPayment) return true;
-  return paymentIsAvailable(G, playerId, normalizedPayment) && selectedPaymentMatchesCost(normalizedPayment, normalizedCost);
+  return resolveResourcePayment(G.players[playerId].resources, normalizedCost, normalizedPayment) !== undefined;
 }
 
-function resourcesCanPayCost(resources: Partial<Record<ResourceName, number>>, cost: ResourceCost): boolean {
-  const materialCost = cost.materials ?? 0;
-  const populationCost = cost.influence ?? 0;
-  const progressCost = cost.knowledge ?? 0;
-  const goodsCost = cost.goods ?? 0;
-  const unrestCost = cost.unrest ?? 0;
-
-  if ((resources.knowledge ?? 0) < progressCost) return false;
-  if ((resources.goods ?? 0) < goodsCost) return false;
-  if ((resources.unrest ?? 0) < unrestCost) return false;
-
-  const remainingProgress = (resources.knowledge ?? 0) - progressCost;
-  const remainingGoods = (resources.goods ?? 0) - goodsCost;
-  const materialShortfall = Math.max(0, materialCost - (resources.materials ?? 0));
-  const populationShortfall = Math.max(0, populationCost - (resources.influence ?? 0));
-  const substituteTokensNeeded = Math.ceil(materialShortfall / 2) + populationShortfall;
-
-  return remainingProgress + remainingGoods >= substituteTokensNeeded;
-}
-
-function paymentIsAvailable(G: GameState, playerId: string, payment: ResourceCost): boolean {
-  const resources = G.players[playerId].resources;
+function paymentIsAvailable(resources: Partial<Record<ResourceName, number>>, payment: ResourceCost): boolean {
   return RESOURCE_NAMES.every((resource) => (payment[resource] ?? 0) >= 0 && (payment[resource] ?? 0) <= (resources[resource] ?? 0));
 }
 
@@ -107,6 +94,70 @@ function selectedPaymentMatchesCost(payment: ResourceCost, cost: ResourceCost): 
   return selected.materials <= (cost.materials ?? 0)
     && selected.influence <= (cost.influence ?? 0)
     && extraProgress + extraGoods === Math.ceil(materialShortfall / 2) + influenceShortfall;
+}
+
+function automaticResourcePayment(resources: Partial<Record<ResourceName, number>>, cost: ResourceCost): ResourceCost | undefined {
+  const available = normalizeResourceMap(resources as Partial<Record<string, number | undefined>>);
+  const payment: ResourceCost = {};
+  const spend = (resource: ResourceName, amount: number): boolean => {
+    if (amount <= 0) return true;
+    if ((available[resource] ?? 0) < amount) return false;
+    available[resource] = (available[resource] ?? 0) - amount;
+    payment[resource] = (payment[resource] ?? 0) + amount;
+    return true;
+  };
+  if (!spend("knowledge", cost.knowledge ?? 0) || !spend("goods", cost.goods ?? 0) || !spend("unrest", cost.unrest ?? 0)) return undefined;
+
+  const materialDirect = Math.min(available.materials ?? 0, cost.materials ?? 0);
+  spend("materials", materialDirect);
+  const influenceDirect = Math.min(available.influence ?? 0, cost.influence ?? 0);
+  spend("influence", influenceDirect);
+  let substitutesNeeded = Math.ceil(Math.max(0, (cost.materials ?? 0) - materialDirect) / 2)
+    + Math.max(0, (cost.influence ?? 0) - influenceDirect);
+  while (substitutesNeeded > 0) {
+    if ((available.goods ?? 0) > 0) spend("goods", 1);
+    else if ((available.knowledge ?? 0) > 0) spend("knowledge", 1);
+    else return undefined;
+    substitutesNeeded -= 1;
+  }
+  return normalizeResourceMap(payment as Partial<Record<string, number | undefined>>);
+}
+
+function resolveResourcePayment(resources: Partial<Record<ResourceName, number>>, cost: ResourceCost, payment?: ResourceCost): ResourceCost | undefined {
+  if (payment) return paymentIsAvailable(resources, payment) && selectedPaymentMatchesCost(payment, cost) ? payment : undefined;
+  return automaticResourcePayment(resources, cost);
+}
+
+function formattedResourceAmounts(resources: ResourceCost): string {
+  return (["materials", "influence", "knowledge", "goods", "unrest"] as ResourceName[])
+    .filter((resource) => (resources[resource] ?? 0) > 0)
+    .map((resource) => `${resources[resource]} ${resource}`)
+    .join(", ") || "nothing";
+}
+
+export function explainResourcePayment(G: GameState, playerId: string, rawCost: number | ResourceCost | undefined, selectedPayment?: ResourceCost): ResourcePaymentExplanation {
+  const cost = normalizeResourceCost(rawCost);
+  const available = normalizeResourceMap(G.players[playerId]?.resources as Partial<Record<string, number | undefined>>);
+  const hasCost = RESOURCE_NAMES.some((resource) => (cost[resource] ?? 0) > 0);
+  if (!hasCost) return { payable: true, kind: "free", cost, available, payment: {}, summary: "Free" };
+  const payment = resolveResourcePayment(available, cost, selectedPayment ? normalizeResourceCost(selectedPayment) : undefined);
+  if (!payment) {
+    const reason = selectedPayment ? "The selected payment no longer matches the cost or available resources." : "Available resources cannot satisfy this cost.";
+    return { payable: false, kind: "unavailable", cost, available, summary: `Cannot pay ${formattedResourceAmounts(cost)}`, reason };
+  }
+  const substitutionUsed = (payment.knowledge ?? 0) > (cost.knowledge ?? 0) || (payment.goods ?? 0) > (cost.goods ?? 0);
+  const directAndSubstituteAvailable = ((available.materials ?? 0) >= (cost.materials ?? 0) || (available.influence ?? 0) >= (cost.influence ?? 0))
+    && ((available.knowledge ?? 0) > (cost.knowledge ?? 0) || (available.goods ?? 0) > (cost.goods ?? 0))
+    && ((cost.materials ?? 0) > 0 || (cost.influence ?? 0) > 0);
+  const kind = substitutionUsed || directAndSubstituteAvailable ? "alternative" : "fixed";
+  return {
+    payable: true,
+    kind,
+    cost,
+    available,
+    payment,
+    summary: `${kind === "alternative" ? "Payment" : "Cost"}: ${formattedResourceAmounts(payment)}${substitutionUsed ? " (includes substitution)" : ""}`
+  };
 }
 
 function applySpentResourceOverrides(G: GameState, playerId: string, spent: Partial<Record<ResourceName, number>>, randomNumber?: () => number): void {
@@ -127,7 +178,8 @@ export function payResourceCosts(G: GameState, playerId: string, cost: ResourceC
   const normalizedCost = normalizeResourceMap(cost as Partial<Record<string, number | undefined>>);
   const normalizedPayment = payment ? normalizeResourceMap(payment as Partial<Record<string, number | undefined>>) : undefined;
   normalizePlayerResourcePool(G, playerId);
-  if (!canPayResourceCosts(G, playerId, normalizedCost, normalizedPayment)) {
+  const resolvedPayment = resolveResourcePayment(G.players[playerId].resources, normalizedCost, normalizedPayment);
+  if (!resolvedPayment) {
     const required = Object.entries(normalizedCost)
       .filter(([, amount]) => (amount ?? 0) > 0)
       .map(([resource, amount]) => `${resource}=${amount}`)
@@ -141,57 +193,20 @@ export function payResourceCosts(G: GameState, playerId: string, cost: ResourceC
   }
 
   const resources = G.players[playerId].resources;
-  const spent: Partial<Record<ResourceName, number>> = {};
-  if (normalizedPayment) {
-    for (const resource of RESOURCE_NAMES) {
-      const amount = normalizedPayment[resource] ?? 0;
-      if (amount <= 0) continue;
-      resources[resource] = (resources[resource] ?? 0) - amount;
-      spent[resource] = amount;
-      returnResourceToSupply(G, resource, amount);
-    }
-    applySpentResourceOverrides(G, playerId, spent, randomNumber);
-    return true;
-  }
-
-  resources.knowledge = (resources.knowledge ?? 0) - (normalizedCost.knowledge ?? 0);
-  if ((normalizedCost.knowledge ?? 0) > 0) spent.knowledge = (spent.knowledge ?? 0) + (normalizedCost.knowledge ?? 0);
-  resources.goods = (resources.goods ?? 0) - (normalizedCost.goods ?? 0);
-  if ((normalizedCost.goods ?? 0) > 0) spent.goods = (spent.goods ?? 0) + (normalizedCost.goods ?? 0);
-  resources.unrest = (resources.unrest ?? 0) - (normalizedCost.unrest ?? 0);
-  if ((normalizedCost.unrest ?? 0) > 0) spent.unrest = (spent.unrest ?? 0) + (normalizedCost.unrest ?? 0);
-
-  const materialDirectPayment = Math.min(resources.materials ?? 0, normalizedCost.materials ?? 0);
-  resources.materials = (resources.materials ?? 0) - materialDirectPayment;
-  if (materialDirectPayment > 0) spent.materials = (spent.materials ?? 0) + materialDirectPayment;
-  let materialShortfall = Math.max(0, (normalizedCost.materials ?? 0) - materialDirectPayment);
-
-  const populationDirectPayment = Math.min(resources.influence ?? 0, normalizedCost.influence ?? 0);
-  resources.influence = (resources.influence ?? 0) - populationDirectPayment;
-  if (populationDirectPayment > 0) spent.influence = (spent.influence ?? 0) + populationDirectPayment;
-  let populationShortfall = Math.max(0, (normalizedCost.influence ?? 0) - populationDirectPayment);
-
-  const spendSubstituteToken = (): void => {
-    if ((resources.goods ?? 0) > 0) {
-      resources.goods -= 1;
-      spent.goods = (spent.goods ?? 0) + 1;
-      return;
-    }
-    resources.knowledge = (resources.knowledge ?? 0) - 1;
-    spent.knowledge = (spent.knowledge ?? 0) + 1;
-  };
-
-  while (materialShortfall > 0) {
-    spendSubstituteToken();
-    materialShortfall = Math.max(0, materialShortfall - 2);
-  }
-  while (populationShortfall > 0) {
-    spendSubstituteToken();
-    populationShortfall -= 1;
-  }
+  const spent: Partial<Record<ResourceName, number>> = { ...resolvedPayment };
   for (const [resource, amount] of Object.entries(spent) as [ResourceName, number | undefined][]) {
+    resources[resource] = (resources[resource] ?? 0) - (amount ?? 0);
     returnResourceToSupply(G, resource, amount ?? 0);
   }
   applySpentResourceOverrides(G, playerId, spent, randomNumber);
+  const changes = (Object.entries(spent) as [ResourceName, number | undefined][])
+    .filter(([, amount]) => (amount ?? 0) > 0)
+    .map(([resource, amount]) => ({ playerId, resource, amount: -(amount ?? 0) }));
+  if (changes.length > 0) G.log.push({
+    round: G.round,
+    playerId,
+    message: `ResourcesPaid(${describeResourceCost(spent)})`,
+    event: { type: "resource_change", changes, reason: "payment" }
+  });
   return true;
 }

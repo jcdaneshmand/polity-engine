@@ -65,4 +65,31 @@ describe("authoritative undo boundaries", () => {
       expect(client.getState()!._stateID).toBe(before._stateID);
     } finally { client.stop(); errors.mockRestore(); }
   });
+
+  it("blocks undo both before and after a pending choice reveals hidden draw information", () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const client = clientFor({
+      trigger: "on_play",
+      op: "choose_one",
+      choices: [
+        [{ trigger: "on_play", op: "draw", count: 1 }],
+        [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 1 }]
+      ]
+    });
+    try {
+      client.moves.playCard("undo_fixture");
+      const pending = JSON.parse(JSON.stringify(client.getState()!.G));
+      expect(pending.pendingChoice?.playerId).toBe("1");
+      expect(canUndoLastMove(pending)).toBe(false);
+      client.undo();
+      expect(JSON.parse(JSON.stringify(client.getState()!.G))).toEqual(pending);
+
+      client.moves.resolveChoice(0);
+      const revealed = JSON.parse(JSON.stringify(client.getState()!.G));
+      expect(revealed.pendingChoice).toBeUndefined();
+      expect(canUndoLastMove(revealed)).toBe(false);
+      client.undo();
+      expect(JSON.parse(JSON.stringify(client.getState()!.G))).toEqual(revealed);
+    } finally { client.stop(); errors.mockRestore(); }
+  });
 });

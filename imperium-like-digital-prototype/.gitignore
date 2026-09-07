@@ -22,6 +22,7 @@ private-card-data/*nation*.json
 !private-card-data/README.md
 !private-card-data/.gitkeep
 generated-private/*.json
+generated-private/official-playtest/
 generated-private/nations.normalized.json
 generated-private/nation-import-report.json
 !generated-private/.gitkeep

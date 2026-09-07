@@ -20,6 +20,7 @@ export type ListedMatch = {
   isLocked: boolean;
   spectatingAllowed: boolean;
   privateDataLabel: PrivateDataLabel;
+  compatibility?: "compatible" | "incompatible" | "missing";
   setupSummary: {
     commonsSetId: string;
     enabledExpansions: string[];

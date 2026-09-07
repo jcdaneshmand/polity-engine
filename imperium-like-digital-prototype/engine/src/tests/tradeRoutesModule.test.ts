@@ -145,20 +145,20 @@ describe("trade routes module", () => {
     expect(G.log.at(-1)?.message).toBe("OptionalPending(incomplete_route/options=1)");
   });
 
-  it("trade spends Goods to gain Progress when enabled and no route is selected", () => {
+  it("trade spends Progress to gain Goods when enabled and no route is selected", () => {
     const G = createInitialGameState({ options: { playerCount:2, mode:"multiplayer", enabledExpansions:["trade_routes"], enabledVariants:[] } });
-    G.players["1"].resources.goods = 1;
-    G.players["1"].resources.knowledge = 0;
+    G.players["1"].resources.goods = 0;
+    G.players["1"].resources.knowledge = 1;
 
     const resolved = runEffects({ G, playerId:"1", enabledExpansions:["trade_routes"] }, [{ trigger:"on_play", op:"trade" } as any]);
 
     expect(resolved).toBe(true);
-    expect(G.players["1"].resources.goods).toBe(0);
-    expect(G.players["1"].resources.knowledge).toBe(1);
+    expect(G.players["1"].resources.goods).toBe(1);
+    expect(G.players["1"].resources.knowledge).toBe(0);
     expect(G.log.some((entry) => entry.message === "UnsupportedEffectOp(trade)")).toBe(false);
   });
 
-  it("pauses an immediate Trade Goods-for-Progress fallback before later text", () => {
+  it("pauses an immediate Trade Progress-for-Goods fallback before later text", () => {
     const G = createInitialGameState({ options: { playerCount:2, mode:"multiplayer", enabledExpansions:["trade_routes"], enabledVariants:[] } });
     G.cardDb.trade_source = {
       id: "trade_source",
@@ -183,12 +183,12 @@ describe("trade routes module", () => {
         op: "gain_resource",
         resource: "influence",
         amount: 1,
-        reactive: { trigger: "after_gain_resource", resource: "knowledge" }
+        reactive: { trigger: "after_gain_resource", resource: "goods" }
       } as any]
     };
     G.players["1"].playArea = ["trade_source", "progress_reactive_exhaust"];
-    G.players["1"].resources.goods = 1;
-    G.players["1"].resources.knowledge = 0;
+    G.players["1"].resources.goods = 0;
+    G.players["1"].resources.knowledge = 1;
     G.players["1"].resources.materials = 0;
     G.players["1"].resources.influence = 0;
     G.players["1"].exhaustTokensAvailable = 1;
@@ -199,8 +199,8 @@ describe("trade routes module", () => {
     ]);
 
     expect(resolved).toBe(true);
-    expect(G.players["1"].resources.goods).toBe(0);
-    expect(G.players["1"].resources.knowledge).toBe(1);
+    expect(G.players["1"].resources.goods).toBe(1);
+    expect(G.players["1"].resources.knowledge).toBe(0);
     expect(G.players["1"].resources.materials).toBe(0);
     expect(G.pendingReactiveExhaustChoice).toMatchObject({
       playerId: "1",
@@ -208,7 +208,7 @@ describe("trade routes module", () => {
       resolvingPlayerId: "1",
       sourceCardId: "trade_source",
       trigger: "after_gain_resource",
-      resource: "knowledge"
+      resource: "goods"
     });
 
     resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "1" } as any }, "progress_reactive_exhaust");
@@ -218,20 +218,20 @@ describe("trade routes module", () => {
     expect(G.players["1"].resources.materials).toBe(2);
   });
 
-  it("trade does not spend Goods when Progress supply makes fallback conversion impossible", () => {
+  it("trade does not spend Progress when Goods supply makes fallback conversion impossible", () => {
     const G = createInitialGameState({ options: { playerCount:2, mode:"multiplayer", enabledExpansions:["trade_routes"], enabledVariants:[] } });
-    G.players["1"].resources.goods = 1;
-    G.players["1"].resources.knowledge = 0;
-    G.resourceSupply = { knowledge: 0 };
+    G.players["1"].resources.goods = 0;
+    G.players["1"].resources.knowledge = 1;
+    G.resourceSupply = { goods: 0 };
 
     const resolved = runEffects({ G, playerId:"1", enabledExpansions:["trade_routes"] }, [{ trigger:"on_play", op:"trade" } as any]);
 
     expect(resolved).toBe(false);
-    expect(G.players["1"].resources.goods).toBe(1);
-    expect(G.players["1"].resources.knowledge).toBe(0);
+    expect(G.players["1"].resources.goods).toBe(0);
+    expect(G.players["1"].resources.knowledge).toBe(1);
   });
 
-  it("pauses after a Trade Goods-for-Progress fallback for reactive Exhaust before later text", () => {
+  it("pauses after a Trade Progress-for-Goods fallback for reactive Exhaust before later text", () => {
     const G = createInitialGameState({ options: { playerCount:2, mode:"multiplayer", enabledExpansions:["trade_routes"], enabledVariants:[] } });
     G.cardDb.trade_source = {
       id: "trade_source",
@@ -256,12 +256,12 @@ describe("trade routes module", () => {
         op: "gain_resource",
         resource: "influence",
         amount: 1,
-        reactive: { trigger: "after_gain_resource", resource: "knowledge" }
+        reactive: { trigger: "after_gain_resource", resource: "goods" }
       } as any]
     };
     G.players["1"].playArea = ["trade_source", "progress_reactive_exhaust"];
-    G.players["1"].resources.goods = 1;
-    G.players["1"].resources.knowledge = 0;
+    G.players["1"].resources.goods = 0;
+    G.players["1"].resources.knowledge = 1;
     G.players["1"].resources.materials = 0;
     G.players["1"].resources.influence = 0;
     G.players["1"].exhaustTokensAvailable = 1;
@@ -269,15 +269,15 @@ describe("trade routes module", () => {
       playerId: "1",
       sourceCardId: "trade_source",
       routeCardIds: [],
-      allowGoodsForProgress: true,
+      allowProgressForGoods: true,
       resumeEffects: [{ trigger: "on_play", op: "gain_resource", resource: "materials", amount: 2 } as any]
     };
 
     resolveTradeChoice({ G, ctx: { currentPlayer: "1" } as any });
 
     expect(G.pendingTradeChoice).toBeUndefined();
-    expect(G.players["1"].resources.goods).toBe(0);
-    expect(G.players["1"].resources.knowledge).toBe(1);
+    expect(G.players["1"].resources.goods).toBe(1);
+    expect(G.players["1"].resources.knowledge).toBe(0);
     expect(G.players["1"].resources.materials).toBe(0);
     expect(G.pendingReactiveExhaustChoice).toMatchObject({
       playerId: "1",
@@ -285,7 +285,7 @@ describe("trade routes module", () => {
       resolvingPlayerId: "1",
       sourceCardId: "trade_source",
       trigger: "after_gain_resource",
-      resource: "knowledge"
+      resource: "goods"
     });
 
     resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "1" } as any }, "progress_reactive_exhaust");
@@ -297,18 +297,18 @@ describe("trade routes module", () => {
 
   it("trade effects fall back to the game options expansion context", () => {
     const G = createInitialGameState({ options: { playerCount:2, mode:"multiplayer", enabledExpansions:["trade_routes"], enabledVariants:[] } });
-    G.players["1"].resources.goods = 1;
-    G.players["1"].resources.knowledge = 0;
+    G.players["1"].resources.goods = 0;
+    G.players["1"].resources.knowledge = 1;
 
     const resolved = runEffects({ G, playerId:"1" }, [{ trigger:"on_play", op:"trade" } as any]);
 
     expect(resolved).toBe(true);
-    expect(G.players["1"].resources.goods).toBe(0);
-    expect(G.players["1"].resources.knowledge).toBe(1);
+    expect(G.players["1"].resources.goods).toBe(1);
+    expect(G.players["1"].resources.knowledge).toBe(0);
     expect(G.log.some((entry) => entry.message === "Ignored trade because trade_routes is disabled.")).toBe(false);
   });
 
-  it("trade with available routes waits for the player to choose route Commerce or Goods for Progress", () => {
+  it("trade with available routes waits for the player to choose route Commerce or Progress for Goods", () => {
     const G = createInitialGameState({ options: { playerCount:2, mode:"multiplayer", enabledExpansions:["trade_routes"], enabledVariants:[] } });
     G.cardDb.own_route = {
       id: "own_route",
@@ -322,12 +322,13 @@ describe("trade routes module", () => {
     };
     G.players["1"].playArea = ["own_route"];
     G.players["1"].resources.goods = 1;
+    G.players["1"].resources.knowledge = 1;
     G.players["1"].resources.materials = 0;
 
     const resolved = runEffects({ G, playerId:"1", enabledExpansions:["trade_routes"] }, [{ trigger:"on_play", op:"trade" } as any]);
 
     expect(resolved).toBe(true);
-    expect(G.pendingTradeChoice).toEqual({ playerId: "1", routeCardIds: ["own_route"], allowGoodsForProgress: true });
+    expect(G.pendingTradeChoice).toEqual({ playerId: "1", routeCardIds: ["own_route"], allowProgressForGoods: true });
     expect(G.players["1"].resources.goods).toBe(1);
     expect(G.cardStates?.own_route?.resources?.goods).toBeUndefined();
   });
@@ -346,14 +347,14 @@ describe("trade routes module", () => {
     };
     G.players["1"].playArea = ["imported_route"];
     G.players["1"].resources.goods = 1;
-    G.players["1"].resources.knowledge = 0;
+    G.players["1"].resources.knowledge = 1;
 
     const resolved = runEffects({ G, playerId:"1", enabledExpansions:["trade_routes"] }, [{ trigger:"on_play", op:"trade" } as any]);
 
     expect(resolved).toBe(true);
-    expect(G.pendingTradeChoice).toEqual({ playerId: "1", routeCardIds: ["imported_route"], allowGoodsForProgress: true });
+    expect(G.pendingTradeChoice).toEqual({ playerId: "1", routeCardIds: ["imported_route"], allowProgressForGoods: true });
     expect(G.players["1"].resources.goods).toBe(1);
-    expect(G.players["1"].resources.knowledge).toBe(0);
+    expect(G.players["1"].resources.knowledge).toBe(1);
     expect(G.cardStates?.imported_route?.resources?.goods).toBeUndefined();
   });
 
@@ -382,7 +383,8 @@ describe("trade routes module", () => {
 
     expect(resolved).toBe(true);
     expect(G.pendingTradeChoice).toBeUndefined();
-    expect(G.players["1"].resources.knowledge).toBe(1);
+    expect(G.players["1"].resources.goods).toBe(1);
+    expect(G.players["1"].resources.knowledge).toBe(0);
     expect(G.cardStates?.opponent_route?.resources?.goods).toBe(1);
     expect(G.players["1"].resources.materials).toBe(2);
     expect(G.players["1"].resources.influence).toBe(1);
@@ -438,7 +440,7 @@ describe("trade routes module", () => {
     expect(G.log.at(-1)?.message).toBe("InvalidMove(resolveTradeChoice): trade_choice_failed(own_route)");
   });
 
-  it("resolving an opponent Trade route choice adds Goods from supply, gains Progress, and resolves Commerce for the active player", () => {
+  it("resolving an opponent Trade route choice adds Goods to the route and trader, then resolves Commerce", () => {
     const G = createInitialGameState({ options: { playerCount:2, mode:"multiplayer", enabledExpansions:["trade_routes"], enabledVariants:[] } });
     G.cardDb.opponent_route = {
       id: "opponent_route",
@@ -460,14 +462,14 @@ describe("trade routes module", () => {
     resolveTradeChoice({ G, ctx: { currentPlayer: "1" } as any }, "opponent_route");
 
     expect(G.pendingTradeChoice).toBeUndefined();
-    expect(G.players["1"].resources.goods).toBe(0);
-    expect(G.players["1"].resources.knowledge).toBe(1);
+    expect(G.players["1"].resources.goods).toBe(1);
+    expect(G.players["1"].resources.knowledge).toBe(0);
     expect(G.cardStates?.opponent_route?.resources?.goods).toBe(1);
     expect(G.players["1"].resources.materials).toBe(2);
     expect(G.players["2"].resources.materials).toBe(0);
   });
 
-  it("pauses after an opponent Trade route Progress reward for reactive Exhaust before Commerce", () => {
+  it("pauses after an opponent Trade route Goods reward for reactive Exhaust before Commerce", () => {
     const G = createInitialGameState({ options: { playerCount:2, mode:"multiplayer", enabledExpansions:["trade_routes"], enabledVariants:[] } });
     G.cardDb.opponent_route = {
       id: "opponent_route",
@@ -492,11 +494,12 @@ describe("trade routes module", () => {
         op: "gain_resource",
         resource: "influence",
         amount: 1,
-        reactive: { trigger: "after_gain_resource", resource: "knowledge" }
+        reactive: { trigger: "after_gain_resource", resource: "goods" }
       } as any]
     };
     G.players["1"].playArea = ["progress_reactive_exhaust"];
     G.players["2"].playArea = ["opponent_route"];
+    G.players["1"].resources.goods = 0;
     G.players["1"].resources.knowledge = 0;
     G.players["1"].resources.materials = 0;
     G.players["1"].resources.influence = 0;
@@ -506,7 +509,8 @@ describe("trade routes module", () => {
     resolveTradeChoice({ G, ctx: { currentPlayer: "1" } as any }, "opponent_route");
 
     expect(G.pendingTradeChoice).toBeUndefined();
-    expect(G.players["1"].resources.knowledge).toBe(1);
+    expect(G.players["1"].resources.goods).toBe(1);
+    expect(G.players["1"].resources.knowledge).toBe(0);
     expect(G.players["1"].resources.materials).toBe(0);
     expect(G.pendingReactiveExhaustChoice).toMatchObject({
       playerId: "1",
@@ -514,7 +518,7 @@ describe("trade routes module", () => {
       resolvingPlayerId: "1",
       sourceCardId: "opponent_route",
       trigger: "after_gain_resource",
-      resource: "knowledge"
+      resource: "goods"
     });
 
     resolveReactiveExhaustChoice({ G, ctx: { currentPlayer: "1" } as any }, "progress_reactive_exhaust");

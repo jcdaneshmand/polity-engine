@@ -17,9 +17,17 @@ const packageJson = JSON.parse(fs.readFileSync(path.join(workspaceRoot, "package
 const scripts = packageJson.scripts as Record<string, string>;
 
 describe("private final gate scripts", () => {
+  it("keeps the improvements gate wired to rules, browser, accessibility, and asset proof", () => {
+    expect(scripts["verify:improvements"]).toBe("npm run test:release && npm run verify:pre-private && npm run qa:accessibility && node ../scripts/check-asset-budget.mjs");
+    expect(scripts["verify:improvements"]).toContain("npm run verify:pre-private");
+    expect(scripts["verify:improvements"]).toContain("npm run qa:accessibility");
+    expect(scripts["verify:improvements"].endsWith("node ../scripts/check-asset-budget.mjs")).toBe(true);
+  });
+
   it("keeps verify:pre-private as the public-safe pre-private gate", () => {
-    expect(scripts["verify:pre-private"]).toBe("npm run test:local-qa-scripts && npm run typecheck && npm run test -w app && npm run test -w server && npm run private:status && npm run smoke:fictional-game && npm run smoke:multiplayer && npm run qa:local-browser");
-    expect(scripts["verify:pre-private"].startsWith("npm run test:local-qa-scripts")).toBe(true);
+    expect(scripts["verify:rules"]).toBe("npm run test -w engine && npm run audit:rules");
+    expect(scripts["verify:pre-private"]).toBe("npm run verify:rules && npm run test:local-qa-scripts && npm run typecheck && npm run test -w app && npm run test -w server && npm run private:status && npm run smoke:fictional-game && npm run smoke:multiplayer && npm run qa:local-browser");
+    expect(scripts["verify:pre-private"].startsWith("npm run verify:rules && npm run test:local-qa-scripts")).toBe(true);
     expect(scripts["verify:pre-private"]).toContain("&& npm run typecheck &&");
     expect(scripts["verify:pre-private"]).toContain("&& npm run test -w app &&");
     expect(scripts["verify:pre-private"]).toContain("&& npm run test -w server &&");

@@ -170,7 +170,8 @@ describe("trade_routes expansion toggle", () => {
       effects: [{ trigger: "on_play", op: "trade" } as any]
     };
     G.players["1"].hand = ["trade_action"];
-    G.players["1"].resources.goods = 1;
+    G.players["1"].resources.goods = 0;
+    G.players["1"].resources.knowledge = 1;
     G.players["1"].actionsRemaining = 1;
     G.players["1"].actionTokensAvailable = 1;
     Object.values(G.players).forEach((player) => {
@@ -181,9 +182,9 @@ describe("trade_routes expansion toggle", () => {
 
     expect(G.log.some((entry) => entry.message.includes("Ignored trade"))).toBe(false);
     expect(G.log.some((entry) => entry.message === "UnsupportedEffectOp(trade)")).toBe(false);
-    expect(G.log.some((entry) => entry.message === "TradeResolved(goods_to_progress)")).toBe(true);
-    expect(G.players["1"].resources.goods).toBe(0);
-    expect(G.players["1"].resources.knowledge).toBe(1);
+    expect(G.log.some((entry) => entry.message === "TradeResolved(progress_to_goods)")).toBe(true);
+    expect(G.players["1"].resources.goods).toBe(1);
+    expect(G.players["1"].resources.knowledge).toBe(0);
   });
 
   it("exhausted card effects receive the enabled trade_routes expansion context", () => {
@@ -199,7 +200,8 @@ describe("trade_routes expansion toggle", () => {
       effects: [{ trigger: "on_exhaust", op: "trade" } as any]
     };
     G.players["1"].playArea = ["trade_exhaust"];
-    G.players["1"].resources.goods = 1;
+    G.players["1"].resources.goods = 0;
+    G.players["1"].resources.knowledge = 1;
     G.players["1"].exhaustTokensAvailable = 1;
     Object.values(G.players).forEach((player) => {
       if (player !== G.players["1"]) player.playArea = [];
@@ -209,9 +211,9 @@ describe("trade_routes expansion toggle", () => {
 
     expect(G.log.some((entry) => entry.message.includes("Ignored trade"))).toBe(false);
     expect(G.log.some((entry) => entry.message === "UnsupportedEffectOp(trade)")).toBe(false);
-    expect(G.log.some((entry) => entry.message === "TradeResolved(goods_to_progress)")).toBe(true);
-    expect(G.players["1"].resources.goods).toBe(0);
-    expect(G.players["1"].resources.knowledge).toBe(1);
+    expect(G.log.some((entry) => entry.message === "TradeResolved(progress_to_goods)")).toBe(true);
+    expect(G.players["1"].resources.goods).toBe(1);
+    expect(G.players["1"].resources.knowledge).toBe(0);
     expect(G.players["1"].exhaustTokensAvailable).toBe(0);
   });
 });

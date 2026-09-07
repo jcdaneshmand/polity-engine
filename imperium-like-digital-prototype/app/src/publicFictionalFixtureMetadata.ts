@@ -1,0 +1,1 @@
+export const PUBLIC_FICTIONAL_FIXTURE_VERSION = 3;

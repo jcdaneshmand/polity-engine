@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -60,11 +60,19 @@ export function redactBrowserQAResult(result) {
     viewportQa: result.viewportQa,
     saveResumeChecked: result.saveResumeChecked,
     invalidSaveChecked: result.invalidSaveChecked,
+    recoveryLibraryChecked: result.recoveryLibraryChecked,
+    recoveryLibrary: result.recoveryLibrary,
     noPrivateDebugMarkers: result.noPrivateDebugMarkers
   };
   if (result.customCommonsSetupChecked !== undefined) redacted.customCommonsSetupChecked = result.customCommonsSetupChecked;
   if (result.customCommonsSetup !== undefined) redacted.customCommonsSetup = result.customCommonsSetup;
+  if (result.setupPresetsChecked !== undefined) redacted.setupPresetsChecked = result.setupPresetsChecked;
+  if (result.setupPresets !== undefined) redacted.setupPresets = result.setupPresets;
   if (result.frontendCommitChecked !== undefined) redacted.frontendCommitChecked = result.frontendCommitChecked;
+  if (result.fictionalPlaythroughChecked !== undefined) redacted.fictionalPlaythroughChecked = result.fictionalPlaythroughChecked;
+  if (result.fictionalPlaythrough !== undefined) redacted.fictionalPlaythrough = result.fictionalPlaythrough;
+  if (result.orderComposerChecked !== undefined) redacted.orderComposerChecked = result.orderComposerChecked;
+  if (result.orderComposer !== undefined) redacted.orderComposer = result.orderComposer;
   return redacted;
 }
 
@@ -490,6 +498,78 @@ async function assertSetupRecoveryExpectations(page, label) {
   return snapshot;
 }
 
+async function assertSaveLibraryRecovery(page) {
+  const mixedRaw = await page.evaluate(() => {
+    const key = "polity-engine.saveLibrary.v2";
+    const parsed = JSON.parse(localStorage.getItem(key));
+    const source = parsed.slots[0];
+    if (!source) throw new Error("Browser QA needs one healthy save slot before recovery checks.");
+    const legacy = JSON.parse(JSON.stringify(source));
+    legacy.id = "qa-legacy-slot";
+    legacy.envelope.metadata.slotName = "QA Legacy Recovery";
+    legacy.envelope.rulesVersion = 2;
+    legacy.envelope.state.G.rulesVersion = 2;
+    const corrupt = {
+      id: "qa-corrupt-slot",
+      envelope: {
+        version: 1,
+        stateVersion: 1,
+        rulesVersion: source.envelope.rulesVersion,
+        savedAtIso: "not-a-date",
+        privateDataFingerprint: "placeholder",
+        metadata: { slotName: "QA Corrupt Recovery" },
+        state: source.envelope.state
+      }
+    };
+    const raw = JSON.stringify({ ...parsed, revision: parsed.revision + 1, slots: [...parsed.slots, legacy, corrupt] });
+    localStorage.setItem(key, raw);
+    return raw;
+  });
+  await page.reload();
+  const library = page.locator('[data-qa="save-library"]');
+  await library.waitFor();
+  const healthyCount = await library.locator('[data-qa="save-slot"]').count();
+  const recoverable = library.locator('[data-qa="recoverable-save-slot"]');
+  if (healthyCount < 1) throw new Error("A recoverable slot hid every healthy save.");
+  if (await recoverable.count() !== 2) throw new Error("Mixed save library did not expose both recoverable slots.");
+  await library.getByText("QA Legacy Recovery", { exact: true }).waitFor();
+  await library.getByText("QA Corrupt Recovery", { exact: true }).waitFor();
+
+  const rawDownloadPromise = page.waitForEvent("download");
+  await library.getByRole("button", { name: "Export Raw Library", exact: true }).click();
+  const rawDownload = await rawDownloadPromise;
+  const rawDownloadPath = await rawDownload.path();
+  if (!rawDownloadPath || await readFile(rawDownloadPath, "utf8") !== mixedRaw) throw new Error("Raw save-library export did not preserve exact source bytes.");
+
+  const legacyRow = recoverable.filter({ hasText: "QA Legacy Recovery" });
+  const legacyDownloadPromise = page.waitForEvent("download");
+  await legacyRow.getByRole("button", { name: "Export Stored Slot", exact: true }).click();
+  const legacyDownload = await legacyDownloadPromise;
+  const legacyDownloadPath = await legacyDownload.path();
+  if (!legacyDownloadPath) throw new Error("Reconstructed legacy slot export did not produce a download.");
+  const reconstructed = JSON.parse(await readFile(legacyDownloadPath, "utf8"));
+  if (reconstructed.envelope?.rulesVersion !== 2 || reconstructed.envelope?.state?.G?.rulesVersion !== 2) {
+    throw new Error("Reconstructed legacy slot export was relabeled as current.");
+  }
+
+  const malformedRaw = '{"version":2,"stateVersion":1,"revision":7,"slots":[';
+  await page.evaluate((raw) => localStorage.setItem("polity-engine.saveLibrary.v2", raw), malformedRaw);
+  await page.reload();
+  const reset = page.getByRole("button", { name: "Back Up and Reset Library", exact: true });
+  await reset.waitFor();
+  page.once("dialog", (dialog) => dialog.accept());
+  await reset.click();
+  await page.getByText("Unreadable library backed up and reset.", { exact: true }).waitFor();
+  const resetState = await page.evaluate(() => ({
+    current: localStorage.getItem("polity-engine.saveLibrary.v2"),
+    backup: localStorage.getItem("polity-engine.saveLibrary.recovery-backup.v1")
+  }));
+  if (resetState.current !== null) throw new Error("Malformed library remained active after confirmed reset.");
+  if (resetState.backup !== malformedRaw) throw new Error("Malformed library reset did not preserve exact recovery bytes.");
+
+  return { healthySlotsBesideRecoverable: healthyCount, recoverableSlots: 2, rawBackupExact: true };
+}
+
 async function privateDataSetupSnapshot(page) {
   const setup = page.locator('[data-qa="private-data-setup"]');
   const readinessItems = page.locator('[data-qa="private-data-readiness-item"]');
@@ -503,6 +583,83 @@ async function privateDataSetupSnapshot(page) {
     readinessIds: await readinessItems.evaluateAll((items) => items.map((item) => item.getAttribute("data-readiness-id") ?? "")).catch(() => []),
     readinessStatuses: await readinessItems.evaluateAll((items) => items.map((item) => item.getAttribute("data-readiness-status") ?? "")).catch(() => [])
   };
+}
+
+async function openAdvancedSetup(page) {
+  const openButton = page.getByRole("button", { name: "Advanced Setup", exact: true });
+  const closeButton = page.getByRole("button", { name: "Hide Advanced Setup", exact: true });
+  if (await closeButton.isVisible().catch(() => false)) return;
+  await openButton.waitFor();
+  await openButton.click();
+  await closeButton.waitFor();
+}
+
+async function assertWholeSetupPresets(page) {
+  const presets = page.locator('[data-qa="setup-presets"]');
+  if (await presets.getAttribute("open") === null) await presets.locator(":scope > summary").click();
+  await presets.getByLabel("Preset name", { exact: true }).fill("QA Whole Setup");
+  await presets.getByRole("button", { name: "Save Setup", exact: true }).click();
+  await presets.getByText("Setup preset saved.", { exact: true }).waitFor();
+
+  await page.getByRole("button", { name: "3", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Trade Module", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Quick Setup", exact: true }).click();
+  await presets.getByText(/setting groups will change/).waitFor();
+  await presets.getByRole("button", { name: "Apply Preset", exact: true }).click();
+  await presets.getByText("Setup preset applied.", { exact: true }).waitFor();
+  if (!String(await page.getByRole("button", { name: "2", exact: true }).getAttribute("class")).includes("is-active")) throw new Error("Whole-setup preset did not restore player count.");
+  if (await page.getByRole("checkbox", { name: "Trade Module", exact: true }).isChecked()) throw new Error("Whole-setup preset did not restore expansions.");
+  if (await page.getByRole("checkbox", { name: "Quick Setup", exact: true }).isChecked()) throw new Error("Whole-setup preset did not restore variants.");
+
+  await presets.getByText("Manage Presets", { exact: true }).click();
+  const downloadPromise = page.waitForEvent("download");
+  await presets.getByRole("button", { name: "Export", exact: true }).click();
+  const download = await downloadPromise;
+  const downloadPath = await download.path();
+  if (!downloadPath) throw new Error("Whole-setup preset export did not produce a file.");
+  const exportedRaw = await readFile(downloadPath, "utf8");
+  const exported = JSON.parse(exportedRaw);
+  if (exported.settings?.playerCount !== 2 || exported.settings?.mode !== "multiplayer") throw new Error("Whole-setup preset export lost setup fields.");
+  for (const forbidden of ["privateData", "credentials", "accountID", "matchID", "campaignProgress", "state"]) {
+    if (exportedRaw.includes(forbidden)) throw new Error(`Whole-setup preset export contains forbidden field ${forbidden}.`);
+  }
+  const setupSelect = presets.locator("select").first();
+  const beforeImportCount = await setupSelect.locator("option").count();
+  await presets.getByLabel("Import", { exact: true }).setInputFiles(downloadPath);
+  await page.waitForTimeout(750);
+  const afterImportCount = await setupSelect.locator("option").count();
+  if (afterImportCount !== beforeImportCount + 1) {
+    const statusText = await presets.getByRole("status").innerText().catch(() => "no status");
+    throw new Error(`Whole-setup preset import did not add a separate preset identity (${beforeImportCount} to ${afterImportCount}): ${statusText}`);
+  }
+
+  await presets.getByLabel("Preset name", { exact: true }).fill("QA Imported Setup");
+  await presets.getByRole("button", { name: "Rename", exact: true }).click();
+  await presets.getByText("Setup preset renamed.", { exact: true }).waitFor();
+  await presets.getByRole("button", { name: "Duplicate", exact: true }).click();
+  await presets.getByText("Setup preset saved.", { exact: true }).waitFor();
+  page.once("dialog", (dialog) => dialog.accept());
+  await presets.getByRole("button", { name: "Replace", exact: true }).click();
+  await presets.getByText("Setup preset replaced.", { exact: true }).waitFor();
+  page.once("dialog", (dialog) => dialog.accept());
+  await presets.getByRole("button", { name: "Delete", exact: true }).click();
+  await presets.getByText("Setup preset deleted.", { exact: true }).waitFor();
+
+  const newerRaw = await page.evaluate(() => {
+    const key = "polity-engine.setupPresets.v1";
+    const value = JSON.parse(localStorage.getItem(key));
+    value.revision += 1;
+    const raw = JSON.stringify(value);
+    localStorage.setItem(key, raw);
+    return raw;
+  });
+  await presets.getByLabel("Preset name", { exact: true }).fill("QA Stale Write");
+  await presets.getByRole("button", { name: "Save Setup", exact: true }).click();
+  await presets.getByText("Setup presets changed in another tab. Refresh and retry.", { exact: true }).waitFor();
+  const afterRejectedWrite = await page.evaluate(() => localStorage.getItem("polity-engine.setupPresets.v1"));
+  if (afterRejectedWrite !== newerRaw) throw new Error("Rejected stale setup-preset write changed the newer library.");
+  await presets.getByRole("button", { name: "Refresh", exact: true }).click();
+  return { exportedFieldsChecked: true, imported: true, staleWritePreserved: true };
 }
 
 async function assertPrivateDataSetupExpectations(page, label) {
@@ -566,16 +723,21 @@ async function assertApplyablePrivateUploadPreview(page) {
     await applyButton.click();
     const confirmedSnapshot = await assertPrivateDataSetupExpectations(page, "confirmed private upload preview");
     if (confirmedSnapshot.state !== "confirmed") throw new Error(`Expected confirmed private-data setup state, received ${confirmedSnapshot.state ?? "missing"}.`);
-    await page.getByLabel("Commons set").selectOption("custom");
+    for (const label of ["Classics", "Legends", "Horizons"]) {
+      if (!(await page.getByRole("button", { name: new RegExp(`^${label}\\b`) }).isVisible())) throw new Error(`Commons quick choice ${label} is not visible.`);
+    }
+    if (!(await page.getByRole("button", { name: "Advanced", exact: true }).isVisible())) throw new Error("Commons quick choice Advanced is not visible.");
+    await page.getByRole("button", { name: "Advanced", exact: true }).click();
     const customCommons = page.locator('[data-qa="custom-commons-setup"]');
     await customCommons.waitFor();
     const customCommonsCount = await customCommons.getAttribute("data-custom-commons-count");
     const customCommonsAvailable = await customCommons.getAttribute("data-custom-commons-available");
     if (customCommonsAvailable !== "2") throw new Error(`Expected 2 custom Commons cards after fictional private upload, received ${customCommonsAvailable ?? "missing"}.`);
     if (customCommonsCount !== "0") throw new Error(`Expected custom Commons selection to start empty, received ${customCommonsCount ?? "missing"}.`);
-    await page.getByRole("button", { name: "Select All" }).click();
+    await page.getByRole("button", { name: "Select Shown" }).click();
     const selectedCount = await customCommons.getAttribute("data-custom-commons-count");
-    if (selectedCount !== "2") throw new Error(`Expected Select All to choose 2 custom Commons cards, received ${selectedCount ?? "missing"}.`);
+    if (selectedCount !== "2") throw new Error(`Expected Select Shown to choose 2 custom Commons cards, received ${selectedCount ?? "missing"}.`);
+    await page.getByText("Saved pools", { exact: true }).click();
     const presets = page.locator('[data-qa="commons-presets"]');
     await presets.getByLabel("Preset name", { exact: true }).fill("QA Commons");
     await presets.getByRole("button", { name: "Save Preset", exact: true }).click();
@@ -584,7 +746,7 @@ async function assertApplyablePrivateUploadPreview(page) {
     const presetImport = presets.getByLabel("Import Preset", { exact: true });
     await presetImport.focus();
     if (!await presetImport.evaluate((input) => input === document.activeElement && input.getClientRects().length > 0)) throw new Error("Preset import is not keyboard accessible");
-    await page.getByRole("button", { name: "Clear", exact: true }).click();
+    await page.getByRole("button", { name: "Clear Shown", exact: true }).click();
     if (!await page.getByRole("button", { name: "Start Game", exact: true }).isDisabled()) throw new Error("Empty custom Commons should block launch");
     await presets.getByLabel("Commons preset", { exact: true }).selectOption({ label: "QA Commons" });
     await presets.getByRole("button", { name: "Load Preset", exact: true }).click();
@@ -612,8 +774,13 @@ async function assertLocalSetupAndBoard(baseURL, browser, expectedCommit) {
   const page = await context.newPage();
   await page.goto(baseURL);
   await page.getByText("Polity Engine").first().waitFor();
+  const setupPanel = page.locator(".setup-panel");
+  await setupPanel.waitFor();
+  if (await setupPanel.getAttribute("data-setup-mode") !== "basic") throw new Error("New-game setup did not begin in Basic mode.");
   const status = page.locator('[data-qa="local-playtest-status"]');
-  await status.waitFor();
+  await status.waitFor({ state: "attached" });
+  if (await status.isVisible()) throw new Error("Playtest diagnostics should be hidden in Basic setup.");
+  await openAdvancedSetup(page);
   const statusSnapshot = {
     statusVisible: await status.isVisible().catch(() => false),
     dataMode: await status.getAttribute("data-data-mode").catch(() => undefined),
@@ -631,9 +798,11 @@ async function assertLocalSetupAndBoard(baseURL, browser, expectedCommit) {
   if (dataMode !== "placeholder") throw new Error(`Expected placeholder setup data mode, received ${dataMode ?? "missing"}.`);
   if (hosting !== "active") throw new Error(`Expected public hosting to be marked active, received ${hosting ?? "missing"}.`);
   await assertSetupRecoveryExpectations(page, "initial setup");
+  const setupPresets = await assertWholeSetupPresets(page);
   await assertFatalPrivateUploadPreview(page);
   await page.reload();
   await page.getByText("Polity Engine").first().waitFor();
+  await openAdvancedSetup(page);
   await assertPrivateDataSetupExpectations(page, "reloaded after fatal private upload preview");
   await assertApplyablePrivateUploadPreview(page);
   await page.reload();
@@ -689,6 +858,7 @@ async function assertLocalSetupAndBoard(baseURL, browser, expectedCommit) {
   await page.reload();
   await page.getByText("Saved local game could not be loaded").waitFor();
   await assertSetupRecoveryExpectations(page, "corrupt autosave");
+  const recoveryLibrary = await assertSaveLibraryRecovery(page);
   await context.close();
   return {
     privateUploadPreview: {
@@ -696,10 +866,103 @@ async function assertLocalSetupAndBoard(baseURL, browser, expectedCommit) {
       applyable: "confirmed"
     },
     customCommonsSetup: {
+      quickChoices: ["classics", "legends", "horizons", "advanced"],
       available: 2,
-      selectedAfterSelectAll: 2
-    }
+      selectedAfterSelectShown: 2
+    },
+    setupPresets,
+    recoveryLibrary
   };
+}
+
+async function assertFictionalBrowserPlaythrough(baseURL, browser) {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  try {
+    const page = await context.newPage();
+    await page.goto(baseURL);
+    await openAdvancedSetup(page);
+    await page.getByRole("button", { name: "Load Fictional Playtest Set", exact: true }).click();
+    const fictionalSetup = page.locator('[data-qa="fictional-playtest-setup"]');
+    if (await fictionalSetup.getAttribute("data-loaded") !== "true") throw new Error("Fictional playtest set did not report loaded state.");
+    if (!await page.getByRole("region", { name: "Launch Summary" }).getByText("Fictional playtest set v3", { exact: true }).isVisible()) throw new Error("Fictional playtest set is not explicitly labeled in the launch summary.");
+    const privateSetup = page.locator('[data-qa="private-data-setup"]');
+    if (await privateSetup.getAttribute("data-private-data-state") !== "empty") throw new Error("Public fictional data was misclassified as a private import.");
+    const nationSelects = page.locator(".nation-grid select");
+    await nationSelects.nth(0).selectOption("fixture_nation_collapsers");
+    await nationSelects.nth(1).selectOption("fixture_nation_collapsers");
+    await page.getByRole("button", { name: "Start Game", exact: true }).click();
+    await page.locator(".board-layout").waitFor();
+    await page.getByRole("button", { name: /Last-Straw Assembly - selectable/ }).click();
+    const details = page.locator('[data-qa="card-detail-panel"]');
+    if (!await details.getByText(/Implemented:\s+Yes/).isVisible()) throw new Error("Fictional card implementation status is missing.");
+    if (!await details.getByText(/Tested:\s+Yes/).isVisible()) throw new Error("Fictional card test status is missing.");
+    await page.getByRole("button", { name: /Play Card/ }).click();
+    await page.getByRole("heading", { name: "Winner: Player 2", exact: true }).waitFor();
+    const gameLog = await page.locator('[data-qa="game-log"]').innerText().catch(() => page.locator("body").innerText());
+    if (!gameLog.includes("Collapse complete. Winner: Player 2.")) throw new Error("Fictional browser game did not expose its Collapse result.");
+    if (gameLog.includes("Gained 5 Materials")) throw new Error("A trailing fictional effect resolved after immediate Collapse.");
+    await assertNoPrivateDebugMarkers(page);
+    return { scenarioId: "F06", winner: "2", scores: { "1": 1, "2": 0 }, terminalReason: "collapse:unrest_pile_empty" };
+  } finally {
+    await context.close();
+  }
+}
+
+async function assertOrderComposerBrowser(baseURL, browser) {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  try {
+    const page = await context.newPage();
+    await page.goto(baseURL);
+    await page.getByRole("button", { name: "Start Game", exact: true }).click();
+    await page.locator(".board-layout").waitFor();
+    await page.waitForFunction(() => Boolean(localStorage.getItem("polity-engine.localGame.v1")));
+    const fixture = await page.evaluate(() => {
+      const raw = localStorage.getItem("polity-engine.localGame.v1");
+      if (!raw) throw new Error("Missing local autosave for order composer fixture.");
+      const envelope = JSON.parse(raw);
+      const state = envelope.state;
+      const G = state.G;
+      const seat = String(state.ctx.currentPlayer ?? "0");
+      const playerId = G.playOrder?.[Number(seat)] ?? seat;
+      const cardIds = Object.keys(G.cardDb ?? {}).slice(0, 12);
+      while (cardIds.length < 12) {
+        const id = `qa_order_card_${cardIds.length + 1}`;
+        G.cardDb[id] = { id, displayName: `QA Order Card ${cardIds.length + 1}`, type: "action", cardType: "action", suit: "none", cost: 0, vp: 0, tags: [], effects: [], implemented: true, tested: true };
+        cardIds.push(id);
+      }
+      for (const key of Object.keys(G)) if (key.startsWith("pending")) delete G[key];
+      G.gameover = undefined;
+      G.scoring = undefined;
+      G.players[playerId].deck = [...cardIds, ...(G.players[playerId].deck ?? [])];
+      G.lookedCards = { playerId, source: "deck", cardIds: [...cardIds] };
+      G.pendingLookOrderChoice = { playerId, source: "deck", cardIds: [...cardIds] };
+      localStorage.setItem("polity-engine.localGame.v1", JSON.stringify(envelope));
+      return { playerId, firstCardName: G.cardDb[cardIds[0]]?.displayName ?? cardIds[0], lastCardName: G.cardDb[cardIds[11]]?.displayName ?? cardIds[11] };
+    });
+    await page.reload();
+    const resume = page.getByRole("button", { name: "Resume Saved Game", exact: true });
+    if (await resume.isVisible().catch(() => false)) await resume.click();
+    await page.locator(".board-layout").waitFor();
+    const panel = page.locator('[data-qa="order-choice-panel"]');
+    await panel.waitFor();
+    if (await panel.getAttribute("data-order-size") !== "12") throw new Error("12-card order composer did not restore from the synthetic save.");
+    if (await panel.locator(".order-choice-list li").count() !== 12) throw new Error("12-card order composer truncated its list.");
+    if (await panel.locator(".order-choice-controls button").count() !== 24) throw new Error("12-card order composer did not render bounded move controls.");
+
+    const lastMoveUp = panel.getByRole("button", { name: `Move ${fixture.lastCardName} up`, exact: true });
+    await lastMoveUp.focus();
+    await page.keyboard.press("Enter");
+    if (!(await panel.locator(".order-choice-list li").nth(10).innerText()).includes(fixture.lastCardName)) throw new Error("Keyboard confirmation did not move the final order item up.");
+    await page.keyboard.press("Escape");
+    if (!(await panel.locator(".order-choice-list li").last().innerText()).includes(fixture.lastCardName)) throw new Error("Escape did not reset the composed order.");
+    await panel.getByRole("button", { name: "Return in this order", exact: true }).click();
+    await panel.waitFor({ state: "hidden" });
+    const log = await page.locator('[data-qa="game-log"]').innerText();
+    if (log.includes("Invalid Move")) throw new Error("Engine rejected the validated 12-card order submission.");
+    return { size: 12, moveControls: 24, keyboardMove: true, keyboardReset: true, submitted: true, playerId: fixture.playerId };
+  } finally {
+    await context.close();
+  }
 }
 
 async function visiblePendingTitle(page) {
@@ -1170,10 +1433,13 @@ async function assertAutomatedMultiplayerSelfPlay({ hostPage, guestPage, artifac
 async function assertViewportQA(baseURL, browser, artifactRoot) {
   const viewports = [
     { label: "desktop", width: 1440, height: 900 },
+    { label: "wide-desktop", width: 1920, height: 1080 },
     { label: "steam-deck", width: 1280, height: 800 },
     { label: "narrow-tablet", width: 760, height: 900 },
+    { label: "small-phone", width: 360, height: 800 },
     { label: "iphone-portrait", width: 390, height: 844 },
-    { label: "iphone-landscape", width: 844, height: 390 }
+    { label: "iphone-landscape", width: 844, height: 390 },
+    { label: "enlarged-text", width: 1920, height: 1080, rootFontSize: "200%" }
   ];
   const checked = [];
 
@@ -1182,6 +1448,35 @@ async function assertViewportQA(baseURL, browser, artifactRoot) {
     const page = await context.newPage();
     await page.goto(baseURL);
     await page.getByText("Polity Engine").first().waitFor();
+    await page.locator(".setup-panel").waitFor();
+    if (viewport.rootFontSize) await page.evaluate((fontSize) => { document.documentElement.style.fontSize = fontSize; }, viewport.rootFontSize);
+    const setupSnapshot = await page.evaluate(() => {
+      const panel = document.querySelector(".setup-panel");
+      const start = Array.from(document.querySelectorAll("button")).find((button) => button.textContent?.trim() === "Start Game");
+      const startRect = start?.getBoundingClientRect();
+      const optionalSelectors = [
+        '[data-qa="local-playtest-status"]',
+        '[data-qa="fictional-playtest-setup"]',
+        '[data-qa="private-data-setup"]'
+      ];
+      return {
+        mode: panel?.getAttribute("data-setup-mode"),
+        horizontalOverflow: document.body.scrollWidth > window.innerWidth + 2,
+        startVisible: Boolean(startRect && startRect.width > 0 && startRect.height > 0),
+        advancedVisible: optionalSelectors.some((selector) => {
+          const rect = document.querySelector(selector)?.getBoundingClientRect();
+          return Boolean(rect && rect.width > 0 && rect.height > 0);
+        }),
+        clippedButtons: Array.from(document.querySelectorAll("button"))
+          .filter((button) => button.scrollWidth > button.clientWidth + 2)
+          .map((button) => button.textContent?.trim() || button.getAttribute("aria-label") || "unnamed")
+      };
+    });
+    if (setupSnapshot.mode !== "basic") throw new Error(`Viewport ${viewport.label} did not begin in Basic setup.`);
+    if (setupSnapshot.horizontalOverflow) throw new Error(`Basic setup overflows horizontally at viewport ${viewport.label}.`);
+    if (!setupSnapshot.startVisible) throw new Error(`Start Game is not reachable at viewport ${viewport.label}.`);
+    if (setupSnapshot.advancedVisible) throw new Error(`Advanced-only controls are visible in Basic setup at viewport ${viewport.label}.`);
+    if (setupSnapshot.clippedButtons.length > 0) throw new Error(`Setup button(s) clip at viewport ${viewport.label}: ${setupSnapshot.clippedButtons.join(", ")}.`);
     await page.getByRole("button", { name: "Start Game" }).click();
     await page.locator(".board-layout").waitFor();
     await assertPlayerExpectations(page, [], `viewport ${viewport.label}`, "viewport", artifactRoot);
@@ -1299,6 +1594,8 @@ export async function runBrowserQA(config = buildBrowserQAConfig()) {
 
     browser = await chromium.launch({ headless: config.headless });
     if (["127.0.0.1", "localhost"].includes(new URL(config.baseURL).hostname)) await assertDeferredLoading(config.baseURL, browser);
+    const fictionalPlaythrough = await assertFictionalBrowserPlaythrough(config.baseURL, browser);
+    const orderComposer = await assertOrderComposerBrowser(config.baseURL, browser);
     const setupBoardResult = await assertLocalSetupAndBoard(config.baseURL, browser, config.expectedCommit);
     const workedTurnTrace = await assertWorkedTurnScenario(config.baseURL, browser, config.storagePath);
     const practiceTrace = await assertAutomatedLocalGameplay(config.baseURL, browser, { mode: "practice", steps: 48, artifactRoot: config.storagePath });
@@ -1346,6 +1643,7 @@ export async function runBrowserQA(config = buildBrowserQAConfig()) {
 
     await hostPage.reload();
     await guestPage.reload();
+    await Promise.all([openAdvancedSetup(hostPage), openAdvancedSetup(guestPage)]);
     await hostPage.getByRole("button", { name: "Continue as Guest" }).click();
     await guestPage.getByRole("button", { name: "Continue as Guest" }).click();
     await hostPage.getByRole("heading", { name: "Online Games" }).waitFor();
@@ -1370,7 +1668,13 @@ export async function runBrowserQA(config = buildBrowserQAConfig()) {
       privateUploadPreview: setupBoardResult.privateUploadPreview,
       customCommonsSetupChecked: true,
       customCommonsSetup: setupBoardResult.customCommonsSetup,
+      setupPresetsChecked: true,
+      setupPresets: setupBoardResult.setupPresets,
       localBoardChecked: true,
+      fictionalPlaythroughChecked: true,
+      fictionalPlaythrough,
+      orderComposerChecked: true,
+      orderComposer,
       ...(config.expectedCommit ? { frontendCommitChecked: true } : {}),
       automatedLocalGameplayChecked: true,
       automatedLocalGameplayModes: {
@@ -1385,6 +1689,8 @@ export async function runBrowserQA(config = buildBrowserQAConfig()) {
       viewportQa,
       saveResumeChecked: true,
       invalidSaveChecked: true,
+      recoveryLibraryChecked: true,
+      recoveryLibrary: setupBoardResult.recoveryLibrary,
       noPrivateDebugMarkers: true
     });
     completed = true;

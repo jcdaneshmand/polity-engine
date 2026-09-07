@@ -77,12 +77,13 @@ function actionSymbol(action: any): string {
 export function ActionMenu({ actions, onAction }: { actions: any[]; onAction: (a:any)=>void }) {
   const menuItems = groupActionsForMenu(actions);
   const hasEnabledActions = actions.some((action) => action.enabled);
-  const renderButton = (a: any) => <button key={a.label} className={`action-button action-button--${getActionIntent(a)}`} disabled={!a.enabled} title={a.reason || ""} onClick={()=>onAction(a)}>
+  const renderButton = (a: any) => <button key={a.label} data-action={a.action} className={`action-button action-button--${getActionIntent(a)}`} disabled={!a.enabled} title={a.reason || ""} onClick={()=>onAction(a)}>
     <span className="action-button-main">
       <span className="action-symbol" aria-hidden="true">{actionSymbol(a)}</span>
       <span>{a.label}</span>
     </span>
     {a.provenance ? <span className="action-provenance">{ruleProvenanceLabels[a.provenance as keyof typeof ruleProvenanceLabels] ?? "Rule"}</span> : null}
+    {a.paymentExplanation ? <small className={`payment-explanation payment-explanation--${a.paymentExplanation.kind}`}>{a.paymentExplanation.summary}</small> : null}
     {!a.enabled ? <small>{compactReason(a.reason) || "Unavailable"}</small> : null}
   </button>;
 

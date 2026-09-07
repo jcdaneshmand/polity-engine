@@ -411,6 +411,22 @@ describe("online session utilities", () => {
     })).rejects.toThrow("Lobby not found.");
   });
 
+  it("preserves player-readable Commons validation reasons", async () => {
+    const fetcher = async () => errorResponse(409, {
+      error: "invalid_setup",
+      issues: [{ code: "custom_cards_missing", message: "2 selected Commons cards are not loaded." }]
+    });
+
+    await expect(createLobbyRoom({
+      serverURL: "http://localhost:8000",
+      roomName: "Invalid",
+      playerCount: 2,
+      setupData: {},
+      privateDataFingerprint: "placeholder",
+      fetcher
+    })).rejects.toThrow("Game setup is not ready: 2 selected Commons cards are not loaded.");
+  });
+
   it("reports private-data mismatch errors with recovery guidance", async () => {
     const fetcher = async () => errorResponse(409, { error: "private_data_mismatch" });
 

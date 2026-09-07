@@ -20,13 +20,22 @@ describe("commons selection", () => {
     expect(result.selectedCards.map((c) => c.id)).toEqual(["legends_a"]);
   });
 
-  it("limits custom Commons setup to explicitly requested card ids", () => {
+  it("limits custom Commons setup to explicitly requested card ids across available sets", () => {
     const result = selectCommonsCards([
       card({ id: "custom_a", commonsSetId: "custom" }),
       card({ id: "custom_b", commonsSetId: "custom" }),
+      card({ id: "classics_a", commonsSetId: "classics" }),
+      card({ id: "horizons_a", commonsSetId: "horizons" })
+    ], options({ commonsSetId: "custom", customCommonsCardIds: ["custom_b", "classics_a", "horizons_a"] }));
+    expect(result.selectedCards.map((c) => c.id)).toEqual(["custom_b", "classics_a", "horizons_a"]);
+  });
+
+  it("preserves custom-set fallback behavior when an older caller omits explicit ids", () => {
+    const result = selectCommonsCards([
+      card({ id: "custom_a", commonsSetId: "custom" }),
       card({ id: "classics_a", commonsSetId: "classics" })
-    ], options({ commonsSetId: "custom", customCommonsCardIds: ["custom_b"] }));
-    expect(result.selectedCards.map((c) => c.id)).toEqual(["custom_b"]);
+    ], options({ commonsSetId: "custom", customCommonsCardIds: undefined }));
+    expect(result.selectedCards.map((c) => c.id)).toEqual(["custom_a"]);
   });
 
   it("excludes replacement-group cards from normal Commons selection", () => {
